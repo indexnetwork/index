@@ -7,12 +7,30 @@ import { executeSendEmail } from '@indexnetwork/api/src/lib/email/transport.help
 import { EmbedderAdapter } from '@indexnetwork/api/src/adapters/embedder.adapter';
 import { intentService } from '@indexnetwork/api/src/services/intent.service';
 import { networkService } from '@indexnetwork/api/src/services/network.service';
+import { detectSocialLabel } from '@indexnetwork/api/src/adapters/database.shared';
 
 import { findPeople, type FoundPerson } from './find-people';
 import { ghostOutreachTemplate } from './outreach.template';
 
 const logger = log.job.from('GhostNetwork');
 const UNAVATAR_URL = 'https://unavatar.io';
+
+/** Platform profiles from any URL, plus personal sites only when asked. */
+function profileLinks(urls: string[], includeSites = false): { label: string; value: string }[] {
+  const seen = new Set<string>();
+  const rows: { label: string; value: string }[] = [];
+  for (const raw of urls) {
+    const value = raw.trim();
+    if (!/^https?:\/\//i.test(value)) continue;
+    const label = detectSocialLabel(value);
+    if (label === 'custom' && !includeSites) continue;
+    const key = label === 'custom' ? value : label;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ label, value });
+  }
+  return rows;
+}
 
 /** A public photo for this address, or null when none is listed. */
 async function publicAvatar(email: string): Promise<string | null> {
@@ -87,6 +105,11 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
       .onConflictDoNothing()
       .returning({ id: schema.users.id });
     if (!user) return null;
+    const links = [
+      ...profileLinks(person.socials, true),
+      ...profileLinks(person.sources).filter((link) => !person.socials.some((url) => detectSocialLabel(url) === link.label)),
+    ];
+    if (links.length) await tx.insert(schema.userSocials).values(links.map((link) => ({ userId: user.id, ...link })));
     await tx.insert(schema.networkMembers).values({ networkId, userId: user.id, permissions: ['member'] });
     await tx.insert(schema.userNotificationSettings).values({ userId: user.id, preferences: { morningBrief: false } });
     const rows = await tx.insert(schema.intents)
