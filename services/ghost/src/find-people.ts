@@ -1,14 +1,15 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
 
-const PARALLEL_CHAT_URL = 'https://api.parallel.ai';
+const PARALLEL_URL = 'https://api.parallel.ai/v1';
+const RESEARCH_TIMEOUT_MS = 180_000;
 const RATE_LIMIT_MAX_RETRIES = 3;
 const RATE_LIMIT_DELAY_MS = 60_000;
 
 const foundPersonSchema = z.object({
   name: z.string(),
   headline: z.string(),
-  email: z.string().nullable(),
+  email: z.string(),
   signals: z.array(z.string()),
   sources: z.array(z.string()),
 });
@@ -18,28 +19,29 @@ export type FoundPerson = z.infer<typeof foundPersonSchema>;
 
 const findPeopleSchema = {
   type: 'json_schema' as const,
-  json_schema: {
-    name: 'find_people',
-    schema: {
-      type: 'object',
-      properties: {
-        people: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Full name' },
-              headline: { type: 'string', description: 'Anonymous one-line description: role, domain and city. Never the name, employer name or any identifier.' },
-              email: { type: ['string', 'null'], description: 'A publicly listed email address for this person, or null' },
-              signals: { type: 'array', items: { type: 'string' }, maxItems: 3, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
-              sources: { type: 'array', items: { type: 'string' }, description: 'Public URLs the profile is based on' },
-            },
-            required: ['name', 'headline', 'email', 'signals', 'sources'],
+  name: 'find_people',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      people: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            name: { type: 'string', description: 'Full name' },
+            headline: { type: 'string', description: 'Anonymous one-line description: role, domain and city. Never the name, employer name or any identifier.' },
+            email: { type: 'string', description: 'Email address copied verbatim from a public page you visited' },
+            signals: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
+            sources: { type: 'array', items: { type: 'string' }, description: 'Public URLs the profile is based on, including the page that lists the email' },
           },
+          required: ['name', 'headline', 'email', 'signals', 'sources'],
         },
       },
-      required: ['people'],
     },
+    required: ['people'],
   },
 };
 
@@ -59,21 +61,17 @@ export async function findPeople(query: string, limit: number): Promise<FoundPer
   const apiKey = process.env.PARALLELS_API_KEY;
   if (!apiKey) throw new Error('PARALLELS_API_KEY is not defined');
 
-  const client = new OpenAI({ apiKey, baseURL: PARALLEL_CHAT_URL });
+  const client = new OpenAI({ apiKey, baseURL: PARALLEL_URL });
   for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
     try {
-      const response = await client.chat.completions.create({
-        model: 'speed',
-        messages: [
-          {
-            role: 'system',
-            content: `Find up to ${limit} real individuals (not companies) on the public web who would be a strong mutual fit for the signal below. Prefer people with a publicly listed email. Use only public information.`,
-          },
-          { role: 'user', content: query },
-        ],
-        response_format: findPeopleSchema,
-      });
-      const content = response.choices[0]?.message?.content;
+      const response = await client.responses.create({
+        model: 'parallel',
+        reasoning: { effort: 'high' },
+        instructions: `Find up to ${limit} real individuals (not companies) on the public web who would be a strong mutual fit for the signal below. Only include people whose email address is publicly listed on a page you visited (personal site, blog, GitHub profile, talk or paper page, team page). Copy the email verbatim; never guess or construct one. Use only public information.`,
+        input: query,
+        text: { format: findPeopleSchema },
+      }, { timeout: RESEARCH_TIMEOUT_MS });
+      const content = response.output_text;
       const parsed = content ? z.object({ people: z.array(foundPersonSchema) }).safeParse(JSON.parse(content)) : null;
       return parsed?.success ? parsed.data.people.slice(0, limit) : [];
     } catch (error) {
