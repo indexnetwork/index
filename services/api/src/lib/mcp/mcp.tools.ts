@@ -245,7 +245,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'update_my_profile',
     {
-      description: 'Update only the supplied fields on the authenticated API key owner\'s profile.' + LINK_HINT,
+      description: 'Replace the supplied fields on the authenticated API key owner\'s profile. Omitted fields stay. Sending socials replaces the whole list, and the previous values are not kept.' + LINK_HINT,
       inputSchema: z.object({
         name: z.string().optional(),
         intro: z.string().optional(),
@@ -257,7 +257,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           value: z.string().min(1),
         }).strict()).optional(),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     (input) => runTool('update_my_profile', principal, async () => {
       const { socials, ...fields } = input;
@@ -407,14 +407,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'update_intent',
     {
-      description: 'Change the description or source fields of one owned, non-archived signal. Omitted fields stay as they are; null clears a source field.' + SOURCE_FIELDS_HINT + LINK_HINT,
+      description: 'Replace the description or source fields of one owned, non-archived signal. The previous description is not kept. Omitted fields stay; null clears a source field.' + SOURCE_FIELDS_HINT + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         description: z.string().trim().min(1).max(65_536).optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
       if (description === undefined && sourceType === undefined && sourceId === undefined) {
@@ -688,18 +688,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     }),
   );
 
-  server.registerTool(
-    'publish_agent_actions',
-    {
-      description: agentOnly('publish_agent_actions') + ' Persist ask, expire, note, reply or progress actions on the owner’s agent conversation, in the same format as the native Index agent. An ask is a question for the owner, not a negotiation turn and not their answer. Reuse a pending question for the same fact instead of asking again. An opportunity-scoped ask names that opportunity. This does not submit a negotiation turn or accept a match.',
-      inputSchema: z.object({
-        intentId: z.string().trim().min(1),
-        agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
-        actions: z.array(agentActionSchema).min(1).max(20),
-      }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    ({ intentId, agentId, actions }) => runTool('publish_agent_actions', principal, async () => {
+  const publish = (
+    name: string,
+    intentId: string,
+    agentId: string,
+    actions: z.infer<typeof agentActionSchema>[],
+  ) => runTool(name, principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
       try {
@@ -745,7 +739,70 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         if (mapped) return mapped;
         throw error;
       }
-    }),
+    });
+
+  const agentIds = {
+    intentId: z.string().trim().min(1),
+    agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
+  };
+  const writeAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
+
+  server.registerTool(
+    'ask_owner',
+    {
+      description: agentOnly('ask_owner') + ' Ask the owner one question on their agent conversation. Reuse a pending question for the same fact instead of asking again. scope opportunity names that opportunity. This is not a negotiation turn and not their answer.',
+      inputSchema: z.object({
+        ...agentIds,
+        scope: z.enum(['intent', 'opportunity']),
+        opportunityId: z.string().trim().min(1).optional(),
+        question: z.string().trim().min(1).max(2000),
+        options: z.array(z.string().trim().min(1).max(300)).min(2).max(4),
+      }).strict(),
+      annotations: writeAnnotations,
+    },
+    ({ intentId, agentId, scope, opportunityId, question, options }) => publish('ask_owner', intentId, agentId, [{
+      type: 'ask', scope, opportunityId, question, options,
+    }]),
+  );
+
+  server.registerTool(
+    'expire_owner_question',
+    {
+      description: agentOnly('expire_owner_question') + ' Drop one pending question on the owner’s agent conversation. The question stops waiting.',
+      inputSchema: z.object({ ...agentIds, questionId: z.string().uuid() }).strict(),
+      annotations: { ...writeAnnotations, destructiveHint: true },
+    },
+    ({ intentId, agentId, questionId }) => publish('expire_owner_question', intentId, agentId, [{ type: 'expire', questionId }]),
+  );
+
+  server.registerTool(
+    'save_agent_note',
+    {
+      description: agentOnly('save_agent_note') + ' Save one private note on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
+      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
+      annotations: writeAnnotations,
+    },
+    ({ intentId, agentId, text }) => publish('save_agent_note', intentId, agentId, [{ type: 'note', text }]),
+  );
+
+  server.registerTool(
+    'save_agent_reply',
+    {
+      description: agentOnly('save_agent_reply') + ' Save one reply on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
+      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
+      annotations: writeAnnotations,
+    },
+    ({ intentId, agentId, text }) => publish('save_agent_reply', intentId, agentId, [{ type: 'reply', text }]),
+  );
+
+  server.registerTool(
+    'save_agent_progress',
+    {
+      description: agentOnly('save_agent_progress') + ' Save one progress update on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
+      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
+      annotations: writeAnnotations,
+    },
+    ({ intentId, agentId, text }) => publish('save_agent_progress', intentId, agentId, [{ type: 'progress', text }]),
   );
 
   server.registerTool(
@@ -790,14 +847,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'submit_negotiation_turn',
     {
-      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
+      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. accept and decline settle that exchange and are not a draft. This is not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
       inputSchema: z.object({
         opportunityId: z.string().trim().min(1),
         agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
         action: z.enum(['propose', 'counter', 'accept', 'decline']),
         message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     ({ opportunityId, agentId, action, message }) => runTool('submit_negotiation_turn', principal, async () => {
       const resolved = await resolveOpportunity(opportunityId, principal);
