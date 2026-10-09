@@ -646,7 +646,7 @@ function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, p
 function PersonHead({ name, photo, userId, ghost, sub, size = 34, action, onOpenProfile }: {
   name: string; photo?: string | null; userId?: string; ghost?: boolean; sub?: string; size?: number; action?: ReactNode; onOpenProfile?: () => void;
 }) {
-  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: onOpenProfile ? "pointer" : undefined } as const;
+  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", whiteSpace: "normal", cursor: onOpenProfile ? "pointer" : undefined } as const;
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
       <span title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
