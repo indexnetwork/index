@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { DOWNLOAD_PATH } from "@/components/AppHandoff";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { APIError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
+import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
 import { SiteSignInCard, SiteSignInMeta, SiteSignInPage } from "@/components/SiteSignIn";
 
@@ -33,12 +33,13 @@ type JoinOutcome = "pending" | "declined";
 
 /**
  * Web invite landing (`/l/:code`): preview the network, sign in inline, accept
- * the invitation automatically, then redirect to the app download page.
+ * the invitation automatically, then go straight on: a new account to
+ * onboarding (which ends on its first signal), an existing one to the network.
  */
 export default function NetworkWebInviteLanding() {
   const { code } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, isReady } = useAuthContext();
+  const { isAuthenticated, isReady, user } = useAuthContext();
   const networkService = useNetworkService();
 
   const [previewStep, setPreviewStep] = useState<PreviewStep>(code ? "loading" : "error");
@@ -52,8 +53,11 @@ export default function NetworkWebInviteLanding() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
   const [loginRequested, setLoginRequested] = useState(false);
+  // Set once the join lands. Where to go next depends on the account, which
+  // may still be loading right after an inline sign-in.
+  const [joinedNetworkId, setJoinedNetworkId] = useState<string | null>(null);
   // Set once this tab mails a sign-in link. The link opens a new tab that
-  // signs in, joins and shows the download page; this tab stays on "check your
+  // signs in, joins and moves on; this tab stays on "check your
   // email" even after the shared session arrives, rather than joining twice.
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const joinStartedRef = useRef(false);
@@ -105,7 +109,7 @@ export default function NetworkWebInviteLanding() {
         setJoinOutcome("pending");
         return;
       }
-      navigate(DOWNLOAD_PATH, { replace: true });
+      setJoinedNetworkId(result.network.id);
     } catch (err) {
       setJoining(false);
       if (err instanceof APIError && err.status === 403) {
@@ -123,6 +127,11 @@ export default function NetworkWebInviteLanding() {
     if (!isAuthenticated && !loginRequested) return;
     void attemptJoin();
   }, [previewStep, isReady, isAuthenticated, loginRequested, linkSentTo, attemptJoin]);
+
+  useEffect(() => {
+    if (!joinedNetworkId || !user) return;
+    navigate(needsOnboarding(user) ? "/onboarding" : `/networks/${joinedNetworkId}`, { replace: true });
+  }, [joinedNetworkId, user, navigate]);
 
   const callbackURL =
     typeof window !== "undefined" ? window.location.href : "/";
