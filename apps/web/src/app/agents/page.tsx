@@ -7,6 +7,7 @@ import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import type { Agent } from '@/services/agents';
+import { AddYourAgent } from "@/components/AddYourAgent";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { log } from "@/lib/logger";
 import { useCompact } from "@/hooks/useCompact";
@@ -21,31 +22,6 @@ function NegotiatorBadge() {
 
 function NegotiatorMark() {
   return <span title="negotiator" style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, lineHeight: 1, color: "#000" }}>*</span>;
-}
-
-function RegisterLink({ open, disabled, onClick }: { open: boolean; disabled?: boolean; onClick: () => void }) {
-  const [focus, setFocus] = useState(false);
-  const marked = open || focus;
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      onFocus={() => setFocus(true)}
-      onBlur={() => setFocus(false)}
-      style={{
-        boxSizing: "border-box",
-        border: "1px solid " + (marked ? "#000" : "transparent"),
-        background: open ? "#000" : "transparent",
-        color: disabled ? "var(--ink-3)" : (open ? "#fff" : "#000"),
-        padding: "1px 6px",
-        cursor: disabled ? "default" : "pointer",
-        fontFamily: "var(--mac-mono)", fontSize: 12,
-        textDecoration: marked ? "none" : "underline",
-        textUnderlineOffset: 3,
-        outline: "none",
-      }}>+ register manually</button>
-  );
 }
 
 function LineButton({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
@@ -368,34 +344,10 @@ export default function AgentsPage() {
                 )}
               </div>
 
-              <BandHead label="connected agents" action={
-                <RegisterLink open={registerOpen} disabled={creating || selecting} onClick={() => setRegisterOpen((open) => !open)} />
-              } />
+              <BandHead label="connected agents" />
               <p style={{ margin: "0 0 12px", fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
                 everything that can act for you, from any device.
               </p>
-              {registerOpen && (
-                <div style={{ display: "grid", gap: 10, maxWidth: 420, marginBottom: 12 }}>
-                  <label style={{ display: "block" }}>
-                    <span style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600, color: "#000" }}>name<span style={{ color: "#FF8A00", marginLeft: 4 }}>*</span></span>
-                    <input
-                      autoFocus
-                      value={newAgentName}
-                      disabled={creating}
-                      placeholder="agent name"
-                      onChange={(e) => setNewAgentName(e.target.value)}
-                      onFocus={() => setNameFocus(true)}
-                      onBlur={() => setNameFocus(false)}
-                      onKeyDown={(e) => { if (e.key === "Enter") void handleCreateAgent(); }}
-                      style={{ display: "block", width: "100%", boxSizing: "border-box", border: "1px solid #000", background: creating ? "#EDEAE1" : "#fff", boxShadow: nameFocus ? "inset 2px 2px 0 #000" : "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px", fontFamily: "var(--mac-mono)", fontSize: 13, outline: "none" }}
-                    />
-                  </label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <LineButton disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
-                    <LineButton disabled={creating} onClick={() => setRegisterOpen(false)}>cancel</LineButton>
-                  </div>
-                </div>
-              )}
               <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
                 <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0} />
                 {personalAgents.map((agent, i) => {
@@ -425,14 +377,35 @@ export default function AgentsPage() {
                   );
                 })}
               </div>
-              {personalAgents.length === 0 && !registerOpen && (
-                <EmptyState
-                  align="start"
-                  style={{ padding: "12px 0 0" }}
-                  message="no agents of your own yet. connect one with the index CLI or MCP, or register it by hand."
-                  action={{ label: "register manually", onClick: () => setRegisterOpen(true) }}
+              <div style={{ marginTop: 16 }}>
+                <AddYourAgent
+                  linkToPage={false}
+                  handOnly={personalAgents.length > 0}
+                  onRegister={() => setRegisterOpen(true)}
+                  registerForm={registerOpen ? (
+                    <div style={{ display: "grid", gap: 10, padding: "10px 12px", border: "1px solid #000", background: "#fff" }}>
+                      <label style={{ display: "block" }}>
+                        <span style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600, color: "#000" }}>name<span style={{ color: "#FF8A00", marginLeft: 4 }}>*</span></span>
+                        <input
+                          autoFocus
+                          value={newAgentName}
+                          disabled={creating}
+                          placeholder="agent name"
+                          onChange={(e) => setNewAgentName(e.target.value)}
+                          onFocus={() => setNameFocus(true)}
+                          onBlur={() => setNameFocus(false)}
+                          onKeyDown={(e) => { if (e.key === "Enter") void handleCreateAgent(); }}
+                          style={{ display: "block", width: "100%", boxSizing: "border-box", border: "1px solid #000", background: creating ? "#EDEAE1" : "#fff", boxShadow: nameFocus ? "inset 2px 2px 0 #000" : "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px", fontFamily: "var(--mac-mono)", fontSize: 13, outline: "none" }}
+                        />
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <LineButton disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
+                        <LineButton disabled={creating} onClick={() => { setRegisterOpen(false); setNewAgentName(""); }}>cancel</LineButton>
+                      </div>
+                    </div>
+                  ) : undefined}
                 />
-              )}
+              </div>
             </>
           )}
         </div>

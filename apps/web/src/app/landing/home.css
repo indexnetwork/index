@@ -42,8 +42,10 @@
 .home-platform-logo { width: 14px; height: 14px; display: block; flex: none; object-fit: contain; }
 .site a.home-platform:hover .home-platform-logo { filter: invert(1); }
 
-/* "We took discovery out of the feeds": text wraps the drawing's shape (FeedsFlow.tsx). */
-.home-flow { position: relative; }
+/* "We took discovery out of the feeds": the drawing is centered on the body,
+   and the body wraps its silhouette (FeedsFlow.tsx). */
+.home-flow { position: relative; display: flex; flex-direction: column; }
+.home-flow .home-flow-text { max-width: none; }
 .home-flow-line { display: block; white-space: nowrap; }
 .home-flow-art {
   position: absolute;
@@ -65,31 +67,39 @@
 }
 
 /* ---------- trace (overview card) ---------- */
-.home-trace-section { padding-top: 48px; }
-.home-trace {
-  border-top: 1px solid var(--divider);
-  padding-top: 28px;
+.home-trace-section { padding-top: 96px; }
+.home-trace { display: flex; flex-direction: column; gap: 16px; }
+.home-trace-intent {
+  align-self: flex-end;
+  max-width: 34rem;
+  padding: 10px 16px;
+  border: 1px solid var(--card-border);
+  background: #fff;
+  font-size: 15px;
+  line-height: 1.6;
+  font-weight: 300;
+  color: var(--ink);
 }
 .home-trace-label {
   font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .12em;
-  color: #9AA0A6;
-  margin-bottom: 10px;
+  font-size: 12px;
+  letter-spacing: .1em;
+  line-height: 1;
+  color: var(--muted);
 }
 .home-trace-card {
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.5;
   color: var(--ink);
   background: #fff;
-  border: 1px solid rgba(4, 23, 41, .16);
+  border: 1px solid var(--card-border);
 }
 .home-trace-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 12px 6px;
+  gap: 16px;
+  padding: 12px 16px;
   color: var(--muted);
   letter-spacing: .04em;
 }
@@ -105,20 +115,20 @@
   color: rgba(4, 23, 41, .22);
   line-height: 1;
   white-space: pre;
-  padding: 0 12px;
+  padding: 0 16px;
 }
 .home-trace-rule::before {
   content: "--------------------------------------------------------------------------------------------------------------";
 }
-.home-trace-rows { padding: 4px 0 6px; }
+.home-trace-rows { padding: 6px 0 8px; }
 .home-trace-line {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 1px 12px;
+  gap: 10px;
+  padding: 1px 16px;
 }
-.home-trace-line--q { padding-left: 36px; }
-.home-trace-line--child { padding-left: 28px; }
+.home-trace-line--q { padding-left: 40px; }
+.home-trace-line--child { padding-left: 32px; }
 .home-trace-line--intent { background: #F5F3FF; box-shadow: inset 2px 0 0 #C4B5FD; }
 .home-trace-line--discover { background: #EFF6FF; box-shadow: inset 2px 0 0 #93C5FD; }
 .home-trace-line--reach { background: #FFFBEB; box-shadow: inset 2px 0 0 #FCD34D; }
@@ -126,11 +136,11 @@
 .home-trace-line--ready { background: #ECFDF5; box-shadow: inset 2px 0 0 #6EE7B7; }
 .home-trace-text { flex: 1; min-width: 0; }
 .home-trace-strong { font-weight: 600; }
-.home-trace-dim { color: #8A9199; }
+.home-trace-dim { color: var(--muted); }
 .home-trace-deal { color: #1B7F4E; font-weight: 400; }
 .home-trace-ok { color: #1B7F4E; flex-shrink: 0; }
-.home-trace-skip { color: #8A9199; text-decoration: line-through; }
-.home-trace-time { flex-shrink: 0; color: #8A9199; font-variant-numeric: tabular-nums; }
+.home-trace-skip { color: var(--muted); text-decoration: line-through; }
+.home-trace-time { flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .home-trace-tree,
 .home-trace-bullet { flex-shrink: 0; color: rgba(4, 23, 41, .35); white-space: pre; }
 .home-trace-slot {
@@ -223,8 +233,6 @@
   grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
   gap: 16px 32px;
   margin-top: 8px;
-  padding-top: 28px;
-  border-top: 1px solid var(--ink);
 }
 .home-run-oss .site-col-title { text-wrap: balance; }
 .home-run-oss .site-meta {

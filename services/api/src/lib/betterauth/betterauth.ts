@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
@@ -11,6 +12,10 @@ export const API_URL =
 export const JWT_AUDIENCE = API_URL;
 
 export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
+
+/** In production, only REVIEWER_EMAIL (the plugin-directory test account) may use a password. */
+const REVIEWER_EMAIL = process.env.REVIEWER_EMAIL?.trim().toLowerCase();
+export const emailPasswordEnabled = process.env.NODE_ENV !== 'production' || !!REVIEWER_EMAIL;
 
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
@@ -50,8 +55,8 @@ export interface AuthDeps {
  * All infrastructure access is provided through `deps` so this module
  * follows the project layering rules (lib receives adapters via injection).
  *
- * @remarks Email/password auth is disabled in production — only magic link
- * and social OAuth are available.
+ * @remarks Email/password auth is disabled in production except for
+ * REVIEWER_EMAIL — everyone else uses magic link or social OAuth.
  */
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn } = deps;
@@ -85,7 +90,16 @@ export function createAuth(deps: AuthDeps) {
     rateLimit: {
       enabled: false,
     },
-    emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },
+    emailAndPassword: { enabled: emailPasswordEnabled },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (process.env.NODE_ENV !== 'production') return;
+        if (ctx.path !== "/sign-in/email" && ctx.path !== "/sign-up/email") return;
+        if (String(ctx.body?.email ?? '').trim().toLowerCase() !== REVIEWER_EMAIL) {
+          throw new APIError("FORBIDDEN", { message: "Password sign-in isn't available for this account. Use Google or an email link." });
+        }
+      }),
+    },
     user: {
       fields: {
         image: "avatar",

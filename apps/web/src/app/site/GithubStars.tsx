@@ -9,7 +9,7 @@ function formatStars(n: number): string {
   return n.toString();
 }
 
-/** Star action plus the live count, in the GitHub button pattern. Cached for five minutes. */
+/** Star action plus the live count. Cached for five minutes. */
 export default function GithubStars() {
   const [stars, setStars] = useState<number | null>(() => {
     if (typeof window === "undefined") return null;

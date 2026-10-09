@@ -92,7 +92,6 @@ function drawFan(c: CanvasRenderingContext2D, t: number, dpr: number, imgs: Imag
   });
 
   // the match travels back along its path, then up to "you"
-  let youPulse = 0;
   if (ph > 5.4 && ph < 7.2) {
     const u = (ph - 5.4) / 1.8;
     const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
@@ -107,8 +106,6 @@ function drawFan(c: CanvasRenderingContext2D, t: number, dpr: number, imgs: Imag
     c.beginPath();
     c.arc(me.x, me.y - 34 - u * (me.y - you.y - 56), 7, 0, 7);
     c.fill();
-  } else if (ph >= 7.9) {
-    youPulse = 1 - (ph - 7.9) / 1.1;
   }
 
   c.strokeStyle = "rgba(4,23,41,.5)";
@@ -155,7 +152,6 @@ function drawFan(c: CanvasRenderingContext2D, t: number, dpr: number, imgs: Imag
     c.stroke();
   };
 
-  if (youPulse > 0) ring(you.x, you.y, 24 + (1 - youPulse) * 22, `rgba(64,145,187,${youPulse})`, 2.5);
   avatar(you.x, you.y, 22, "#DCE7D7", "#8FA39A", "you");
   c.font = "400 22px 'Source Serif 4', Georgia, serif";
   c.textBaseline = "middle";
