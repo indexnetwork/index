@@ -22,6 +22,8 @@ export interface PresentedOpportunity {
     userId: string;
     name: string;
     avatar: string | null;
+    /** Found on the web and has not signed in yet. */
+    isGhost?: boolean;
   };
   viewerRole?: string;
   headline?: string;

@@ -41,6 +41,20 @@ test('an overlapping tick does not start work for more than cap owners', async (
   await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
 
+test('the previous morning reaches the work as its claim', async () => {
+  const previous = new Date('2026-10-02T08:30:00Z');
+  const seen: (Date | null)[] = [];
+  const brief = createMorningBrief({
+    listHostedOwners: async () => owners(1),
+    claim: async () => ({ previous }),
+    work: async (_owner, claim) => { seen.push(claim.previous); },
+  });
+
+  await brief.tick(now);
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  expect(seen).toEqual([previous]);
+});
+
 test('two replicas sharing a lock do not each start cap owners', async () => {
   let held = false;
   const lock: MorningLock = async () => {

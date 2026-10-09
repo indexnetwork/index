@@ -7,15 +7,48 @@ import { executeSendEmail } from '@indexnetwork/api/src/lib/email/transport.help
 import { EmbedderAdapter } from '@indexnetwork/api/src/adapters/embedder.adapter';
 import { intentService } from '@indexnetwork/api/src/services/intent.service';
 import { networkService } from '@indexnetwork/api/src/services/network.service';
+import { detectSocialLabel } from '@indexnetwork/api/src/adapters/database.shared';
 
 import { findPeople, type FoundPerson } from './find-people';
 import { ghostOutreachTemplate } from './outreach.template';
 
 const logger = log.job.from('GhostNetwork');
+const UNAVATAR_URL = 'https://unavatar.io';
+
+/** Platform profiles from any URL, plus personal sites only when asked. */
+function profileLinks(urls: string[], includeSites = false): { label: string; value: string }[] {
+  const seen = new Set<string>();
+  const rows: { label: string; value: string }[] = [];
+  for (const raw of urls) {
+    const value = raw.trim();
+    if (!/^https?:\/\//i.test(value)) continue;
+    const label = detectSocialLabel(value);
+    if (label === 'custom' && !includeSites) continue;
+    const key = label === 'custom' ? value : label;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ label, value });
+  }
+  return rows;
+}
+
+/** A public photo for this address, or null when none is listed. */
+async function publicAvatar(email: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${UNAVATAR_URL}/${encodeURIComponent(email)}?fallback=false`);
+    const type = response.headers.get('content-type') ?? '';
+    if (!response.ok || !type.startsWith('image/')) return null;
+    return response.url;
+  } catch {
+    return null;
+  }
+}
 
 /** Ghost counterparties each member signal is opened with. */
 const GHOSTS_PER_SIGNAL = 10;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A shared inbox is a firm, not a person. */
+const SHARED_INBOX = /^(info|hello|contact|team|press|office|support|hi|careers|jobs|media|pr|partners|invest|admin|enquiries|inquiries)@/;
 
 const embedder = new EmbedderAdapter();
 
@@ -57,7 +90,7 @@ export async function createGhostNetwork(ownerEmail: string): Promise<string> {
 async function upsertGhost(networkId: string, person: FoundPerson): Promise<string | null> {
   const email = person.email?.trim().toLowerCase();
   const signals = person.signals.map((signal) => signal.trim()).filter(Boolean);
-  if (!email || !EMAIL_REGEX.test(email) || !signals.length) return null;
+  if (!email || !EMAIL_REGEX.test(email) || SHARED_INBOX.test(email) || !signals.length) return null;
 
   // Soft-deleted rows count: someone who opted out is never seated again.
   const [existing] = await db.select({
@@ -67,13 +100,18 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
   }).from(schema.users).where(eq(schema.users.email, email)).limit(1);
   if (existing) return !existing.emailVerified && !existing.deletedAt ? existing.id : null;
 
-  const embeddings = await embedder.generate(signals) as number[][];
+  const [embeddings, avatar] = await Promise.all([embedder.generate(signals) as Promise<number[][]>, publicAvatar(email)]);
   return db.transaction(async (tx) => {
     const [user] = await tx.insert(schema.users)
-      .values({ email, name: person.headline, intro: person.headline, emailVerified: false })
+      .values({ email, name: person.name, intro: person.headline, avatar, emailVerified: false })
       .onConflictDoNothing()
       .returning({ id: schema.users.id });
     if (!user) return null;
+    const links = [
+      ...profileLinks(person.socials, true),
+      ...profileLinks(person.sources).filter((link) => !person.socials.some((url) => detectSocialLabel(url) === link.label)),
+    ];
+    if (links.length) await tx.insert(schema.userSocials).values(links.map((link) => ({ userId: user.id, ...link })));
     await tx.insert(schema.networkMembers).values({ networkId, userId: user.id, permissions: ['member'] });
     await tx.insert(schema.userNotificationSettings).values({ userId: user.id, preferences: { morningBrief: false } });
     const rows = await tx.insert(schema.intents)
@@ -86,18 +124,21 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
 
 /**
  * For every member signal in the Ghost network with fewer than 10 ghost
- * counterparties, research the missing ones and open an opportunity from each
- * ghost's closest signal. Opening starts the hosted negotiation.
+ * counterparties, research the missing ones and open an opportunity from the
+ * member's signal. The member's agent speaks first.
  *
  * @returns How many opportunities now pair a ghost with a member signal from this pass.
  */
 export async function seedPass(): Promise<number> {
   const networkId = ghostNetworkId();
-  const signals = await db.execute<{ id: string; payload: string; ghosts: number }>(sql`
-    select i.id, i.payload,
+  const signals = await db.execute<{ id: string; user_id: string; payload: string; ghosts: number }>(sql`
+    select i.id, i.user_id, i.payload,
       (select count(*)::int from negotiations g
-        join users gu on gu.id = g.initiator_user_id and not gu.email_verified
-        where g.responder_intent_id = i.id) as ghosts
+        join users a on a.id = g.initiator_user_id
+        join users b on b.id = g.responder_user_id
+        where (g.initiator_intent_id = i.id or g.responder_intent_id = i.id)
+          and ((not a.email_verified and a.deleted_at is null) or (not b.email_verified and b.deleted_at is null))
+      ) as ghosts
     from intents i
     join intent_networks a on a.intent_id = i.id and a.network_id = ${networkId}
     join network_members m on m.user_id = i.user_id and m.network_id = ${networkId} and m.deleted_at is null
@@ -121,7 +162,7 @@ export async function seedPass(): Promise<number> {
           limit 1
         `);
         if (!closest) continue;
-        const outcome = await intentService.createOpportunities(closest.id, ghostId, [{ intentId: signal.id, networkId }]);
+        const outcome = await intentService.createOpportunities(signal.id, signal.user_id, [{ intentId: closest.id, networkId }]);
         if (outcome.kind === 'ok') paired += outcome.opportunities.length;
       }
     } catch (error) {
@@ -139,19 +180,28 @@ export async function seedPass(): Promise<number> {
 export async function outreachPass(): Promise<number> {
   const networkId = ghostNetworkId();
   const rows = await db.execute<{ id: string; email: string; member_name: string; member_signal: string; reason: string | null }>(sql`
-    select o.id, gu.email, mu.name as member_name, mi.payload as member_signal,
+    select o.id,
+      case when not iu.email_verified then iu.email else ru.email end as email,
+      case when iu.email_verified then iu.name else ru.name end as member_name,
+      case when iu.email_verified then ii.payload else ri.payload end as member_signal,
       (select t.message from negotiation_turns t where t.negotiation_id = g.id order by t.turn_index desc limit 1) as reason
     from negotiations g
     join opportunities o on o.id = g.opportunity_id
-    join users gu on gu.id = g.initiator_user_id and not gu.email_verified and gu.deleted_at is null
-    join users mu on mu.id = g.responder_user_id
-    join intents mi on mi.id = g.responder_intent_id
+    join users iu on iu.id = g.initiator_user_id
+    join users ru on ru.id = g.responder_user_id
+    join intents ii on ii.id = g.initiator_intent_id
+    join intents ri on ri.id = g.responder_intent_id
     where o.context->>'networkId' = ${networkId}
       and o.status = 'pending'
       and o.metadata->>'ghostContactedAt' is null
+      and (
+        (not iu.email_verified and iu.deleted_at is null and ru.email_verified)
+        or (not ru.email_verified and ru.deleted_at is null and iu.email_verified)
+      )
       and exists (
         select 1 from opportunity_events e
-        where e.opportunity_id = o.id and e.type = 'committed' and e.actor_user_id = g.responder_user_id
+        where e.opportunity_id = o.id and e.type = 'committed'
+          and e.actor_user_id = case when iu.email_verified then iu.id else ru.id end
       )
   `);
 

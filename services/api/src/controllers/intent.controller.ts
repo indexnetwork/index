@@ -42,6 +42,7 @@ const LinkSchema = z.object({
 const DiscoverSchema = z.object({
   query: z.string().trim().min(1, 'query is required').max(2_000),
   limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
+  since: z.string().datetime({ offset: true }).transform((value) => new Date(value)).optional(),
 }).strict();
 const CreateOpportunitiesSchema = z.object({
   counterparties: z.array(z.object({
@@ -166,7 +167,7 @@ export class IntentController {
    * Nothing is written and nothing is judged here: the caller reads the ranked
    * counterparties and decides which are worth an opportunity.
    *
-   * @param req - Request with body `{ query: string, limit?: number }`, `limit` being the top-N to return.
+   * @param req - Request with body `{ query: string, limit?: number, since?: string }`, `limit` being the top-N to return and `since` an ISO time before which arrived signals are left out.
    * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
    * @returns The ranked counterparties this query found.

@@ -42,6 +42,7 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: clamp(20px, 3vw, 40px);
 }
+.apps-cards--three { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .apps-card {
   display: flex;
   flex-direction: column;
@@ -99,3 +100,5 @@
 .site .apps-browser:hover .apps-browser-cta { color: var(--blue); }
 /* The Hermes mark is a tall transparent glyph: fit it inside the tile. */
 .apps-card-icon--mark { object-fit: contain; padding: 7px; background: transparent; }
+.apps-card-icon--web { display: flex; align-items: center; justify-content: center; color: var(--ink); padding: 8px; }
+.apps-card-icon--web svg { width: 100%; height: 100%; display: block; }

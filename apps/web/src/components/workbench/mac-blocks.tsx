@@ -22,11 +22,23 @@ export function LiveTag({ label }: { label: string }) {
   );
 }
 
+/** Marks someone found on the web who has not joined Index yet. */
+export function GhostTag() {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifySelf: "start", width: "fit-content", maxWidth: "100%",
+      fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4, whiteSpace: "normal",
+      color: "var(--ink-2)", background: "#E8E6E1", padding: "2px 6px",
+    }}>Not yet on Index</span>
+  );
+}
+
 export function MatchCard({
   name,
   blurb,
   photo,
   userId,
+  ghost,
   accepted,
   ready,
   negotiating,
@@ -43,6 +55,7 @@ export function MatchCard({
   blurb: string;
   photo?: string | null;
   userId?: string;
+  ghost?: boolean;
   accepted: boolean;
   ready: boolean;
   negotiating: boolean;
@@ -87,8 +100,9 @@ export function MatchCard({
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
           <span title="view profile" onClick={openProfile} style={{
             fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
-            minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            minWidth: 0, whiteSpace: "normal",
           }}>{name}</span>
+          {ghost && <GhostTag />}
           {negotiating && <LiveTag label="live" />}
         </div>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>

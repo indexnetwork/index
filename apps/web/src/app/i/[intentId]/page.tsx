@@ -19,7 +19,7 @@ import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/u
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
-import { DiscoveryLoader, MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { DiscoveryLoader, GhostTag, MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
@@ -499,6 +499,7 @@ function IntentDetail() {
             blurb={blurb}
             photo={item.avatar ?? peer?.avatar}
             userId={item.userId || peer?.userId}
+            ghost={peer?.isGhost}
             accepted={bucket === "accepted"}
             ready={bucket === "awaiting you"}
             negotiating={bucket === "negotiating"}
@@ -642,10 +643,10 @@ function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, p
   return personWindowTitle(bucket);
 }
 
-function PersonHead({ name, photo, userId, sub, size = 34, action, onOpenProfile }: {
-  name: string; photo?: string | null; userId?: string; sub?: string; size?: number; action?: ReactNode; onOpenProfile?: () => void;
+function PersonHead({ name, photo, userId, ghost, sub, size = 34, action, onOpenProfile }: {
+  name: string; photo?: string | null; userId?: string; ghost?: boolean; sub?: string; size?: number; action?: ReactNode; onOpenProfile?: () => void;
 }) {
-  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: onOpenProfile ? "pointer" : undefined } as const;
+  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", whiteSpace: "normal", cursor: onOpenProfile ? "pointer" : undefined } as const;
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
       <span title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
@@ -653,6 +654,7 @@ function PersonHead({ name, photo, userId, sub, size = 34, action, onOpenProfile
       </span>
       <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
         <div title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={nameStyle}>{name}</div>
+        {ghost && <GhostTag />}
         {sub && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 1, textTransform: "uppercase" }}>{sub}</div>}
       </div>
       {action}
@@ -722,7 +724,7 @@ function PersonPane({
   if (!showingProfile && bucket === "accepted" && item.userId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} onOpenProfile={openProfile} action={intentId && (
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} ghost={item.peer?.isGhost} onOpenProfile={openProfile} action={intentId && (
           <Btn small onClick={() => onPane("negotiation")}>negotiation ›</Btn>
         )} />
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -736,7 +738,7 @@ function PersonPane({
   const socials = resolveSocials(profile?.socials);
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
-      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} size={42} />
+      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} ghost={item.peer?.isGhost} size={42} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         {bio && <SummarySection label="bio">{bio}</SummarySection>}
         {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}

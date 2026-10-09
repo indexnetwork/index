@@ -58,11 +58,11 @@ async function acquireMorningLock(): Promise<(() => Promise<void>) | null> {
  * local 08:00. Each owner keeps one stable minute, and only one process
  * claims the day.
  *
- * @param options - Where one signal's morning wake runs.
+ * @param options - Where one signal's morning runs, given the owner's previous morning.
  * @returns A stop handle for shutdown.
  */
 export function startMorningBrief(options: {
-  wake: (userId: string, intent: Intent) => Promise<void>;
+  wake: (userId: string, intent: Intent, since: Date | null) => Promise<void>;
 }): { stop: () => void } {
   const logger = log.agent.from('MorningBrief');
   const brief = createMorningBrief({
@@ -74,12 +74,20 @@ export function startMorningBrief(options: {
         error: error instanceof Error ? error.message : String(error),
       });
     },
-    work: async (owner) => {
+    work: async (owner, claim) => {
       const networks = await networkedIntentIds(owner.id);
       const intents = (await new HostedIndex(owner.id).listIntents())
         .filter((item) => item.status === 'active' && networks.has(item.id));
       for (const item of intents) {
-        await options.wake(owner.id, { id: item.id, statement: item.statement });
+        try {
+          await options.wake(owner.id, { id: item.id, statement: item.statement }, claim.previous);
+        } catch (error) {
+          logger.error(describeFailure('Morning signal failed', error), {
+            userId: owner.id,
+            intentId: item.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     },
   });

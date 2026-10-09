@@ -1,9 +1,9 @@
-import type { Counterparty, CounterpartyPick } from "@indexnetwork/client";
+import type { Counterparty, CounterpartyPick, Index } from "@indexnetwork/client";
 
 import { BRIEF_LIMIT, BRIEF_PROMPT, DECISIONS, principalFacts, principalOnly, recordBrief } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { ConversationEntry, Decision, WakeAction, WakeInput, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, WakeAction, WakeInput, WakeResult } from "./types.ts";
 
 /** How many turns a wake gets: room to decide a few things, speak, and search. */
 const WAKE_STEPS = 8;
@@ -29,7 +29,7 @@ const WAKE_PROMPT = [
 
 /** The line a morning wake adds. */
 const MORNING =
-  "It is morning. Open an opportunity only with someone who does not already have one. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+  "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties with new queries only if you judge it necessary, for example when nothing is open; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 
 /**
  * The questions still waiting on the principal, mirroring how the host reads
@@ -66,6 +66,47 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
     if (entry.kind === "reply") answered = true;
   }
   return null;
+}
+
+/**
+ * Discover along each query and open everyone the owner is not already
+ * negotiating with, on any of their signals. A person holding several matching
+ * signals keeps one seat, at their strongest.
+ *
+ * @param client - Index for this owner.
+ * @param intent - The signal to open from.
+ * @param queries - Each direction to discover separately.
+ * @param since - When set, only people whose signal arrived after this ISO time.
+ * @returns How many distinct people were found, how many were picked, and the opportunities opened.
+ */
+export async function reach(
+  client: Index,
+  intent: Intent,
+  queries: string[],
+  since?: string,
+): Promise<{ found: number; picked: number; opened: string[] }> {
+  // Each angle asks for as many as one call may open, so a single query is
+  // never the reason only a handful are reached.
+  const results = await Promise.all(queries.map((query) => client.discover(intent.id, query, OPEN_LIMIT, since)));
+  const found = new Map<string, Counterparty>();
+  for (const counterparty of results.flat()) {
+    const seen = found.get(counterparty.userId);
+    if (!seen || counterparty.score > seen.score) found.set(counterparty.userId, counterparty);
+  }
+  if (!found.size) return { found: 0, picked: 0, opened: [] };
+
+  const signals = new Set([intent.id, ...(await client.listIntents()).map((signal) => signal.id)]);
+  const negotiations = await Promise.all([...signals].map((signalId) => client.listIntentNegotiations(signalId)));
+  const started = new Set(negotiations.flat().map((negotiation) => negotiation.counterparty.userId));
+  const picks: CounterpartyPick[] = [...found.values()]
+    .filter((counterparty) => !started.has(counterparty.userId))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, OPEN_LIMIT)
+    .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
+  if (!picks.length) return { found: found.size, picked: 0, opened: [] };
+
+  const created = await client.createOpportunities(intent.id, picks);
+  return { found: found.size, picked: picks.length, opened: created.map((opportunity) => opportunity.opportunityId) };
 }
 
 /**
@@ -365,33 +406,17 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             unpersisted ??= cause;
           }
         };
-        // Each angle asks for as many as one call may open, so a single query is
-        // never the reason only a handful are reached. People are what a signal
-        // needs, so a person holding several matching signals keeps one seat.
-        const results = await Promise.all(queries.map((query) => client.discover(intent.id, query, OPEN_LIMIT)));
-        const found = new Map<string, Counterparty>();
-        for (const counterparty of results.flat()) {
-          const seen = found.get(counterparty.userId);
-          if (!seen || counterparty.score > seen.score) found.set(counterparty.userId, counterparty);
-        }
-        const started = new Set((await client.listIntentNegotiations(intent.id)).map((negotiation) => negotiation.counterparty.intentId));
-        const picks: CounterpartyPick[] = [...found.values()]
-          .filter((counterparty) => !started.has(counterparty.intentId))
-          .sort((left, right) => right.score - left.score)
-          .slice(0, OPEN_LIMIT)
-          .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
-        if (!picks.length) {
-          await report(found.size, 0);
-          return found.size
+        const { found, picked, opened } = await reach(client, intent, queries);
+        await report(found, opened.length);
+        if (!picked) {
+          return found
             ? "Everyone discovered already has an opportunity."
             : "No counterparties matched those queries. Try different ones, or stop.";
         }
-        const created = await client.createOpportunities(intent.id, picks);
-        await report(found.size, created.length);
         // Each one is briefed and proposed on outside this wake, so discovery is
         // the whole of this call: do not brief what it just opened.
-        input.onOpened?.(created.map((opportunity) => opportunity.opportunityId));
-        return `Reached ${created.length} of ${picks.length} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;
+        input.onOpened?.(opened);
+        return `Reached ${opened.length} of ${picked} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;
       },
     }),
   ];

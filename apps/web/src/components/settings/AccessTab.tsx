@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
+import { GhostTag } from '@/components/workbench/mac-blocks';
 import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -399,10 +400,10 @@ export default function AccessTab({
             return (
               <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
                 <button type="button" onClick={() => navigate(`/u/${member.id}`)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", padding: 0 }}>
-                  <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} blur={ghost} />
+                  <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} />
                   <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {member.name}
-                    {ghost && <span style={{ marginLeft: 6, fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>ghost</span>}
+                    {ghost && <GhostTag />}
                   </span>
                 </button>
                 <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", background: isOwner ? "#000" : "#E8E6E1", color: isOwner ? "#fff" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>

@@ -14,7 +14,7 @@ export { summarize } from "./summary.ts";
 
 // One run each, against whatever implements Index: read what the run needs,
 // call it, publish what it produced.
-export { closeInitiation, encodeActions, owedWork, readConversation, runNegotiate, runWake } from "./host.ts";
+export { closeInitiation, encodeActions, owedWork, readConversation, runMorning, runNegotiate, runWake } from "./host.ts";
 export type { NegotiateHook, Runtime } from "./host.ts";
 
 export { ModelClient } from "./model.ts";

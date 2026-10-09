@@ -143,6 +143,8 @@ test("discover posts the query and returns the counterparties as ranked", async 
   const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
   expect(await client.discover("i1", "biotech founders in Lisbon")).toEqual([counterparty]);
   expect(seen).toEqual({ path: "/api/intents/i1/discover", body: { query: "biotech founders in Lisbon" } });
+  await client.discover("i1", "biotech founders in Lisbon", 30, "2026-10-08T08:00:00.000Z");
+  expect(seen?.body).toEqual({ query: "biotech founders in Lisbon", limit: 30, since: "2026-10-08T08:00:00.000Z" });
   server.stop(true);
 });
 

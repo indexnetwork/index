@@ -5,7 +5,7 @@ import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportuni
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 
-import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, chatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { cardToPresentedOpportunity, chatCardToPresentedOpportunity, type PresentedOpportunity, type PresentedOpportunityList } from '../lib/opportunity/opportunity.presentation';
@@ -24,6 +24,12 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  * path bypasses this default.
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
+
+/** Mark peers who were found on the web and have not signed in yet. */
+async function flagGhostPeers(presented: PresentedOpportunity[]): Promise<PresentedOpportunity[]> {
+  const ghostIds = await userDatabaseAdapter.findGhostIds(presented.map((o) => o.peer.userId).filter(Boolean));
+  return presented.map((o) => (ghostIds.has(o.peer.userId) ? { ...o, peer: { ...o.peer, isGhost: true } } : o));
+}
 
 function sanitizeOpportunityForResponse<T extends Opportunity>(opportunity: T): T {
   return {
@@ -238,7 +244,7 @@ export class OpportunityService {
         skeleton: options?.presentation === 'skeleton',
       });
       return {
-        opportunities: cards.map(cardToPresentedOpportunity),
+        opportunities: await flagGhostPeers(cards.map(cardToPresentedOpportunity)),
         meta: { totalOpportunities },
       };
     } catch (e) {
@@ -264,7 +270,7 @@ export class OpportunityService {
         logger.warn('presentOpportunityCard failed', { opportunityId: opportunity.id, viewerId, error: e });
         return null;
       });
-    if (card) return cardToPresentedOpportunity(card);
+    if (card) return (await flagGhostPeers([cardToPresentedOpportunity(card)]))[0];
 
     const counterpart = resolveCounterpart(opportunity.actors, viewerId);
     const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);

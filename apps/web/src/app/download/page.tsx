@@ -64,6 +64,18 @@ export function HermesIcon() {
   return <img className="apps-card-icon apps-card-icon--mark" src="/site/nous-research.png" alt="Hermes" />;
 }
 
+export function WebIcon() {
+  return (
+    <span className="apps-card-icon apps-card-icon--web" aria-hidden="true">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="0.8">
+        <circle cx="8" cy="8" r="6.25" />
+        <ellipse cx="8" cy="8" rx="2.6" ry="6.25" />
+        <path d="M1.75 8h12.5" />
+      </svg>
+    </span>
+  );
+}
+
 /** `/download` — post-invite install page: Mac app, Hermes plugin, web. */
 export default function Download({ overlay }: { overlay?: boolean }) {
   return (
@@ -75,14 +87,14 @@ export default function Download({ overlay }: { overlay?: boolean }) {
         </p>
       </div>
 
-      <div className="apps-cards">
+      <div className="apps-cards apps-cards--three">
         <AppCard
           icon={<IndexIcon />}
           label="APP"
           title="Index for Mac"
           body={`Our desktop app. ${MAC_APP_REQUIREMENTS}.`}
           action={
-            <a className="site-btn site-btn--block" href={MAC_APP_DOWNLOAD_URL}>
+            <a className="site-btn site-btn--secondary site-btn--block" href={MAC_APP_DOWNLOAD_URL}>
               Download .dmg ↓
             </a>
           }
@@ -98,22 +110,18 @@ export default function Download({ overlay }: { overlay?: boolean }) {
             </a>
           }
         />
+        <AppCard
+          icon={<WebIcon />}
+          label="WEB"
+          title="Index in the browser"
+          body="The same app. Nothing to install."
+          action={
+            <a className="site-btn site-btn--secondary site-btn--block" href="/login">
+              Open Index →
+            </a>
+          }
+        />
       </div>
-
-      <a className="apps-browser" href="/login">
-        <span className="apps-browser-icon apps-browser-icon--web" aria-hidden="true">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="0.8">
-            <circle cx="8" cy="8" r="6.25" />
-            <ellipse cx="8" cy="8" rx="2.6" ry="6.25" />
-            <path d="M1.75 8h12.5" />
-          </svg>
-        </span>
-        <span className="apps-browser-text">
-          <span className="apps-browser-title">Index in the browser</span>
-          <span className="apps-browser-sub">The same app. Nothing to install.</span>
-        </span>
-        <span className="apps-browser-cta">Open Index</span>
-      </a>
     </AppsShell>
   );
 }
