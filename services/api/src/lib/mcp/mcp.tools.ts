@@ -24,6 +24,14 @@ const LINK_HINT = ' The result starts with a markdown summary whose names are al
 const agentOnly = (name: string) =>
   `Agent tool. Call only when your task instructions name ${name}, never because the person asked for something.`;
 
+/** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
+const hints = (
+  readOnlyHint: boolean,
+  destructiveHint: boolean,
+  openWorldHint: boolean,
+  idempotentHint: boolean,
+) => ({ readOnlyHint, destructiveHint, idempotentHint, openWorldHint });
+
 const emptyInputSchema = z.object({}).strict();
 const intentIdSchema = z.object({
   intentId: z.string().trim().min(1),
@@ -232,7 +240,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get the authenticated API key owner\'s safe Index profile.' + LINK_HINT,
       inputSchema: emptyInputSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     () => runTool('get_my_profile', principal, async () => {
       const profile = await userService.findWithGraph(principal.userId);
@@ -257,7 +265,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           value: z.string().min(1),
         }).strict()).optional(),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      annotations: hints(false, true, false, true),
     },
     (input) => runTool('update_my_profile', principal, async () => {
       const { socials, ...fields } = input;
@@ -286,7 +294,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         telegram: z.string().optional(),
         websites: z.array(z.string()).optional(),
       }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: hints(true, false, true, true),
     },
     (input) => runTool('enrich_my_profile', principal, async () => {
       const result = await enrichmentService.prefillPublicProfile(principal.userId, input);
@@ -304,7 +312,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         page: z.number().int().min(1).optional(),
         limit: z.number().int().min(1).max(100).optional(),
       }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     (input) => runTool('list_intents', principal, async () => {
       const result = await intentService.listIntents(principal.userId, {
@@ -327,7 +335,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get one owned signal by UUID or supported short ID prefix, including its associated networks.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -352,7 +360,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      annotations: hints(false, false, false, false),
     },
     ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
       let prepared;
@@ -414,7 +422,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: hints(false, true, false, true),
     },
     ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
       if (description === undefined && sourceType === undefined && sourceId === undefined) {
@@ -441,7 +449,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Pause one owned signal. Pausing an already paused signal succeeds without changing it.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: hints(false, true, false, true),
     },
     ({ intentId }) => runTool('pause_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -461,7 +469,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Resume one owned signal. Resuming an already active signal succeeds; archived signals stay archived.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: hints(false, false, false, true),
     },
     ({ intentId }) => runTool('resume_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -484,7 +492,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         intentId: z.string().trim().min(1),
         confirm: z.literal(true),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: hints(false, true, false, false),
     },
     ({ intentId }) => runTool('archive_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -511,7 +519,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         limit: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).max(10_000).optional(),
       }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     (input) => runTool('list_opportunities', principal, async () => {
       const limit = input.limit ?? 50;
@@ -561,7 +569,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get one visible opportunity by UUID or supported short ID prefix, plus its negotiation when one exists.' + LINK_HINT,
       inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     ({ opportunityId }) => runTool('get_opportunity', principal, async () => {
       const resolved = await resolveOpportunity(opportunityId, principal);
@@ -602,7 +610,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         query: z.string().trim().min(1).max(2_000).describe('The kind of person this signal needs, in your own words.'),
         limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
       }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     ({ intentId, query, limit }) => runTool('discover_counterparties', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -628,7 +636,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           networkId: z.string().uuid(),
         }).strict()).min(1).max(CREATE_OPPORTUNITIES_LIMIT),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      annotations: hints(false, false, false, true),
     },
     ({ intentId, counterparties }) => runTool('create_opportunities', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -647,7 +655,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: agentOnly('get_my_agent') + ' Read the agent selected to negotiate for the owner. Its id is the agentId a negotiation turn takes.',
       inputSchema: emptyInputSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     () => runTool('get_my_agent', principal, async () => {
       const agent = await agentService.getSelectedNegotiator(principal.userId);
@@ -661,7 +669,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: hints(true, false, false, true),
     },
     ({ intentId }) => runTool('get_agent_conversation', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -745,7 +753,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     intentId: z.string().trim().min(1),
     agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
   };
-  const writeAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
+  const writeAnnotations = hints(false, false, false, false);
 
   server.registerTool(
     'ask_owner',
@@ -770,7 +778,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: agentOnly('expire_owner_question') + ' Drop one pending question on the owner’s agent conversation. The question stops waiting.',
       inputSchema: z.object({ ...agentIds, questionId: z.string().uuid() }).strict(),
-      annotations: { ...writeAnnotations, destructiveHint: true },
+      annotations: hints(false, true, false, true),
     },
     ({ intentId, agentId, questionId }) => publish('expire_owner_question', intentId, agentId, [{ type: 'expire', questionId }]),
   );
@@ -816,7 +824,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           text: z.string().trim().min(1).max(8000),
         }).strict()).min(1).max(20),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: hints(false, false, false, false),
     },
     ({ intentId, answers }) => runTool('answer_agent_questions', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -854,7 +862,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         action: z.enum(['propose', 'counter', 'accept', 'decline']),
         message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
       }).strict(),
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: hints(false, true, false, false),
     },
     ({ opportunityId, agentId, action, message }) => runTool('submit_negotiation_turn', principal, async () => {
       const resolved = await resolveOpportunity(opportunityId, principal);
@@ -887,7 +895,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned signal.'
           : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned signal. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
         inputSchema: opportunityActionSchema,
-        annotations: { readOnlyHint: false, destructiveHint: !accepted, openWorldHint: true },
+        annotations: hints(false, true, false, false),
       },
       ({ opportunityId, intentId }) => runTool(name, principal, async () => {
         const resolvedOpportunity = await resolveOpportunity(opportunityId, principal);
