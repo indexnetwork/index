@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { resolveSocials } from "@/lib/socials";
+import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
@@ -746,7 +747,10 @@ function PersonPane({
           <SummarySection label="elsewhere">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {socials.map((s) => (
-                <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>{s.handle}</a>
+                <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  {SOCIAL_ICONS[s.platform]}
+                  <span>{s.handle}</span>
+                </a>
               ))}
             </div>
           </SummarySection>
