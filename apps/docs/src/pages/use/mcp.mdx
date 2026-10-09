@@ -110,15 +110,16 @@ or `reject_opportunity`.
 ## For the agent
 
 :::prompt
-Index is available as the `index` MCP server at
-`https://protocol.index.network/mcp`. OAuth opens a browser login; an
-`x-api-key` still works. Create and read intents with `create_intent` and
-`list_intents`. Review introductions
-with `list_opportunities`. Accept or pass only after asking the person you act
-for. Call a tool whose description begins "Agent tool" only when your task
-instructions name it. Call `archive_intent` only
-after an explicit yes, and pass `confirm: true`.
-Tool results lead with a markdown line whose names are already linked — reuse
-those links on the person, signal, or opportunity name; never invent a separate
-"link" word or ask the user for a URL the tool already returned.
+This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into a signal, then review the intros. Accept or pass only after you ask them.
+Add this as an MCP server:
+
+```json
+{
+  "mcpServers": {
+    "index": { "url": "https://protocol.index.network/mcp" }
+  }
+}
+```
+
+OAuth opens a browser login. An API key goes in the `x-api-key` header.
 :::

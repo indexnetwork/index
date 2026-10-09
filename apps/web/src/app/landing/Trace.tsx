@@ -216,11 +216,7 @@ export default function Trace() {
 
   return (
     <div className="home-trace">
-      <div className="flex justify-end mb-6">
-        <div className="max-w-[34rem] px-4 py-2 rounded-full border border-[#E8E8E8] bg-white text-[15px] text-gray-800 leading-snug shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          {INTENT}
-        </div>
-      </div>
+      <div className="home-trace-intent">{INTENT}</div>
 
       <div className="home-trace-label">INDEX</div>
 

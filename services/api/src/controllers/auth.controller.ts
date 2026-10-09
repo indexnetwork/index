@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
 import { onboardingService } from '../services/onboarding.service';
 import { log } from '../lib/log';
+import { emailPasswordEnabled } from '../lib/betterauth/betterauth';
 
 const logger = log.controller.from('auth');
 
@@ -51,7 +52,7 @@ export class AuthController {
     if (process.env.EDGEOS_TENANT_ID) {
       providers.push('edge-city');
     }
-    return Response.json({ providers, emailPassword: process.env.NODE_ENV !== 'production' });
+    return Response.json({ providers, emailPassword: emailPasswordEnabled });
   }
 
   /**

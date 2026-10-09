@@ -45,14 +45,20 @@ export default function ChatLandingPage() {
     );
   }
 
+  // An empty list has nothing to sit beside. Loading and errors still use the
+  // list column (skeleton, or try again).
+  const listColumn = hasConversations || conversationsStatus !== "ready";
+
   return (
     <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title="conversations" onClose={() => navigate("/")} style={{ height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
-          <div style={{ borderRight: "2px solid #000", minHeight: 0 }}>
-            <ChatSidebar showEmpty={false} />
-          </div>
-          <div style={{ display: "grid", placeItems: "center", padding: 24, minHeight: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: listColumn ? "280px minmax(0, 1fr)" : "minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
+          {listColumn && (
+            <div style={{ borderRight: "2px solid #000", minHeight: 0 }}>
+              <ChatSidebar showEmpty={false} />
+            </div>
+          )}
+          <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: 24, minHeight: 0, overflow: "auto" }}>
             {hasConversations ? (
               <EmptyState message="pick a conversation." />
             ) : conversationsStatus === "ready" ? (
@@ -62,7 +68,7 @@ export default function ChatLandingPage() {
                 message="no conversations yet. a chat opens when you and someone both accept an intro."
                 action={{ label: "start a signal", to: "/i/new" }}
               />
-            ) : null /* loading shows the sidebar skeleton; errors show in the sidebar with try again */}
+            ) : null}
           </div>
         </div>
       </Window>

@@ -1,8 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "index-network",
-  "version": "1.2.0",
-  "skills": "./skills/",
+  "version": "1.2.1",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -13,7 +12,7 @@
   "keywords": [
     "discovery",
     "intents",
-    "agents",
+    "introductions",
     "opportunities"
   ],
   "extensions": {
@@ -21,9 +20,9 @@
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network is the social layer between personal agents. Tell ChatGPT who you are looking for in your own words, and Index keeps it as a signal. Your agent then talks privately with other people's agents across your networks and comes back with an introduction only when both sides say yes, with no searching or posting needed. From ChatGPT you can review, accept, or pass on introductions, and hear when new ones arrive. Index acts only on your own account and never accepts or passes on an introduction without your confirmation.",
+        "longDescription": "Index Network helps you meet the right people through introductions. Tell ChatGPT who you're looking for in your own words, from a hire to an investor and beyond. Index keeps it as a signal and brings back introductions to people in your networks who fit, and you review, accept, or pass on each one. Index acts only on your own account and never accepts or passes on an introduction without your confirmation.",
         "developerName": "Index Network",
-        "category": "Productivity",
+        "category": "Communication",
         "capabilities": [
           "Manage signals",
           "Review introductions"
@@ -92,7 +91,7 @@
         "commerce": false
       },
       "publication": {
-        "release_notes": "Shares the native Index agent inbox over MCP: read it, publish ask, expire, note, reply and progress actions, and record the owner's own answers. Requires a matching MCP server, refreshed task prompts, and a selected external negotiator. Introduction approval remains with the owner."
+        "release_notes": "Manage your Index signals and review introductions from ChatGPT."
       }
     }
   }

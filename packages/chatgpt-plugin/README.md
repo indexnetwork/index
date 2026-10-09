@@ -10,7 +10,7 @@ This package is not published to npm or mirrored. Upload it as a ZIP from the Pl
 
 ```sh
 cd packages/chatgpt-plugin
-zip -r ../../index-network-chatgpt.zip plugin.json mcp.json assets skills
+zip -r ../../index-network-chatgpt.zip plugin.json mcp.json assets
 ```
 
 Review test cases and release notes live in `plugin.json` under `extensions.com.openai`. Reviewer credentials and the demo recording URL are entered in the dashboard. See [docs.index.network/use/chatgpt](https://docs.index.network/use/chatgpt).

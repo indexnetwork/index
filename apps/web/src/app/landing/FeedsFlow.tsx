@@ -10,13 +10,17 @@ const PARAGRAPHS = [
 const FONT = "300 15px 'Public Sans'";
 const LINE_HEIGHT = 25.5;
 const PARAGRAPH_GAP = 22;
+/** Space between the headline and the body. Matches the flex gap below. */
+const HEAD_GAP = 24;
 
 const ART_SRC = "/site/discovery-drawing.png";
 const ART_RATIO = 739 / 1400;
-/** Share of the column the drawing takes. */
-const ART_SHARE = 0.48;
-/** Space kept between a line's end and the nearest ink, as a share of the column. */
-const CLEARANCE_SHARE = 0.1;
+/** Pixels kept between a line's end and the dense pencil. The visible stroke sits a little left of that edge. */
+const CLEARANCE = 40;
+/** Gap kept between the headline and the drawing. The arch's faint edge sits left of the dense pencil. */
+const HEAD_CLEARANCE = 56;
+/** A line this narrow is crowded; that drawing scale is rejected. */
+const MIN_LINE = 300;
 /** Below this column width the drawing stacks under the text instead. */
 const FLOW_MIN_WIDTH = 640;
 /** Rows sampled from the drawing's alpha to find its left edge. */
@@ -50,36 +54,50 @@ function readProfile(img: HTMLImageElement): Float32Array {
   return profile;
 }
 
-/**
- * Lays each paragraph out line by line, giving every line the width left of
- * the drawing's ink at that height, so the text follows the drawing's shape.
- */
-function flowLines(
+type Flow = { lines: string[][]; artShare: number; artTop: number };
+type Head = { w: number; h: number };
+
+/** Width left of the ink at `top`. Null when a body line would be crowded. */
+function lineWidthAt(
+  profile: Float32Array,
+  width: number,
+  artShare: number,
+  top: number,
+  sample: number,
+  min: number,
+  artTop: number,
+): number | null {
+  const artW = width * artShare;
+  const artH = artW * ART_RATIO;
+  const local = top - artTop;
+  if (local + sample <= 0 || local >= artH + 36) return width;
+  const from = Math.max(0, Math.floor((Math.max(0, local) / artH) * PROFILE_ROWS));
+  const to = Math.min(PROFILE_ROWS - 1, Math.ceil(((local + sample) / artH) * PROFILE_ROWS));
+  let edge = 1;
+  for (let r = from; r <= to; r++) edge = Math.min(edge, profile[r]);
+  if (edge >= 1) return Math.max(min, width - artW - CLEARANCE);
+  const natural = width - artW + edge * artW - CLEARANCE;
+  return natural >= min ? natural : null;
+}
+
+function layoutAt(
   prepared: PreparedTextWithSegments[],
   profile: Float32Array,
   width: number,
-): string[][] {
-  const artW = width * ART_SHARE;
-  const artH = artW * ART_RATIO;
-  const artX = width - artW;
-  const clearance = width * CLEARANCE_SHARE;
-
-  const lineWidthAt = (top: number) => {
-    const from = Math.max(0, Math.floor((top / artH) * PROFILE_ROWS));
-    const to = Math.min(PROFILE_ROWS - 1, Math.ceil(((top + LINE_HEIGHT) / artH) * PROFILE_ROWS));
-    let edge = 1;
-    for (let r = from; r <= to; r++) edge = Math.min(edge, profile[r]);
-    if (from > to || edge >= 1) return width;
-    return Math.max(160, artX + edge * artW - clearance);
-  };
-
+  artShare: number,
+  origin: number,
+  artTop: number,
+): { lines: string[][]; bottom: number; artH: number } | null {
+  const artH = width * artShare * ART_RATIO;
   const out: string[][] = [];
-  let y = 0;
+  let y = origin;
   for (const p of prepared) {
     const lines: string[] = [];
     let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 };
     for (;;) {
-      const range = layoutNextLineRange(p, cursor, lineWidthAt(y));
+      const lineWidth = lineWidthAt(profile, width, artShare, y, LINE_HEIGHT, MIN_LINE, artTop);
+      if (lineWidth === null) return null;
+      const range = layoutNextLineRange(p, cursor, lineWidth);
       if (range === null) break;
       lines.push(materializeLineRange(p, range).text);
       cursor = range.end;
@@ -88,7 +106,34 @@ function flowLines(
     out.push(lines);
     y += PARAGRAPH_GAP;
   }
-  return out;
+  return { lines: out, bottom: y - PARAGRAPH_GAP, artH };
+}
+
+/**
+ * Largest drawing whose vertical center lines up with the body, not the title.
+ * Body lines follow the ink; a line clear of the drawing runs the full column.
+ */
+function flowLines(
+  prepared: PreparedTextWithSegments[],
+  profile: Float32Array,
+  width: number,
+  head: Head,
+): Flow | null {
+  if (head.h <= 0 || head.w <= 0) return null;
+  const origin = head.h + HEAD_GAP;
+  let best: Flow | null = null;
+  for (let i = 0; i <= 24; i++) {
+    const artShare = 0.4 + (0.24 * i) / 24;
+    const headRoom = lineWidthAt(profile, width, artShare, 0, head.h, 0, 0);
+    if (headRoom === null || headRoom < head.w + HEAD_CLEARANCE) continue;
+    const probe = layoutAt(prepared, profile, width, artShare, origin, origin);
+    if (!probe) continue;
+    const artTop = Math.max(head.h, origin + (probe.bottom - origin - probe.artH) / 2);
+    const laid = layoutAt(prepared, profile, width, artShare, origin, artTop);
+    if (!laid) continue;
+    best = { lines: laid.lines, artShare, artTop };
+  }
+  return best;
 }
 
 /**
@@ -98,14 +143,25 @@ function flowLines(
  */
 export default function FeedsFlow() {
   const box = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLHeadingElement>(null);
   const [width, setWidth] = useState(0);
+  const [head, setHead] = useState<Head>({ w: 0, h: 0 });
   const [prepared, setPrepared] = useState<PreparedTextWithSegments[] | null>(null);
   const [profile, setProfile] = useState<Float32Array | null>(null);
 
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    const measure = () => {
+      setWidth(el.clientWidth);
+      const heading = headRef.current;
+      if (!heading) return;
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      setHead({ w: range.getBoundingClientRect().width, h: heading.offsetHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -126,22 +182,23 @@ export default function FeedsFlow() {
     };
   }, []);
 
-  const lines = useMemo(
-    () => (prepared && profile && width >= FLOW_MIN_WIDTH ? flowLines(prepared, profile, width) : null),
-    [prepared, profile, width],
+  const flow = useMemo(
+    () => (prepared && profile && width >= FLOW_MIN_WIDTH ? flowLines(prepared, profile, width, head) : null),
+    [prepared, profile, width, head],
   );
 
   return (
     <div
       ref={box}
-      className={lines ? "home-flow" : "home-flow home-flow--stacked"}
-      style={lines ? { minHeight: width * ART_SHARE * ART_RATIO } : undefined}
+      className={flow ? "home-flow" : "home-flow home-flow--stacked"}
+      style={{ gap: HEAD_GAP, ...(flow ? { minHeight: flow.artTop + width * flow.artShare * ART_RATIO } : {}) }}
     >
+      <h3 ref={headRef} className="site-h3">We took discovery out of the feeds</h3>
       <div className="site-prose home-flow-text">
         {PARAGRAPHS.map((text, i) => (
           <p key={i}>
-            {lines
-              ? lines[i].map((line, j) => (
+            {flow
+              ? flow.lines[i].map((line, j) => (
                   <span key={j} className="home-flow-line">{line}</span>
                 ))
               : text}
@@ -154,7 +211,7 @@ export default function FeedsFlow() {
         alt="Pencil drawing: a grid and a dark wave arching over an open room, with a blue plant growing beneath it"
         width={1400}
         height={739}
-        style={lines ? { width: `${ART_SHARE * 100}%` } : undefined}
+        style={flow ? { width: `${flow.artShare * 100}%`, top: flow.artTop } : undefined}
       />
     </div>
   );

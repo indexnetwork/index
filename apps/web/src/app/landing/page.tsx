@@ -73,7 +73,6 @@ export default function LandingPage() {
       </section>
 
       <section className="site-section">
-        <h3 className="site-h3">We took discovery out of the feeds</h3>
         <FeedsFlow />
         <Link className="site-arrow-link" to="/about" target="_blank" rel="noreferrer">About us →</Link>
       </section>
@@ -123,7 +122,7 @@ export default function LandingPage() {
           </div>
 
           <div className="home-run">
-            <h3 className="site-col-title">For community owners</h3>
+            <h3 className="site-col-title">For communities</h3>
             <div className="home-run-body">
               <p className="site-p">
                 Run Index to surface the latent potential of your community by connecting the right
