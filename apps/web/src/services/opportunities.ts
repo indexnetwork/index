@@ -55,6 +55,8 @@ export interface PresentedOpportunity {
     userId: string;
     name: string;
     avatar: string | null;
+    /** Found on the web and has not joined Index yet. */
+    isGhost?: boolean;
   };
   viewerRole?: string;
   headline?: string;

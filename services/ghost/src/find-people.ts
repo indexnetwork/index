@@ -32,7 +32,7 @@ const findPeopleSchema = {
           additionalProperties: false,
           properties: {
             name: { type: 'string', description: 'Full name' },
-            headline: { type: 'string', description: 'Anonymous one-line description: role, domain and city. Never the name, employer name or any identifier.' },
+            headline: { type: 'string', description: 'One-line description: role, domain and city' },
             email: { type: 'string', description: 'Email address copied verbatim from a public page you visited' },
             signals: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
             sources: { type: 'array', items: { type: 'string' }, description: 'Public URLs the profile is based on, including the page that lists the email' },

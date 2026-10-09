@@ -7,6 +7,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { GhostTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
 import { log } from "@/lib/logger";
@@ -123,9 +124,10 @@ function UserProfile() {
 
           {/* Avatar, Name, Location, Socials */}
           <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #000" }}>
-            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
+            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} blur={profileData.isGhost} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
+              {profileData.isGhost && <GhostTag />}
               {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
             </div>
             {isAuthenticated && isOtherUser && (

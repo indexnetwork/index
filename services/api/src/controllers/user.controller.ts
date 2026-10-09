@@ -106,7 +106,7 @@ export class UserController {
     if (!user) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
-    const socials = await userService.getSocials(user.id);
+    const [socials, ghostIds] = await Promise.all([userService.getSocials(user.id), userService.findGhostIds([user.id])]);
     return Response.json({
       user: {
         id: user.id,
@@ -116,6 +116,7 @@ export class UserController {
         avatar: user.avatar,
         location: user.location,
         socials,
+        isGhost: ghostIds.has(user.id),
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

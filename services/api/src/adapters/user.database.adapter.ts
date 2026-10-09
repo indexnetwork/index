@@ -1,6 +1,6 @@
 import { publishUserInvalidation } from '../lib/user-events';
 
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
 
 /** A live session presented as a device: metadata only, never the token. */
 export interface DeviceSession {
@@ -57,6 +57,22 @@ export class UserDatabaseAdapter {
       ...u,
       socials: socialsByUser.get(u.id) ?? [],
     }));
+  }
+
+  /**
+   * Of these users, the ones who have never signed in: unverified, with no
+   * sign-in account. Claiming by email verifies the row, which clears it.
+   */
+  async findGhostIds(userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const rows = await db.select({ id: users.id })
+      .from(users)
+      .where(and(
+        inArray(users.id, userIds),
+        eq(users.emailVerified, false),
+        sql`not exists (select 1 from accounts a where a.user_id = ${users.id})`,
+      ));
+    return new Set(rows.map(r => r.id));
   }
 
   /**
