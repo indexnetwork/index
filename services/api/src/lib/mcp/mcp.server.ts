@@ -78,11 +78,8 @@ function createIndexMcpServer(principal: McpPrincipal): McpServer {
   return server;
 }
 
-/** Serve one modern, stateless MCP request with no protocol session state. */
+/** Serve one stateless MCP request, in either protocol era, with no protocol session state. */
 export async function handleMcpRequest(request: Request, principal: McpPrincipal): Promise<Response> {
-  const handler = createMcpHandler(
-    () => createIndexMcpServer(principal),
-    { legacy: 'reject' },
-  );
+  const handler = createMcpHandler(() => createIndexMcpServer(principal));
   return handler.fetch(request);
 }
