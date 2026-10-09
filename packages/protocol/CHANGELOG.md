@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `OpportunityDetection.source` gains `'introducer'`, stamped on opportunities a third party opens.
+
 ## 66.0.0
 
 ### Breaking changes

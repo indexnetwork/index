@@ -10,6 +10,8 @@ export interface User {
   timezone?: string | null;
   /** Whether the principal confirmed the profile above. Unconfirmed is seed data, not fact. */
   profileConfirmed?: boolean;
+  /** Whether the principal was found on the public web and has not joined Index. */
+  unclaimed?: boolean;
 }
 
 export interface Intent {
@@ -63,6 +65,8 @@ export interface Opportunity {
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
+  /** A third party who opened this pair, and their unverified case for it. */
+  introducer?: { name: string | null; context: string };
   why?: string;
   brief?: string;
   decision?: Decision;

@@ -24,8 +24,8 @@ const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
 export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmail => {
   const subjectName = p.memberName.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 200);
   const safeUrl = escapeHtml(WEB_APP_URL);
-  const reasonHtml = p.reason ? `<p>Why it's a fit: ${escapeHtml(p.reason)}</p>` : '';
-  const reasonText = p.reason ? `\nWhy it's a fit: ${p.reason}\n` : '';
+  const reasonHtml = p.reason ? `<p>Why we introduced you: ${escapeHtml(p.reason)}</p>` : '';
+  const reasonText = p.reason ? `\nWhy we introduced you: ${p.reason}\n` : '';
 
   return {
     subject: `${subjectName} would like to connect`,

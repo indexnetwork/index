@@ -64,6 +64,9 @@ export const CREATE_OPPORTUNITIES_LIMIT = 30;
 const AGENT_PICK_REASONING =
   'Created by the owner\'s personal agent after an on-demand search, so it carries no compatibility score.';
 
+/** Provenance for an opportunity a third party opened. Their own words stay out of it. */
+const INTRODUCER_REASONING = 'Opened by a third party who owns neither signal.';
+
 /** One counterparty a search surfaced, as an agent judging it needs to see it. */
 export interface DiscoveredCounterparty {
   intentId: string;
@@ -91,6 +94,13 @@ export type CreateOpportunitiesOutcome =
   | { kind: 'ok'; opportunities: { opportunityId: string }[] }
   | { kind: 'not_found' }
   | { kind: 'inactive' };
+
+/** The outcome of a third party opening an opportunity between two signals. */
+export type OpenOpportunityOutcome =
+  | { kind: 'ok'; opportunityId: string }
+  | { kind: 'not_member' }
+  | { kind: 'not_seated' }
+  | { kind: 'own_intent' };
 
 /** Client-owned source fields. Undefined leaves a field unchanged; null clears it. */
 export interface IntentSource {
@@ -554,6 +564,51 @@ export class IntentService {
         .filter((record): record is NonNullable<typeof record> => record !== null)
         .map((record) => ({ opportunityId: record.opportunityId })),
     };
+  }
+
+  /**
+   * Open one opportunity between two signals the caller owns neither of. The
+   * caller holds no seat; the owner of the lower intent id takes the first turn
+   * unless `firstGiven` hands it to the owner of the first signal.
+   * Idempotent on the pair.
+   *
+   * @param userId - The introducer.
+   * @param networkId - A network the introducer belongs to, where both signals are shared.
+   * @param intentIds - The two signals.
+   * @param context - Why they should meet, in the introducer's words.
+   * @param firstGiven - Whether the first signal's owner takes the first turn.
+   * @returns The opportunity, or why it could not be opened.
+   */
+  async openOpportunity(
+    userId: string,
+    networkId: string,
+    intentIds: [string, string],
+    context: string,
+    firstGiven = false,
+  ): Promise<OpenOpportunityOutcome> {
+    if (!await this.adapter.isNetworkMember(networkId, userId)) return { kind: 'not_member' };
+    const ordered = firstGiven ? intentIds : [...intentIds].sort();
+    const [a, b] = await Promise.all(ordered.map((id) => negotiationDatabaseAdapter.seatedIntent(id, networkId)));
+    if (!a || !b || a.intentId === b.intentId) return { kind: 'not_seated' };
+    if (a.userId === userId || b.userId === userId || a.userId === b.userId) return { kind: 'own_intent' };
+
+    const pairKey = pairKeyOf(networkId, a.intentId, b.intentId);
+    await negotiationDatabaseAdapter.openCounterparties([{
+      pairKey,
+      networkId,
+      intentA: a.intentId,
+      intentB: b.intentId,
+      userA: a.userId,
+      userB: b.userId,
+      score: 100,
+      reasoning: INTRODUCER_REASONING,
+      evidence: [],
+      detection: { source: 'introducer', createdBy: userId },
+      introducer: { userId, context },
+    }], decideNegotiationOpening);
+
+    const record = await negotiationDatabaseAdapter.findByPairKey(pairKey);
+    return record ? { kind: 'ok', opportunityId: record.opportunityId } : { kind: 'not_seated' };
   }
 
   /**

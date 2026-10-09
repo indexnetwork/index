@@ -38,6 +38,7 @@ function toNegotiation(negotiation: NegotiationView): Negotiation {
     turnCount: negotiation.turnCount,
     createdAt: negotiation.createdAt.toISOString(),
     updatedAt: negotiation.updatedAt.toISOString(),
+    introducer: negotiation.introducer,
     counterparty: negotiation.counterparty,
   };
 }
@@ -101,6 +102,7 @@ export class HostedIndex implements Index {
       location: user.location,
       timezone: user.timezone,
       profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+      unclaimed: (await this.users.findGhostIds([user.id])).has(user.id),
     };
     return this.identity;
   }

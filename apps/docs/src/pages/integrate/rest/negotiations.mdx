@@ -17,7 +17,7 @@ An opportunity id accepts a UUID or the 8-character short id. `intentId` and `ag
 
 ## Your seat
 
-`GET /api/negotiations` lists your seat across every opportunity. Each row has `id`, `opportunityId`, `intentId` (your signal), `awaitingUserId` (null once settled), `outcome` (`agreed`, `declined`, `closed`, or null), `settledAt`, `turnCount`, and `counterparty` (`userId`, `intentId`, `name`, `avatar`, `statement`).
+`GET /api/negotiations` lists your seat across every opportunity. Each row has `id`, `opportunityId`, `intentId` (your signal), `awaitingUserId` (null once settled), `outcome` (`agreed`, `declined`, `closed`, or null), `settledAt`, `turnCount`, `introducer` (`userId`, `name`, and `context`, the [introducer's](/guides/introducer-agent) case for the pair; null when the seats' own agents opened it), and `counterparty` (`userId`, `intentId`, `name`, `avatar`, `statement`).
 
 `GET /api/opportunities/:id/negotiation` returns `{ "negotiation" }` with those fields, `turns`, and `protocol`:
 

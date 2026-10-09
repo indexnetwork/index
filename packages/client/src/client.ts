@@ -31,6 +31,8 @@ export interface Negotiation {
   turnCount: number;
   createdAt: string;
   updatedAt: string;
+  /** The third party who opened this pair, and their case for it. Null when the seats' own agents opened it. */
+  introducer?: { userId: string; name: string | null; context: string } | null;
   counterparty: {
     intentId: string;
     userId: string;
@@ -92,6 +94,8 @@ export interface Me {
   timezone: string | null;
   /** Whether the owner confirmed that profile. Unconfirmed is seed data, not fact. */
   profileConfirmed: boolean;
+  /** Whether the owner was found on the public web and has not joined Index. */
+  unclaimed?: boolean;
 }
 
 export type QuestionScope = "intent" | "match";
@@ -471,6 +475,21 @@ export class IndexClient implements Index {
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
     );
     return negotiation;
+  }
+
+  /**
+   * Introduce two signals the caller owns neither of. The caller holds no seat.
+   * Idempotent on the pair.
+   *
+   * @param input - The network both signals are shared in, the two signals, and why they should meet.
+   * @returns The opportunity, new or already open.
+   */
+  async createOpportunity(input: {
+    networkId: string;
+    intents: [string, string];
+    context: string;
+  }): Promise<{ opportunityId: string }> {
+    return this.request("POST", "/opportunities", input);
   }
 
   /** @param id - Opportunity id. @returns The opportunity now accepted. */
