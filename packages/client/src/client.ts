@@ -94,6 +94,8 @@ export interface Me {
   timezone: string | null;
   /** Whether the owner confirmed that profile. Unconfirmed is seed data, not fact. */
   profileConfirmed: boolean;
+  /** Whether the owner was found on the public web and has not joined Index. */
+  unclaimed?: boolean;
 }
 
 export type QuestionScope = "intent" | "match";

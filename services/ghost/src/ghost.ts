@@ -44,8 +44,9 @@ async function publicAvatar(email: string): Promise<string | null> {
   }
 }
 
-/** Ghost counterparties each member signal is opened with. */
-const GHOSTS_PER_SIGNAL = 10;
+/** Ghost counterparties each member signal is introduced to. */
+const GHOSTS_PER_SIGNAL = 3;
+const GHOST_RIDER_EMAIL = 'ghost-rider@index.network';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** A shared inbox is a firm, not a person. */
 const SHARED_INBOX = /^(info|hello|contact|team|press|office|support|hi|careers|jobs|media|pr|partners|invest|admin|enquiries|inquiries)@/;
@@ -76,6 +77,21 @@ export async function createGhostNetwork(ownerEmail: string): Promise<string> {
     joinPolicy: 'anyone',
   });
   return network.id;
+}
+
+/**
+ * The account that introduces every ghost match. It owns no signals, so it
+ * can introduce any pair in the Ghost network.
+ *
+ * @param networkId - The Ghost network.
+ * @returns Ghost rider's user id.
+ */
+async function ghostRider(networkId: string): Promise<string> {
+  await db.insert(schema.users).values({ email: GHOST_RIDER_EMAIL, name: 'Ghost rider', emailVerified: true }).onConflictDoNothing();
+  const [rider] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, GHOST_RIDER_EMAIL)).limit(1);
+  if (!rider) throw new Error('Ghost rider could not be created.');
+  await db.insert(schema.networkMembers).values({ networkId, userId: rider.id, permissions: ['member'] }).onConflictDoNothing();
+  return rider.id;
 }
 
 /**
@@ -123,16 +139,17 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
 }
 
 /**
- * For every member signal in the Ghost network with fewer than 10 ghost
- * counterparties, research the missing ones and open an opportunity from the
- * member's signal. The member's agent speaks first.
+ * For every member signal in the Ghost network with fewer than 3 ghost
+ * counterparties, research the missing ones and have Ghost rider introduce
+ * them. The member's agent speaks first.
  *
  * @returns How many opportunities now pair a ghost with a member signal from this pass.
  */
 export async function seedPass(): Promise<number> {
   const networkId = ghostNetworkId();
-  const signals = await db.execute<{ id: string; user_id: string; payload: string; ghosts: number }>(sql`
-    select i.id, i.user_id, i.payload,
+  const riderId = await ghostRider(networkId);
+  const signals = await db.execute<{ id: string; payload: string; ghosts: number }>(sql`
+    select i.id, i.payload,
       (select count(*)::int from negotiations g
         join users a on a.id = g.initiator_user_id
         join users b on b.id = g.responder_user_id
@@ -162,8 +179,8 @@ export async function seedPass(): Promise<number> {
           limit 1
         `);
         if (!closest) continue;
-        const outcome = await intentService.createOpportunities(signal.id, signal.user_id, [{ intentId: closest.id, networkId }]);
-        if (outcome.kind === 'ok') paired += outcome.opportunities.length;
+        const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason, true);
+        if (outcome.kind === 'ok') paired++;
       }
     } catch (error) {
       logger.error('Ghost seeding failed for a signal', { intentId: signal.id, error: error instanceof Error ? error.message : String(error) });
@@ -184,7 +201,8 @@ export async function outreachPass(): Promise<number> {
       case when not iu.email_verified then iu.email else ru.email end as email,
       case when iu.email_verified then iu.name else ru.name end as member_name,
       case when iu.email_verified then ii.payload else ri.payload end as member_signal,
-      (select t.message from negotiation_turns t where t.negotiation_id = g.id order by t.turn_index desc limit 1) as reason
+      coalesce(o.metadata->'introducer'->>'context',
+        (select t.message from negotiation_turns t where t.negotiation_id = g.id order by t.turn_index desc limit 1)) as reason
     from negotiations g
     join opportunities o on o.id = g.opportunity_id
     join users iu on iu.id = g.initiator_user_id

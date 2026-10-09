@@ -19,6 +19,10 @@ export const BRIEF_PROMPT = [
   "Decide autonomously where you have the fact and the authority; an A2A accept is not your principal's consent. Do not invent facts, and do not contradict what their conversation already settled.",
 ].join("\n\n");
 
+/** Added to every prompt for a principal who was found on the public web and agreed to nothing. */
+export const UNCLAIMED_PROMPT =
+  "Your principal has not joined Index: they were found on the public web and have agreed to nothing, including this negotiation. Speak about them in the third person and only from their signal; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their signal does not cover is theirs to answer once contacted. Accept only a proposal their signal plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
+
 const BRIEF_ONLY_PROMPT = [
   "You give one new opportunity the brief and decision it does not have yet, so its negotiator can run at all.",
   BRIEF_PROMPT,
@@ -123,7 +127,7 @@ export async function briefIfMissing(input: BriefInput): Promise<WakeAction[]> {
     maxSteps: 1,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
-    instructions: BRIEF_ONLY_PROMPT,
+    instructions: user.unclaimed ? `${BRIEF_ONLY_PROMPT}\n\n${UNCLAIMED_PROMPT}` : BRIEF_ONLY_PROMPT,
     prompt:
       "Brief this one opportunity now.\n" +
       JSON.stringify({

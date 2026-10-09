@@ -357,6 +357,7 @@ var BRIEF_PROMPT = [
 ].join(`
 
 `);
+var UNCLAIMED_PROMPT = "Your principal has not joined Index: they were found on the public web and have agreed to nothing, including this negotiation. Speak about them in the third person and only from their signal; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their signal does not cover is theirs to answer once contacted. Accept only a proposal their signal plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
 var BRIEF_ONLY_PROMPT = [
   "You give one new opportunity the brief and decision it does not have yet, so its negotiator can run at all.",
   BRIEF_PROMPT,
@@ -421,7 +422,9 @@ async function briefIfMissing(input) {
     maxSteps: 1,
     ...input.now ? { now: input.now } : {},
     ...input.signal ? { signal: input.signal } : {},
-    instructions: BRIEF_ONLY_PROMPT,
+    instructions: user.unclaimed ? `${BRIEF_ONLY_PROMPT}
+
+${UNCLAIMED_PROMPT}` : BRIEF_ONLY_PROMPT,
     prompt: `Brief this one opportunity now.
 ` + JSON.stringify({
       principal: principalFacts(user),
@@ -498,7 +501,9 @@ async function negotiate(input) {
     model: input.model,
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
-    instructions: SYSTEM_PROMPT,
+    instructions: user.unclaimed ? `${SYSTEM_PROMPT}
+
+${UNCLAIMED_PROMPT}` : SYSTEM_PROMPT,
     prompt: `Take this negotiation's next turn, or stall.
 Your brief:
 ` + brief + `
