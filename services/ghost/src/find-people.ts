@@ -13,6 +13,7 @@ const foundPersonSchema = z.object({
   socials: z.array(z.string()),
   signals: z.array(z.string()),
   sources: z.array(z.string()),
+  reason: z.string(),
 });
 
 /** A person found on the public web who could serve a signal. */
@@ -38,8 +39,9 @@ const findPeopleSchema = {
             socials: { type: 'array', items: { type: 'string' }, description: 'Public profile URLs you visited for this person: X, LinkedIn, GitHub, or their personal site. Copy each URL verbatim. Empty if you opened none.' },
             signals: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
             sources: { type: 'array', items: { type: 'string' }, description: 'Public URLs the profile is based on, including the page that lists the email' },
+            reason: { type: 'string', description: 'One or two sentences on why this person and the signal\'s owner should meet, citing what the sources show. Written so either of them could read it.' },
           },
-            required: ['name', 'headline', 'email', 'socials', 'signals', 'sources'],
+            required: ['name', 'headline', 'email', 'socials', 'signals', 'sources', 'reason'],
         },
       },
     },
@@ -69,7 +71,7 @@ export async function findPeople(query: string, limit: number): Promise<FoundPer
       const response = await client.responses.create({
         model: 'parallel',
         reasoning: { effort: 'high' },
-        instructions: `Find up to ${limit} real people on the public web who would be a strong mutual fit for the signal below. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
+        instructions: `Find up to ${limit} real people on the public web who would be a strong mutual fit for the signal below, strongest fit first. Return fewer, or none, rather than a weak fit. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
         input: query,
         text: { format: findPeopleSchema },
       }, { timeout: RESEARCH_TIMEOUT_MS });

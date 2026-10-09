@@ -169,7 +169,7 @@ export class EmbedderAdapter {
     throw new Error(`Unknown collection: ${collection}`);
   }
 
-  /** Search only real intent embeddings, with current lifecycle, broadcast and membership eligibility. */
+  /** Search only real intent embeddings of verified owners, with current lifecycle, broadcast and membership eligibility. */
   async searchIntentCandidates(embedding: number[], options: IntentSearchOptions): Promise<IntentCandidate[]> {
     options.signal?.throwIfAborted();
     return traceAppOperation({
@@ -191,6 +191,7 @@ export class EmbedderAdapter {
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'active')),
       isNull(schema.users.deletedAt),
+      eq(schema.users.emailVerified, true),
       isNull(schema.networkMembers.deletedAt),
       isNull(schema.networks.deletedAt),
       isNotNull(intents.embedding),

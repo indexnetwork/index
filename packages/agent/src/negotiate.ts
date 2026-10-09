@@ -1,4 +1,4 @@
-import { principalFacts } from "./brief.ts";
+import { principalFacts, UNCLAIMED_PROMPT } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
 import type { NegotiateInput, NegotiateResult, NegotiationAction, Stall, Turn } from "./types.ts";
@@ -74,7 +74,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     model: input.model,
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
-    instructions: SYSTEM_PROMPT,
+    instructions: user.unclaimed ? `${SYSTEM_PROMPT}\n\n${UNCLAIMED_PROMPT}` : SYSTEM_PROMPT,
     prompt:
       "Take this negotiation's next turn, or stall.\nYour brief:\n" +
       brief +

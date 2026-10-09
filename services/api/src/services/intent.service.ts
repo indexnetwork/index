@@ -568,13 +568,15 @@ export class IntentService {
 
   /**
    * Open one opportunity between two signals the caller owns neither of. The
-   * caller holds no seat; the owner of the lower intent id takes the first turn.
+   * caller holds no seat; the owner of the lower intent id takes the first turn
+   * unless `firstGiven` hands it to the owner of the first signal.
    * Idempotent on the pair.
    *
    * @param userId - The introducer.
    * @param networkId - A network the introducer belongs to, where both signals are shared.
    * @param intentIds - The two signals.
    * @param context - Why they should meet, in the introducer's words.
+   * @param firstGiven - Whether the first signal's owner takes the first turn.
    * @returns The opportunity, or why it could not be opened.
    */
   async openOpportunity(
@@ -582,9 +584,11 @@ export class IntentService {
     networkId: string,
     intentIds: [string, string],
     context: string,
+    firstGiven = false,
   ): Promise<OpenOpportunityOutcome> {
     if (!await this.adapter.isNetworkMember(networkId, userId)) return { kind: 'not_member' };
-    const [a, b] = await Promise.all([...intentIds].sort().map((id) => negotiationDatabaseAdapter.seatedIntent(id, networkId)));
+    const ordered = firstGiven ? intentIds : [...intentIds].sort();
+    const [a, b] = await Promise.all(ordered.map((id) => negotiationDatabaseAdapter.seatedIntent(id, networkId)));
     if (!a || !b || a.intentId === b.intentId) return { kind: 'not_seated' };
     if (a.userId === userId || b.userId === userId || a.userId === b.userId) return { kind: 'own_intent' };
 
