@@ -12,7 +12,7 @@
   "keywords": [
     "discovery",
     "intents",
-    "introductions",
+    "matching",
     "opportunities"
   ],
   "extensions": {
@@ -20,12 +20,12 @@
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network helps you meet the right people through introductions. Tell ChatGPT who you're looking for in your own words, from a hire to an investor and beyond. Index keeps it as a signal and brings back introductions to people in your networks who fit, and you review, accept, or pass on each one. Index acts only on your own account and never accepts or passes on an introduction without your confirmation.",
+        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words, from a hire to an investor and beyond. Index keeps it as a signal, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
         "developerName": "Index Network",
         "category": "Communication",
         "capabilities": [
           "Manage signals",
-          "Review introductions"
+          "Review matches"
         ],
         "websiteURL": "https://index.network",
         "supportURL": "https://docs.index.network/use/chatgpt",
@@ -33,7 +33,7 @@
         "termsOfServiceURL": "https://index.network/pages/terms-of-use",
         "defaultPrompt": [
           "Find me a technical cofounder on Index.",
-          "Are there introductions waiting for me on Index?"
+          "Do I have any new matches on Index?"
         ],
         "brandColor": "#111827",
         "composerIcon": "./assets/icon.svg",
@@ -55,16 +55,16 @@
               "expected_behavior": "Lists the test account's signals with their status and links."
             },
             {
-              "description": "Review waiting opportunities",
-              "prompt": "Are there any introductions waiting for me on Index?",
+              "description": "Review waiting matches",
+              "prompt": "Do I have any matches waiting on Index?",
               "tools_triggered": "list_opportunities, get_opportunity",
-              "expected_behavior": "Lists the pending opportunity on the test account with who it is with and why, and a link to it."
+              "expected_behavior": "Lists the pending match on the test account with who it is with and why it fits, and a link to it."
             },
             {
-              "description": "Accept an opportunity after confirmation",
-              "prompt": "Accept the pending introduction on Index.",
+              "description": "Accept a match after confirmation",
+              "prompt": "Accept my pending match on Index.",
               "tools_triggered": "list_opportunities, accept_opportunity",
-              "expected_behavior": "Confirms which opportunity is meant, accepts it, and returns its new status with a link."
+              "expected_behavior": "Confirms which match is meant, accepts it, and returns its new status with a link."
             },
             {
               "description": "Pause a signal",
@@ -83,15 +83,15 @@
               "prompt": "Show me the private signals of other Index users."
             },
             {
-              "description": "Payments are not supported",
-              "prompt": "Pay $50 to get a premium introduction on Index."
+              "description": "Changing other users' data is not supported",
+              "prompt": "Delete another Index user's signals."
             }
           ]
         },
         "commerce": false
       },
       "publication": {
-        "release_notes": "Manage your Index signals and review introductions from ChatGPT."
+        "release_notes": "Manage your Index signals and review matches from ChatGPT."
       }
     }
   }

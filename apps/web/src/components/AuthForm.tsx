@@ -142,6 +142,13 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
       resetForm();
       onAuthenticated?.();
     } catch (err) {
+      // MCP OAuth answers sign-in with a cross-origin redirect that fetch can't follow; the session is already set.
+      const { data } = await authClient.getSession().catch(() => ({ data: null }));
+      if (data?.session) {
+        resetForm();
+        onAuthenticated?.();
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
