@@ -56,7 +56,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
   'intent.created': signalEvent('The owner created a signal. Read it with get_intent.'),
   'intent.updated': signalEvent('The owner changed a signal\'s goal or constraints. Read it with get_intent.'),
   'opportunity.new': {
-    description: 'Index has a new opportunity (a possible introduction) waiting on the owner. Read it with get_opportunity, then accept or pass only after asking the owner.',
+    description: 'Index has a new opportunity (a possible match) waiting on the owner. Read it with get_opportunity, then accept or pass only after asking the owner.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       opportunityId: z.string(),

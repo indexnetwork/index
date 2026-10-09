@@ -504,7 +504,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what introductions are waiting. List compact opportunity cards across the owner\'s Index or within one owned signal. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned signal. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -691,7 +691,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'publish_agent_actions',
     {
-      description: agentOnly('publish_agent_actions') + ' Persist ask, expire, note, reply or progress actions on the owner’s agent conversation, in the same format as the native Index agent. An ask is a question for the owner, not a negotiation turn and not their answer. Reuse a pending question for the same fact instead of asking again. An opportunity-scoped ask names that opportunity. This does not submit a negotiation turn or accept an introduction.',
+      description: agentOnly('publish_agent_actions') + ' Persist ask, expire, note, reply or progress actions on the owner’s agent conversation, in the same format as the native Index agent. An ask is a question for the owner, not a negotiation turn and not their answer. Reuse a pending question for the same fact instead of asking again. An opportunity-scoped ask names that opportunity. This does not submit a negotiation turn or accept a match.',
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
@@ -751,7 +751,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'answer_agent_questions',
     {
-      description: 'Record the owner’s explicit answers to their agent’s questions, the same way the Index app does. Copy their words; never infer or invent an answer. An answer that names a question no longer waiting is kept as a plain message. A saved answer is not approval to accept or pass an introduction.' + LINK_HINT,
+      description: 'Record the owner’s explicit answers to their agent’s questions, the same way the Index app does. Copy their words; never infer or invent an answer. An answer that names a question no longer waiting is kept as a plain message. A saved answer is not approval to accept or pass a match.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         answers: z.array(z.object({
