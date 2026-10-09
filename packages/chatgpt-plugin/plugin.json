@@ -44,7 +44,7 @@
           "positive": [
             {
               "description": "Create a signal from a stated need",
-              "prompt": "Use Index to find me a technical cofounder for a climate data startup in Berlin.",
+              "prompt": "Use Index to find me an angel investor for my climate software startup.",
               "tools_triggered": "create_intent",
               "expected_behavior": "Creates a signal describing the need and returns a link to it, or relays the feedback when the signal needs revision."
             },
@@ -68,7 +68,7 @@
             },
             {
               "description": "Pause a signal",
-              "prompt": "Pause my Index signal about a technical cofounder.",
+              "prompt": "Pause my Index signal about an angel investor.",
               "tools_triggered": "list_intents, pause_intent",
               "expected_behavior": "Finds the matching signal, pauses it, and confirms with a link."
             }
