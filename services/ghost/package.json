@@ -1,0 +1,24 @@
+{
+  "name": "@indexnetwork/ghost",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "NODE_ENV=development bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "cli": "bun src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@indexnetwork/api": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "node-cron": "^4.2.1",
+    "openai": "^4.103.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.3.3"
+  }
+}
