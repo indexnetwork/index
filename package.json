@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/web",
     "services/api",
+    "services/ghost",
     "packages/protocol",
     "packages/cli",
     "packages/claude-plugin",
@@ -21,6 +22,9 @@
     "agent:tui": "cd packages/agent-tui && bun run start",
     "dev:api": "cd services/api && bun run dev",
     "dev:hosted-agents": "cd services/api && bun run dev:hosted-agents",
+    "dev:ghost": "cd services/ghost && bun run dev",
+    "start:ghost": "cd services/ghost && bun run start",
+    "ghost": "cd services/ghost && bun run cli",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
     "dev:kill-ports": "lsof -nP -iTCP:3000,3001 -sTCP:LISTEN || echo 'Nothing listening on 3000/3001'; lsof -ti TCP:3000,3001 -sTCP:LISTEN | xargs -r kill -9",
