@@ -12,6 +12,19 @@ import { findPeople, type FoundPerson } from './find-people';
 import { ghostOutreachTemplate } from './outreach.template';
 
 const logger = log.job.from('GhostNetwork');
+const UNAVATAR_URL = 'https://unavatar.io';
+
+/** A public photo for this address, or null when none is listed. */
+async function publicAvatar(email: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${UNAVATAR_URL}/${encodeURIComponent(email)}?fallback=false`);
+    const type = response.headers.get('content-type') ?? '';
+    if (!response.ok || !type.startsWith('image/')) return null;
+    return response.url;
+  } catch {
+    return null;
+  }
+}
 
 /** Ghost counterparties each member signal is opened with. */
 const GHOSTS_PER_SIGNAL = 10;
@@ -67,10 +80,10 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
   }).from(schema.users).where(eq(schema.users.email, email)).limit(1);
   if (existing) return !existing.emailVerified && !existing.deletedAt ? existing.id : null;
 
-  const embeddings = await embedder.generate(signals) as number[][];
+  const [embeddings, avatar] = await Promise.all([embedder.generate(signals) as Promise<number[][]>, publicAvatar(email)]);
   return db.transaction(async (tx) => {
     const [user] = await tx.insert(schema.users)
-      .values({ email, name: person.name, intro: person.headline, emailVerified: false })
+      .values({ email, name: person.name, intro: person.headline, avatar, emailVerified: false })
       .onConflictDoNothing()
       .returning({ id: schema.users.id });
     if (!user) return null;

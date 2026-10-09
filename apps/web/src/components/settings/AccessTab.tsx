@@ -400,7 +400,7 @@ export default function AccessTab({
             return (
               <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
                 <button type="button" onClick={() => navigate(`/u/${member.id}`)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", padding: 0 }}>
-                  <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} blur={ghost} />
+                  <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} />
                   <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {member.name}
                     {ghost && <GhostTag />}

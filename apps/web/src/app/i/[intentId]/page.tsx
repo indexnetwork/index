@@ -650,7 +650,7 @@ function PersonHead({ name, photo, userId, ghost, sub, size = 34, action, onOpen
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
       <span title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
-        <UserAvatar id={userId} name={name} avatar={photo} size={size} blur={ghost} />
+        <UserAvatar id={userId} name={name} avatar={photo} size={size} />
       </span>
       <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
         <div title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={nameStyle}>{name}</div>
