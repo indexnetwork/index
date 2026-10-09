@@ -108,6 +108,7 @@ jobs:
 
       - name: Check Hermes plugin builds
         run: |
+          python3 -m unittest discover -s packages/hermes-plugin/tests -t packages/hermes-plugin
           bun run --cwd packages/hermes-plugin typecheck:runtime
           bun run --cwd packages/hermes-plugin build:runtime
           bun run --cwd packages/hermes-plugin build:desktop

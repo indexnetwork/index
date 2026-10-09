@@ -28,6 +28,7 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- The Bun negotiator no longer inherits the gateway environment. It keeps `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, and `TZ`, plus names listed in `INDEX_NEGOTIATOR_ENV_PASSTHROUGH`. `INDEX_SESSION_TOKEN` stays in the gateway. `BUN_OPTIONS=--no-env-file` stops Bun from loading `.env` files (Bun 1.3.3 or newer). `INDEX_BUN` selects the Bun executable.
 - Brief and negotiate runs require a tool call on their first step. The bridge forwards `tool_choice` so a prose reply cannot drop the brief or the turn.
 - Opportunity status frames no longer wake the bundled negotiator.
 - A failed profile load no longer crashes Discover. The panel rendered
