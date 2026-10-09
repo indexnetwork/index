@@ -14,67 +14,32 @@ const {
   splitProfileSocials, buildProfileSocials,
 } = window.IndexApi;
 
-/* ---------- SocialGlyph: 1-bit platform marks ----------
-   Drawn rather than fetched: the bundle is offline, so a webfont or an SVG
-   sprite from a CDN is not an option. Each is reduced to what survives at
-   13px in one colour, the X cross, the "in" tile, the octocat silhouette as
-   a head-and-tail, the telegram plane, a globe for anything else. */
-// SVG mask ids are document-global, so each rendered glyph needs its own or
-// they collide and every cat after the first renders against the wrong mask.
-let maskSeq = 0;
+/* ---------- SocialGlyph: platform marks ----------
+   The platforms' own logos, inlined as paths: the bundle is offline, so a
+   webfont or an SVG sprite from a CDN is not an option. Same marks as the web
+   profile (apps/web/src/components/SocialIcons.tsx), so a person's X or
+   GitHub reads the same in both. Email and anything unrecognised fall back to
+   drawn line icons. */
+const BRAND_MARKS = {
+  x: "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z",
+  linkedin: "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z",
+  github: "M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z",
+  telegram: "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z",
+};
+const BRAND_ALIASES = { twitter: "x", git: "github" };
 
 function SocialGlyph({ id, size = 13, color = A.fg }) {
   const k = String(id || "").toLowerCase();
-  const p = { width:size, height:size, viewBox:"0 0 16 16", style:{ display:"block", flex:"0 0 auto" } };
-  if (k === "x" || k === "twitter") {
+  const style = { display:"block", flex:"0 0 auto" };
+  const mark = BRAND_MARKS[BRAND_ALIASES[k] || k];
+  if (mark) {
     return (
-      <svg {...p} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="square">
-        <line x1="3" y1="3" x2="13" y2="13"/>
-        <line x1="13" y1="3" x2="3" y2="13"/>
+      <svg width={size} height={size} viewBox="0 0 24 24" style={style} fill={color}>
+        <path d={mark}/>
       </svg>
     );
   }
-  if (k === "linkedin") {
-    return (
-      <svg {...p} fill="none" stroke={color} strokeWidth={1.5}>
-        <rect x="1.75" y="1.75" width="12.5" height="12.5"/>
-        <rect x="4" y="6.5" width="1.8" height="5.5" fill={color} stroke="none"/>
-        <rect x="4" y="3.9" width="1.8" height="1.8" fill={color} stroke="none"/>
-        <path d="M7.6 12V6.5h1.8v.9c.4-.7 1.1-1 1.9-1 1.2 0 1.9.8 1.9 2.2V12h-1.8V8.9c0-.7-.3-1.1-.9-1.1s-1.1.5-1.1 1.2V12z"
-          fill={color} stroke="none"/>
-      </svg>
-    );
-  }
-  if (k === "github" || k === "git" || k === "gitlab") {
-    // The cat, drawn as a solid silhouette rather than an outline: at 13px a
-    // 1.5px stroke closes up into mud, while a filled shape keeps its ears and
-    // legs. The legs are punched out with a mask instead of being painted in a
-    // paper colour, because this sits on white, on grey in the settings field,
-    // and inverts to black when a profile link is hovered.
-    const maskId = `gh-${maskSeq++}`;
-    return (
-      <svg {...p} fill="none">
-        <mask id={maskId}>
-          <rect width="16" height="16" fill="#000"/>
-          <circle cx="8" cy="8.7" r="6.1" fill="#fff"/>
-          <path d="M3.6 4.4C3.1 3.1 3.2 2.1 3.5 1.6c.7-.1 1.7.4 2.6 1.2z" fill="#fff"/>
-          <path d="M12.4 4.4c.5-1.3.4-2.3.1-2.8-.7-.1-1.7.4-2.6 1.2z" fill="#fff"/>
-          <path d="M6.05 15.2v-3.3h1.3v3.4z" fill="#000"/>
-          <path d="M8.8 15.2v-2.9h1.3v3.0z" fill="#000"/>
-        </mask>
-        <rect width="16" height="16" fill={color} mask={`url(#${maskId})`}/>
-        <path d="M3.75 11.9c-1.1-.3-1.5-1.25-1.5-1.25"
-          stroke={color} strokeWidth={1.4} strokeLinecap="round"/>
-      </svg>
-    );
-  }
-  if (k === "telegram") {
-    return (
-      <svg {...p} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round">
-        <path d="M14 2.5 1.8 7.4l3.4 1.2L13 3.6 6.6 9.9l-.2 3.4 2.1-2.4 3.3 2.3z"/>
-      </svg>
-    );
-  }
+  const p = { width:size, height:size, viewBox:"0 0 16 16", style };
   if (k === "email" || k === "mail") {
     return (
       <svg {...p} fill="none" stroke={color} strokeWidth={1.5}>

@@ -62,9 +62,24 @@ def write_state(path: Path, **changes) -> None:
     temp.replace(path)
 
 
+_CHILD_ENV_KEEP = {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ"}
+
+
+def negotiator_child_env() -> dict[str, str]:
+    """Env for the Bun negotiator: a short allowlist, never the gateway's secrets."""
+    keep = set(_CHILD_ENV_KEEP)
+    extra = os.environ.get("INDEX_NEGOTIATOR_ENV_PASSTHROUGH", "")
+    keep |= {name.strip() for name in extra.split(",") if name.strip()}
+    keep.discard("INDEX_SESSION_TOKEN")
+    child = {key: value for key, value in os.environ.items() if key in keep}
+    child["BUN_OPTIONS"] = "--no-env-file"
+    return child
+
+
 def _bun() -> str:
     """@returns The Bun executable. @throws When Bun is not installed."""
-    found = shutil.which("bun") or str(Path.home() / ".bun" / "bin" / "bun")
+    override = os.environ.get("INDEX_BUN", "").strip()
+    found = override or shutil.which("bun") or str(Path.home() / ".bun" / "bin" / "bun")
     if not Path(found).exists():
         raise RuntimeError("Bun is required to run the Index negotiator. Install it from https://bun.sh.")
     return found
@@ -146,8 +161,7 @@ class Sidecar:
             # Same process group as the gateway: a group signal reaches Bun too.
             # The child authenticates with the API key. It does not read the
             # device session, so that token stays in the gateway process.
-            child_env = os.environ.copy()
-            child_env.pop("INDEX_SESSION_TOKEN", None)
+            child_env = negotiator_child_env()
             child_env.update({
                 "INDEX_BRIDGE_URL": self.bridge.url,
                 "INDEX_BRIDGE_TOKEN": self.bridge.token,
