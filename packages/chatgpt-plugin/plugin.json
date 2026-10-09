@@ -88,7 +88,8 @@
             }
           ]
         },
-        "commerce": false
+        "commerce": false,
+        "demo_recording_url": "https://calm-gravatar.space.fast/"
       },
       "publication": {
         "release_notes": "Manage your Index signals and review matches from ChatGPT."
