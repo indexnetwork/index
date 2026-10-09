@@ -70,7 +70,7 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
   const embeddings = await embedder.generate(signals) as number[][];
   return db.transaction(async (tx) => {
     const [user] = await tx.insert(schema.users)
-      .values({ email, name: person.headline, intro: person.headline, emailVerified: false })
+      .values({ email, name: person.name, intro: person.headline, emailVerified: false })
       .onConflictDoNothing()
       .returning({ id: schema.users.id });
     if (!user) return null;

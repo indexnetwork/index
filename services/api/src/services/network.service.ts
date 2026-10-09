@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
@@ -147,11 +147,13 @@ export class NetworkService {
   async getMembers(networkId: string, userId: string) {
     logger.verbose('Getting members for member', { networkId, userId });
     const raw = await this.adapter.getNetworkMembersForMember(networkId, userId);
+    const ghostIds = await userDatabaseAdapter.findGhostIds(raw.map(m => m.userId));
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
       email: m.email,
       avatar: m.avatar,
+      isGhost: ghostIds.has(m.userId),
       permissions: m.permissions,
       createdAt: m.joinedAt,
     }));

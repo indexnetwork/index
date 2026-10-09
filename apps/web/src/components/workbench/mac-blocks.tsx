@@ -22,11 +22,19 @@ export function LiveTag({ label }: { label: string }) {
   );
 }
 
+/** Marks someone found on the web who has not joined Index yet. */
+export function GhostTag() {
+  return (
+    <span title="not on Index yet" style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)", flex: "0 0 auto" }}>ghost</span>
+  );
+}
+
 export function MatchCard({
   name,
   blurb,
   photo,
   userId,
+  ghost,
   accepted,
   ready,
   negotiating,
@@ -43,6 +51,7 @@ export function MatchCard({
   blurb: string;
   photo?: string | null;
   userId?: string;
+  ghost?: boolean;
   accepted: boolean;
   ready: boolean;
   negotiating: boolean;
@@ -81,7 +90,7 @@ export function MatchCard({
         transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
-        <UserAvatar id={userId} name={name} avatar={photo} size={36} />
+        <UserAvatar id={userId} name={name} avatar={photo} size={36} blur={ghost} />
       </span>
       <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
@@ -89,6 +98,7 @@ export function MatchCard({
             fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
             minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{name}</span>
+          {ghost && <GhostTag />}
           {negotiating && <LiveTag label="live" />}
         </div>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>
