@@ -52,7 +52,29 @@ export function useOpportunityActions({
       opportunityId: string,
       action: "accepted" | "rejected",
       _fallbackUserId?: string,
+      options?: { notOnIndex?: boolean },
     ) => {
+      // Accept someone not on Index yet: record the accept only. There is
+      // nobody to chat with, so no DM is created; the caller opens the invite.
+      if (action === "accepted" && options?.notOnIndex) {
+        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
+        try {
+          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", scope);
+          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
+          onRemove?.(opportunityId);
+          onAccepted?.({
+            opportunityId,
+            status: result.opportunity?.status ?? "pending",
+            viewerCommitted: result.opportunity?.viewerCommitted ?? true,
+          });
+        } catch (error) {
+          showError(error instanceof Error ? error.message : "Failed to accept");
+        } finally {
+          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
+        }
+        return;
+      }
+
       // Accept: atomically accept the opp and resolve the DM in one round-trip
       // via POST /opportunities/:id/start-chat.
       if (action === "accepted") {

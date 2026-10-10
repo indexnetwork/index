@@ -1,12 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
-import Download, { AppCard, AppsShell, HermesIcon, IndexIcon } from "@/app/download/page";
+import Download, { AppCard, AppsShell, HermesIcon, IndexIcon, MAC_APP_REQUIREMENTS, WebIcon } from "@/app/download/page";
+import { HERMES_INSTALL_URL, MAC_APP_DOWNLOAD_URL } from "@/app/site/links";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
-
-export const DOWNLOAD_PATH = "/download";
 
 const HERMES_OPEN_URL = "hermes://open/index-network";
 const HERMES_PARAM = { u: "user", i: "intent", o: "o" } as const;
@@ -85,7 +84,8 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
     return (
       <AppLaunch
         app={route}
-        href={route === "mac" ? macUrl : hermesUrl}
+        macHref={macUrl}
+        hermesHref={hermesUrl}
         onContinue={webPage ? () => { writeStayOnWeb(); setShowWeb(true); } : undefined}
       />
     );
@@ -94,60 +94,68 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
 }
 
 /**
- * Offers the account's app as a click, plus install or the web page
- * (`onContinue`). A link with no web page continues at `/`.
+ * Offers where to open the link, laid out like the download page: one card
+ * per place Index runs, in the same order. Nothing opens until a click.
+ *
+ * - The app this account uses is the only primary card, labelled YOUR APP.
+ * - The other app gets the same "open in" button, for someone who uses both.
+ * - Each app card carries its own install link, since "open" only works once
+ *   it is installed; that replaces a separate get-the-apps row.
+ * - Web continues to this page in the browser (`onContinue`), or to `/` for a
+ *   link with no web page.
  */
-function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: string; onContinue?: () => void }) {
+function AppLaunch({ app, macHref, hermesHref, onContinue }: {
+  app: "mac" | "hermes";
+  macHref: string;
+  hermesHref: string;
+  onContinue?: () => void;
+}) {
   const mac = app === "mac";
-  const continueBody = (
-    <>
-      <span className="apps-browser-icon" aria-hidden="true">↗</span>
-      <span className="apps-browser-text">
-        <span className="apps-browser-title">Continue on web</span>
-        <span className="apps-browser-sub">Open this page in the browser instead.</span>
-      </span>
-      <span className="apps-browser-cta">Continue →</span>
-    </>
+  const openClass = (primary: boolean) => `site-btn site-btn--block${primary ? "" : " site-btn--secondary"}`;
+  const webAction = onContinue ? (
+    <button type="button" className={openClass(false)} onClick={onContinue}>Continue on web →</button>
+  ) : (
+    <a className={openClass(false)} href="/">Go to Index →</a>
   );
   return (
     <AppsShell overlay>
       <div className="apps-intro">
         <h1 className="site-h1 apps-title">{mac ? "Open in Index" : "Open in Hermes"}</h1>
-        <p className="site-p">Open this link in the app below.</p>
+        <p className="site-p">Pick where to open this link.</p>
       </div>
 
-      <div className="apps-cards">
+      <div className="apps-cards apps-cards--three">
         <AppCard
-          icon={mac ? <IndexIcon /> : <HermesIcon />}
-          label={mac ? "APP" : "PLUGIN"}
-          title={mac ? "Index for Mac" : "Hermes"}
-          body={mac ? "Open this link in the Index app." : "Open this link in Hermes."}
+          icon={<IndexIcon />}
+          label={mac ? "YOUR APP" : "APP"}
+          title="Index for Mac"
+          body={`Open this link in the desktop app. ${MAC_APP_REQUIREMENTS}.`}
           action={
-            <a className="site-btn site-btn--block" href={href}>
-              {mac ? "Open Index →" : "Open Hermes →"}
-            </a>
+            <div className="apps-card-actions">
+              <a className={openClass(mac)} href={macHref}>Open in Index →</a>
+              <a className="apps-card-alt" href={MAC_APP_DOWNLOAD_URL}><span className="apps-card-alt-lead">Don&apos;t have it? </span>Download .dmg ↓</a>
+            </div>
           }
         />
-      </div>
-
-      <div className="apps-exits">
-        <a className="apps-browser" href={DOWNLOAD_PATH}>
-          <span className="apps-browser-icon" aria-hidden="true">↓</span>
-          <span className="apps-browser-text">
-            <span className="apps-browser-title">Don&apos;t have it yet?</span>
-            <span className="apps-browser-sub">Install Index on macOS or add the Hermes plugin.</span>
-          </span>
-          <span className="apps-browser-cta">Get the apps →</span>
-        </a>
-        {onContinue ? (
-          <button type="button" className="apps-browser" onClick={onContinue}>
-            {continueBody}
-          </button>
-        ) : (
-          <a className="apps-browser" href="/">
-            {continueBody}
-          </a>
-        )}
+        <AppCard
+          icon={<HermesIcon />}
+          label={mac ? "PLUGIN" : "YOUR APP"}
+          title="Hermes plugin"
+          body="Open this link in Hermes, with Index as a plugin."
+          action={
+            <div className="apps-card-actions">
+              <a className={openClass(!mac)} href={hermesHref}>Open in Hermes →</a>
+              <a className="apps-card-alt" href={HERMES_INSTALL_URL}><span className="apps-card-alt-lead">Don&apos;t have it? </span>Install plugin →</a>
+            </div>
+          }
+        />
+        <AppCard
+          icon={<WebIcon />}
+          label="WEB"
+          title="Index in the browser"
+          body={onContinue ? "Open this page here instead. Nothing to install." : "This link opens in an app. Continue to Index on the web."}
+          action={<div className="apps-card-actions">{webAction}</div>}
+        />
       </div>
     </AppsShell>
   );

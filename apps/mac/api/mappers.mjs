@@ -146,6 +146,9 @@ export function mapPersonFromRadarCard(card) {
       ? 'accepted'
       : mapOpportunityStatusToPrototype(card.status),
     waitingOnThem: card.viewerCommitted === true && card.status === 'pending',
+    // No account yet, so accepting can't open a chat; the app offers an
+    // invite instead. Only an explicit false counts: older cards omit it.
+    notOnIndex: peer.emailVerified === false,
     pitchFromAgent: card.narratorChip?.text || card.mainText || '',
     introVia: card.narratorChip?.name || card.cta || '',
     ...mapCounterpartProfile(card),

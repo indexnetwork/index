@@ -20,7 +20,7 @@ API_DIR = ROOT / "api"
 # can load any of them on its own.
 API_MODULES = (
     "socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "notifications.mjs", "radar-state.mjs",
-    "markdown.mjs",
+    "markdown.mjs", "invite.mjs",
 )
 API_EXPORTS = [
     "createIndexApiClient", "createNativeAPIRequestBridge", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
@@ -37,6 +37,7 @@ API_EXPORTS = [
     "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
     "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",
     "renderAgentMarkdown",
+    "INVITE_URL", "buildInviteMessage", "inviteSubject", "inviteEmailHref", "inviteXHref",
 ]
 
 # `import { x } from './y.mjs';` — dropped, since y.mjs is already in scope.
