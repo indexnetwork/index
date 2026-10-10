@@ -6,22 +6,6 @@ import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiation
 
 /* Copied from apps/mac/src/ui. Data bindings are the only web-side change. */
 
-export function LiveTag({ label }: { label: string }) {
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4, flex: "0 0 auto",
-      fontFamily: "var(--mac-mono)", fontSize: 9, letterSpacing: "0.08em",
-      color: "var(--ink-2)", border: "1px solid var(--ink-4)", padding: "0 4px",
-    }}>
-      <span className="live-pulse" style={{
-        width: 5, height: 5, borderRadius: "50%", background: "#1FA463",
-        display: "block", flex: "0 0 auto",
-      }} />
-      {label}
-    </span>
-  );
-}
-
 /** Marks someone who has not verified their email with Index yet. */
 export function NotOnIndexTag() {
   return (
@@ -103,7 +87,6 @@ export function MatchCard({
             minWidth: 0, whiteSpace: "normal",
           }}>{name}</span>
           {unverified && <NotOnIndexTag />}
-          {negotiating && <LiveTag label="live" />}
         </div>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>
       </div>

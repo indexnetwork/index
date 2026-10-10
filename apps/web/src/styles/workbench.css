@@ -387,15 +387,6 @@
   border-radius: 0;
   background: #fff;
 }
-@keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-.live-pulse { animation: live-pulse 1.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .live-pulse { animation: none; }
-}
-
 .workbench table {
   border: 1px solid #000;
   border-collapse: collapse;
