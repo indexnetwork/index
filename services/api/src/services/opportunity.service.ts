@@ -25,10 +25,10 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
-/** Mark peers who were found on the web and have not signed in yet. */
-async function flagGhostPeers(presented: PresentedOpportunity[]): Promise<PresentedOpportunity[]> {
-  const ghostIds = await userDatabaseAdapter.findGhostIds(presented.map((o) => o.peer.userId).filter(Boolean));
-  return presented.map((o) => (ghostIds.has(o.peer.userId) ? { ...o, peer: { ...o.peer, isGhost: true } } : o));
+/** Mark whether each peer has verified their email. */
+async function flagUnverifiedPeers(presented: PresentedOpportunity[]): Promise<PresentedOpportunity[]> {
+  const unverified = await userDatabaseAdapter.findUnverifiedIds(presented.map((o) => o.peer.userId).filter(Boolean));
+  return presented.map((o) => ({ ...o, peer: { ...o.peer, emailVerified: !unverified.has(o.peer.userId) } }));
 }
 
 function sanitizeOpportunityForResponse<T extends Opportunity>(opportunity: T): T {
@@ -244,7 +244,7 @@ export class OpportunityService {
         skeleton: options?.presentation === 'skeleton',
       });
       return {
-        opportunities: await flagGhostPeers(cards.map(cardToPresentedOpportunity)),
+        opportunities: await flagUnverifiedPeers(cards.map(cardToPresentedOpportunity)),
         meta: { totalOpportunities },
       };
     } catch (e) {
@@ -270,7 +270,7 @@ export class OpportunityService {
         logger.warn('presentOpportunityCard failed', { opportunityId: opportunity.id, viewerId, error: e });
         return null;
       });
-    if (card) return (await flagGhostPeers([cardToPresentedOpportunity(card)]))[0];
+    if (card) return (await flagUnverifiedPeers([cardToPresentedOpportunity(card)]))[0];
 
     const counterpart = resolveCounterpart(opportunity.actors, viewerId);
     const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);

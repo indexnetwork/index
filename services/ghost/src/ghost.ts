@@ -179,7 +179,7 @@ export async function seedPass(): Promise<number> {
           limit 1
         `);
         if (!closest) continue;
-        const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason, true);
+        const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason);
         if (outcome.kind === 'ok') paired++;
       }
     } catch (error) {
