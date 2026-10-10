@@ -97,7 +97,7 @@ export function MatchCard({
               <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>waiting for them</span>
             )}
             <button type="button" className="wb-btn primary small" onClick={onOpen}>
-              {hasChat ? "open chat ›" : "send message"}
+              {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
             </button>
           </>
         ) : ready ? (

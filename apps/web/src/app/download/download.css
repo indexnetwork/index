@@ -47,7 +47,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--divider);
   padding-top: clamp(16px, 3vh, 24px);
   min-width: 0;
 }
@@ -61,44 +61,53 @@
 }
 .apps-card-label { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--green); }
 .apps-card-text { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+/* The card's action, plus a quiet install link under it. A fixed-height slot
+   for that link keeps the buttons level across cards that have none. */
+.apps-card-actions { display: flex; flex-direction: column; gap: 10px; }
+.apps-card-actions::after { content: ""; min-height: 18px; }
+.apps-card-actions:has(.apps-card-alt)::after { content: none; }
+.site .apps-card-alt {
+  min-height: 18px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.site .apps-card-alt:hover { color: var(--blue); }
 
-/* ---------- browser row ---------- */
-.apps-exits { display: flex; flex-direction: column; gap: 10px; }
-.site .apps-browser {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-  padding: clamp(8px, 1.6vh, 14px) 16px;
-  border: 1px solid var(--card-border);
-  text-decoration: none;
-  color: var(--ink);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
-}
-.site .apps-browser:hover { border-color: var(--ink); color: var(--ink); }
-.apps-browser-icon {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--ink);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--mono);
-  font-size: 14px;
-  flex: none;
-}
-.apps-browser-icon--web { width: 48px; height: 48px; border: none; }
-.apps-browser-icon--web svg { width: 48px; height: 48px; display: block; }
-.apps-browser-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
-.apps-browser-title { font-size: 15px; line-height: 1.4; font-weight: 500; }
-.apps-browser-sub { font-size: 14px; line-height: 1.5; font-weight: 300; color: var(--body); }
-.apps-browser-cta { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
-.site .apps-browser:hover .apps-browser-cta { color: var(--blue); }
 /* The Hermes mark is a tall transparent glyph: fit it inside the tile. */
 .apps-card-icon--mark { object-fit: contain; padding: 7px; background: transparent; }
 .apps-card-icon--web { display: flex; align-items: center; justify-content: center; color: var(--ink); padding: 8px; }
 .apps-card-icon--web svg { width: 100%; height: 100%; display: block; }
+
+/* ---------- phone: everything on one screen, no scroll ----------
+   Stacked full cards ran past a phone's height, so each card collapses to one
+   row: icon, title, and its action on the right. The body copy and the corner
+   label go (the filled button already marks your app), and the
+   install link drops its lead-in to fit under the button. */
+@media (max-width: 640px) {
+  .apps-title.site-h1 { font-size: 30px; }
+  .apps-cards,
+  .apps-cards--three { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .apps-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 12px;
+    padding: 14px 0;
+  }
+  .apps-card:last-child { border-bottom: 1px solid var(--divider); }
+  .apps-card-head { display: contents; }
+  .apps-card-label { display: none; }
+  .apps-card-icon { width: 40px; height: 40px; }
+  .apps-card-icon--mark { padding: 5px; }
+  .apps-card-icon--web { padding: 6px; }
+  .apps-card-text .site-p { display: none; }
+  .apps-card-text .site-col-title { font-size: 17px; line-height: 1.25; }
+  .apps-card-actions { align-items: flex-end; gap: 6px; }
+  .apps-card-actions::after { display: none; }
+  .site .apps-card .site-btn--block { width: auto; white-space: nowrap; }
+  .apps-card-alt-lead { display: none; }
+  .site .apps-card-alt { min-height: 0; font-size: 12px; line-height: 16px; }
+}

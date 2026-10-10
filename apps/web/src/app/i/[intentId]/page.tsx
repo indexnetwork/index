@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { resolveSocials } from "@/lib/socials";
+import { buildInviteMessage, inviteEmailHref, inviteSubject, inviteXHref } from "@/lib/invite";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
@@ -510,7 +511,7 @@ function IntentDetail() {
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
             onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
             onProfile={() => { setPane("profile"); setOpenPersonId(item.opportunityId); }}
-            onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId); }}
+            onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId, { notOnIndex: peer?.emailVerified === false }); }}
             onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
           />
         );
@@ -522,10 +523,12 @@ function IntentDetail() {
       item={openPerson}
       bucket={bucketOf(openPerson)}
       intentId={intentId}
+      signal={title}
+      senderName={user?.name}
       pane={pane}
       onPane={setPane}
       onClose={() => setOpenPersonId(null)}
-      onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId)}
+      onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId, { notOnIndex: openPerson.peer?.emailVerified === false })}
       onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
     />
   ) : null;
@@ -554,7 +557,7 @@ function IntentDetail() {
               </div>
             </Window>
           ) : openPerson ? (
-            <Window title={personPaneTitle(bucketOf(openPerson), pane)} onClose={closePerson}>
+            <Window title={personPaneTitle(bucketOf(openPerson), pane, openPerson.peer?.emailVerified === false)} onClose={closePerson}>
               {personPane}
             </Window>
           ) : (
@@ -627,7 +630,7 @@ function IntentDetail() {
               {radarList}
             </Window>
             {openPerson && (
-              <Window title={personPaneTitle(bucketOf(openPerson), pane)} dismiss onClose={closePerson}>
+              <Window title={personPaneTitle(bucketOf(openPerson), pane, openPerson.peer?.emailVerified === false)} dismiss onClose={closePerson}>
                 {personPane}
               </Window>
             )}
@@ -638,9 +641,11 @@ function IntentDetail() {
   );
 }
 
-function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, pane: "stage" | "profile" | "negotiation") {
+function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, pane: "stage" | "profile" | "negotiation", notOnIndex = false) {
   if (pane === "profile") return "profile";
   if (pane === "negotiation") return "negotiation";
+  // Someone not on Index has no chat; their accepted stage is the invite.
+  if (bucket === "accepted" && notOnIndex) return "invite";
   return personWindowTitle(bucket);
 }
 
@@ -663,10 +668,108 @@ function PersonHead({ name, photo, userId, unverified, sub, size = 34, action, o
   );
 }
 
+/**
+ * What accepting opens for someone not on Index yet: the opportunity, a
+ * pre-written invite the user can edit, and ways to send it themselves. The
+ * API never shares their email, so mail opens with the recipient blank, and X
+ * opens the DM composer with the text ready for the user to pick them.
+ */
+function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiation }: {
+  item: RadarCardItem;
+  name: string;
+  signal?: string;
+  senderName?: string | null;
+  onOpenProfile: () => void;
+  onNegotiation?: () => void;
+}) {
+  // Keyed by userId so another person's profile never shows while this one loads.
+  const [loaded, setLoaded] = useState<{ userId: string; user: Awaited<ReturnType<typeof getPublicUserProfile>> } | null>(null);
+  const profile = loaded && loaded.userId === item.userId ? loaded.user : null;
+  useEffect(() => {
+    if (!item.userId) return;
+    let active = true;
+    const userId = item.userId;
+    getPublicUserProfile(userId)
+      .then((user) => { if (active) setLoaded({ userId, user }); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [item.userId]);
+
+  // Drafted once; the pane is keyed by opportunity, so another person starts fresh.
+  const [message, setMessage] = useState(() => buildInviteMessage({ name, signal, senderName }));
+
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+  const copy = () => {
+    navigator.clipboard?.writeText(message).then(() => {
+      setCopied(true);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+
+  const first = name.split(/\s+/)[0] || "them";
+  const note = item.mainText || item.headline;
+  const socials = resolveSocials(profile?.socials);
+  const x = socials.find((s) => s.platform === "x");
+  const linkBtn = { display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" } as const;
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
+      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified size={42} onOpenProfile={onOpenProfile} />
+      <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
+        <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
+          {first} isn&apos;t on Index yet, so there&apos;s no chat to open. Send them an invite and the two of you can pick it up here once they join.
+        </div>
+        {note && <SummarySection label="the opportunity">{note}</SummarySection>}
+        <SummarySection label="your message">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={9}
+            style={{ width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000", padding: "8px 10px", border: "1px solid #000", background: "#fff", outline: "none" }}
+          />
+        </SummarySection>
+        {socials.length > 0 && (
+          <SummarySection label="elsewhere">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {socials.map((s) => (
+                <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  {SOCIAL_ICONS[s.platform]}
+                  <span>{s.handle}</span>
+                </a>
+              ))}
+            </div>
+          </SummarySection>
+        )}
+      </div>
+      <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <a className="wb-btn primary small" href={inviteXHref(message)} target="_blank" rel="noopener noreferrer"
+          title={x ? `Opens an X message. Pick @${x.handle} as the recipient.` : "Opens an X message with this text."}
+          style={linkBtn}>
+          {SOCIAL_ICONS.x}
+          send on X
+        </a>
+        <a className="wb-btn small" href={inviteEmailHref({ subject: inviteSubject(senderName), body: message })}
+          title="Opens your mail app with this message. Add their address."
+          style={linkBtn}>
+          email
+        </a>
+        <Btn small onClick={copy}>{copied ? "copied" : "copy"}</Btn>
+        {onNegotiation && (
+          <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>negotiation ›</Btn></span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PersonPane({
   item,
   bucket,
   intentId,
+  signal,
+  senderName,
   pane,
   onPane,
   onClose,
@@ -676,6 +779,8 @@ function PersonPane({
   item: RadarCardItem;
   bucket: ReturnType<typeof radarBucketForOpportunity>;
   intentId?: string;
+  signal?: string;
+  senderName?: string | null;
   pane: "stage" | "profile" | "negotiation";
   onPane: (pane: "stage" | "profile" | "negotiation") => void;
   onClose: () => void;
@@ -683,6 +788,7 @@ function PersonPane({
   onPass: () => void;
 }) {
   const name = item.name || "someone";
+  const notOnIndex = item.peer?.emailVerified === false;
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
   // The userId whose profile fetch has finished, so switching people shows loading again.
   const [settledFor, setSettledFor] = useState<string | null>(null);
@@ -716,10 +822,25 @@ function PersonPane({
                 : <>The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.</>}
             </div>
           </div>
-          {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>chat ›</Btn>}
+          {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>{notOnIndex ? "invite ›" : "chat ›"}</Btn>}
         </div>
         <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={onClose} />
       </div>
+    );
+  }
+  // No Index account means nobody on the other end of a chat, so the
+  // accepted stage is an invite the user sends themselves.
+  if (!showingProfile && bucket === "accepted" && notOnIndex) {
+    return (
+      <InvitePane
+        key={item.opportunityId}
+        item={item}
+        name={name}
+        signal={signal}
+        senderName={senderName}
+        onOpenProfile={openProfile}
+        onNegotiation={intentId ? () => onPane("negotiation") : undefined}
+      />
     );
   }
   if (!showingProfile && bucket === "accepted" && item.userId) {
@@ -772,7 +893,7 @@ function PersonPane({
             <Btn small onClick={onPass}>pass</Btn>
           </>
         ) : bucket === "accepted" ? (
-          <Btn small onClick={() => onPane("stage")}>chat ›</Btn>
+          <Btn small onClick={() => onPane("stage")}>{notOnIndex ? "invite ›" : "chat ›"}</Btn>
         ) : bucket === "closed" ? (
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>this signal closed.</span>
         ) : bucket !== "negotiating" ? (

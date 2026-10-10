@@ -176,7 +176,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
   const isClosed = isPassed || isExpired;
   // everyone else discovered is still in negotiation, they have an open question
   const negotiating = !accepted && !readyStage && !isClosed;
-  const cardClickable = accepted || isClosed || readyStage || negotiating;    // accepted opens chat; closed opens the negotiation; ready opens profile; negotiating opens the negotiation
+  const cardClickable = accepted || isClosed || readyStage || negotiating;    // accepted opens chat (an invite for someone not on Index); closed opens the negotiation; ready opens profile; negotiating opens the negotiation
   const handleClick = accepted
     ? () => onOpenRoom && onOpenRoom(person.id)
     : isClosed
@@ -220,6 +220,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}>
             {person.name}
           </span>
+          {person.notOnIndex && <NotOnIndexTag/>}
           {/* The agents are genuinely mid-exchange on these, and the radar
               repolls faster while any of them are open, so the row can say so
               rather than looking like a settled list. */}
@@ -251,7 +252,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
               className="amiga-gadget primary"
               onClick={(e) => { e.stopPropagation(); onOpenRoom && onOpenRoom(person.id); }}
               style={{ fontFamily:"var(--mac-mono)", fontSize:10, padding:"3px 12px" }}
-            >{hasChat ? "open chat ›" : "send message"}</button>
+            >{person.notOnIndex ? "invite" : hasChat ? "open chat ›" : "send message"}</button>
           </React.Fragment>
         ) : readyStage ? (
           <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
