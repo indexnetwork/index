@@ -138,17 +138,9 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
   });
 }
 
-/**
- * For every member signal in the Ghost network with fewer than 3 ghost
- * counterparties, research the missing ones and have Ghost rider introduce
- * them. The member's agent speaks first.
- *
- * @returns How many opportunities now pair a ghost with a member signal from this pass.
- */
-export async function seedPass(): Promise<number> {
-  const networkId = ghostNetworkId();
-  const riderId = await ghostRider(networkId);
-  const signals = await db.execute<{ id: string; payload: string; ghosts: number }>(sql`
+/** Active Ghost-network signals owned by a verified member, with how many ghosts each already has. */
+function memberSignals(networkId: string, intentId?: string) {
+  return db.execute<{ id: string; payload: string; ghosts: number }>(sql`
     select i.id, i.payload,
       (select count(*)::int from negotiations g
         join users a on a.id = g.initiator_user_id
@@ -161,31 +153,68 @@ export async function seedPass(): Promise<number> {
     join network_members m on m.user_id = i.user_id and m.network_id = ${networkId} and m.deleted_at is null
     join users u on u.id = i.user_id and u.email_verified and u.deleted_at is null
     where i.archived_at is null and (i.status is null or i.status = 'active')
+      ${intentId ? sql`and i.id = ${intentId}` : sql``}
   `);
+}
 
+/**
+ * Research up to 3 ghosts for one signal and have Ghost rider introduce them.
+ * The member's agent speaks first. A signal that is not shared in the Ghost
+ * network, or that already has its ghosts, introduces nobody.
+ *
+ * The creation event is published before the signal is linked to its networks,
+ * so a member's signal is checked once more after a short wait.
+ *
+ * @param intentId - The signal to introduce for.
+ * @returns How many introductions were opened.
+ */
+export async function introduceSignal(intentId: string): Promise<number> {
+  const networkId = ghostNetworkId();
+  let [signal] = await memberSignals(networkId, intentId);
+  if (!signal) {
+    const [member] = await db.execute<{ id: string }>(sql`
+      select i.id from intents i
+      join network_members m on m.user_id = i.user_id and m.network_id = ${networkId} and m.deleted_at is null
+      where i.id = ${intentId} limit 1
+    `);
+    if (!member) return 0;
+    await Bun.sleep(2000);
+    [signal] = await memberSignals(networkId, intentId);
+    if (!signal || signal.ghosts >= GHOSTS_PER_SIGNAL) return 0;
+  } else if (signal.ghosts >= GHOSTS_PER_SIGNAL) return 0;
+
+  const riderId = await ghostRider(networkId);
   let paired = 0;
-  for (const signal of signals) {
-    const missing = GHOSTS_PER_SIGNAL - signal.ghosts;
-    if (missing <= 0) continue;
-    try {
-      for (const person of await findPeople(signal.payload, missing)) {
-        const ghostId = await upsertGhost(networkId, person);
-        if (!ghostId) continue;
-        const [closest] = await db.execute<{ id: string }>(sql`
-          select g.id from intents g
-          join intent_networks a on a.intent_id = g.id and a.network_id = ${networkId}
-          where g.user_id = ${ghostId} and g.archived_at is null
-          order by g.embedding <=> (select embedding from intents where id = ${signal.id}) nulls last
-          limit 1
-        `);
-        if (!closest) continue;
-        const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason);
-        if (outcome.kind === 'ok') paired++;
-      }
-    } catch (error) {
-      logger.error('Ghost seeding failed for a signal', { intentId: signal.id, error: error instanceof Error ? error.message : String(error) });
+  try {
+    for (const person of await findPeople(signal.payload, GHOSTS_PER_SIGNAL - signal.ghosts)) {
+      const ghostId = await upsertGhost(networkId, person);
+      if (!ghostId) continue;
+      const [closest] = await db.execute<{ id: string }>(sql`
+        select g.id from intents g
+        join intent_networks a on a.intent_id = g.id and a.network_id = ${networkId}
+        where g.user_id = ${ghostId} and g.archived_at is null
+        order by g.embedding <=> (select embedding from intents where id = ${signal.id}) nulls last
+        limit 1
+      `);
+      if (!closest) continue;
+      const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason);
+      if (outcome.kind === 'ok') paired++;
     }
+  } catch (error) {
+    logger.error('Ghost seeding failed for a signal', { intentId, error: error instanceof Error ? error.message : String(error) });
   }
+  return paired;
+}
+
+/**
+ * Introduce ghosts for every member signal still under the cap.
+ *
+ * @returns How many introductions were opened.
+ */
+export async function seedPass(): Promise<number> {
+  const signals = await memberSignals(ghostNetworkId());
+  let paired = 0;
+  for (const signal of signals) paired += await introduceSignal(signal.id);
   return paired;
 }
 
