@@ -7,7 +7,7 @@ import { parseSocial } from "@/lib/socials";
 
 /**
  * Opportunity link (`/o/:id`). The web has no opportunity page, so this is
- * the handoff only: Hermes when connected, otherwise the download page.
+ * the handoff screen: open in the Mac app or Hermes, otherwise the download page.
  * `?action=&viewer=&sig=` accepts or declines from a signed link, then
  * `?surface=` opens the other person's profile on that surface. No sign-in.
  */

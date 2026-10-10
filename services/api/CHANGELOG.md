@@ -14,6 +14,7 @@ section before promoting to `main`).
 - Counterparty discovery returns only signals whose owners verified their email.
 
 ### Changed
+- Accepting a match publishes `opportunity.status` even when it was already pending.
 - Users, network members and opportunity peers carry `emailVerified` in place of `isGhost`.
 - The hosted agent passes `emailVerified` on its principal; a principal who has not verified is spoken of in the third person, only from their signal, and their negotiator never stalls.
 

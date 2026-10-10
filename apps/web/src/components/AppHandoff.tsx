@@ -34,12 +34,10 @@ function writeStayOnWeb() {
 /**
  * Web end of a canonical entity link (`/u`, `/i`, `/o`).
  *
- * A working universal link opens the macOS app before this renders. Otherwise
- * a signed-in account opens its Mac app over `index://` (which needs no
- * associated domain, so it also covers Chrome, pasted links, and other hosts),
- * then Hermes, then the web page (`webPage`). Signed-out visitors get one
- * Hermes attempt with the download page underneath, since a browser cannot
- * tell what is installed.
+ * A working universal link can still open the macOS app before this renders.
+ * This page does not. A signed-in account with a Mac or Hermes session gets a
+ * launch screen whose button opens `index://` or `hermes://`. Everyone else
+ * gets the web page (`webPage`), or the download page when there is none (`/o`).
  *
  * Continue on web remembers the choice in this browser. Later external opens
  * of a page that has a web view skip the launch screen. A link with no web
@@ -81,11 +79,6 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
             ? "pending"
             : target ?? "web";
 
-  useEffect(() => {
-    if (route === "mac") window.location.href = macUrl;
-    else if (route === "hermes" || route === "signed-out") window.location.href = hermesUrl;
-  }, [route, macUrl, hermesUrl]);
-
   if (route === "pending") return null;
   if (route === "signed-out") return <Download overlay />;
   if ((route === "mac" || route === "hermes") && !showWeb) {
@@ -101,9 +94,8 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
 }
 
 /**
- * Shown while the browser hands the link to the app. The page cannot tell
- * whether the app opened, so it offers a retry plus both ways on: install, or
- * the web page (`onContinue`). A link with no web page continues at `/`.
+ * Offers the account's app as a click, plus install or the web page
+ * (`onContinue`). A link with no web page continues at `/`.
  */
 function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: string; onContinue?: () => void }) {
   const mac = app === "mac";
@@ -120,8 +112,8 @@ function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: str
   return (
     <AppsShell overlay>
       <div className="apps-intro">
-        <h1 className="site-h1 apps-title">{mac ? "Opening Index" : "Opening Hermes"}</h1>
-        <p className="site-p">If nothing happened, open it again below.</p>
+        <h1 className="site-h1 apps-title">{mac ? "Open in Index" : "Open in Hermes"}</h1>
+        <p className="site-p">Open this link in the app below.</p>
       </div>
 
       <div className="apps-cards">
