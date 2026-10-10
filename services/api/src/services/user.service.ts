@@ -35,11 +35,6 @@ export class UserService {
         return this.db.findByIds(userIds);
     }
 
-    /** Of these users, the ones who have never signed in. */
-    async findGhostIds(userIds: string[]) {
-        return this.db.findGhostIds(userIds);
-    }
-
     /**
      * Resolves a full User Graph.
      *

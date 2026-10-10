@@ -29,7 +29,7 @@ that already exists.
 Creating the opportunity is the whole trigger. Each seat's agent — the hosted
 negotiator or a [custom negotiator](/guides/custom-negotiator) — is woken with
 `negotiation.turn`, and your `context` is on the negotiation it reads. The owner
-of the lower intent id takes the first turn. The seats test your reason against
+of the first intent takes the first turn. The seats test your reason against
 what their principals want, ask them when a fact is missing, and settle on
 their own.
 

@@ -102,7 +102,7 @@ export class HostedIndex implements Index {
       location: user.location,
       timezone: user.timezone,
       profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
-      unclaimed: (await this.users.findGhostIds([user.id])).has(user.id),
+      emailVerified: user.emailVerified,
     };
     return this.identity;
   }

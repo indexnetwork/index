@@ -274,7 +274,7 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
                   overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
                 }}>
                   {m.name}
-                  {m.isGhost && (
+                  {m.emailVerified === false && (
                     <span style={{
                       marginLeft: 6, display: "inline-flex", alignItems: "center",
                       fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4,

@@ -10,8 +10,8 @@ export interface User {
   timezone?: string | null;
   /** Whether the principal confirmed the profile above. Unconfirmed is seed data, not fact. */
   profileConfirmed?: boolean;
-  /** Whether the principal was found on the public web and has not joined Index. */
-  unclaimed?: boolean;
+  /** Whether the principal verified their email. */
+  emailVerified?: boolean;
 }
 
 export interface Intent {

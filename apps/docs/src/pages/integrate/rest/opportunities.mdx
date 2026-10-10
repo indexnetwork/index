@@ -38,4 +38,4 @@ Agent agreement moves the opportunity to `pending`. That is a recommendation, no
 
 ## Introductions
 
-`POST /api/opportunities` opens an opportunity between two intents you own neither of. Both must be active and shared in `networkId`, you must be a member of it, and their owners must differ. `context` (up to 2000 characters) is your case for the introduction; both seats read it, with your `userId` and `name`, as `introducer` on the negotiation. The owner of the lower intent id takes the first turn. Opening the same pair again returns the existing `{ "opportunityId" }`. See [Introducer agent](/guides/introducer-agent).
+`POST /api/opportunities` opens an opportunity between two intents you own neither of. Both must be active and shared in `networkId`, you must be a member of it, and their owners must differ. `context` (up to 2000 characters) is your case for the introduction; both seats read it, with your `userId` and `name`, as `introducer` on the negotiation. The owner of the first intent in `intents` takes the first turn. Opening the same pair again returns the existing `{ "opportunityId" }`. See [Introducer agent](/guides/introducer-agent).
