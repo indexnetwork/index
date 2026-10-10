@@ -371,14 +371,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [summaryId, setSummaryId] = useState(null);    // expired person whose summary is open
   const [profileId, setProfileId] = useState(null);    // person whose profile is open
   const [negotiationId, setNegotiationId] = useState(null);    // negotiating person whose agents' exchange is open
+  const [inviteId, setInviteId] = useState(null);      // accepted person not on Index yet, whose invite is open
 
   const toChatMsg = (m) => apiChatMessage(m, myId);
 
   const openChat = (personId) => {
+    // Someone with no Index account has nobody on the other end of a chat, so
+    // every way into one (accept, the card, the profile) opens the invite.
+    const target = people.find(p => p.id === personId);
+    if (target && target.notOnIndex) { openInvite(personId); return; }
     setChatId(personId);
     setSummaryId(null);
     setProfileId(null);
     setNegotiationId(null);
+    setInviteId(null);
     setUnread(prev => (prev[personId] ? { ...prev, [personId]: 0 } : prev));
 
     if (live && client) {
@@ -408,10 +414,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       return person ? { ...prev, [personId]: seedChat(person, responses[personId]) } : prev;
     });
   };
-  const openSummary = (personId) => { setSummaryId(personId); setChatId(null); setProfileId(null); setNegotiationId(null); };
-  const openProfile = (personId) => { setProfileId(personId); setChatId(null); setSummaryId(null); setNegotiationId(null); };
-  const openNegotiation = (personId) => { setNegotiationId(personId); setChatId(null); setSummaryId(null); setProfileId(null); };
-  const closeChats = () => { setChatId(null); setSummaryId(null); setProfileId(null); setNegotiationId(null); };
+  const openSummary = (personId) => { setSummaryId(personId); setChatId(null); setProfileId(null); setNegotiationId(null); setInviteId(null); };
+  const openProfile = (personId) => { setProfileId(personId); setChatId(null); setSummaryId(null); setNegotiationId(null); setInviteId(null); };
+  const openNegotiation = (personId) => { setNegotiationId(personId); setChatId(null); setSummaryId(null); setProfileId(null); setInviteId(null); };
+  const openInvite = (personId) => { setInviteId(personId); setChatId(null); setSummaryId(null); setProfileId(null); setNegotiationId(null); };
+  const closeChats = () => { setChatId(null); setSummaryId(null); setProfileId(null); setNegotiationId(null); setInviteId(null); };
 
   // Negotiating people are waiting on a response to their question. Responding
   // clears the negotiation and makes them ready, that's when the opportunity
@@ -443,7 +450,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   };
   // Accepting means "I want to talk to this person", so go straight into the
-  // chat instead of letting the card silently jump to the accepted tab. Match
+  // chat (or, for someone not on Index yet, the invite: openChat routes it)
+  // instead of letting the card silently jump to the accepted tab. Match
   // the web (useOpportunityActions): in live mode the card only moves to
   // "accepted" once the server confirms, so a failed accept can't leave a
   // phantom in the accepted tab. On failure, refresh from the server so the
@@ -582,7 +590,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const summaryPerson = summaryId ? people.find(p => p.id === summaryId) : null;
   const profilePerson = profileId ? people.find(p => p.id === profileId) : null;
   const negotiationPerson = negotiationId ? people.find(p => p.id === negotiationId) : null;
-  const thirdOpen = !!(chatPerson || summaryPerson || profilePerson || negotiationPerson);
+  const invitePerson = inviteId ? people.find(p => p.id === inviteId) : null;
+  const thirdOpen = !!(chatPerson || summaryPerson || profilePerson || negotiationPerson || invitePerson);
   const showRadar = !(thirdOpen && narrow);
   const chatIds = Object.keys(chats);
   const unreadTotal = chatIds.reduce((a, id) => a + (unread[id] || 0), 0);
@@ -731,6 +740,14 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             />
           ) : negotiationPerson ? (
             <NegotiationWindow person={negotiationPerson} onClose={closeChats}/>
+          ) : invitePerson ? (
+            <InviteWindow
+              person={invitePerson}
+              signal={profile.intent}
+              onClose={closeChats}
+              onProfile={openProfile}
+              onOpenNegotiation={openNegotiation}
+            />
           ) : null
         )}
       </div>

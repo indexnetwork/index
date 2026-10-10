@@ -19,18 +19,10 @@ function DeepLinkWindow({ person, route, onClose }) {
   );
 }
 
-/* Full profile for a person, opens in the 3rd window when you click their
-   name or avatar on the radar. `actions` off drops the stage CTA, for a
-   profile opened outside a signal (see DeepLinkWindow) where accepting or
-   passing has no scope to act in. */
-function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNegotiation, actions = true }) {
-  const status = person.status;
-  const isReady = status === "ready";
-  const isAccepted = status === "accepted";
-  const isClosed = status === "expired" || status === "passed" || status === "rejected";
-  // The intro someone wrote in their profile settings does not travel on an
-  // opportunity card, so it is fetched here from GET /users/:id and merged
-  // under anything the card already carried.
+/* The intro someone wrote in their profile settings does not travel on an
+   opportunity card, so it is fetched from GET /users/:id and merged under
+   anything the card already carried. */
+function useCounterpartProfile(person) {
   const [fetched, setFetched] = useState(null);
   useEffect(() => {
     setFetched(null);
@@ -49,7 +41,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
     return () => { cancelled = true; };
   }, [person.userId]);
 
-  const merged = fetched
+  return fetched
     ? {
         ...person,
         bio: person.bio || fetched.bio,
@@ -57,6 +49,18 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
         socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
       }
     : person;
+}
+
+/* Full profile for a person, opens in the 3rd window when you click their
+   name or avatar on the radar. `actions` off drops the stage CTA, for a
+   profile opened outside a signal (see DeepLinkWindow) where accepting or
+   passing has no scope to act in. */
+function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNegotiation, actions = true }) {
+  const status = person.status;
+  const isReady = status === "ready";
+  const isAccepted = status === "accepted";
+  const isClosed = status === "expired" || status === "passed" || status === "rejected";
+  const merged = useCounterpartProfile(person);
   const { bio, note, socials, meta } = profileContent(merged);
   return (
     <MacWindow title="profile" onClose={onClose} dismiss style={{ minHeight:0 }}>
@@ -69,10 +73,13 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
           <Avatar id={person.userId || person.id} name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
-          <div style={{
-            fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
-            minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-          }}>{person.name}</div>
+          <div style={{ display:"grid", gap:4, minWidth:0, justifyItems:"start" }}>
+            <div style={{
+              fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
+              maxWidth:"100%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+            }}>{person.name}</div>
+            {person.notOnIndex && <NotOnIndexTag/>}
+          </div>
         </div>
 
         {/* body: their intro, then the presenter mainText (why surfaced), then
@@ -145,7 +152,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           ) : isAccepted ? (
             <button className="amiga-gadget primary"
               onClick={() => onOpenChat && onOpenChat(person.id)}
-              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>send message</button>
+              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>{person.notOnIndex ? "invite" : "send message"}</button>
           ) : isClosed ? (
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this signal closed.</span>
           ) : (
@@ -166,6 +173,140 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           </button>
         </div>
         )}
+      </div>
+    </MacWindow>
+  );
+}
+
+/* Marks someone who has no Index account yet. */
+function NotOnIndexTag() {
+  return (
+    <span style={{
+      display:"inline-flex", alignItems:"center",
+      fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1.4,
+      color:"var(--ink-2)", background:"#E8E6E1", padding:"2px 6px",
+    }}>Not yet on Index</span>
+  );
+}
+
+/* What accepting opens for someone who is not on Index yet. There is nobody on
+   the other end of a chat, so this is the profile with an invite in place of
+   the conversation: the opportunity, a pre-written message the user can edit,
+   and ways to send it themselves. The API never shares their email, so mail
+   opens with the recipient blank, and X opens the DM composer with the text
+   ready for the user to pick them. */
+function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation }) {
+  const merged = useCounterpartProfile(person);
+  const env = useIndexEnv();
+  const senderName = (env.me && env.me.name) || "";
+  const { buildInviteMessage, inviteSubject, inviteEmailHref, inviteXHref } = window.IndexApi;
+  const [message, setMessage] = useState(() => buildInviteMessage({ name: person.name, signal, senderName }));
+  // Re-draft for a different person, but never over what the user typed.
+  const draftFor = useRef(person.id);
+  useEffect(() => {
+    if (draftFor.current === person.id) return;
+    draftFor.current = person.id;
+    setMessage(buildInviteMessage({ name: person.name, signal, senderName }));
+  }, [person.id]);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+  const copy = () => {
+    const write = navigator.clipboard && navigator.clipboard.writeText(message);
+    if (!write) return;
+    write.then(() => {
+      setCopied(true);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+
+  const { note, socials } = profileContent(merged);
+  const xSocial = socials.find(s => socialPlatformOf(s) === "x");
+  const first = String(person.name || "").split(/\s+/)[0] || "them";
+  const gadget = { fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap", textDecoration:"none" };
+
+  return (
+    <MacWindow title="invite" onClose={onClose} dismiss style={{ minHeight:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
+        <div style={{
+          padding:"14px 16px", borderBottom:"1px solid #000",
+          display:"flex", gap:12, alignItems:"center", background:"#fff",
+        }}>
+          <span onClick={() => onProfile && onProfile(person.id)} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
+            <Avatar id={person.userId || person.id} name={person.name} photo={merged.photo} size={42} ring/>
+          </span>
+          <div style={{ display:"grid", gap:4, minWidth:0, justifyItems:"start" }}>
+            <div onClick={() => onProfile && onProfile(person.id)} title="view profile" style={{
+              fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000", cursor:"pointer",
+              maxWidth:"100%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+            }}>{person.name}</div>
+            <NotOnIndexTag/>
+          </div>
+        </div>
+
+        <div className="mac-scroll" style={{
+          overflowY:"auto", overflowX:"hidden", padding:"16px",
+          display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
+          alignContent:"start", background:"#fff", wordBreak:"break-word",
+        }}>
+          <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)" }}>
+            {first} isn't on Index yet, so there's no chat to open. Send them an invite and the two of you can pick it up here once they join.
+          </div>
+
+          {note && (
+            <SummarySection label="the opportunity">
+              <div style={{ display:"grid", gap:9 }}>
+                {note.split(/\n{2,}/).map((para, i) => (
+                  <div key={i}>{para.trim()}</div>
+                ))}
+              </div>
+            </SummarySection>
+          )}
+
+          <SummarySection label="your message">
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              rows={9}
+              style={{
+                width:"100%", boxSizing:"border-box", resize:"vertical",
+                fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000",
+                padding:"8px 10px", border:"1px solid #000", background:"#fff", outline:"none",
+              }}/>
+          </SummarySection>
+
+          {socials.length > 0 && (
+            <SummarySection label="elsewhere">
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {socials.map(s => <SocialLink key={`${s.id}${s.handle}`} social={s}/>)}
+              </div>
+            </SummarySection>
+          )}
+        </div>
+
+        <div style={{
+          borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
+          display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", rowGap:8,
+        }}>
+          <a className="amiga-gadget primary" href={inviteXHref(message)} target="_blank" rel="noreferrer noopener"
+            title={xSocial ? `opens an X message; pick @${socialHandleOf(xSocial)} as the recipient` : "opens an X message with this text"}
+            style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
+            <SocialGlyph id="x" size={11} color="currentColor"/>
+            send on X
+          </a>
+          <a className="amiga-gadget" href={inviteEmailHref({ subject: inviteSubject(senderName), body: message })} target="_blank" rel="noreferrer noopener"
+            title="opens your mail app with this message; add their address"
+            style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
+            <SocialGlyph id="email" size={11} color="currentColor"/>
+            email
+          </a>
+          <button className="amiga-gadget" onClick={copy} style={gadget}>{copied ? "copied" : "copy"}</button>
+          <button className="amiga-gadget"
+            title={`see what your agent and ${person.name}'s agent said`}
+            onClick={() => onOpenNegotiation && onOpenNegotiation(person.id)}
+            style={{ ...gadget, marginLeft:"auto", padding:"4px 12px" }}>negotiation ›</button>
+        </div>
       </div>
     </MacWindow>
   );
