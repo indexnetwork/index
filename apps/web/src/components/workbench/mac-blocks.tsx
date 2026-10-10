@@ -22,8 +22,8 @@ export function LiveTag({ label }: { label: string }) {
   );
 }
 
-/** Marks someone found on the web who has not joined Index yet. */
-export function GhostTag() {
+/** Marks someone who has not verified their email with Index yet. */
+export function NotOnIndexTag() {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifySelf: "start", width: "fit-content", maxWidth: "100%",
@@ -38,7 +38,7 @@ export function MatchCard({
   blurb,
   photo,
   userId,
-  ghost,
+  unverified,
   accepted,
   ready,
   negotiating,
@@ -55,7 +55,7 @@ export function MatchCard({
   blurb: string;
   photo?: string | null;
   userId?: string;
-  ghost?: boolean;
+  unverified?: boolean;
   accepted: boolean;
   ready: boolean;
   negotiating: boolean;
@@ -102,7 +102,7 @@ export function MatchCard({
             fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
             minWidth: 0, whiteSpace: "normal",
           }}>{name}</span>
-          {ghost && <GhostTag />}
+          {unverified && <NotOnIndexTag />}
           {negotiating && <LiveTag label="live" />}
         </div>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>

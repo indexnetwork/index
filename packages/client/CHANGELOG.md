@@ -7,7 +7,7 @@
   between two signals the caller owns neither of.
 - `Negotiation.introducer` (`userId`, `name`, `context`) names the third party
   who opened the pair and carries their case for it.
-- `Me.unclaimed` marks an owner found on the public web who has not joined Index.
+- `Me.emailVerified` says whether the owner verified their email.
 
 ## 0.11.0
 

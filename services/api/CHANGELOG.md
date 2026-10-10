@@ -11,11 +11,11 @@ section before promoting to `main`).
 
 ### Fixed
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
-- Counterparty discovery returns only signals whose owners verified their email, so unclaimed ghosts never surface in a member's own search.
+- Counterparty discovery returns only signals whose owners verified their email.
 
 ### Changed
-- The hosted agent marks a principal who was found on the public web and has not joined Index as `unclaimed`; their negotiator speaks of them in the third person, only from their signal, and never stalls.
-- An introducer opening an opportunity may give the first turn to the first signal's owner.
+- Users, network members and opportunity peers carry `emailVerified` in place of `isGhost`.
+- The hosted agent passes `emailVerified` on its principal; a principal who has not verified is spoken of in the third person, only from their signal, and their negotiator never stalls.
 
 ### Added
 - **Introductions.** `POST /opportunities` lets a network member open an
@@ -23,7 +23,7 @@ section before promoting to `main`).
   seats read, with the introducer's id and name, as `introducer` on the
   negotiation. The text is kept in `metadata.introducer`, out of the match
   reasoning presenters read. The introducer holds no seat; the owner of the
-  lower intent id takes the first turn.
+  first intent takes the first turn.
 - **MCP `submit_negotiation_turn`.** Submits one negotiator turn (`propose`,
   `counter`, `accept`, or `decline`) for the authenticated owner. The caller
   passes `agentId` for their selected external negotiator. Refusals match the
