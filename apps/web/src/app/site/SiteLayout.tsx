@@ -7,9 +7,10 @@ const FONT_HREF =
   "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap";
 
 /** Injects the Source Serif 4 + Public Sans pair the marketing pages use. */
-export function ensureSiteFonts() {
+export function ensureSiteFonts(): HTMLLinkElement | undefined {
   if (typeof document === "undefined") return;
-  if (document.querySelector(`link[href="${FONT_HREF}"]`)) return;
+  const existing = document.querySelector(`link[href="${FONT_HREF}"]`);
+  if (existing instanceof HTMLLinkElement) return existing;
 
   const preconnect1 = document.createElement("link");
   preconnect1.rel = "preconnect";
@@ -22,6 +23,7 @@ export function ensureSiteFonts() {
   font.rel = "stylesheet";
   font.href = FONT_HREF;
   document.head.append(preconnect1, preconnect2, font);
+  return font;
 }
 
 /**

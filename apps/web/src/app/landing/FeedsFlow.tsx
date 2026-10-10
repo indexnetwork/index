@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { layoutNextLineRange, materializeLineRange, prepareWithSegments, type LayoutCursor, type PreparedTextWithSegments } from "@chenglou/pretext";
+import { ensureSiteFonts } from "@/app/site/SiteLayout";
 
 const PARAGRAPHS = [
   "For as long as the internet’s been around, we’ve used apps to find people. It worked until it didn’t. So we took discovery out of the feeds and made it multiplayer across humans and their agents.",
@@ -8,6 +9,8 @@ const PARAGRAPHS = [
 
 /** Must match `.site-prose` in site.css. */
 const FONT = "300 15px 'Public Sans'";
+/** Must match `.site-h3` in site.css. */
+const HEAD_FONT = "400 32px 'Source Serif 4'";
 const LINE_HEIGHT = 25.5;
 const PARAGRAPH_GAP = 22;
 /** Space between the headline and the body. Matches the flex gap below. */
@@ -136,10 +139,19 @@ function flowLines(
   return best;
 }
 
+/** True once an @font-face for `family` is in the document. `document.fonts.load` resolves empty before the stylesheet exists. */
+function faceRegistered(family: string) {
+  for (const face of document.fonts) {
+    if (face.family.replace(/["']/g, "") === family) return true;
+  }
+  return false;
+}
+
 /**
  * "We took discovery out of the feeds" body: the paragraphs wrap around the
- * hand drawing's silhouette (measured with pretext). Narrow screens, and the
- * moment before fonts load, get the plain stacked layout.
+ * hand drawing's silhouette (measured with pretext). Narrow columns stack the
+ * drawing under the text. A fresh tab used to measure before the site fonts
+ * arrived and then stay stacked, so the wrap waits until those faces are loaded.
  */
 export default function FeedsFlow() {
   const box = useRef<HTMLDivElement>(null);
@@ -152,6 +164,8 @@ export default function FeedsFlow() {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
+    let live = true;
+    let gen = 0;
     const measure = () => {
       setWidth(el.clientWidth);
       const heading = headRef.current;
@@ -160,20 +174,38 @@ export default function FeedsFlow() {
       range.selectNodeContents(heading);
       setHead({ w: range.getBoundingClientRect().width, h: heading.offsetHeight });
     };
+    // The stylesheet is injected by a parent effect, which runs after this one.
+    // Loading before those faces exist resolves immediately against the fallback
+    // font, the headline measures too wide, and the wrap never retries.
+    const settle = () => {
+      if (!live || !faceRegistered("Public Sans") || !faceRegistered("Source Serif 4")) return;
+      const n = ++gen;
+      void Promise.all([document.fonts.load(FONT), document.fonts.load(HEAD_FONT)]).then(() => {
+        if (!live || n !== gen) return;
+        setPrepared(PARAGRAPHS.map((text) => prepareWithSegments(text, FONT)));
+        measure();
+        requestAnimationFrame(() => {
+          if (live) measure();
+        });
+      });
+    };
+    const link = ensureSiteFonts();
+    settle();
     measure();
+    document.fonts.addEventListener("loadingdone", settle);
+    link?.addEventListener("load", settle);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      live = false;
+      document.fonts.removeEventListener("loadingdone", settle);
+      link?.removeEventListener("load", settle);
+      ro.disconnect();
+    };
   }, []);
 
   useEffect(() => {
     let live = true;
-    document.fonts
-      .load(FONT)
-      .catch(() => undefined)
-      .then(() => {
-        if (live) setPrepared(PARAGRAPHS.map((text) => prepareWithSegments(text, FONT)));
-      });
     const img = new Image();
     img.onload = () => live && setProfile(readProfile(img));
     img.src = ART_SRC;
