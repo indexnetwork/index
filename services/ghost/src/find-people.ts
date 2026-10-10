@@ -70,8 +70,8 @@ export async function findPeople(query: string, limit: number): Promise<FoundPer
     try {
       const response = await client.responses.create({
         model: 'parallel',
-        reasoning: { effort: 'high' },
-        instructions: `Find up to ${limit} real people on the public web who would be a strong mutual fit for the signal below, strongest fit first. Return fewer, or none, rather than a weak fit. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
+        reasoning: { effort: 'medium' },
+        instructions: `Find exactly ${limit} real people on the public web who would fit the signal below, strongest fit first. Return that many even when the later ones fit less well. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
         input: query,
         text: { format: findPeopleSchema },
       }, { timeout: RESEARCH_TIMEOUT_MS });
