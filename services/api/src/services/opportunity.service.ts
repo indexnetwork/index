@@ -577,9 +577,7 @@ export class OpportunityService {
     if (applied.status === 'accepted' || applied.status === 'rejected' || applied.status === 'expired') {
       await this.negotiations.closeForOpportunities([opportunityId]);
     }
-    if (applied.status !== opp.status) {
-      emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
-    }
+    emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
 
     const presented = await this.presentOpportunityForViewer(updated, userId, options?.intentId);
     this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);
@@ -687,7 +685,7 @@ export class OpportunityService {
       ? { ok: true as const, status: opp.status, introduction: false }
       : await recordOpportunityEvent(opportunityId, { type: 'committed', actorUserId: userId });
     if (!applied.ok) return { error: applied.error, status: 409 };
-    if (applied.status !== opp.status) {
+    if (!alreadyCommitted) {
       emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
     }
     const updated = alreadyCommitted ? opp : await this.db.getOpportunity(opportunityId);
