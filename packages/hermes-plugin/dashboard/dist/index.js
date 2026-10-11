@@ -629,7 +629,8 @@
   function headerIcon(paths) {
     return React.createElement("svg", {
       xmlns: "http://www.w3.org/2000/svg", width: 20, height: 20, viewBox: "0 0 24 24",
-      fill: "none", stroke: "#1C1B19", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round",
+      // Follows the button's text color, so the icon holds in light and dark.
+      fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round",
       "aria-hidden": "true",
     }, paths.map(function (d, index) { return React.createElement("path", { key: index, d: d }); }));
   }
@@ -1549,9 +1550,9 @@
     return { open: open, node: node };
   }
 
-  function IntentPitch(props) {
+  function IntentPitch() {
     const envMenu = bindEnvironmentMenu();
-    const pitchImage = props.onLight ? assetSrc("pitch-light") : PITCH_IMAGE();
+    const pitchImage = PITCH_IMAGE();
     return React.createElement("aside", { className: "index-dashboard__pitch" },
       pitchImage ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
@@ -6467,7 +6468,9 @@
       ? null
       : selectedIntent
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: goBack }, ICON_ARROW_LEFT(), "Back")
-        : React.createElement(IntentPitch, { onLight: true });
+        // The header follows the theme now (dark under a dark host), so the
+        // leaf does too rather than always drawing in black.
+        : React.createElement(IntentPitch, null);
     const intentsError = !!(summary && summary.errors && summary.errors.intents);
     function startSignal() { setNewSignalOpen(true); }
     function retryRadar() { if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current); }
