@@ -629,7 +629,8 @@
   function headerIcon(paths) {
     return React.createElement("svg", {
       xmlns: "http://www.w3.org/2000/svg", width: 20, height: 20, viewBox: "0 0 24 24",
-      fill: "none", stroke: "#1C1B19", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round",
+      // Follows the button's text color, so the icon holds in light and dark.
+      fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round",
       "aria-hidden": "true",
     }, paths.map(function (d, index) { return React.createElement("path", { key: index, d: d }); }));
   }

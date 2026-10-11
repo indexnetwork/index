@@ -89,6 +89,18 @@
   background: transparent;
 }
 
+/* Under a dark theme the ink inverts, so these stay readable. */
+.index-network-desktop-page .index-dashboard[data-scheme="dark"] .index-dashboard__getting-started-btn.idx-btn--solid {
+  color: var(--ui-bg-editor, #17181a);
+  border-color: var(--ui-base, #f4f4f5);
+  background: var(--ui-base, #f4f4f5);
+}
+
+.index-network-desktop-page .index-dashboard[data-scheme="dark"] .index-dashboard__getting-started-btn.idx-btn--outlined {
+  border-color: var(--ui-base, #f4f4f5);
+  color: var(--ui-text-primary, #f4f4f5);
+}
+
 /* The animated assets need no desktop-specific override: the shared
    stylesheet now carries a light and a dark treatment, keyed off the
    `data-scheme` the dashboard resolves from this app's theme (it stamps
@@ -232,6 +244,43 @@
   color: #fff;
   border-color: #000;
   background: #000;
+}
+
+/* Dark mode: the ink above is black, which vanishes on a dark page (outlined
+   buttons drew black text on black). Under a dark theme the ink becomes the
+   page's own foreground and the solid fill inverts to it, so the buttons keep
+   the Mac gadget look the light theme has. `:where` holds these at the base
+   button's weight, so a button with its own colors (New signal, Save, the
+   radar card actions) still wins. */
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn,
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--outlined,
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--ghost {
+  color: var(--ui-text-primary, #f4f4f5);
+  border-color: color-mix(in srgb, var(--ui-base, #f4f4f5) 55%, transparent);
+}
+
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--ghost {
+  border-color: transparent;
+}
+
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--outlined:hover:not(:disabled),
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--ghost:hover:not(:disabled) {
+  color: var(--ui-text-primary, #f4f4f5);
+  background: color-mix(in srgb, var(--ui-base, #f4f4f5) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ui-base, #f4f4f5) 75%, transparent);
+}
+
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--solid,
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--destructive {
+  color: var(--ui-bg-editor, #17181a);
+  border-color: var(--ui-base, #f4f4f5);
+  background: var(--ui-base, #f4f4f5);
+}
+
+.index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--solid:hover:not(:disabled) {
+  color: var(--ui-bg-editor, #17181a);
+  border-color: color-mix(in srgb, var(--ui-base, #f4f4f5) 85%, #000);
+  background: color-mix(in srgb, var(--ui-base, #f4f4f5) 85%, #000);
 }
 
 /* Head action (Networks "Create"): the same square mono button as the Join
