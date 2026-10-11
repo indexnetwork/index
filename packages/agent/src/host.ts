@@ -495,8 +495,8 @@ function savedQueries(conversation: ConversationEntry[]): string[] {
 /**
  * One signal's morning. People who arrived since the last morning are reached
  * along the signal's saved queries without the model. The model wakes only
- * when there is something to decide: a direct message waiting, a stall still
- * owed, or nothing open, where it judges whether new queries are worth it.
+ * when the principal is owed something: a direct message waiting, or a stall
+ * still owed. A signal with nothing open stays quiet.
  *
  * @param client - Index for this owner.
  * @param intent - The signal.
@@ -525,8 +525,7 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
     const { stall } = standing(carried.get(negotiation.opportunityId), negotiation);
     return stall && (!stall.questionId || stall.answered);
   });
-  const nothingOpen = !opened.length && negotiations.every((negotiation) => negotiation.settledAt);
-  const because = unansweredPrincipalMessage(conversation) ? "message" : owed ? "stall" : nothingOpen ? "nothing open" : "";
+  const because = unansweredPrincipalMessage(conversation) ? "message" : owed ? "stall" : "";
   if (!because) {
     log("  nothing to decide");
     return null;

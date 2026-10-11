@@ -29,7 +29,7 @@ const WAKE_PROMPT = [
 
 /** The line a morning wake adds. */
 const MORNING =
-  "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties with new queries only if you judge it necessary, for example when nothing is open; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+  "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 
 /**
  * The questions still waiting on the principal, mirroring how the host reads
@@ -69,9 +69,10 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
 }
 
 /**
- * Discover along each query and open everyone the owner is not already
- * negotiating with, on any of their signals. A person holding several matching
- * signals keeps one seat, at their strongest.
+ * Discover along each query and open each signal that does not already share
+ * a negotiation with this one. A negotiation on some other pair does not
+ * count. A person holding several matching signals keeps one seat, at their
+ * strongest.
  *
  * @param client - Index for this owner.
  * @param intent - The signal to open from.
@@ -95,11 +96,10 @@ export async function reach(
   }
   if (!found.size) return { found: 0, picked: 0, opened: [] };
 
-  const signals = new Set([intent.id, ...(await client.listIntents()).map((signal) => signal.id)]);
-  const negotiations = await Promise.all([...signals].map((signalId) => client.listIntentNegotiations(signalId)));
-  const started = new Set(negotiations.flat().map((negotiation) => negotiation.counterparty.userId));
+  const negotiations = await client.listIntentNegotiations(intent.id);
+  const started = new Set(negotiations.map((negotiation) => negotiation.counterparty.intentId));
   const picks: CounterpartyPick[] = [...found.values()]
-    .filter((counterparty) => !started.has(counterparty.userId))
+    .filter((counterparty) => !started.has(counterparty.intentId))
     .sort((left, right) => right.score - left.score)
     .slice(0, OPEN_LIMIT)
     .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
