@@ -3,3 +3,6 @@
 # the repo, but it is never edited by hand: keep it out of textual diffs and
 # collapse it in reviews.
 packages/hermes-plugin/desktop/plugin.js -diff linguist-generated=true
+
+apps/web/public/**/*.html linguist-vendored
+packages/cli/cli-output-reference.html linguist-generated
