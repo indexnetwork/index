@@ -753,6 +753,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       if (first) first.focus();
       function onKey(event) {
         if (event.key === "Escape") {
+          event.preventDefault();
           setOpen(false);
           return;
         }
@@ -6505,6 +6506,29 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       setSelectedId(null);
       writeHash(null);
     }
+
+    // Escape closes the topmost modal, else leaves a signal for the list.
+    // On window, so dialogs listening on document handle it first.
+    const goBackRef = useRef(null);
+    goBackRef.current = selectedId ? goBack : null;
+    useEffect(function () {
+      function onKey(event) {
+        if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+        const root = rootRef.current;
+        if (!root || !root.getClientRects().length) return;
+        const active = document.activeElement;
+        if (active && active !== document.body && !root.contains(active)) return;
+        if (root.querySelector(".index-agent-header__dialog")) return;
+        if (active && (active.isContentEditable || /^(INPUT|TEXTAREA)$/.test(active.tagName))) {
+          if (String(active.value || active.textContent || "").trim()) { active.blur(); return; }
+        }
+        const overlays = root.querySelectorAll(".index-dashboard__profile-overlay");
+        if (overlays.length) { overlays[overlays.length - 1].click(); return; }
+        if (goBackRef.current) goBackRef.current();
+      }
+      window.addEventListener("keydown", onKey);
+      return function () { window.removeEventListener("keydown", onKey); };
+    }, []);
 
     const selectedIntent = selectedId
       ? mergeIntentDetail(
