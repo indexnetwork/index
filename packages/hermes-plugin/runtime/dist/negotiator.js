@@ -613,7 +613,7 @@ var WAKE_PROMPT = [
 ].join(`
 
 `);
-var MORNING = "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties with new queries only if you judge it necessary, for example when nothing is open; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+var MORNING = "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 function openQuestions(conversation) {
   const open = new Map;
   for (const entry of conversation) {
@@ -648,10 +648,9 @@ async function reach(client, intent, queries, since) {
   }
   if (!found.size)
     return { found: 0, picked: 0, opened: [] };
-  const signals = new Set([intent.id, ...(await client.listIntents()).map((signal) => signal.id)]);
-  const negotiations = await Promise.all([...signals].map((signalId) => client.listIntentNegotiations(signalId)));
-  const started = new Set(negotiations.flat().map((negotiation) => negotiation.counterparty.userId));
-  const picks = [...found.values()].filter((counterparty) => !started.has(counterparty.userId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
+  const negotiations = await client.listIntentNegotiations(intent.id);
+  const started = new Set(negotiations.map((negotiation) => negotiation.counterparty.intentId));
+  const picks = [...found.values()].filter((counterparty) => !started.has(counterparty.intentId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
   if (!picks.length)
     return { found: found.size, picked: 0, opened: [] };
   const created = await client.createOpportunities(intent.id, picks);
