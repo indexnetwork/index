@@ -28,6 +28,8 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- Dark mode: your agent's turns in the negotiation transcript are an ink bubble, not a white block, and the signal and radar panes sit on their own raised surface.
+- Radar cards put the name and summary beside a larger avatar, as the Mac and web apps do. Closed rows show "not a fit" or "missed" as plain text, like "in progress".
 - The Bun negotiator no longer inherits the gateway environment. It keeps `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, and `TZ`, plus names listed in `INDEX_NEGOTIATOR_ENV_PASSTHROUGH`. `INDEX_SESSION_TOKEN` stays in the gateway. `BUN_OPTIONS=--no-env-file` stops Bun from loading `.env` files (Bun 1.3.3 or newer). `INDEX_BUN` selects the Bun executable.
 - Brief and negotiate runs require a tool call on their first step. The bridge forwards `tool_choice` so a prose reply cannot drop the brief or the turn.
 - Opportunity status frames no longer wake the bundled negotiator.
