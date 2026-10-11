@@ -10,6 +10,7 @@ export { parseDeepLink } from './deeplink.mjs';
 export {
   INVITE_URL,
   buildInviteMessage,
+  emailFromSocials,
   inviteEmailHref,
   inviteSubject,
   inviteXHref,

@@ -6,9 +6,10 @@
  * the user sends themselves, through X or their own mail, with the signal that
  * matched them so the invite says why.
  *
- * The API never hands the client a not-yet-on-Index person's email, so the
- * mail link leaves the recipient blank for the user to fill in, and X opens the
- * DM composer with the text ready, where they pick the person.
+ * Each way to send only shows when there is somewhere to send it: X when they
+ * have an X link, email when an address is on their profile (the API never
+ * shares the account email, so it has to come from what they listed). With
+ * neither, the user copies the invite link instead.
  *
  * Kept in step with apps/web/src/lib/invite.ts, which does the same job for
  * the web app.
@@ -47,9 +48,25 @@ export function inviteSubject(senderName) {
   return me ? `${me} would like to connect` : 'Would you like to connect?';
 }
 
-/** Opens the user's mail app with the invite filled in and no recipient. */
-export function inviteEmailHref({ subject, body }) {
-  return `mailto:?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
+const EMAIL = /^(?:mailto:)?([^\s@/]+@[^\s@/]+\.[a-z]{2,})$/i;
+
+/**
+ * An email address someone listed among their links, if any. Social links
+ * resolve to web addresses only, so an address stored as a link is otherwise
+ * dropped; this reads it from the raw {label, value} rows.
+ * @param {Array<{label?: string, value?: string}> | undefined | null} socials
+ */
+export function emailFromSocials(socials) {
+  for (const entry of Array.isArray(socials) ? socials : []) {
+    const match = String(entry?.value ?? entry?.handle ?? '').trim().match(EMAIL);
+    if (match) return match[1];
+  }
+  return '';
+}
+
+/** Opens the user's mail app with the invite filled in, addressed to `to`. */
+export function inviteEmailHref({ to, subject, body }) {
+  return `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
 }
 
 /** Opens the X DM composer with the invite as the message. */
