@@ -1614,9 +1614,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     return { open: open, node: node };
   }
 
-  function IntentPitch(props) {
+  function IntentPitch() {
     const envMenu = bindEnvironmentMenu();
-    const pitchImage = props.onLight ? assetSrc("pitch-light") : PITCH_IMAGE();
+    const pitchImage = PITCH_IMAGE();
     return React.createElement("aside", { className: "index-dashboard__pitch" },
       pitchImage ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
@@ -6532,7 +6532,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       ? null
       : selectedIntent
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: goBack }, ICON_ARROW_LEFT(), "Back")
-        : React.createElement(IntentPitch, { onLight: true });
+        // The header follows the theme now (dark under a dark host), so the
+        // leaf does too rather than always drawing in black.
+        : React.createElement(IntentPitch, null);
     const intentsError = !!(summary && summary.errors && summary.errors.intents);
     function startSignal() { setNewSignalOpen(true); }
     function retryRadar() { if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current); }
