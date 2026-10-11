@@ -73,8 +73,9 @@
 
 .index-dashboard__opp-id {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex: 1;
+  align-items: flex-start;
+  gap: 0.75rem;
   min-width: 0;
 }
 
@@ -128,8 +129,8 @@
 .index-dashboard__opp-text {
   margin: 0;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 0.88rem;
-  line-height: 1.55;
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .index-dashboard__opp-status {
@@ -438,8 +439,9 @@
 }
 
 .index-dashboard[data-scheme="dark"] .index-dashboard__a2a-turn--mine .index-dashboard__a2a-text {
-  background: #f4f4f5;
-  color: #111;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: #111;
+  color: #fff;
 }
 
 .index-dashboard__opp-openchat {

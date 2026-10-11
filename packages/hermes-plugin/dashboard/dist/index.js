@@ -1379,6 +1379,7 @@
             id: opportunity.counterpartUserId,
             name: opportunity.name,
             avatar: opportunity.avatar,
+            size: 44,
           }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
@@ -1387,6 +1388,7 @@
             opportunity.subtitle
               ? React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle)
               : null,
+            opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
           ),
         ),
         // Mac-app parity: the head's right column shows the action buttons when
@@ -1397,7 +1399,7 @@
           // Closed keeps the status beside the button, not inside it.
           : props.onOpenNegotiation && bucket === "closed"
             ? React.createElement("div", { className: "index-dashboard__opp-btns", style: { flexDirection: "column", alignItems: "flex-end" } },
-              React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, status === "rejected" ? "Not a fit" : "Missed"),
+              React.createElement("span", { className: "index-dashboard__opp-status" }, status === "rejected" ? "not a fit" : "missed"),
               React.createElement("button", {
                 type: "button",
                 className: "index-dashboard__opp-negotiating",
@@ -1424,7 +1426,6 @@
               ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
               : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
-      opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
     );
   }
 
