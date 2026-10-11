@@ -216,14 +216,13 @@ test("a morning opens a new arrival without the model and starts their negotiato
   ]);
 });
 
-test("a morning with nothing open wakes the model, which may discover with new queries", async () => {
+test("a morning with nothing open stays quiet", async () => {
   const { client, discovered, open } = morning([]);
   open[0] = negotiation("opp-1", "u2", true);
-  const model = new ScriptedModel([call("1", "reach_counterparties", { plan: "Reaching out to designers.", queries: ["designers"] }), done]);
-  await runMorning(client, intent, { model });
-  expect(model.seen).toHaveLength(2);
-  expect(model.seen[0]![1]!.content).toContain('"opportunities":[]');
-  expect(discovered).toEqual([{ query: "designers" }]);
+  const model = new ScriptedModel([]);
+  expect(await runMorning(client, intent, { model })).toBeNull();
+  expect(model.seen).toHaveLength(0);
+  expect(discovered).toEqual([]);
 });
 
 test("a morning with a stall still owed wakes the model", async () => {
@@ -233,11 +232,11 @@ test("a morning with a stall still owed wakes the model", async () => {
   expect(model.seen.length).toBeGreaterThan(0);
 });
 
-test("reach skips anyone the owner already negotiates with on any signal", async () => {
+test("reach skips a signal pair that already has a negotiation, and still opens that person on another signal", async () => {
   const { client, picked } = morning();
   client.listIntents = async () => [{ id: "intent-2", statement: "Hire", status: "active" }];
-  client.listIntentNegotiations = async (id) => (id === "intent-2" ? [negotiation("opp-9", "u4")] : []);
-  client.discover = async () => [counterparty("u4"), counterparty("u5")];
-  expect(await reach(client, intent, ["toolmakers"])).toEqual({ found: 2, picked: 1, opened: ["opp-u5-signal"] });
-  expect(picked).toEqual([[{ intentId: "u5-signal", networkId: "network-1" }]]);
+  client.listIntentNegotiations = async (id) => (id === "intent-2" ? [negotiation("opp-9", "u4")] : id === intent.id ? [negotiation("opp-6", "u6")] : []);
+  client.discover = async () => [counterparty("u4"), counterparty("u6")];
+  expect(await reach(client, intent, ["toolmakers"])).toEqual({ found: 2, picked: 1, opened: ["opp-u4-signal"] });
+  expect(picked).toEqual([[{ intentId: "u4-signal", networkId: "network-1" }]]);
 });
