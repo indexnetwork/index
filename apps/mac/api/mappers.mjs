@@ -6,6 +6,7 @@
  * dependency on the app bundles and no side effects.
  */
 import { normalizeSocial, socialHrefOf } from './socials.mjs';
+import { emailFromSocials } from './invite.mjs';
 
 const DEFAULT_EVENT = {
   name: 'index',
@@ -165,7 +166,7 @@ export function mapPersonFromRadarCard(card) {
  * profile window fetches it, so this also accepts that payload's shape, where
  * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
- * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>}}
+ * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>, email: string}}
  */
 export function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
@@ -176,6 +177,9 @@ export function mapCounterpartProfile(source = {}) {
     // key); the app absolutizes keys against the API storage base.
     photo: profile.avatar || source.avatar || source.peer?.avatar || source.counterpartAvatar || null,
     socials: mapSocials(profile.socials),
+    // An address they listed among their links; the invite offers email only
+    // when there is one.
+    email: emailFromSocials(profile.socials),
   };
 }
 

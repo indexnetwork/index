@@ -47,6 +47,7 @@ function useCounterpartProfile(person) {
         bio: person.bio || fetched.bio,
         photo: person.photo || fetched.photo,
         socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
+        email: person.email || fetched.email,
       }
     : person;
 }
@@ -192,14 +193,16 @@ function NotOnIndexTag() {
 /* What accepting opens for someone who is not on Index yet. There is nobody on
    the other end of a chat, so this is the profile with an invite in place of
    the conversation: the opportunity, a pre-written message the user can edit,
-   and ways to send it themselves. The API never shares their email, so mail
-   opens with the recipient blank, and X opens the DM composer with the text
-   ready for the user to pick them. */
+   and ways to send it themselves. Each way shows only when there is somewhere
+   to send it: X when they have an X link (the DM composer opens with the text,
+   and the user picks them), email when their profile lists an address. With
+   neither there is nothing to send the message through, so it gives way to
+   the invite link to copy and share however the user reaches them. */
 function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation }) {
   const merged = useCounterpartProfile(person);
   const env = useIndexEnv();
   const senderName = (env.me && env.me.name) || "";
-  const { buildInviteMessage, inviteSubject, inviteEmailHref, inviteXHref } = window.IndexApi;
+  const { INVITE_URL, buildInviteMessage, inviteSubject, inviteEmailHref, inviteXHref } = window.IndexApi;
   const [message, setMessage] = useState(() => buildInviteMessage({ name: person.name, signal, senderName }));
   // Re-draft for a different person, but never over what the user typed.
   const draftFor = useRef(person.id);
@@ -212,7 +215,7 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
   const copyTimer = useRef(null);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
   const copy = () => {
-    const write = navigator.clipboard && navigator.clipboard.writeText(message);
+    const write = navigator.clipboard && navigator.clipboard.writeText(INVITE_URL);
     if (!write) return;
     write.then(() => {
       setCopied(true);
@@ -223,6 +226,7 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
 
   const { note, socials } = profileContent(merged);
   const xSocial = socials.find(s => socialPlatformOf(s) === "x");
+  const canSend = !!(xSocial || merged.email);
   const first = String(person.name || "").split(/\s+/)[0] || "them";
   const gadget = { fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap", textDecoration:"none" };
 
@@ -251,7 +255,9 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
           alignContent:"start", background:"#fff", wordBreak:"break-word",
         }}>
           <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)" }}>
-            {first} isn't on Index yet, so there's no chat to open. Send them an invite and the two of you can pick it up here once they join.
+            {first} isn't on Index yet, so there's no chat to open. {canSend
+              ? "Send them an invite and the two of you can pick it up here once they join."
+              : "Share the invite link with them, and the two of you can pick it up here once they join."}
           </div>
 
           {note && (
@@ -264,6 +270,7 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
             </SummarySection>
           )}
 
+          {canSend ? (
           <SummarySection label="your message">
             <textarea
               value={message}
@@ -275,6 +282,14 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
                 padding:"8px 10px", border:"1px solid #000", background:"#fff", outline:"none",
               }}/>
           </SummarySection>
+          ) : (
+          <SummarySection label="invite link">
+            <div style={{
+              fontFamily:"var(--mac-mono)", fontSize:12, padding:"8px 10px",
+              border:"1px solid #000", background:"#fff", userSelect:"text",
+            }}>{INVITE_URL}</div>
+          </SummarySection>
+          )}
 
           {socials.length > 0 && (
             <SummarySection label="elsewhere">
@@ -289,19 +304,27 @@ function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation })
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
           display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", rowGap:8,
         }}>
-          <a className="amiga-gadget primary" href={inviteXHref(message)} target="_blank" rel="noreferrer noopener"
-            title={xSocial ? `opens an X message; pick @${socialHandleOf(xSocial)} as the recipient` : "opens an X message with this text"}
-            style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
-            <SocialGlyph id="x" size={11} color="currentColor"/>
-            send on X
-          </a>
-          <a className="amiga-gadget" href={inviteEmailHref({ subject: inviteSubject(senderName), body: message })} target="_blank" rel="noreferrer noopener"
-            title="opens your mail app with this message; add their address"
-            style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
-            <SocialGlyph id="email" size={11} color="currentColor"/>
-            email
-          </a>
-          <button className="amiga-gadget" onClick={copy} style={gadget}>{copied ? "copied" : "copy"}</button>
+          {xSocial && (
+            <a className="amiga-gadget primary" href={inviteXHref(message)} target="_blank" rel="noreferrer noopener"
+              title={`opens an X message; pick @${socialHandleOf(xSocial)} as the recipient`}
+              style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
+              <SocialGlyph id="x" size={11} color="currentColor"/>
+              send on X
+            </a>
+          )}
+          {merged.email && (
+            <a className={`amiga-gadget${xSocial ? "" : " primary"}`}
+              href={inviteEmailHref({ to: merged.email, subject: inviteSubject(senderName), body: message })}
+              target="_blank" rel="noreferrer noopener"
+              title={`opens your mail app with this message to ${merged.email}`}
+              style={{ ...gadget, display:"inline-flex", alignItems:"center", gap:6 }}>
+              <SocialGlyph id="email" size={11} color="currentColor"/>
+              email
+            </a>
+          )}
+          <button className={`amiga-gadget${canSend ? "" : " primary"}`} onClick={copy} style={gadget}>
+            {copied ? "copied" : "copy invite link"}
+          </button>
           <button className="amiga-gadget"
             title={`see what your agent and ${person.name}'s agent said`}
             onClick={() => onOpenNegotiation && onOpenNegotiation(person.id)}

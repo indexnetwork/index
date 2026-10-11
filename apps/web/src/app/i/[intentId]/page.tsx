@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { resolveSocials } from "@/lib/socials";
-import { buildInviteMessage, inviteEmailHref, inviteSubject, inviteXHref } from "@/lib/invite";
+import { INVITE_URL, buildInviteMessage, emailFromSocials, inviteEmailHref, inviteSubject, inviteXHref } from "@/lib/invite";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
@@ -670,9 +670,11 @@ function PersonHead({ name, photo, userId, unverified, sub, size = 34, action, o
 
 /**
  * What accepting opens for someone not on Index yet: the opportunity, a
- * pre-written invite the user can edit, and ways to send it themselves. The
- * API never shares their email, so mail opens with the recipient blank, and X
- * opens the DM composer with the text ready for the user to pick them.
+ * pre-written invite the user can edit, and ways to send it themselves. Each
+ * way shows only when there is somewhere to send it: X when they have an X
+ * link (the DM composer opens with the text, and the user picks them), email
+ * when their profile lists an address. With neither there is nothing to send
+ * the message through, so it gives way to the invite link to copy.
  */
 function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiation }: {
   item: RadarCardItem;
@@ -702,7 +704,7 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
   const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
   const copy = () => {
-    navigator.clipboard?.writeText(message).then(() => {
+    navigator.clipboard?.writeText(INVITE_URL).then(() => {
       setCopied(true);
       clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 1500);
@@ -713,15 +715,20 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
   const note = item.mainText || item.headline;
   const socials = resolveSocials(profile?.socials);
   const x = socials.find((s) => s.platform === "x");
+  const email = emailFromSocials(profile?.socials);
+  const canSend = !!(x || email);
   const linkBtn = { display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" } as const;
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
       <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified size={42} onOpenProfile={onOpenProfile} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
-          {first} isn&apos;t on Index yet, so there&apos;s no chat to open. Send them an invite and the two of you can pick it up here once they join.
+          {first} isn&apos;t on Index yet, so there&apos;s no chat to open. {canSend
+            ? "Send them an invite and the two of you can pick it up here once they join."
+            : "Share the invite link with them, and the two of you can pick it up here once they join."}
         </div>
         {note && <SummarySection label="the opportunity">{note}</SummarySection>}
+        {canSend ? (
         <SummarySection label="your message">
           <textarea
             value={message}
@@ -730,6 +737,11 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
             style={{ width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000", padding: "8px 10px", border: "1px solid #000", background: "#fff", outline: "none" }}
           />
         </SummarySection>
+        ) : (
+          <SummarySection label="invite link">
+            <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "8px 10px", border: "1px solid #000", background: "#fff", userSelect: "text" }}>{INVITE_URL}</div>
+          </SummarySection>
+        )}
         {socials.length > 0 && (
           <SummarySection label="elsewhere">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -744,18 +756,22 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
         )}
       </div>
       <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <a className="wb-btn primary small" href={inviteXHref(message)} target="_blank" rel="noopener noreferrer"
-          title={x ? `Opens an X message. Pick @${x.handle} as the recipient.` : "Opens an X message with this text."}
-          style={linkBtn}>
-          {SOCIAL_ICONS.x}
-          send on X
-        </a>
-        <a className="wb-btn small" href={inviteEmailHref({ subject: inviteSubject(senderName), body: message })}
-          title="Opens your mail app with this message. Add their address."
-          style={linkBtn}>
-          email
-        </a>
-        <Btn small onClick={copy}>{copied ? "copied" : "copy"}</Btn>
+        {x && (
+          <a className="wb-btn primary small" href={inviteXHref(message)} target="_blank" rel="noopener noreferrer"
+            title={`Opens an X message. Pick @${x.handle} as the recipient.`}
+            style={linkBtn}>
+            {SOCIAL_ICONS.x}
+            send on X
+          </a>
+        )}
+        {email && (
+          <a className={`wb-btn small${x ? "" : " primary"}`} href={inviteEmailHref({ to: email, subject: inviteSubject(senderName), body: message })}
+            title={`Opens your mail app with this message to ${email}.`}
+            style={linkBtn}>
+            email
+          </a>
+        )}
+        <Btn small primary={!canSend} onClick={copy}>{copied ? "copied" : "copy invite link"}</Btn>
         {onNegotiation && (
           <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>negotiation ›</Btn></span>
         )}

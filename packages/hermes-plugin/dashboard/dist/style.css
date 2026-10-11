@@ -764,6 +764,74 @@
   line-height: 1;
 }
 
+/* Dark mode: the header above is drawn in fixed light colors, which left a
+   white bar across a dark page. Under a dark host theme it takes the page's
+   own tokens instead, so it reads as part of the page in every dark theme. */
+.index-dashboard[data-scheme="dark"] .index-agent-header {
+  background: var(--background-base, #041c1c);
+  border-bottom-color: color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  color: var(--color-foreground, #ffe6cb);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header .index-dashboard__pitch-title,
+.index-dashboard[data-scheme="dark"] .index-agent-header .index-dashboard__back-pill,
+.index-dashboard[data-scheme="dark"] .index-agent-header__switcher,
+.index-dashboard[data-scheme="dark"] .index-agent-header__icon,
+.index-dashboard[data-scheme="dark"] .index-agent-header__dialog,
+.index-dashboard[data-scheme="dark"] .index-agent-header__close {
+  color: var(--color-foreground, #ffe6cb);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header .index-dashboard__pitch-text,
+.index-dashboard[data-scheme="dark"] .index-agent-header__eyebrow,
+.index-dashboard[data-scheme="dark"] .index-agent-header__dialog-eyebrow,
+.index-dashboard[data-scheme="dark"] .index-agent-header__row-meta,
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="stopped"] {
+  color: var(--color-muted-foreground, #a8a29e);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__switcher,
+.index-dashboard[data-scheme="dark"] .index-agent-header__icon,
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 22%, transparent);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__switcher:hover,
+.index-dashboard[data-scheme="dark"] .index-agent-header__icon:hover {
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 35%, transparent);
+}
+
+/* The status inks are tuned for white; lift them so they hold on dark. */
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="running"] { color: #5CC495; }
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="paused"] { color: #E0AE55; }
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="pending"] { color: #F29A4A; }
+.index-dashboard[data-scheme="dark"] .index-agent-header__icon--dot::after { background: #E0AE55; }
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__scrim {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__dialog {
+  background: var(--color-card, #0b2626);
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__close:hover,
+.index-dashboard[data-scheme="dark"] .index-agent-header__row--on {
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 10%, transparent);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 7%, transparent);
+}
+
+.index-dashboard[data-scheme="dark"] .index-agent-header__dialog-error {
+  color: #E0AE55;
+}
+
 /* Mirrors @nous-research/ui Badge tone="success". */
 .index-dashboard__live {
   display: inline-flex;
