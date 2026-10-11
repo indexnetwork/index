@@ -10,7 +10,7 @@ import { useConversation } from '@/contexts/ConversationContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
-import OpportunityDivider, { OpportunityDividerSkeleton } from './OpportunityDivider';
+import OpportunityDivider from './OpportunityDivider';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('ChatView');
@@ -317,15 +317,13 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{openerBody}</span>
               </div>
             )}
-            {messagesLoading ? (
+            {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
               <EmptyState tone="loading" style={{ padding: "60px 0" }} />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
               <EmptyState message="agents matched you on this signal. say hi." style={{ padding: "20px 0" }} />
             ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
               <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
             ) : null}
-
-            {messages.length === 0 && acceptedOpportunitiesLoading && <OpportunityDividerSkeleton />}
 
             {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
                 if (item.type === 'opportunity') {

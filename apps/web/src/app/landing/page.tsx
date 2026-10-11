@@ -113,10 +113,10 @@ export default function LandingPage() {
                 <a className="home-run-caption" href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">Mac app →</a>
               </div>
               <div className="home-run-shot">
-                <Link className="home-run-scene" to="/hermes" target="_blank" rel="noreferrer" aria-label="Hermes plugin" style={{ "--scene": "url(/site/runs-tableau.jpg)" } as CSSProperties}>
+                <Link className="home-run-scene" to="/hermes" aria-label="Hermes plugin" style={{ "--scene": "url(/site/runs-tableau.jpg)" } as CSSProperties}>
                   <HermesMock />
                 </Link>
-                <Link className="home-run-caption" to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
+                <Link className="home-run-caption" to="/hermes">Hermes plugin →</Link>
               </div>
             </div>
           </div>

@@ -36,7 +36,7 @@ export default function HeroAccess() {
           <GlobeIcon />
           Web
         </Link>
-        <Link className="home-platform" to="/hermes" target="_blank" rel="noreferrer">
+        <Link className="home-platform" to="/hermes">
           <img className="home-platform-logo" src="/site/nous-research.png" alt="" />
           Hermes Agent
         </Link>

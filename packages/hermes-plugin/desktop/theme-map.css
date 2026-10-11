@@ -384,6 +384,19 @@
   flex-direction: column;
 }
 
+/* Dark mode: signal and radar sit on their own raised surface, like the Mac
+   app's two windows, instead of dissolving into one flat page. */
+.index-network-desktop-page .index-dashboard[data-scheme="dark"] .index-dashboard__detail-cols {
+  gap: 1rem;
+}
+
+.index-network-desktop-page .index-dashboard[data-scheme="dark"] .index-dashboard__detail-cols > .index-dashboard__card {
+  box-sizing: border-box;
+  padding: 1rem 1.125rem;
+  border: 1px solid color-mix(in srgb, var(--ui-base, #f4f4f5) 14%, transparent);
+  background: color-mix(in srgb, var(--ui-base, #f4f4f5) 4%, var(--ui-bg-editor, #17181a));
+}
+
 .index-network-desktop-page .index-dashboard__detail .index-dashboard__card-content,
 .index-network-desktop-page .index-dashboard__agent-chat {
   display: flex;
