@@ -164,7 +164,14 @@ jobs:
               || echo "note: fetch failed (subtree repo or branch may not exist yet); continuing"
           fi
           echo "Splitting ${{ matrix.prefix }} on $BRANCH..."
-          SPLIT_SHA=$(git subtree split $SPLIT_FLAGS --prefix="${{ matrix.prefix }}" "$BRANCH")
+          # git-subtree is #!/bin/sh (dash on the runner), which caps function
+          # recursion at 1000. Splitting prefixes added with full history
+          # (packages/agent) recurses far deeper, so run it under bash instead.
+          # git-subtree requires GIT_EXEC_PATH exported and first on PATH.
+          ulimit -s unlimited 2>/dev/null || true
+          export GIT_EXEC_PATH="$(git --exec-path)"
+          SPLIT_SHA=$(PATH="$GIT_EXEC_PATH:$PATH" bash "$GIT_EXEC_PATH/git-subtree" \
+            split $SPLIT_FLAGS --prefix="${{ matrix.prefix }}" "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
 
           PUSH_REF="$SPLIT_SHA"

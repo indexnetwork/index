@@ -16,6 +16,6 @@ export function signalStatus(intent: { status?: string | null; waitingOpportunit
   const status = (intent.status || "").toLowerCase();
   if (status === "archived" || status === "expired" || status === "fulfilled") return "closed";
   if (status === "paused") return "paused";
-  if ((intent.waitingOpportunityCount ?? 0) > 0) return "negotiating";
+  if ((intent.waitingOpportunityCount ?? 0) > 0) return "agents in talks";
   return "live";
 }

@@ -3,20 +3,7 @@ import { Link } from "react-router";
 import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { useAgents } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { visibleProtocolOrigin } from "@/lib/protocol-origin";
-
-/** Install steps to paste into another agent. */
-function mcpPrompt(origin: string) {
-  return `This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into a signal, then review the intros. Accept or pass only after you ask them.
-Add this as an MCP server:
-{
-  "mcpServers": {
-    "index": { "url": "${origin}/mcp" }
-  }
-}
-
-OAuth opens a browser login. An API key goes in the x-api-key header.`;
-}
+import { agentPrompt } from "@/lib/agent-prompt";
 
 const btn: CSSProperties = { textDecoration: "none", color: "inherit", cursor: "pointer" };
 
@@ -66,7 +53,7 @@ export function AddYourAgent({
   const missing = useMissingOwnAgent(onlyIfMissing);
   const [copied, setCopied] = useState<"mcp" | "cli" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const prompt = mcpPrompt(visibleProtocolOrigin());
+  const prompt = agentPrompt();
 
   useEffect(() => () => clearTimeout(timer.current), []);
 

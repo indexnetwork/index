@@ -72,6 +72,8 @@ export interface DiscoveredCounterparty {
   intentId: string;
   userId: string;
   name: string;
+  bio: string | null;
+  location: string | null;
   statement: string;
   networkId: string;
   score: number;
@@ -488,6 +490,8 @@ export class IntentService {
           intentId: row.id,
           userId: row.userId,
           name: row.name,
+          bio: row.bio,
+          location: row.location,
           statement: row.statement,
           networkId: hit.networkId,
           score: hit.score,

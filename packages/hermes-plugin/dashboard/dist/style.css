@@ -919,13 +919,6 @@
   opacity: 0.8;
 }
 
-/* Hero loader caption, so the wait is never a blank page. */
-.index-dashboard__loading-caption {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-}
-
 /* Full-page states (auth unreachable, onboarding profile failure). */
 .index-dashboard__page-state {
   display: flex;

@@ -113,7 +113,7 @@
 .hermes-backdrop--wire .hermes-backdrop-inner { padding-block: clamp(28px, 7vw, 64px); }
 .hermes-backdrop--wire::before { background-image: url("/site/hermes-backdrop-2.jpg"); background-position: center 55%; }
 
-/* ---------- negotiation history (the plugin's wire card) ---------- */
+/* ---------- agent log (the plugin's wire card) ---------- */
 .wire-card {
   --wire-fg: #1A1C20;
   --wire-muted: #7A8088;

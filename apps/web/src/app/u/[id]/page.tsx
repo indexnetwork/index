@@ -154,7 +154,7 @@ function UserProfile() {
           {/* Past Negotiations — only for authenticated users */}
           {isAuthenticated && id && (
             <div>
-              <h3 style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 }}>negotiation</h3>
+              <h3 style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 }}>agent log</h3>
               <NegotiationHistory userId={id} />
             </div>
           )}

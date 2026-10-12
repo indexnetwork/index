@@ -171,9 +171,9 @@ export function MacMock() {
 const RADAR: Array<{ name: string; line: string; awaiting?: boolean }> = [
   { name: "Chloe Garcia", line: "Meet during your upcoming trip to SF", awaiting: true },
   { name: "Lena Fischer", line: "Connect on agentic workflows and multi-agent orchestration", awaiting: true },
-  { name: "Mateo Patel", line: "Negotiation in progress" },
-  { name: "Aria Hansen", line: "Negotiation in progress" },
-  { name: "James Johnson", line: "Negotiation in progress" },
+  { name: "Mateo Patel", line: "Agents are talking" },
+  { name: "Aria Hansen", line: "Agents are talking" },
+  { name: "James Johnson", line: "Agents are talking" },
 ];
 
 export function HermesMock() {

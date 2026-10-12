@@ -129,19 +129,21 @@ export class OpportunityController {
       return Response.json({ error: 'Invalid link' }, { status: 403 });
     }
 
+    const opportunity = await opportunityService.getStoredOpportunity(id);
+    const userId = opportunity?.actors.find((entry) => entry.userId !== viewer)?.userId;
+
     const result = await opportunityService.updateOpportunityStatus(id, action === 'accept' ? 'accepted' : 'rejected', viewer);
     if ('error' in result && result.status !== 409) {
-      return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ error: result.error, ...(userId ? { userId } : {}) }, { status: result.status });
     }
 
     const values = new Set<string>();
     if (surface) {
-      const opportunity = await opportunityService.getStoredOpportunity(id);
       for (const actor of opportunity?.actors.filter((entry) => entry.userId !== viewer) ?? []) {
         for (const value of await userService.socialValuesOnSurface(actor.userId, surface)) values.add(value);
       }
     }
-    return Response.json({ values: [...values] });
+    return Response.json({ values: [...values], ...(userId ? { userId } : {}) });
   }
 
   /**

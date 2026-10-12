@@ -37,5 +37,5 @@ Always post a review comment, even when no issues are found. If everything looks
 
 ## Commit & PR Conventions
 
-- Flag PR descriptions that do not include the changelog sections: New Features, Bug Fixes, Refactors, Documentation, Tests.
+- Flag PR descriptions that do not include the changelog sections: New Features, Bug Fixes, Refactors, Documentation.
 - Note if any commit message does not follow Conventional Commits: `<type>[scope]: <description>` where type is one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`.

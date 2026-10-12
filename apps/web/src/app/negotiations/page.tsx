@@ -86,7 +86,7 @@ export default function NegotiationsPage() {
               align="start"
               framed
               style={emptyBox}
-              message="couldn't load negotiations."
+              message="couldn't load the agent log."
               action={{ label: "try again", onClick: () => void refreshNegotiations() }}
             />
           ) : threads.length === 0 ? (
@@ -94,7 +94,7 @@ export default function NegotiationsPage() {
               align="start"
               framed
               style={emptyBox}
-              message="nothing on the wire yet. your agent logs every negotiation here as it happens."
+              message="nothing on the wire yet. your agent logs every conversation with other agents here as it happens."
             />
           ) : (
             <EmptyState
@@ -120,7 +120,7 @@ export default function NegotiationsPage() {
   if (isLoading || !isAuthenticated) return null;
   return (
     <Stage width={1000} height="calc(100vh - 112px)">
-      <Window title="negotiation history" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
+      <Window title="agent log" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
           <div style={{
             padding: "10px 16px", borderBottom: "2px solid #000", background: "#fff",

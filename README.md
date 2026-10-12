@@ -171,7 +171,7 @@ Per-package detail lives in the package itself:
 
 ### Prerequisites
 
-- **Bun** 1.2+ (runtime, package manager, test runner)
+- **Bun** 1.2+ (runtime and package manager)
 - **PostgreSQL** 14+ with **pgvector** 0.5+ extension
 - **Redis** 6+ (cache, locks, and SSE)
 - **Git** 2.30+
@@ -263,9 +263,8 @@ We welcome contributions! Before submitting a Pull Request:
 1. **Get Assigned**: Comment on an existing issue or create a new one
 2. **Fork & Branch**: Create a feature branch from `dev` (not `main`)
 3. **Use Worktrees**: Work in a git worktree to keep `dev` stable
-4. **Test**: Ensure all tests pass and add tests for new features
-5. **Document**: Update relevant documentation
-6. **Submit**: Open a PR targeting `dev` with a clear description
+4. **Document**: Update relevant documentation
+5. **Submit**: Open a PR targeting `dev` with a clear description
 
 
 
@@ -285,9 +284,6 @@ herdr worktree open --path "$PWD/.worktrees/feat-your-feature" \
 
 # Start dev servers from the worktree
 bun run worktree:dev feat-your-feature
-
-# Make changes and test
-cd services/api && bun test path/to/affected.spec.ts
 
 # Submit PR targeting dev
 gh pr create --base dev --title "feat: your feature" --body "..."

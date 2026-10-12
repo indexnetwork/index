@@ -1,6 +1,6 @@
 import type { Counterparty, CounterpartyPick, Index } from "@indexnetwork/client";
 
-import { BRIEF_LIMIT, BRIEF_PROMPT, DECISIONS, principalFacts, principalOnly, recordBrief } from "./brief.ts";
+import { BRIEF_LIMIT, BRIEF_PROMPT, DECISIONS, principalFacts, principalOnly, recordBrief, screens } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
 import type { ConversationEntry, Decision, Intent, WakeAction, WakeInput, WakeResult } from "./types.ts";
@@ -78,6 +78,7 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
  * @param intent - The signal to open from.
  * @param queries - Each direction to discover separately.
  * @param since - When set, only people whose signal arrived after this ISO time.
+ * @param keep - When set, only the people it keeps are opened.
  * @returns How many distinct people were found, how many were picked, and the opportunities opened.
  */
 export async function reach(
@@ -85,6 +86,7 @@ export async function reach(
   intent: Intent,
   queries: string[],
   since?: string,
+  keep?: (candidate: Counterparty) => Promise<boolean>,
 ): Promise<{ found: number; picked: number; opened: string[] }> {
   // Each angle asks for as many as one call may open, so a single query is
   // never the reason only a handful are reached.
@@ -98,10 +100,13 @@ export async function reach(
 
   const negotiations = await client.listIntentNegotiations(intent.id);
   const started = new Set(negotiations.map((negotiation) => negotiation.counterparty.intentId));
-  const picks: CounterpartyPick[] = [...found.values()]
+  const ranked = [...found.values()]
     .filter((counterparty) => !started.has(counterparty.intentId))
     .sort((left, right) => right.score - left.score)
-    .slice(0, OPEN_LIMIT)
+    .slice(0, OPEN_LIMIT);
+  const kept = keep ? await Promise.all(ranked.map(keep)) : ranked.map(() => true);
+  const picks: CounterpartyPick[] = ranked
+    .filter((_, i) => kept[i])
     .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
   if (!picks.length) return { found: found.size, picked: 0, opened: [] };
 
@@ -406,11 +411,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             unpersisted ??= cause;
           }
         };
-        const { found, picked, opened } = await reach(client, intent, queries);
+        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
+        const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
           return found
-            ? "Everyone discovered already has an opportunity."
+            ? "No one discovered fits this signal well enough to reach, or everyone already has an opportunity."
             : "No counterparties matched those queries. Try different ones, or stop.";
         }
         // Each one is briefed and proposed on outside this wake, so discovery is

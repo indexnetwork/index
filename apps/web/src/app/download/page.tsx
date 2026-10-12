@@ -1,11 +1,9 @@
 import { useEffect, type ReactNode } from "react";
 import { ensureSiteFonts, SiteFooter, SiteNav } from "@/app/site/SiteLayout";
-import { HERMES_INSTALL_URL, MAC_APP_DOWNLOAD_URL } from "@/app/site/links";
+import CopyPromptButton from "@/app/site/CopyPromptButton";
+import { HERMES_INSTALL_URL } from "@/app/site/links";
 import "@/app/site/site.css";
 import "./download.css";
-
-/** Shown on the Index for Mac card. */
-export const MAC_APP_REQUIREMENTS = "macOS 13+, Apple silicon";
 
 /**
  * Single-viewport shell for the install pages: logo bar, a vertically centred
@@ -56,10 +54,6 @@ export function AppCard({
   );
 }
 
-export function IndexIcon() {
-  return <img className="apps-card-icon" src="/site/index-logo.png" alt="Index" />;
-}
-
 export function HermesIcon() {
   return <img className="apps-card-icon apps-card-icon--mark" src="/site/nous-research.png" alt="Hermes" />;
 }
@@ -76,27 +70,38 @@ export function WebIcon() {
   );
 }
 
-/** `/download` — post-invite install page: Mac app, Hermes plugin, web. */
+export function AgentIcon() {
+  return (
+    <span className="apps-card-icon apps-card-icon--web" aria-hidden="true">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="0.8">
+        <rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1" />
+        <path d="M10.5 5.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h2.5" />
+      </svg>
+    </span>
+  );
+}
+
+/** `/download` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
 export default function Download({ overlay }: { overlay?: boolean }) {
   return (
     <AppsShell overlay={overlay}>
       <div className="apps-intro">
-        <h1 className="site-h1 apps-title">Get the apps</h1>
+        <h1 className="site-h1 apps-title">Get Index</h1>
         <p className="site-p">
-          Install Index on macOS or add the Hermes plugin to stay connected to your networks.
+          Open the app, add the Hermes plugin, or connect the agent you already use.
         </p>
       </div>
 
-      <div className="apps-cards apps-cards--three">
+      <div className="apps-cards">
         <AppCard
-          icon={<IndexIcon />}
+          icon={<WebIcon />}
           label="APP"
-          title="Index for Mac"
-          body={`Our desktop app. ${MAC_APP_REQUIREMENTS}.`}
+          title="Index app"
+          body="Open Index and start a signal."
           action={
-            <a className="site-btn site-btn--secondary site-btn--block" href={MAC_APP_DOWNLOAD_URL}>
-              Download .dmg ↓
-            </a>
+            <div className="apps-card-actions">
+              <a className="site-btn site-btn--block" href="/login">Open app →</a>
+            </div>
           }
         />
         <AppCard
@@ -105,20 +110,20 @@ export default function Download({ overlay }: { overlay?: boolean }) {
           title="Hermes plugin"
           body="Already use Hermes? Add Index to the agent you have."
           action={
-            <a className="site-btn site-btn--secondary site-btn--block" href={HERMES_INSTALL_URL}>
-              Install plugin →
-            </a>
+            <div className="apps-card-actions">
+              <a className="site-btn site-btn--secondary site-btn--block" href={HERMES_INSTALL_URL}>Install plugin →</a>
+            </div>
           }
         />
         <AppCard
-          icon={<WebIcon />}
-          label="WEB"
-          title="Index in the browser"
-          body="The same app. Nothing to install."
+          icon={<AgentIcon />}
+          label="MCP"
+          title="Your agent"
+          body="Paste a prompt into Claude, Cursor, or any agent that takes MCP servers."
           action={
-            <a className="site-btn site-btn--secondary site-btn--block" href="/login">
-              Open Index →
-            </a>
+            <div className="apps-card-actions">
+              <CopyPromptButton className="site-btn site-btn--secondary site-btn--block" label="Copy prompt →" />
+            </div>
           }
         />
       </div>

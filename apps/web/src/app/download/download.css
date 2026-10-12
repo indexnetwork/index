@@ -39,10 +39,9 @@
 /* ---------- cards ---------- */
 .apps-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: clamp(20px, 3vw, 40px);
 }
-.apps-cards--three { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .apps-card {
   display: flex;
   flex-direction: column;
@@ -88,8 +87,7 @@
    install link drops its lead-in to fit under the button. */
 @media (max-width: 640px) {
   .apps-title.site-h1 { font-size: 30px; }
-  .apps-cards,
-  .apps-cards--three { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .apps-cards { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .apps-card {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;

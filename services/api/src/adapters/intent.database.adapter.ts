@@ -796,13 +796,15 @@ export class IntentDatabaseAdapter {
   async listCounterpartyCandidates(
     _intentId: string,
     candidateIntentIds: string[],
-  ): Promise<{ id: string; userId: string; name: string; statement: string }[]> {
+  ): Promise<{ id: string; userId: string; name: string; bio: string | null; location: string | null; statement: string }[]> {
     if (candidateIntentIds.length === 0) return [];
 
     return db.select({
       id: schema.intents.id,
       userId: schema.intents.userId,
       name: schema.users.name,
+      bio: schema.users.intro,
+      location: schema.users.location,
       statement: schema.intents.payload,
     })
       .from(schema.intents)

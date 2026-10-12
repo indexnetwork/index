@@ -16,12 +16,12 @@ const logger = log.page.from("agents");
 
 function NegotiatorBadge() {
   return (
-    <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, letterSpacing: 0.4, background: "#FF8A00", color: "#000", padding: "2px 6px", border: "1px solid #000" }}>NEGOTIATOR</span>
+    <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, letterSpacing: 0.4, background: "#FF8A00", color: "#000", padding: "2px 6px", border: "1px solid #000" }}>SPEAKS FOR YOU</span>
   );
 }
 
 function NegotiatorMark() {
-  return <span title="negotiator" style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, lineHeight: 1, color: "#000" }}>*</span>;
+  return <span title="speaks for you" style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, lineHeight: 1, color: "#000" }}>*</span>;
 }
 
 function LineButton({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
@@ -176,7 +176,7 @@ function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: strin
 export default function AgentsPage() {
   const navigate = useNavigate();
   const compact = useCompact();
-  const { isAuthenticated, isLoading: authLoading, user } = useAuthContext();
+  const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const agentsService = useAgents();
   const { success, error } = useNotifications();
 
@@ -227,8 +227,6 @@ export default function AgentsPage() {
     () => personalAgents.find((agent) => agent.handleNegotiations) ?? null,
     [personalAgents],
   );
-  const first = String(user?.name || "").trim().split(/\s+/)[0].toLowerCase();
-  const who = first ? `${first}'s agent` : "your agent";
 
   async function refreshAgents() {
     setAgents(await agentsService.list());
@@ -321,9 +319,9 @@ export default function AgentsPage() {
             />
           ) : (
             <>
-              <BandHead label="your negotiator" first />
+              <BandHead label="which agent speaks for you" first />
               <p style={{ margin: "0 0 12px", fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
-                one agent speaks for {who} in the network. index takes over if it&apos;s offline.
+                one agent speaks for you in the network. index takes over if it&apos;s offline.
               </p>
               <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderBottom: picking ? "1px solid #000" : "none" }}>
