@@ -35,8 +35,9 @@ function writeStayOnWeb() {
  *
  * A working universal link can still open the macOS app before this renders.
  * This page does not. A signed-in account with a Mac or Hermes session gets a
- * launch screen whose button opens `index://` or `hermes://`. Everyone else
- * gets the web page (`webPage`), or the download page when there is none (`/o`).
+ * launch screen whose button opens `index://` or `hermes://`. A signed-out
+ * visitor opening a profile sees that public page. Everyone else gets the web
+ * page (`webPage`), or the download page when there is none (`/o`).
  *
  * Continue on web remembers the choice in this browser. Later external opens
  * of a page that has a web view skip the launch screen. A link with no web
@@ -79,7 +80,7 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
             : target ?? "web";
 
   if (route === "pending") return null;
-  if (route === "signed-out") return <Download overlay />;
+  if (route === "signed-out") return kind === "u" && webPage ? <>{webPage}</> : <Download overlay />;
   if ((route === "mac" || route === "hermes") && !showWeb) {
     return (
       <AppLaunch

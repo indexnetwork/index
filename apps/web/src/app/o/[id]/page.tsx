@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
 import { apiUrl } from "@/lib/api";
@@ -9,7 +9,8 @@ import { parseSocial } from "@/lib/socials";
  * Opportunity link (`/o/:id`). The web has no opportunity page, so this is
  * the handoff screen: open in the Mac app or Hermes, otherwise the download page.
  * `?action=&viewer=&sig=` accepts or declines from a signed link, then
- * `?surface=` opens the other person's profile on that surface. No sign-in.
+ * `?surface=` opens the other person's profile on that surface when there is
+ * exactly one. Otherwise it opens their public profile at `/u/`. No sign-in.
  */
 export default function OpportunityLinkPage() {
   const { id } = useParams();
@@ -42,7 +43,7 @@ function ActionOpportunityLink({ id, action, viewer, sig, surface }: {
   sig: string;
   surface: string;
 }) {
-  const [hrefs, setHrefs] = useState<string[] | null>(null);
+  const navigate = useNavigate();
   const [fallback, setFallback] = useState(!id || navigator.webdriver);
 
   useEffect(() => {
@@ -53,27 +54,24 @@ function ActionOpportunityLink({ id, action, viewer, sig, surface }: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action, viewer, sig, ...(surface ? { surface } : {}) }),
     })
-      .then((res) => (res.ok ? res.json() as Promise<{ values?: string[] }> : Promise.reject(res)))
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({})) as { values?: string[]; userId?: string };
+        if (!res.ok && !body.userId) throw res;
+        return body;
+      })
       .then((body) => {
         if (cancelled) return;
         const found = surface ? surfaceHrefs(surface, body.values ?? []) : [];
         if (found.length === 1) window.location.assign(found[0]);
-        else if (found.length > 1) setHrefs(found);
+        else if (body.userId) navigate(`/u/${encodeURIComponent(body.userId)}`, { replace: true });
         else setFallback(true);
       })
       .catch(() => { if (!cancelled) setFallback(true); });
     return () => { cancelled = true; };
-  }, [id, action, viewer, sig, surface]);
+  }, [id, action, viewer, sig, surface, navigate]);
 
   if (fallback) return <AppHandoff kind="o" id={id} />;
-  if (!hrefs) return null;
-  return (
-    <main style={{ padding: 24, display: "grid", gap: 12 }}>
-      {hrefs.map((href) => (
-        <a key={href} href={href}>{href.replace(/^https:\/\//, "")}</a>
-      ))}
-    </main>
-  );
+  return null;
 }
 
 export const Component = OpportunityLinkPage;
