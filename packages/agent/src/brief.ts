@@ -1,3 +1,5 @@
+import type { Counterparty } from "@indexnetwork/client";
+
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
 import type { BriefInput, ConversationEntry, Decision, Opportunity, User, WakeAction } from "./types.ts";
@@ -146,4 +148,21 @@ export async function briefIfMissing(input: BriefInput): Promise<WakeAction[]> {
   });
 
   return recorded;
+}
+
+/**
+ * Decide a discovered person before they are reached, so a pair the brief
+ * would decline is never opened and its counterpart never reads a decline.
+ *
+ * @param input - The principal, the signal, their conversation, and the model.
+ * @param candidate - One person discovery found.
+ * @returns Whether to open them. A screen that fails opens them.
+ */
+export async function screens(input: Omit<BriefInput, "opportunity">, candidate: Counterparty): Promise<boolean> {
+  const actions = await briefIfMissing({
+    ...input,
+    opportunity: { id: candidate.intentId, counterpart: candidate.name, status: "candidate", intent: { statement: candidate.statement } },
+  }).catch(() => []);
+  const decision = actions.flatMap((action) => (action.type === "decision" ? [action.decision] : []))[0];
+  return decision !== "decline" && decision !== "stop";
 }

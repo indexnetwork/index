@@ -439,6 +439,14 @@ ${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
   });
   return recorded;
 }
+async function screens(input, candidate) {
+  const actions = await briefIfMissing({
+    ...input,
+    opportunity: { id: candidate.intentId, counterpart: candidate.name, status: "candidate", intent: { statement: candidate.statement } }
+  }).catch(() => []);
+  const decision = actions.flatMap((action) => action.type === "decision" ? [action.decision] : [])[0];
+  return decision !== "decline" && decision !== "stop";
+}
 
 // ../agent/src/negotiate.ts
 var ACTIONS = ["propose", "counter", "accept", "decline"];
@@ -638,7 +646,7 @@ function unansweredPrincipalMessage(conversation) {
   }
   return null;
 }
-async function reach(client, intent, queries, since) {
+async function reach(client, intent, queries, since, keep) {
   const results = await Promise.all(queries.map((query) => client.discover(intent.id, query, OPEN_LIMIT, since)));
   const found = new Map;
   for (const counterparty of results.flat()) {
@@ -650,7 +658,9 @@ async function reach(client, intent, queries, since) {
     return { found: 0, picked: 0, opened: [] };
   const negotiations = await client.listIntentNegotiations(intent.id);
   const started = new Set(negotiations.map((negotiation) => negotiation.counterparty.intentId));
-  const picks = [...found.values()].filter((counterparty) => !started.has(counterparty.intentId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
+  const ranked = [...found.values()].filter((counterparty) => !started.has(counterparty.intentId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT);
+  const kept = keep ? await Promise.all(ranked.map(keep)) : ranked.map(() => true);
+  const picks = ranked.filter((_, i) => kept[i]).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
   if (!picks.length)
     return { found: found.size, picked: 0, opened: [] };
   const created = await client.createOpportunities(intent.id, picks);
@@ -912,10 +922,11 @@ async function wake(input) {
             unpersisted ??= cause;
           }
         };
-        const { found, picked, opened } = await reach(client, intent, queries);
+        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...input.now ? { now: input.now } : {}, ...input.signal ? { signal: input.signal } : {} };
+        const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
-          return found ? "Everyone discovered already has an opportunity." : "No counterparties matched those queries. Try different ones, or stop.";
+          return found ? "No one discovered fits this signal well enough to reach, or everyone already has an opportunity." : "No counterparties matched those queries. Try different ones, or stop.";
         }
         input.onOpened?.(opened);
         return `Reached ${opened.length} of ${picked} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;

@@ -1,6 +1,6 @@
 import type { ConversationMessage, Index, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
-import { briefIfMissing } from "./brief.ts";
+import { briefIfMissing, screens } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
@@ -512,7 +512,12 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
   const conversation = readConversation(inbox.messages);
 
   const queries = since ? savedQueries(conversation) : [];
-  const { found, opened } = queries.length ? await reach(client, intent, queries, since) : { found: 0, opened: [] };
+  const screen = queries.length
+    ? { user: await client.me(), intent, principalConversation: conversation, model: rest.model, ...(rest.now ? { now: rest.now } : {}), ...(rest.signal ? { signal: rest.signal } : {}) }
+    : null;
+  const { found, opened } = screen
+    ? await reach(client, intent, queries, since, (candidate) => screens(screen, candidate))
+    : { found: 0, opened: [] };
   if (opened.length) {
     log(`  opened ${opened.length} who arrived since ${since}`);
     const plan = "Good morning: reaching out to people who joined since the last morning.";
