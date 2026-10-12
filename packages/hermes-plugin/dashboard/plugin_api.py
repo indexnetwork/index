@@ -987,7 +987,7 @@ def _apply_environment(name: str) -> None:
     Clears the web-origin override so login follows the API. A session from
     the previous environment is revoked there first, then dropped.
     """
-    token = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
+    token = _index_env("INDEX_SESSION_TOKEN")
     if token:
         auth_login.revoke_session(token)
     auth_login.clear_session_token()
@@ -1107,7 +1107,7 @@ def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     credential is cleared either way so a network failure cannot wedge the
     dashboard in a signed-in state it cannot use.
     """
-    token = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
+    token = _index_env("INDEX_SESSION_TOKEN")
     if token:
         auth_login.revoke_session(token)
     auth_login.clear_session_token()

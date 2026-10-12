@@ -54,24 +54,39 @@ def remove_env_file(path: Path, name: str) -> None:
     path.write_text(("\n".join(kept) + "\n") if kept else "", encoding="utf-8")
 
 
-def _stored_env(name: str) -> str:
-    """One Hermes env value, from the process or the gateway env file."""
-    value = os.environ.get(name, "").strip().strip('"').strip("'")
-    if value:
-        return value
+def _hermes_config():
+    """Hermes's `.env` reader and writers, or None outside a Hermes install."""
+    if os.environ.get("HERMES_ENV_PATH", "").strip():
+        return None
+    try:
+        from hermes_cli import config
+    except ImportError:
+        return None
+    return config
+
+
+def _env_file_value(name: str) -> str:
+    """One value from the Hermes `.env` file, ignoring the process env."""
+    hermes = _hermes_config()
+    if hermes is not None:
+        return (hermes.load_env().get(name) or "").strip()
     path = hermes_env_path()
     if not path.is_file():
         return ""
-    prefix = f"{name}="
-    export = f"export {name}="
     for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith(prefix) or stripped.startswith(export):
-            raw = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-            if raw:
-                os.environ[name] = raw
-            return raw
+        if _matches_env_key(line, name):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
     return ""
+
+
+def _stored_env(name: str) -> str:
+    """One Hermes env value, from the active profile's secret scope or its `.env` file."""
+    try:
+        from agent.secret_scope import get_secret
+    except ImportError:
+        get_secret = os.environ.get
+    value = (get_secret(name) or "").strip().strip('"').strip("'")
+    return value or _env_file_value(name)
 
 
 def _preferred_credential() -> tuple[str, bool]:
@@ -126,19 +141,28 @@ def ensure_negotiator_api_key() -> str:
     if not isinstance(key, str) or not key.strip():
         raise RuntimeError(f"{endpoint} returned no API key.")
     key = key.strip()
-    upsert_env_file(hermes_env_path(), "INDEX_API_KEY", key)
-    os.environ["INDEX_API_KEY"] = key
+    upsert_index_env("INDEX_API_KEY", key)
     return key
 
 
 def upsert_index_env(name: str, value: str, path: Path | None = None) -> None:
-    """Write one env var to the gateway Hermes env."""
+    """Write one env var to the Hermes env and publish it to this process."""
+    hermes = None if path else _hermes_config()
+    if hermes is not None:
+        hermes.save_env_value(name, value)
+        return
     upsert_env_file(path or hermes_env_path(), name, value)
+    os.environ[name] = value
 
 
 def remove_index_env(name: str, path: Path | None = None) -> None:
-    """Remove one env var from the gateway Hermes env."""
+    """Remove one env var from the Hermes env and this process."""
+    hermes = None if path else _hermes_config()
+    if hermes is not None:
+        hermes.remove_env_value(name)
+        return
     remove_env_file(path or hermes_env_path(), name)
+    os.environ.pop(name, None)
 
 
 def _normalize_origin(origin: str) -> str:
@@ -154,22 +178,11 @@ def remember_api_origin(origin: str) -> bool:
     origin = _normalize_origin(origin)
     if not origin:
         return False
-    path = hermes_env_path()
-    stored = ""
-    if path.is_file():
-        prefix = "INDEX_API_URL="
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith(prefix) or stripped.startswith(f"export {prefix}"):
-                stored = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-                break
-    previous = _normalize_origin(stored or _DEFAULT_API)
-    os.environ["INDEX_API_URL"] = origin
-    upsert_env_file(path, "INDEX_API_URL", origin)
+    previous = _normalize_origin(_env_file_value("INDEX_API_URL") or _DEFAULT_API)
+    upsert_index_env("INDEX_API_URL", origin)
     if previous == origin:
         return False
-    os.environ.pop("INDEX_API_KEY", None)
-    remove_env_file(path, "INDEX_API_KEY")
+    remove_index_env("INDEX_API_KEY")
     return True
 
 

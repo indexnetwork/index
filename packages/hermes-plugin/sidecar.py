@@ -70,7 +70,7 @@ def negotiator_child_env() -> dict[str, str]:
     keep = set(_CHILD_ENV_KEEP)
     extra = os.environ.get("INDEX_NEGOTIATOR_ENV_PASSTHROUGH", "")
     keep |= {name.strip() for name in extra.split(",") if name.strip()}
-    keep.discard("INDEX_SESSION_TOKEN")
+    keep -= {"INDEX_SESSION_TOKEN", "INDEX_NEGOTIATOR_MODULE"}
     child = {key: value for key, value in os.environ.items() if key in keep}
     child["BUN_OPTIONS"] = "--no-env-file"
     return child
@@ -92,8 +92,10 @@ class Sidecar:
     runs in a different process from the gateway that owns this child.
     """
 
-    def __init__(self, bridge, home: Path):
+    def __init__(self, bridge, home: Path, custom_negotiator=lambda: False):
+        """@param custom_negotiator - Whether the owner opted in to `$HERMES_HOME/index/negotiator.ts`."""
         self.bridge = bridge
+        self._custom_negotiator = custom_negotiator
         self.state_path = Path(home) / STATE_FILE
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
@@ -169,8 +171,10 @@ class Sidecar:
                 "INDEX_API_KEY": api_key,
                 "INDEX_AGENT_ID": agent_id,
                 "INDEX_SUPERVISOR_PID": str(os.getpid()),
-                "INDEX_NEGOTIATOR_MODULE": str(self.state_path.parent / "index" / "negotiator.ts"),
             })
+            # Hermes file tools can write this file without approval, so it runs only on opt-in.
+            if self._custom_negotiator():
+                child_env["INDEX_NEGOTIATOR_MODULE"] = str(self.state_path.parent / "index" / "negotiator.ts")
             process = subprocess.Popen(
                 [_bun(), str(BUNDLE)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,

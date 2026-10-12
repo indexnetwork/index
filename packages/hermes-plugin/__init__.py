@@ -36,7 +36,14 @@ def register(ctx):
     home = get_hermes_home()
     _remove_unmarked_desktop_copy(home)
     bridge = HermesBridge()
-    sidecar = Sidecar(bridge, home)
+
+    def custom_negotiator() -> bool:
+        try:
+            return ctx.get_config("custom_negotiator") is True
+        except Exception:  # noqa: BLE001 - an older Hermes or unreadable config stays off.
+            return False
+
+    sidecar = Sidecar(bridge, home, custom_negotiator)
     _sidecar = sidecar
     bridge.sidecar = sidecar
     events.watch(sidecar)
