@@ -138,6 +138,8 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     remainingTurns: Math.max(0, negotiation.protocol.maxTurns - negotiation.turnCount),
     actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
+    bio: negotiation.counterparty.bio,
+    location: negotiation.counterparty.location,
     ...(negotiation.introducer ? { introducer: { name: negotiation.introducer.name, context: negotiation.introducer.context } } : {}),
   };
 }

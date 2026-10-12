@@ -86,7 +86,10 @@ export interface NegotiationView {
     userId: string;
     name: string | null;
     avatar: string | null;
-    /** The counterparty's intent statement. The only thing of theirs that crosses. */
+    /** Their public profile bio and location. With the statement, all of theirs that crosses. */
+    bio: string | null;
+    location: string | null;
+    /** The counterparty's intent statement. */
     statement: string;
   };
 }
@@ -627,7 +630,7 @@ export class NegotiationDatabaseAdapter {
     const counterparts = rows.map(counterpartOf);
     const introducer = sql`${opportunities.metadata}->'introducer'`;
     const [people, statements, turnCounts, introducers] = await Promise.all([
-      connection.select({ id: users.id, name: users.name, avatar: users.avatar }).from(users)
+      connection.select({ id: users.id, name: users.name, avatar: users.avatar, intro: users.intro, location: users.location }).from(users)
         .where(inArray(users.id, [...new Set(counterparts.map((c) => c.userId))])),
       connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
         .where(inArray(intents.id, [...new Set(counterparts.map((c) => c.intentId))])),
@@ -672,6 +675,8 @@ export class NegotiationDatabaseAdapter {
           userId: counterpart.userId,
           name: person?.name ?? null,
           avatar: person?.avatar ?? null,
+          bio: person?.intro ?? null,
+          location: person?.location ?? null,
           statement: statementById.get(counterpart.intentId) ?? '',
         },
       };

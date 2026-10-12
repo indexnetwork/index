@@ -38,6 +38,8 @@ export interface Negotiation {
     userId: string;
     name: string | null;
     avatar: string | null;
+    bio: string | null;
+    location: string | null;
     statement: string;
   };
 }
@@ -74,6 +76,8 @@ export interface Counterparty {
   intentId: string;
   userId: string;
   name: string;
+  bio: string | null;
+  location: string | null;
   statement: string;
   networkId: string;
   score: number;
