@@ -104,14 +104,14 @@ export function AddYourAgent({
           action={<Link to="/agents" className="wb-btn small" style={btn}>open</Link>}
         />
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, border: "1px solid #000", background: "#fff", padding: "14px 16px 16px" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, border: "1px solid #000", background: "#fff", padding: "14px 16px 16px" }}>
+        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
           <div style={{ fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>hermes agent</div>
           <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "var(--ink-2)" }}>
             the agent you already talk to. it negotiates for you once the plugin is in.
           </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flex: "0 1 auto", minWidth: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flex: "1 1 auto", minWidth: 0 }}>
           <a className="wb-btn small" href={HERMES_INSTALL_URL} style={btn}>install desktop</a>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, minWidth: 0, maxWidth: "100%" }}>
             <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4, color: "#000", padding: "4px 6px", background: "#F2F0EC", overflowWrap: "anywhere" }}>{HERMES_INSTALL_COMMAND}</span>
