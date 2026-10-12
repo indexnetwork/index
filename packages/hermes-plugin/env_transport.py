@@ -82,9 +82,15 @@ def _env_file_value(name: str) -> str:
 def _stored_env(name: str) -> str:
     """One Hermes env value, from the active profile's secret scope or its `.env` file."""
     try:
-        from agent.secret_scope import get_secret
+        from agent.secret_scope import build_profile_secret_scope, current_secret_scope, get_secret, is_multiplex_active
     except ImportError:
         get_secret = os.environ.get
+    else:
+        if is_multiplex_active() and current_secret_scope() is None:
+            # The plugin's own threads run outside a turn; they act for this server's profile.
+            from hermes_constants import get_hermes_home
+
+            get_secret = build_profile_secret_scope(get_hermes_home()).get
     value = (get_secret(name) or "").strip().strip('"').strip("'")
     return value or _env_file_value(name)
 
