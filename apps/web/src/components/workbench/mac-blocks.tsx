@@ -110,14 +110,14 @@ export function MatchCard({
             <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>in progress</span>
             <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
               <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
-              negotiating ›
+              agent log ›
             </button>
           </>
         ) : expired ? (
           <>
             <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>{closedLabel || "missed"}</span>
             <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
-              negotiation ›
+              agent log ›
             </button>
           </>
         ) : null}
@@ -345,7 +345,7 @@ export function SignalAction({ label, active = false, onClick, danger = false }:
 }
 
 export function PipelineFunnel({ stages, activeStage, onClickStage }: {
-  stages: Array<{ label: string; count: number; accent?: boolean }>;
+  stages: Array<{ label: string; display?: string; count: number; accent?: boolean }>;
   activeStage: string;
   onClickStage: (label: string) => void;
 }) {
@@ -365,7 +365,7 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
             key={stage.label}
             type="button"
             onClick={() => onClickStage(isActive ? "all" : stage.label)}
-            title={`${stage.label} · ${stage.count}`}
+            title={`${stage.display ?? stage.label} · ${stage.count}`}
             style={{
               position: "relative", minWidth: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
@@ -380,7 +380,7 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
             <span style={{
               display: "block", width: "100%", overflow: "hidden", textAlign: "center",
               fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", lineHeight: 1,
-            }}>{stage.label}</span>
+            }}>{stage.display ?? stage.label}</span>
             {!last && <span aria-hidden style={{ position: "absolute", right: 0, top: 12, bottom: 12, width: 1.5, background: "#111" }} />}
           </button>
         );

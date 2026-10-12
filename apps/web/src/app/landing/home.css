@@ -11,36 +11,36 @@
 }
 .home-access p { margin: 0; }
 
-.home-available-label {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: .1em;
-  line-height: 1;
-  color: var(--muted);
-}
-
-/* One chip per platform, sized and squared like the site buttons. */
+/* Hero buttons: one filled primary ("Open app"), the rest outlined. */
 .home-platforms { display: flex; flex-wrap: wrap; gap: 8px; }
-.site a.home-platform {
+.site .home-platform {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  font-family: var(--sans);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
-  color: var(--ink);
-  background: transparent;
-  border: 1px solid rgba(4, 23, 41, .45);
+  color: var(--bg);
+  background: var(--ink);
+  border: 1px solid var(--ink);
   border-radius: 0;
   text-decoration: none;
-  transition: background-color 120ms ease, color 120ms ease;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.site a.home-platform:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.site .home-platform:hover { background: var(--blue); border-color: var(--blue); color: var(--bg); }
+.site .home-platform--secondary { color: var(--ink); background: transparent; }
+.site .home-platform--secondary:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.site .home-platform:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .home-platform svg { width: 13px; height: 13px; display: block; flex: none; }
 .home-platform-logo { width: 14px; height: 14px; display: block; flex: none; object-fit: contain; }
-.site a.home-platform:hover .home-platform-logo { filter: invert(1); }
+.site .home-platform--secondary:hover .home-platform-logo { filter: invert(1); }
+.home-platform-arrow { margin-left: 4px; transition: transform 120ms ease; }
+.site .home-platform:hover .home-platform-arrow { transform: translateX(2px); }
 
 /* "We took discovery out of the feeds": the drawing is centered on the body,
    and the body wraps its silhouette (FeedsFlow.tsx). */

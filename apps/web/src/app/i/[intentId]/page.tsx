@@ -451,6 +451,7 @@ function IntentDetail() {
         onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
         stages={RADAR_STAGES.map((stage) => ({
           label: stage,
+          display: stage === "negotiating" ? "in talks" : stage,
           count: bucketCounts[stage] ?? 0,
           accent: stage === "awaiting you" || stage === "accepted",
         }))}
@@ -643,7 +644,7 @@ function IntentDetail() {
 
 function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, pane: "stage" | "profile" | "negotiation", notOnIndex = false) {
   if (pane === "profile") return "profile";
-  if (pane === "negotiation") return "negotiation";
+  if (pane === "negotiation") return "agent log";
   // Someone not on Index has no chat; their accepted stage is the invite.
   if (bucket === "accepted" && notOnIndex) return "invite";
   return personWindowTitle(bucket);
@@ -773,7 +774,7 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
         )}
         <Btn small primary={!canSend} onClick={copy}>{copied ? "copied" : "copy invite link"}</Btn>
         {onNegotiation && (
-          <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>negotiation ›</Btn></span>
+          <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>agent log ›</Btn></span>
         )}
       </div>
     </div>
@@ -834,7 +835,7 @@ function PersonPane({
             </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
               {bucket === "closed"
-                ? <>This negotiation closed. This isn&apos;t a chat with {name}.</>
+                ? <>The agents finished talking. This isn&apos;t a chat with {name}.</>
                 : <>The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.</>}
             </div>
           </div>
@@ -863,7 +864,7 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <PersonHead name={name} photo={item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} onOpenProfile={openProfile} action={intentId && (
-          <Btn small onClick={() => onPane("negotiation")}>negotiation ›</Btn>
+          <Btn small onClick={() => onPane("negotiation")}>agent log ›</Btn>
         )} />
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
           <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
@@ -918,7 +919,7 @@ function PersonPane({
           </span>
         ) : null}
         {intentId && (
-          <Btn small onClick={() => onPane(bucket === "negotiating" ? "stage" : "negotiation")}>negotiation ›</Btn>
+          <Btn small onClick={() => onPane(bucket === "negotiating" ? "stage" : "negotiation")}>agent log ›</Btn>
         )}
       </div>
     </div>

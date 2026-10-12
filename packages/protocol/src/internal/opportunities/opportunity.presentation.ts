@@ -477,7 +477,7 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   const narratorRemark = `Currently negotiating · turn ${turnCount}`;
 
   return {
-    headline: "Negotiation in progress",
+    headline: "Agents are talking",
     personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
     suggestedAction: "Check back shortly — no action needed yet.",
     narratorRemark,

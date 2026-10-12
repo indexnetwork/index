@@ -851,7 +851,7 @@
         onClick: function (event) { event.stopPropagation(); },
       },
         React.createElement("div", { className: "index-agent-header__dialog-head" },
-          React.createElement("span", { id: "index-agent-negotiator-title", className: "index-agent-header__dialog-eyebrow" }, "CHANGE NEGOTIATOR"),
+          React.createElement("span", { id: "index-agent-negotiator-title", className: "index-agent-header__dialog-eyebrow" }, "WHICH AGENT SPEAKS FOR YOU"),
           React.createElement("button", {
             type: "button",
             className: "index-agent-header__close",
@@ -1112,7 +1112,7 @@
 
   const RADAR_BUCKETS = [
     { key: "pending", label: "Awaiting you" },
-    { key: "negotiating", label: "negotiating" },
+    { key: "negotiating", label: "in talks" },
     { key: "accepted", label: "accepted" },
     { key: "closed", label: "Closed" },
   ];
@@ -1351,7 +1351,7 @@
             onClick: function () { props.onOpenNegotiation(opportunity); },
           },
             React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
-            "negotiation",
+            "agent log",
             React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
           ) : null,
         ].filter(Boolean);
@@ -1406,7 +1406,7 @@
                 className: "index-dashboard__opp-negotiating",
                 onClick: function () { props.onOpenNegotiation(opportunity); },
               },
-                "negotiation",
+                "agent log",
                 React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
               ),
             )
@@ -1419,7 +1419,7 @@
                 onClick: function () { props.onOpenNegotiation(opportunity); },
               },
                 React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
-                "negotiating",
+                "agent log",
                 React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
               ),
             )
@@ -2864,7 +2864,7 @@
 
     return React.createElement("section", { className: "index-dashboard__wire-card" },
       React.createElement("div", { className: "index-dashboard__wire-head" },
-        React.createElement("h2", { className: "index-dashboard__card-title" }, "Negotiation history"),
+        React.createElement("h2", { className: "index-dashboard__card-title" }, "Agent log"),
         // Counts only once there is something to count; a row of zeros under
         // the empty line says the same thing twice.
         all.length
@@ -2881,14 +2881,14 @@
               // No account id means the bootstrap could not say who you are,
               // so there is nothing to read until it does.
               ? React.createElement("div", { className: "index-dashboard__wire-note" },
-                React.createElement("p", null, "couldn't load negotiation history."),
+                React.createElement("p", null, "couldn't load the agent log."),
                 props.onRetry
                   ? React.createElement("button", { type: "button", className: "index-dashboard__wire-retry", onClick: props.onRetry }, "try again")
                   : null)
               : threads === null
               ? React.createElement("p", { className: "index-dashboard__wire-note" }, failed ? "couldn't read the wire, retrying…" : "reading the wire…")
               : events.length === 0
-                ? React.createElement("p", { className: "index-dashboard__wire-empty" }, "nothing on the wire yet. your agent logs every negotiation here as it happens.")
+                ? React.createElement("p", { className: "index-dashboard__wire-empty" }, "nothing on the wire yet. your agent logs every conversation with other agents here as it happens.")
                 : events.map(line),
             React.createElement("span", { className: "index-dashboard__wire-cursor", "aria-hidden": "true" }, "▌"))),
         away
@@ -3855,14 +3855,14 @@
           if (!alive) return;
           if (!payload || payload.success === false) {
             console.warn("[index] negotiation read failed", payload && payload.error);
-            setErr("couldn't load this negotiation.");
+            setErr("couldn't load this agent log.");
             return;
           }
           setData(payload.negotiation || { turns: [] });
         })
         .catch(function (e) {
           console.warn("[index] negotiation read failed", e);
-          if (alive) setErr("couldn't load this negotiation.");
+          if (alive) setErr("couldn't load this agent log.");
         });
       return function () { alive = false; };
     }, [opportunityId, attempt]);
@@ -3887,7 +3887,7 @@
           err
             ? React.createElement(EmptyState, { tone: "error", message: err, action: { label: "try again", onClick: function () { setAttempt(function (n) { return n + 1; }); } } })
             : !data
-              ? React.createElement(EmptyState, { tone: "loading", message: "loading the negotiation\u2026" })
+              ? React.createElement(EmptyState, { tone: "loading", message: "loading the agent log\u2026" })
               : turns.length
                 ? turns.map(function (turn) {
                   return React.createElement("div", {
@@ -4714,7 +4714,7 @@
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       error ? React.createElement("div", { className: "index-dashboard__error" }, error) : null,
       React.createElement(ProfileField, {
-        label: "Who negotiates for you",
+        label: "Which agent speaks for you",
         hint: "index negotiates for you until you choose one of your own agents.",
       },
         React.createElement("div", { className: "index-dashboard__agent-rows" },

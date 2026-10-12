@@ -295,7 +295,7 @@ export default function DiscoverHome() {
                     {([
                       { id: "settings", label: "settings", danger: false },
                       { id: "notifications", label: "notifications", danger: false },
-                      { id: "history", label: "negotiation history", danger: false },
+                      { id: "history", label: "agent log", danger: false },
                       { id: "signout", label: "sign out", danger: true },
                     ] as const).map((item) => (
                       <button

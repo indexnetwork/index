@@ -135,7 +135,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
           tone="error"
           framed
           style={{ padding: "28px 16px", borderColor: "#000" }}
-          message="couldn't load negotiations."
+          message="couldn't load the agent log."
           action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
         />
       )}
@@ -144,7 +144,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         <EmptyState
           framed
           style={{ padding: "28px 16px", borderColor: "#000" }}
-          message="nothing on the wire yet. your agent logs every negotiation here as it happens."
+          message="nothing on the wire yet. your agent logs every conversation with other agents here as it happens."
         />
       )}
 

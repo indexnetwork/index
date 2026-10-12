@@ -35,9 +35,9 @@ export function radarEmptyLine(bucket: RadarBucket): string {
   return EMPTY_RADAR[bucket];
 }
 
-export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "profile" | "chat" | "negotiation" | "summary" {
+export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "profile" | "chat" | "agent log" | "summary" {
   if (bucket === "accepted") return "chat";
-  if (bucket === "negotiating") return "negotiation";
-  if (bucket === "closed") return "negotiation";
+  if (bucket === "negotiating") return "agent log";
+  if (bucket === "closed") return "agent log";
   return "profile";
 }

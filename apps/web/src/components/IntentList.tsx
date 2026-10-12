@@ -103,7 +103,7 @@ export default function IntentList<T extends BaseIntent>({
         const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
         const status = (intent.status || "active").toLowerCase();
         const label = signalStatus(intent);
-        const running = label === "live" || label === "negotiating";
+        const running = label === "live" || label === "agents in talks";
         const pending = status === "active" ? (intent.waitingOpportunityCount ?? 0) : 0;
         return (
           <button

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ensureLandingFonts } from "@/app/landing/fonts";
 
 /**
- * Animated replay of the Hermes plugin's "Negotiation history" card (the Mac
+ * Animated replay of the Hermes plugin's "Agent log" card (the Mac
  * app's wire stream): turns from several threads interleave in one tail -f
  * log, each thread ends in a closed/open line, and the header counts move as
  * threads settle. Counterparties are named people; the script is
@@ -77,9 +77,9 @@ export default function NegotiationWire() {
   const open = sessions - won - lost;
 
   return (
-    <div className="wire-card" aria-label="Example negotiation history from the Index plugin for Hermes">
+    <div className="wire-card" aria-label="Example agent log from the Index plugin for Hermes">
       <div className="wire-head">
-        <span className="wire-title">Negotiation history</span>
+        <span className="wire-title">Agent log</span>
         <span className="wire-counts">
           <b>{sessions}</b> sessions · <b>{won}</b> ✓ · <b>{lost}</b> ✕ · <b>{open}</b> open
         </span>
