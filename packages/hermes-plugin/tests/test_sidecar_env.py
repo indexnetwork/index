@@ -20,11 +20,13 @@ class NegotiatorChildEnvTest(unittest.TestCase):
             "PATH": "/usr/bin",
             "HOME": "/tmp/home",
             "BUN_OPTIONS": "--env-file=.env",
-            "INDEX_NEGOTIATOR_ENV_PASSTHROUGH": "SSL_CERT_FILE,INDEX_SESSION_TOKEN",
+            "INDEX_NEGOTIATOR_ENV_PASSTHROUGH": "SSL_CERT_FILE,INDEX_SESSION_TOKEN,INDEX_NEGOTIATOR_MODULE",
+            "INDEX_NEGOTIATOR_MODULE": "/tmp/negotiator.ts",
             "SSL_CERT_FILE": "/tmp/ca.pem",
         }, clear=True):
             env = negotiator_child_env()
         self.assertNotIn("INDEX_SESSION_TOKEN", env)
+        self.assertNotIn("INDEX_NEGOTIATOR_MODULE", env)
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertEqual(env["PATH"], "/usr/bin")
         self.assertEqual(env["HOME"], "/tmp/home")

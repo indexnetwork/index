@@ -53,7 +53,7 @@ class HermesModel implements Model {
   }
 }
 
-/** The resident's negotiator, when `$HERMES_HOME/index/negotiator.ts` exists. A missing file uses the built-in negotiator. */
+/** The resident's negotiator. The sidecar names it only when `custom_negotiator` is on; otherwise, or with no file, the built-in negotiator runs. */
 async function loadHook(): Promise<NegotiateHook | undefined> {
   const modulePath = process.env.INDEX_NEGOTIATOR_MODULE?.trim();
   if (!modulePath || !existsSync(modulePath)) return undefined;

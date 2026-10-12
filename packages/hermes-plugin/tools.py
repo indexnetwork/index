@@ -17,7 +17,7 @@ import urllib.parse
 from subprocess import run as run_process
 from typing import Any
 
-from .env_transport import TransportError, upsert_index_env
+from .env_transport import TransportError, _stored_env, upsert_index_env
 from .transport import get_transport, reset_transport, set_transport_for_tests
 
 # Universal-link host for Index deep links. The macOS app claims /o/*, /u/* and
@@ -87,7 +87,7 @@ def _app_base_url() -> str:
     every relative path compare equal to it in `index_open_app` and turn that
     tool into a generic local-file opener.
     """
-    raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
+    raw = _stored_env("INDEX_APP_BASE_URL").rstrip("/")
     if not raw:
         return INDEX_APP_BASE_URL
     try:

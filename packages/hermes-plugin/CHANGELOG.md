@@ -15,7 +15,7 @@
 
 ### Added
 - Escape closes the topmost modal, or leaves a signal for the list. In a field with text it only leaves the field.
-- `$HERMES_HOME/index/negotiator.ts`, when present, runs before the built-in negotiator on each turn. It can take the turn, stall, or call `next()` to use the built-in negotiator. No file leaves negotiation unchanged. The process reads the file when it starts.
+- With `plugins.entries.index-network.settings.custom_negotiator: true`, `$HERMES_HOME/index/negotiator.ts`, when present, runs before the built-in negotiator on each turn. It can take the turn, stall, or call `next()` to use the built-in negotiator. The setting is off by default, so a file written by a Hermes file tool does not run on its own. With the setting off or no file, negotiation is unchanged. The process reads both when it starts.
 - `hermes index login` signs this device in from a terminal. On a headless host, paste the address the browser lands on. `hermes index status` and `hermes index logout` go with it.
 - With no session, the plugin calls Index with `INDEX_API_KEY` (`x-api-key`). Registering an agent and choosing the negotiator still need a session.
 - `index_create_intent` and `index_list_opportunities` descriptions say when to
