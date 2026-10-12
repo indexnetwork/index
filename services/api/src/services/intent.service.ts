@@ -10,6 +10,9 @@ import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
 
+/** Client-owned sourceType whose creates skip admission. Resident-authored text, so no verifier gate. */
+const AGENTVILLAGE_SOURCE_TYPE = 'agentvillage';
+
 /** Stable typed failure for a description verification refused to admit. */
 export class IntentCreateRejectedError extends Error {
   readonly code = 'intent_rejected' as const;
@@ -224,6 +227,9 @@ export class IntentService {
     let preparation;
     if (preparationReceipt) {
       preparation = await readPreparationReceipt(userId, description, preparationReceipt);
+    } else if (source.sourceType === AGENTVILLAGE_SOURCE_TYPE) {
+      // Agentvillage signals are the resident's own words; admission is skipped and no measurements are taken.
+      preparation = { metadata: null };
     } else {
       const result = await this.runPrepare({ payload: description });
       if (result.status !== 'ready') throw new IntentCreateRejectedError(result.feedback);
