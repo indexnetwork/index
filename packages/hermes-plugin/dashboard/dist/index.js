@@ -4406,13 +4406,10 @@
   // twice would read as the loader repeating rather than as two pieces of work.
   // Desktop fetches the art through the plugin backend, so it can arrive a
   // beat after mount; hold the space empty rather than flash a second loader.
-  // The caption is always there, so the wait reads as a wait even before
-  // the art has arrived.
   function HeroLoader() {
     const src = LOADING_IMAGE();
-    return React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero", role: "status" },
+    return React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero", role: "status", "aria-label": "loading" },
       src ? React.createElement("img", { className: "index-dashboard__loading-anim", src: src, alt: "", "aria-hidden": "true", loading: "eager" }) : null,
-      React.createElement("p", { className: "index-dashboard__loading-caption" }, "loading\u2026"),
     );
   }
 

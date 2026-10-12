@@ -14,7 +14,6 @@ The dashboard exposes intent work, opportunities, networks, profile context, and
 
 ```bash
 bun run build:desktop
-python3 tests/smoke.py
 ```
 
 Edit `dashboard/dist/` directly. Do not edit `desktop/plugin.js`.
