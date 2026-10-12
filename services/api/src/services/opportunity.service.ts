@@ -291,7 +291,7 @@ export class OpportunityService {
       },
       viewerRole: viewerActor?.role,
       mainText: '',
-      cta: 'Take a look',
+      cta: '',
       headline: '',
       primaryActionLabel: getPrimaryActionLabel(viewerActor?.role ?? 'party'),
       secondaryActionLabel: 'Skip',

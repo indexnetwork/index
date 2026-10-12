@@ -31,7 +31,7 @@ export interface UserInfo {
 // ──────────────────────────────────────────────────────────────────────
 
 /** Cache namespace for opportunity presentation copy. Bump to invalidate copy safety changes. */
-export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v2";
+export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v3";
 
 export function buildOpportunityCardCacheKey(
   opportunityId: string,
@@ -39,7 +39,7 @@ export function buildOpportunityCardCacheKey(
   focusedViewerIntentId?: string,
 ): string {
   const scope = focusedViewerIntentId ? `:intent:${focusedViewerIntentId}` : "";
-  return `card:${opportunityId}:${viewerId}${scope}`;
+  return `card:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:${opportunityId}:${viewerId}${scope}`;
 }
 
 export function buildApiChatCardPresentationCacheKey(
@@ -78,6 +78,10 @@ const LLM_TIMEOUT_MS = 20_000;
 const GREETING_DESCRIPTION =
   "A 2-4 sentence first-person message the viewer could send to the counterpart, in the viewer's voice, referencing what they have in common. Plain prose only — no markdown, no greeting prefix like 'Hey {Name},'. Example body: 'Saw we're both working on regenerative coordination tooling — your post on consent flows resonated. Would love to compare notes if you have time this week.'";
 
+/** Shown under the person's name on cards and in the morning email, so it carries context, not a button label. */
+const SUGGESTED_ACTION_DESCRIPTION =
+  "One short line (max ~70 chars) on what this connection is about for the viewer: the concrete topic, need, or plan the two share, e.g. 'Coffee in SF on agent verification workflows' or 'Beta-testing your journaling app with her writers circle'. Never open with an instruction or UI verb such as 'Accept', 'Send a message', 'Schedule', 'Connect', 'Reach out', 'Review', or 'Check'; the card's buttons already carry the action.";
+
 // ──────────────────────────────────────────────────────────────
 // SCHEMA & TYPES
 // ──────────────────────────────────────────────────────────────
@@ -93,7 +97,7 @@ const PresentationSchema = z.object({
     .describe(
       "2-3 sentence explanation using 'you' language, explaining why this opportunity is specifically valuable for the viewer based on their intents and profile",
     ),
-  suggestedAction: z.string().describe("Brief suggested next step"),
+  suggestedAction: z.string().describe(SUGGESTED_ACTION_DESCRIPTION),
   greeting: z.string().max(500).describe(GREETING_DESCRIPTION),
 });
 
@@ -126,9 +130,7 @@ export const CardLLMSchema = z.object({
     .describe(
       "2-3 sentence explanation in 'you' language for the main card body",
     ),
-  suggestedAction: z
-    .string()
-    .describe("Brief suggested next step (e.g. CTA line)"),
+  suggestedAction: z.string().describe(SUGGESTED_ACTION_DESCRIPTION),
   narratorRemark: z
     .string()
     .max(80)
@@ -177,7 +179,9 @@ export interface PresenterInput {
 const systemPrompt = `
 You are an expert at presenting connection opportunities to users in a way that feels personal and compelling.
 
-Your goal: Given raw context about the viewer (their profile, intents), the other person(s), and why the system matched them, produce a short headline, a personalized summary, and a suggested action.
+Your goal: Given raw context about the viewer (their profile, intents), the other person(s), and why the system matched them, produce a short headline, a personalized summary, and a suggestedAction.
+
+suggestedAction: ${SUGGESTED_ACTION_DESCRIPTION}
 
 Rules:
 1. Address the VIEWER directly using "you" and "your". This is for them.
@@ -199,7 +203,6 @@ Rules:
 - If this is an introduction: mention who introduced them and frame it as a personal recommendation.
 - Headline: one short line that hooks (e.g., "[Name] thinks you should meet [Other]" or "A React expert who needs your design skills").
 - Personalized summary: 2-3 sentences. Why is this opportunity for *them*? If introduced, lead with the introduction.
-- Suggested action: encourage action ("Send a message to start the conversation" or "Share this intro").
 
 **If viewer is "agent":**
 - They are seeing this because someone already reached out.
@@ -207,14 +210,12 @@ Rules:
 - Reference their skills/expertise that make them a match.
 - Headline: what the other person needs that they can provide.
 - Personalized summary: 2-3 sentences. Why someone reached out to them.
-- Suggested action: "Someone is interested in connecting — check their message" or "Review and respond".
 
 **If viewer is "peer":**
 - Mutual opportunity. Reference shared or complementary interests.
 - If this is an introduction: mention who connected them.
 - Headline: the mutual connection angle.
 - Personalized summary: 2-3 sentences. Why this is mutually valuable.
-- Suggested action: "Send an intro to connect" or "Start a conversation".
 `;
 
 const homeCardSystemPrompt = `
@@ -223,7 +224,7 @@ You are an expert at presenting connection opportunities for an opportunity card
 Given context about the viewer, the other person, and why they were matched, produce:
 1. headline: one short hook line.
 2. personalizedSummary: 2-3 sentences in "you" language (main body text).
-3. suggestedAction: one brief suggested next step.
+3. suggestedAction: ${SUGGESTED_ACTION_DESCRIPTION}
 4. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
 5. greeting: a 2-4 sentence first-person message the viewer could send to the counterpart. Plain prose, no greeting prefix, no markdown.
 7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
@@ -479,7 +480,7 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   return {
     headline: "Agents are talking",
     personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
-    suggestedAction: "Check back shortly — no action needed yet.",
+    suggestedAction: "Your agents are still working out the fit",
     narratorRemark,
     mutualIntentsLabel: input.mutualIntentCount && input.mutualIntentCount > 0
       ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
