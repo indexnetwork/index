@@ -53,13 +53,10 @@ enum HermesSetup {
         }
         progress("writing session into ~/.hermes/.env")
         do {
-            var env = [
+            let env = [
                 ("INDEX_SESSION_TOKEN", sessionToken),
                 ("INDEX_API_URL", AppConfig.apiURL),
             ]
-            if !AppConfig.indexEarlyNetworkId.isEmpty {
-                env.append(("INDEX_EARLY_NETWORK_ID", AppConfig.indexEarlyNetworkId))
-            }
             try writeEnv(env)
         } catch {
             return ["ok": false, "error": "could not write ~/.hermes/.env"]
