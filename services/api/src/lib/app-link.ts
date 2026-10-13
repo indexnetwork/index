@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+import { resolveProtocolBaseUrl } from './protocol-url';
+
 const APP_URL = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
 export type LinkAction = 'accept' | 'decline';
@@ -30,6 +32,23 @@ function sign(id: string, viewer: string, action: LinkAction): string {
 export function actionLink(opportunityId: string, viewerId: string, action: LinkAction): string {
   const query = new URLSearchParams({ action, viewer: viewerId, sig: sign(opportunityId, viewerId, action) });
   return `${appLink('o', opportunityId)}?${query}`;
+}
+
+function signMorningOff(userId: string): string {
+  return createHmac('sha256', secret()).update(`morning-off:${userId}`).digest('base64url');
+}
+
+/** Signed link that turns the daily brief off. Nothing happens until the page is confirmed. */
+export function morningOffLink(userId: string): string {
+  const query = new URLSearchParams({ user: userId, sig: signMorningOff(userId) });
+  return `${resolveProtocolBaseUrl()}/api/unsubscribe/morning?${query}`;
+}
+
+/** True when `sig` was minted for turning this user's daily brief off. */
+export function isSignedMorningOff(userId: string, sig: string): boolean {
+  const expected = Buffer.from(signMorningOff(userId));
+  const given = Buffer.from(sig);
+  return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 /** True when `sig` was minted for this opportunity, viewer, and action. */

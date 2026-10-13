@@ -11,6 +11,7 @@ export const executeSendEmail = async (options: {
   html: string;
   text: string;
   headers?: Record<string, string>;
+  from?: string;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
@@ -67,7 +68,7 @@ ${options.html}
 
   try {
     const result = await resend!.emails.send({
-      from: 'Index Network <updates@agent.index.network>',
+      from: options.from ?? 'Index Network <updates@agent.index.network>',
       to: recipient,
       replyTo: 'hello@index.network',
       subject: options.subject,

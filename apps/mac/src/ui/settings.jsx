@@ -359,7 +359,7 @@ const NOTIFY_OPTIONS = [
   { id:"messages",  title:"a message arrives",
     blurb:"a connection wrote to you." },
   { id:"morningBrief", title:"daily brief",
-    blurb:"your agent looks again at 08:00, and speaks only when it has something new." },
+    blurb:"your agent looks again at 08:00, and emails you only when it needs you." },
 ];
 
 // The OS permission is not one of the toggles below: those choose which events
