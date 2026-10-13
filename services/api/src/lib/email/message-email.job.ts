@@ -22,14 +22,17 @@ if not score or tonumber(score) > tonumber(ARGV[2]) then return 0 end
 return redis.call('ZREM', KEYS[1], ARGV[1])
 `;
 
+interface UnreadMessage {
+  text: string | null;
+  senderName: string | null;
+  senderId: string | null;
+}
+
 interface DueMessage {
   email: string;
   name: string;
   off: boolean;
-  unread: number;
-  preview: string | null;
-  senderName: string | null;
-  senderId: string | null;
+  messages: UnreadMessage[] | string | null;
 }
 
 /**
@@ -59,13 +62,14 @@ async function dueMessage(recipientId: string, conversationId: string): Promise<
         SELECT 1 FROM ${schema.userNotificationSettings} s
         WHERE s.user_id = u.id AND s.preferences->>'messages' = 'false'
       ) AS off,
-      unread.unread, unread.preview, unread.sender_name AS "senderName", unread.sender_id AS "senderId"
+      unread.messages
     FROM ${schema.users} u
     LEFT JOIN LATERAL (
-      SELECT count(*)::int AS unread,
-        (array_agg(m.parts->0->>'text' ORDER BY m.created_at DESC))[1] AS preview,
-        (array_agg(sender.name ORDER BY m.created_at DESC))[1] AS sender_name,
-        (array_agg(m.sender_id ORDER BY m.created_at DESC))[1] AS sender_id
+      SELECT json_agg(json_build_object(
+        'text', m.parts->0->>'text',
+        'senderName', sender.name,
+        'senderId', m.sender_id
+      ) ORDER BY m.created_at) AS messages
       FROM ${schema.messages} m
       INNER JOIN ${schema.conversationParticipants} p
         ON p.conversation_id = m.conversation_id AND p.participant_id = u.id
@@ -79,6 +83,12 @@ async function dueMessage(recipientId: string, conversationId: string): Promise<
   return row ?? null;
 }
 
+function unreadMessages(value: DueMessage['messages']): UnreadMessage[] {
+  if (!value) return [];
+  const parsed = typeof value === 'string' ? JSON.parse(value) as UnreadMessage[] : value;
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 function fromHeader(name: string): string {
   const safe = name.replace(/[\r\n<>"]/g, '').trim() || 'Someone';
   return `${safe} via Index <updates@agent.index.network>`;
@@ -88,14 +98,14 @@ async function sendDue(member: string): Promise<void> {
   const split = member.indexOf(':');
   if (split <= 0) return;
   const due = await dueMessage(member.slice(0, split), member.slice(split + 1));
-  if (!due || due.off === true || !due.email || Number(due.unread) < 1 || !due.senderId) return;
-  const senderName = due.senderName?.trim() || 'Someone';
+  const messages = unreadMessages(due?.messages ?? null).filter((message) => message.text?.trim() && message.senderId);
+  if (!due || due.off === true || !due.email || !messages.length) return;
+  const latest = messages[messages.length - 1];
+  const senderName = latest.senderName?.trim() || 'Someone';
   const email = newMessageTemplate({
     recipientName: due.name,
-    senderName,
-    count: Number(due.unread),
-    preview: due.preview ?? '',
-    url: `${APP_URL}/u/${encodeURIComponent(due.senderId)}/chat`,
+    messages: messages.map((message) => ({ senderName: message.senderName?.trim() || 'Someone', text: message.text ?? '' })),
+    url: `${APP_URL}/u/${encodeURIComponent(latest.senderId ?? '')}/chat`,
     settingsUrl: `${APP_URL}/settings?tab=notifications`,
   });
   await executeSendEmail({ to: due.email, from: fromHeader(senderName), ...email });
