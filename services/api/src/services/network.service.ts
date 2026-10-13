@@ -1,4 +1,5 @@
 import { log } from '../lib/log';
+import { getNetworkPulseSummary, SUMMARY_MIN_MEMBERS } from '../lib/network-pulse-summary';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
@@ -206,11 +207,20 @@ export class NetworkService {
   /**
    * Get a network by its invitation share code (public, no auth required).
    * @param code - The invitation share code from the URL
-   * @returns The network with owner info and member count, or null if not found
+   * @returns The network with owner info, member count and its activity
+   *   (`pulse`: counts and an aggregate summary, no single signal), or null if not found
    */
   async getNetworkByShareCode(code: string) {
     logger.verbose('Getting network by share code');
-    return this.adapter.getNetworkByShareCode(code);
+    const network = await this.adapter.getNetworkByShareCode(code);
+    if (!network) return null;
+    // Small networks get counts only: a summary or a log of a few people points at them.
+    const detailed = network._count.members >= SUMMARY_MIN_MEMBERS;
+    const { recentSignals, recentPairs, ...counts } = await this.adapter.getNetworkSharePulse(network.id, detailed);
+    const { summary, negotiations: negotiationSummary } = detailed
+      ? await getNetworkPulseSummary(network.id, { networkTitle: network.title, signals: recentSignals, negotiations: recentPairs })
+      : { summary: null, negotiations: null };
+    return { ...network, pulse: { ...counts, summary, negotiationSummary } };
   }
 
   /**

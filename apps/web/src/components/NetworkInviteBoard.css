@@ -1,0 +1,295 @@
+/* Invite landing (`/l/:code`), ready state, in the public site's language
+   (site.css tokens, same as the landing page): Source Serif display, light
+   Public Sans body, mono small caps for labels, cream cards with the pale
+   green rule, navy buttons that turn blue on hover. Two cards sit on the
+   app's dotted blue desktop. The browser sign-in reuses SiteSignIn.css. */
+
+.site.invite-wb {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* Bottom room so the pinned link never covers the end of a card. */
+  padding: 56px 24px 72px;
+  /* The app's desktop (workbench.css .mac-desktop): blue field, fine white dots. */
+  background-color: #0055aa;
+  background-image: radial-gradient(rgba(255, 255, 255, .22) 1px, transparent 1px);
+  background-size: 4px 4px;
+  /* clip, not hidden: hidden makes this the sticky join card scroll container and pushes it down by the padding. */
+  overflow-x: clip;
+}
+
+/* ---------- cream chips ---------- */
+/* Pinned to the viewport's bottom-right corner, above the cards. */
+.invite-bottom {
+  position: fixed;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+}
+.invite-badge--link { text-decoration: none; }
+.invite-badge--link:hover { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+.invite-badge--link:focus-visible { outline: 2px solid var(--bg); outline-offset: 2px; }
+.invite-badge {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  font-variant-numeric: tabular-nums;
+}
+.invite-live { width: 7px; height: 7px; border-radius: 50%; background: #3FBF7F; }
+
+/* ---------- the two cards ---------- */
+.invite-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.invite-window {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+}
+.invite-body { flex: 1; display: flex; flex-direction: column; }
+
+.invite-label {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.invite-hero .invite-label { color: var(--green); }
+/* ---------- invite card ---------- */
+.invite-hero { display: flex; flex-direction: column; gap: 16px; padding: 44px 40px 36px; }
+.invite-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(36px, 4.4vw, 54px);
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  color: var(--ink);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.invite-lede { margin: 0; max-width: 54ch; font-size: 16px; line-height: 1.6; font-weight: 300; color: var(--body); }
+
+.invite-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  border-top: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+}
+.invite-stat { display: flex; flex-direction: column; gap: 4px; padding: 20px 24px; }
+.invite-stat:first-child { padding-left: 40px; }
+.invite-stat + .invite-stat { border-left: 1px solid var(--card-border); }
+.invite-stat dd {
+  order: -1;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.invite-stat dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.invite-looking { display: flex; flex-direction: column; gap: 16px; padding: 36px 40px 40px; }
+.invite-summary {
+  margin: 0;
+  max-width: 60ch;
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.invite-copy { margin: 0; max-width: 56ch; font-size: 15px; line-height: 1.7; font-weight: 300; color: var(--body); }
+
+/* ---------- join card ---------- */
+.invite-body--join { gap: 24px; padding: 40px; }
+.invite-choose { display: flex; flex-direction: column; gap: 10px; }
+
+/* Tabs in the site's terms: hairline box, the chosen one inked. */
+.invite-paths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--ink);
+}
+.invite-paths button {
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.invite-paths button + button { border-left: 1px solid var(--ink); }
+.invite-paths button:hover { background: var(--tag-bg); }
+.invite-paths button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.invite-paths button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.invite-panel { display: flex; flex-direction: column; gap: 14px; }
+
+.invite-prompt { display: flex; flex-direction: column; border: 1px solid var(--card-border); }
+.invite-prompt__text {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.site .invite-prompt__copy { height: 40px; font-size: 14px; }
+
+/* The browser path and join outcomes reuse the sign-in card and form; here
+   the card sheds its own frame and fills the column. */
+.invite-signin.signin { align-items: stretch; gap: 12px; }
+.invite-signin .signin-card { max-width: none; border: 0; background: transparent; }
+.invite-signin .signin-card__bar { display: none; }
+.invite-signin .signin-card__body { padding: 0; }
+.invite-signin .signin-status { max-width: none; align-items: flex-start; text-align: left; }
+.invite-signin .signin-meta { justify-content: flex-start; }
+
+/* ---------- narrow: one column ---------- */
+@media (max-width: 900px) {
+  .invite-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .site.invite-wb { padding: 28px 16px 64px; gap: 12px; }
+  .invite-bottom { right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .invite-hero, .invite-looking, .invite-body--join { padding-left: 16px; padding-right: 16px; }
+  .invite-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .invite-stat:first-child { padding-left: 16px; }
+  .invite-stat:nth-child(odd) { border-left: 0; padding-left: 16px; }
+  .invite-stat:nth-child(n + 3) { border-top: 1px solid var(--card-border); }
+  .invite-stat dd { font-size: 24px; }
+  .invite-paths button { font-size: 13px; }
+}
+
+/* ---------- monospace treatment ----------
+   Every face on the board becomes the app's JetBrains Mono (loaded by
+   workbench.css), including the reused sign-in form, which reads the same
+   tokens. Sizes come down a step because mono sets wide. */
+.site.invite-wb {
+  --serif: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--mono);
+}
+.invite-wb .invite-title {
+  font-weight: 700;
+  font-size: clamp(28px, 3.6vw, 44px);
+  line-height: 1.12;
+  letter-spacing: -.04em;
+}
+.invite-wb .invite-lede,
+.invite-wb .invite-copy,
+.invite-wb .site-p { font-weight: 400; letter-spacing: -.01em; }
+.invite-wb .invite-lede { font-size: 14px; line-height: 1.7; }
+.invite-wb .invite-summary { font-size: 15px; line-height: 1.75; letter-spacing: -.01em; }
+.invite-wb .invite-copy { font-size: 13px; }
+.invite-wb .invite-stat dd { font-size: 26px; font-weight: 500; letter-spacing: -.03em; }
+
+.invite-wb .invite-paths button,
+.invite-wb .site-btn,
+.invite-wb .auth .av-oauth,
+.invite-wb .auth .av-submit,
+.invite-wb .auth .av-input { font-size: 13px; letter-spacing: -.01em; }
+
+/* ---------- negotiation log (anonymized Hermes agent log) ---------- */
+.invite-stack { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.invite-log { display: flex; flex-direction: column; gap: 14px; padding: 36px 40px; }
+.invite-log__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.invite-log__live {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.invite-log__counts { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.invite-log__counts b { font-weight: 600; color: var(--ink); }
+.invite-log__lines {
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--tag-bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.9;
+  font-variant-numeric: tabular-nums;
+}
+.invite-log__line { display: grid; grid-template-columns: 5ch minmax(0, 1fr); gap: 12px; color: var(--body); line-height: 1.6; padding: 3px 0; }
+.invite-log__time { color: var(--muted); }
+.invite-log__name { color: var(--blue); }
+.invite-log__about { margin: 0; font-size: 14px; line-height: 1.7; color: var(--ink); letter-spacing: -.01em; }
+.invite-log__what b { font-weight: 600; color: var(--ink); }
+.invite-log__meta { color: var(--muted); }
+.invite-log__line--agreed .invite-log__what b { color: #1F7A4D; }
+.invite-log__line--declined .invite-log__what b,
+.invite-log__line--closed .invite-log__what b { color: var(--muted); }
+.invite-log__note { margin: 0; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+@media (max-width: 520px) {
+  .invite-log { padding: 20px 16px; }
+}
+/* The join card stays in view while the invitation and log scroll past. */
+@media (min-width: 901px) {
+  .invite-grid > .invite-window { position: sticky; top: 56px; }
+}
+
+/* A figure that just changed on refresh. */
+.invite-num { border-radius: 2px; transition: background 600ms ease; }
+.invite-num--changed { background: rgba(63, 191, 127, .28); }
+@media (prefers-reduced-motion: reduce) { .invite-num { transition: none; } }
+
+/* Bottom line of the invitation card: when the network last moved. */
+.invite-updated {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 40px;
+  border-top: 1px solid var(--card-border);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 520px) { .invite-updated { padding: 12px 16px; } }

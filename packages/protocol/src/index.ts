@@ -74,6 +74,8 @@ export type { NegotiationDatabase } from './platform/database/negotiation.js';
 // membership graph, and signal assignment.
 
 export { Networks } from "./capabilities/networks.js";
+export { NetworkPulseSummarizer } from "./internal/networks/network.pulse-summarizer.js";
+export type { NetworkPulseSummary, NetworkPulseSummaryInput } from "./internal/networks/network.pulse-summarizer.js";
 export type { NetworksDeps } from "./capabilities/networks.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────

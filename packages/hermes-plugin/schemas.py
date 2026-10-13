@@ -185,15 +185,18 @@ INDEX_UPDATE_NETWORK = {
 INDEX_JOIN_NETWORK = {
     "name": "index_join_network",
     "description": (
-        "Join an open community on the caller's behalf. Invite-only communities "
-        "refuse this and need an invitation instead."
+        "Join a community on the caller's behalf. Pass networkId for an open "
+        "community, or invite with the invite link the user gave you "
+        "(https://index.network/l/<code>) or its code, which also opens "
+        "invite-only communities. Some hold the request for an admin; the "
+        "result says joined, pending, or already_member."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "networkId": {"type": "string", "description": "The community's UUID."},
+            "networkId": {"type": "string", "description": "The community's UUID, for an open community."},
+            "invite": {"type": "string", "description": "An invite link or the code from it."},
         },
-        "required": ["networkId"],
     },
 }
 

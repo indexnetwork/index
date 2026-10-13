@@ -13,6 +13,7 @@ import json
 import os
 import platform
 import shutil
+import re
 import urllib.parse
 from subprocess import run as run_process
 from typing import Any
@@ -454,11 +455,26 @@ def index_update_network(args: dict, **kwargs) -> str:
     return _api_result("PUT", f"/networks/{urllib.parse.quote(network_id)}", settings)
 
 
+def _invite_code(value: Any) -> str | None:
+    """The code from an invite link (`.../l/<code>`), or a bare code."""
+    text = _clean_string(value)
+    if not text:
+        return None
+    match = re.search(r"/l/([^/?#\s]+)", text)
+    code = urllib.parse.unquote(match.group(1)) if match else text
+    return code if re.fullmatch(r"[\w-]{4,128}", code) else None
+
+
 def index_join_network(args: dict, **kwargs) -> str:
-    """Join an open community."""
+    """Join an open community, or any community through an invite link."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
+    if args.get("invite") is not None:
+        code = _invite_code(args.get("invite"))
+        if not code:
+            return _error("That is not an Index invite link or code.")
+        return _api_result("POST", f"/networks/invitation/{urllib.parse.quote(code)}/accept", {})
     network_id, error = _required_id(args, "networkId")
     if error:
         return _error(error)

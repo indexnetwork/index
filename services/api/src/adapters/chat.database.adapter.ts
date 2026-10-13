@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -7,6 +7,7 @@ import { IntentEvents } from '../events/intent.event';
 import { publishUserInvalidation } from '../lib/user-events';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
+import { buildNegotiationLog, type NegotiationLogEvent } from '../lib/network-negotiation-log';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
@@ -22,6 +23,23 @@ export interface NetworkShareResponseRow {
   ownerId: string;
   userName: string;
   userAvatar: string | null;
+}
+
+/** Counts for the invite page, plus raw recent signals that only the server-side summarizer reads. */
+export interface NetworkSharePulseRows {
+  signals: number;
+  opportunities: number;
+  negotiations: { live: number; total: number; agreed: number; declined: number };
+  /** Distinct people with an unsettled negotiation here; each one's agent is mid-conversation. */
+  agentsLive: number;
+  /** Anonymized: actions and outcomes only. */
+  log: NegotiationLogEvent[];
+  /** Newest signal, turn or settlement here, to the minute; null when nothing has happened. */
+  lastActivityAt: string | null;
+  /** Never sent to the page as is. */
+  recentSignals: string[];
+  /** The two signals behind each recent negotiation, for the summarizer only. Never sent to the page. */
+  recentPairs: Array<{ a: string; b: string }>;
 }
 
 /** Map a share-code lookup row to its public invitation response contract. */
@@ -1791,6 +1809,123 @@ export class ChatDatabaseAdapter {
 
     const memberCount = await this.getNetworkMemberCount(row.id);
     return buildNetworkShareResponse(row, memberCount);
+  }
+
+  /**
+   * A network's activity for its invite page: counts, plus, when `detailed`,
+   * its most recent signals for the summarizer and an anonymized negotiation
+   * log. Incognito and inactive signals never count and are never read.
+   */
+  async getNetworkSharePulse(networkId: string, detailed: boolean): Promise<NetworkSharePulseRows> {
+    const liveSignalWhere = and(
+      eq(intentNetworks.networkId, networkId),
+      isNull(intents.archivedAt),
+      eq(intents.isIncognito, false),
+      activeIntentLifecycleWhere(),
+    );
+    // Actor-anchored, as in getOpportunitiesForNetwork: matched here, not merely tagged.
+    const inNetwork = sql`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+      WHERE actor->>'networkId' = ${networkId}
+    )`;
+
+    const inNetworkNegotiation = and(inNetwork, eq(opportunities.id, negotiations.opportunityId));
+
+    const [[signalRow], [opportunityRow], [negotiationRow], recent, liveSeats, turnRows, closeRows, pairRows, [lastSignal], [lastTurn]] = await Promise.all([
+      db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+      db.select({ n: count() }).from(opportunities).where(inNetwork),
+      db.select({
+        total: count(),
+        live: sql<number>`count(*) filter (where ${negotiations.settledAt} is null)`,
+        agreed: sql<number>`count(*) filter (where ${negotiations.outcome} = 'agreed')`,
+        declined: sql<number>`count(*) filter (where ${negotiations.outcome} in ('declined', 'closed'))`,
+      }).from(negotiations).innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId)).where(inNetwork),
+      !detailed
+        ? Promise.resolve([])
+        : db.select({ summary: intents.summary, payload: intents.payload, createdAt: intents.createdAt })
+          .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId))
+          .where(liveSignalWhere).orderBy(desc(intents.createdAt)).limit(60),
+      db.select({ a: negotiations.initiatorUserId, b: negotiations.responderUserId })
+        .from(negotiations).innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+        .where(and(inNetwork, isNull(negotiations.settledAt))).limit(5000),
+      !detailed
+        ? Promise.resolve([])
+        : db.select({
+          negotiationId: negotiationTurns.negotiationId,
+          turnIndex: negotiationTurns.turnIndex,
+          action: negotiationTurns.action,
+          createdAt: negotiationTurns.createdAt,
+          byInitiator: sql<boolean>`${negotiationTurns.seatUserId} = ${negotiations.initiatorUserId}`,
+        }).from(negotiationTurns)
+          .innerJoin(negotiations, eq(negotiations.id, negotiationTurns.negotiationId))
+          .innerJoin(opportunities, inNetworkNegotiation)
+          .orderBy(desc(negotiationTurns.createdAt)).limit(14),
+      !detailed
+        ? Promise.resolve([])
+        : db.select({
+          negotiationId: negotiations.id,
+          outcome: negotiations.outcome,
+          settledAt: negotiations.settledAt,
+          turns: sql<number>`(select count(*) from ${negotiationTurns} where ${negotiationTurns.negotiationId} = ${negotiations.id})`,
+        }).from(negotiations)
+          .innerJoin(opportunities, inNetworkNegotiation)
+          .where(sql`${negotiations.settledAt} is not null`)
+          .orderBy(desc(negotiations.settledAt)).limit(14),
+      !detailed
+        ? Promise.resolve([])
+        : db.select({ a: negotiations.initiatorIntentId, b: negotiations.responderIntentId })
+          .from(negotiations)
+          .innerJoin(opportunities, inNetworkNegotiation)
+          .orderBy(desc(negotiations.updatedAt)).limit(20),
+      db.select({ at: sql<Date | null>`max(${intents.createdAt})` })
+        .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+      db.select({
+        turn: sql<Date | null>`max(${negotiationTurns.createdAt})`,
+        settled: sql<Date | null>`max(${negotiations.settledAt})`,
+      }).from(negotiations)
+        .innerJoin(opportunities, inNetworkNegotiation)
+        .leftJoin(negotiationTurns, eq(negotiationTurns.negotiationId, negotiations.id)),
+    ]);
+
+    const lastTimes = [lastSignal?.at, lastTurn?.turn, lastTurn?.settled]
+      .filter((t): t is Date => t != null)
+      .map((t) => new Date(t).getTime());
+    const lastActivityAt = lastTimes.length ? new Date(Math.floor(Math.max(...lastTimes) / 60_000) * 60_000).toISOString() : null;
+
+    // The intents behind recent negotiations, read only for the summarizer; incognito ones never.
+    const pairIntentIds = [...new Set(pairRows.flatMap((p) => [p.a, p.b]))];
+    const pairIntents = pairIntentIds.length === 0 ? [] : await db
+      .select({ id: intents.id, payload: intents.payload, summary: intents.summary })
+      .from(intents)
+      .where(and(inArray(intents.id, pairIntentIds), eq(intents.isIncognito, false)));
+    const intentText = new Map(pairIntents.map((i) => [i.id, i.payload || i.summary || '']));
+    const recentPairs = pairRows.flatMap((p) => {
+      const a = intentText.get(p.a);
+      const b = intentText.get(p.b);
+      return a && b ? [{ a, b }] : [];
+    });
+
+    const agentsLive = new Set(liveSeats.flatMap((r) => [r.a, r.b])).size;
+    const log = buildNegotiationLog(
+      turnRows.map((t) => ({ ...t, byInitiator: Boolean(t.byInitiator) })),
+      closeRows.flatMap((c) => (c.outcome && c.settledAt ? [{ negotiationId: c.negotiationId, outcome: c.outcome, settledAt: c.settledAt, turns: Number(c.turns) }] : [])),
+    );
+
+    return {
+      signals: Number(signalRow?.n ?? 0),
+      opportunities: Number(opportunityRow?.n ?? 0),
+      negotiations: {
+        live: Number(negotiationRow?.live ?? 0),
+        total: Number(negotiationRow?.total ?? 0),
+        agreed: Number(negotiationRow?.agreed ?? 0),
+        declined: Number(negotiationRow?.declined ?? 0),
+      },
+      agentsLive,
+      log,
+      lastActivityAt,
+      recentSignals: recent.map((r) => r.payload || r.summary || '').filter(Boolean),
+      recentPairs,
+    };
   }
 
   /**

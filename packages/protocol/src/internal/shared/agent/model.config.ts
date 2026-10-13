@@ -54,6 +54,7 @@ function getBaseModelConfig(config?: ModelConfig) {
     inviteGenerator:      { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 512 },
     userContextGenerator: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 512 },
     networkRecommender:   { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 512 },
+    networkPulseSummarizer: { model: "google/gemini-3.7-flash", temperature: 0.7, maxTokens: 400 },
     interruptClassifier:  { model: "google/gemini-3.7-flash", temperature: 0.0, maxTokens: 16 },
     chat: {
       model: "google/gemini-3.7-flash",
