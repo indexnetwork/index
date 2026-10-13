@@ -48,6 +48,8 @@ export interface AuthDeps {
   secondaryStorage?: AuthSecondaryStorage;
   /** Runs after every successful Edge City sign-in (e.g. network auto-join). */
   onEdgeCitySignIn?: (userId: string) => Promise<void>;
+  /** Runs after an Index session is created (web, Mac, Hermes). Not Edge City. */
+  onIndexSignIn?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -59,7 +61,7 @@ export interface AuthDeps {
  * REVIEWER_EMAIL — everyone else uses magic link or social OAuth.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn, onIndexSignIn } = deps;
 
   return betterAuth({
     baseURL: API_URL,
@@ -91,6 +93,16 @@ export function createAuth(deps: AuthDeps) {
       enabled: false,
     },
     emailAndPassword: { enabled: emailPasswordEnabled },
+    databaseHooks: {
+      session: {
+        create: {
+          after: async (session, context) => {
+            if (!onIndexSignIn || context?.path === "/sign-in/edge-city") return;
+            await onIndexSignIn(session.userId);
+          },
+        },
+      },
+    },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (process.env.NODE_ENV !== 'production') return;
