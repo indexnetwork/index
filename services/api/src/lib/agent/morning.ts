@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const MORNING_START = 8 * 60;
+const MORNING_END = 9 * 60;
 const DEFAULT_CAP = 4;
 
 export interface MorningOwner {
@@ -45,11 +46,17 @@ export function briefedOnLocalDate(at: Date | null, now: Date, timeZone: string)
   return then.year === today.year && then.month === today.month && then.day === today.day;
 }
 
-/** @returns Whether this owner's minute has arrived and today has not run. */
+/**
+ * @returns Whether this owner's minute in the 08:00 hour has arrived and today
+ * has not run. After 09:00 local the morning has passed; a late process does
+ * not catch up.
+ */
 export function morningDue(owner: MorningOwner, now: Date): boolean {
   const zone = morningZone(owner.timezone);
   if (briefedOnLocalDate(owner.lastMorningBriefAt, now, zone)) return false;
-  return localParts(now, zone).minutes >= MORNING_START + morningOffsetMinutes(owner.id);
+  const minutes = localParts(now, zone).minutes;
+  const slot = MORNING_START + morningOffsetMinutes(owner.id);
+  return minutes >= slot && minutes < MORNING_END;
 }
 
 /** Release the cross-replica gate. Null when another process already holds it. */

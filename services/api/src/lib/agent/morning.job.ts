@@ -105,8 +105,8 @@ async function acquireMorningLock(): Promise<(() => Promise<void>) | null> {
 
 /**
  * Start the minute tick that wakes hosted owners in the hour after their
- * local 08:00. Each owner keeps one stable minute, and only one process
- * claims the day.
+ * local 08:00. Each owner keeps one stable minute. A morning that has already
+ * passed waits until the next day, and only one process claims the day.
  *
  * @param options - Where one signal's morning runs, given the owner's previous morning.
  * @returns A stop handle for shutdown.
@@ -153,7 +153,7 @@ export function startMorningBrief(options: {
       });
     });
   });
-  logger.info('Morning brief scheduled (every minute, staggered after 08:00 local)');
+  logger.info('Morning brief scheduled (every minute, 08:00–09:00 local)');
   return {
     stop() {
       task.stop();
