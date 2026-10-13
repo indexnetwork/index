@@ -6,6 +6,8 @@ import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
+import { background } from '../lib/background';
+import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
@@ -185,6 +187,8 @@ export class ConversationService {
       parts,
       metadata: opts?.metadata,
     });
+
+    if (role === 'user') background('message-email', () => queueMessageEmails(conversationId, senderId));
 
     return msg;
   }
