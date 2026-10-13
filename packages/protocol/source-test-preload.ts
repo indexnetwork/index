@@ -53,7 +53,7 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
       return { reasoning: "Deterministic source-test verification.", classification: "ASSERTIVE", felicity_scores: { clarity: 80, authority: 80, sincerity: 80 }, semantic_entropy: 0.2, referential_anchor: null, referential_breadth: "narrow", missing_selectional_constraints: [], specificity_warning: null, flags: [] };
     }
     if (agent === "opportunityPresenter") {
-      return { presentation: { headline: "A relevant connection", personalizedSummary: "This is a relevant opportunity.", suggestedAction: "Review the opportunity.", greeting: "I would like to compare notes." } };
+      return { presentation: { headline: "A relevant connection", personalizedSummary: "This is a relevant opportunity.", suggestedAction: "Comparing notes on shared work", greeting: "I would like to compare notes." } };
     }
     if (agent === "homeCategorizer") return { sections: [] };
     if (agent === "suggestionGenerator") {

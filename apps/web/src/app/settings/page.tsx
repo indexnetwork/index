@@ -367,7 +367,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
                     <span>
                       <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>daily brief</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent looks again at 08:00, and speaks only when it has something new.</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent looks again at 08:00, and emails you only when it needs you.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.morningBrief !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, morningBrief: e.target.checked })); mark(); }} />
                   </label>
