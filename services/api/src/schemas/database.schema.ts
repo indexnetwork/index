@@ -62,6 +62,7 @@ export interface NotificationPreferences {
   /** Absent means the toast is on. */
   opportunity?: boolean;
   accepted?: boolean;
+  /** Absent means the toast, and the unread-message email, are on. */
   messages?: boolean;
   /** Absent means the morning wake, and its email, are on. */
   morningBrief?: boolean;

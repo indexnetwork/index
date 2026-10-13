@@ -360,7 +360,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
                     <span>
                       <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>a message arrives</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>a connection wrote to you.</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>a connection wrote to you; emailed if unread after a minute.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.messages !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, messages: e.target.checked })); mark(); }} />
                   </label>

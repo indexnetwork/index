@@ -357,7 +357,7 @@ const NOTIFY_OPTIONS = [
   { id:"accepted",  title:"an intro is accepted",
     blurb:"both of you said yes, and the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
-    blurb:"a connection wrote to you." },
+    blurb:"a connection wrote to you; emailed if unread after a minute." },
   { id:"morningBrief", title:"daily brief",
     blurb:"your agent looks again at 08:00, and emails you only when it needs you." },
 ];
