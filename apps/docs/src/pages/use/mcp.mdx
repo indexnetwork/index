@@ -43,6 +43,7 @@ Send the key as `x-api-key`. A browser login or a device session works as
 
 [Hermes Agent](/use/hermes) writes this entry while `INDEX_API_KEY` is set.
 [ChatGPT](/use/chatgpt) connects with OAuth and can also subscribe to events.
+[Grok Bot](/use/grok-bot) connects with OAuth and receives events by email.
 
 ## What you can do
 
@@ -72,6 +73,7 @@ instructions name it.
 | Search a signal's communities, writing nothing | `discover_counterparties` |
 | Open opportunities with picked counterparties | `create_opportunities` |
 | Read the selected negotiator and its id | `get_my_agent` |
+| Select a negotiator, after the owner confirms | `select_negotiator` |
 | Submit a negotiator turn | `submit_negotiation_turn` |
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.

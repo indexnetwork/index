@@ -1,0 +1,18 @@
+{
+  "name": "index-network",
+  "version": "0.1.0",
+  "description": "Index Network - find the right people and let them find you.",
+  "author": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  },
+  "homepage": "https://index.network",
+  "license": "MIT",
+  "keywords": [
+    "discovery",
+    "intents",
+    "matching",
+    "opportunities"
+  ],
+  "skills": "./skills/"
+}

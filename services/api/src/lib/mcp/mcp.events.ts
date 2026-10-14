@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { type McpServer, ProtocolError, ProtocolErrorCode, type ServerCapabilities } from '@modelcontextprotocol/server';
+import { type CallToolResult, type McpServer, ProtocolError, ProtocolErrorCode, type ServerCapabilities } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
 import { getRedisClient } from '../../adapters/cache.adapter';
@@ -8,6 +8,7 @@ import { appLink } from '../app-link';
 import { ensureUserEventGroup, skipUserEventGroupToTail } from '../user-events';
 import { WebhookUrlError, postWebhook } from '../webhook';
 
+import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpCredential, McpPrincipal } from './mcp.types';
 
 /** Consumer group the dispatcher reads every subscribed user's stream with. */
@@ -148,11 +149,15 @@ export interface McpEventSubscription {
   credential: McpCredential;
   name: string;
   arguments: Record<string, unknown>;
-  url: string;
-  secret: string;
+  /** Webhook callback and its signing secret; absent for an email subscription. */
+  url?: string;
+  secret?: string;
+  /** Grok Bot mail address that receives each event as an email. */
+  email?: string;
   previousSecret?: string;
   rotatedAt?: number;
-  expiresAt: number;
+  /** Absent for an email subscription, which lasts until unsubscribed or its credential is revoked. */
+  expiresAt?: number;
 }
 
 /** An event body as POSTed to a callback. */
@@ -181,6 +186,7 @@ export function isSigningSecret(secret: string): boolean {
 
 /** Secrets to sign with: the current one, plus the replaced one during its rotation window. */
 export function signingSecrets(subscription: McpEventSubscription, now = Date.now()): string[] {
+  if (!subscription.secret) return [];
   return subscription.previousSecret && subscription.rotatedAt && now - subscription.rotatedAt < ROTATION_MS
     ? [subscription.secret, subscription.previousSecret]
     : [subscription.secret];
@@ -208,10 +214,16 @@ const subscriptionKey = (id: string) => `mcp:sub:${id}`;
 const USER_SUBSCRIPTIONS_PREFIX = 'mcp:subs:user:';
 
 async function saveSubscription(subscription: McpEventSubscription): Promise<void> {
-  await getRedisClient().multi()
-    .set(subscriptionKey(subscription.id), JSON.stringify(subscription), 'PXAT', subscription.expiresAt)
-    .sadd(`${USER_SUBSCRIPTIONS_PREFIX}${subscription.userId}`, subscription.id)
-    .exec();
+  const multi = getRedisClient().multi();
+  if (subscription.expiresAt) multi.set(subscriptionKey(subscription.id), JSON.stringify(subscription), 'PXAT', subscription.expiresAt);
+  else multi.set(subscriptionKey(subscription.id), JSON.stringify(subscription));
+  await multi.sadd(`${USER_SUBSCRIPTIONS_PREFIX}${subscription.userId}`, subscription.id).exec();
+}
+
+/** A user's first subscription reads their stream from now on, not its retained history. */
+async function startReading(userId: string): Promise<void> {
+  await ensureUserEventGroup(userId, MCP_EVENTS_GROUP);
+  await skipUserEventGroupToTail(userId, MCP_EVENTS_GROUP);
 }
 
 export async function deleteSubscription(userId: string, id: string): Promise<void> {
@@ -331,10 +343,7 @@ export function registerMcpEvents(server: McpServer, principal: McpPrincipal): v
     await verifyCallback(userId, id, delivery.url, delivery.secret);
 
     const current = await listSubscriptions(userId);
-    if (!current.length) {
-      await ensureUserEventGroup(userId, MCP_EVENTS_GROUP);
-      await skipUserEventGroupToTail(userId, MCP_EVENTS_GROUP);
-    }
+    if (!current.length) await startReading(userId);
     const previous = current.find((subscription) => subscription.id === id);
     const rotation = previous && previous.secret !== delivery.secret
       ? { previousSecret: previous.secret, rotatedAt: Date.now() }
@@ -357,4 +366,71 @@ export function registerMcpEvents(server: McpServer, principal: McpPrincipal): v
     }
     return {};
   });
+}
+
+const EVENT_NAMES = Object.keys(MCP_EVENT_CATALOG) as [string, ...string[]];
+const grokBotEmail = z.string().trim().toLowerCase().regex(/^[^\s@]+@mail\.grokbot\.com$/, 'Must be a @mail.grokbot.com address.');
+const eventNames = z.array(z.enum(EVENT_NAMES)).min(1).optional();
+const mailto = (email: string) => `mailto:${email}`;
+
+/**
+ * Event subscriptions as tools, for hosts that cannot call `events/subscribe`.
+ * Delivery is one email per event to a Grok Bot address, whose routine wakes on mail from Index.
+ */
+export function registerEventTools(server: McpServer, principal: McpPrincipal): void {
+  const { userId } = principal;
+  const run = (tool: string, operation: () => Promise<CallToolResult>) =>
+    operation().catch((error) => captureMcpToolFailure(error, tool, principal));
+
+  server.registerTool(
+    'subscribe_events',
+    {
+      description: 'For hosts without MCP events, such as Grok Bot: email each future Index event to the bot\'s own @mail.grokbot.com address, so a routine triggered by mail from events@agent.index.network can act on it. events defaults to every event; intentId limits them to one signal. Each email is one event: a pointer to read with the other tools.',
+      inputSchema: z.object({ email: grokBotEmail, events: eventNames, intentId: z.string().trim().min(1).optional() }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    ({ email, events = EVENT_NAMES, intentId }) => run('subscribe_events', async () => {
+      const { credential } = principal;
+      if (!credential) return mcpError('credential_required', 'Event subscriptions need an OAuth, API key, or device session credential.');
+      const current = await listSubscriptions(userId);
+      if (!current.length) await startReading(userId);
+      for (const name of events) {
+        const args = parseArguments(name, intentId ? { intentId } : {});
+        await saveSubscription({ id: subscriptionId(userId, mailto(email), name, args), userId, credential, name, arguments: args, email });
+      }
+      return mcpSuccess({ email, events, intentId: intentId ?? null });
+    }),
+  );
+
+  server.registerTool(
+    'list_event_subscriptions',
+    {
+      description: 'List the owner\'s Index event subscriptions: event name, filters, and where each is delivered.',
+      inputSchema: z.object({}).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    () => run('list_event_subscriptions', async () => mcpSuccess({
+      subscriptions: (await listSubscriptions(userId)).map(({ name, arguments: args, email, url, expiresAt }) => ({
+        name,
+        arguments: args,
+        destination: email ?? url,
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      })),
+    })),
+  );
+
+  server.registerTool(
+    'unsubscribe_events',
+    {
+      description: 'Stop emailing Index events to this @mail.grokbot.com address. Omit events to remove them all.',
+      inputSchema: z.object({ email: grokBotEmail, events: eventNames }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    ({ email, events }) => run('unsubscribe_events', async () => {
+      const removed = (await listSubscriptions(userId))
+        .filter((subscription) => subscription.email === email && (!events || events.includes(subscription.name)));
+      for (const subscription of removed) await deleteSubscription(userId, subscription.id);
+      return mcpSuccess({ removed: removed.length });
+    }),
+  );
 }

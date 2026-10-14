@@ -665,6 +665,26 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   );
 
   server.registerTool(
+    'select_negotiator',
+    {
+      description: agentOnly('select_negotiator') + ' Make the owner\'s external agent with this name (created if missing) the one that negotiates for them. Call only after the owner confirms in this chat. When another agent is already selected this fails with negotiator_already_selected; pass replace=true only after the owner confirms replacing that agent by name.',
+      inputSchema: z.object({ name: z.string().trim().min(1).max(100), replace: z.boolean().optional() }).strict(),
+      annotations: hints(false, true, false, true),
+    },
+    ({ name, replace }) => runTool('select_negotiator', principal, async () => {
+      const selected = await agentService.getSelectedNegotiator(principal.userId);
+      if (selected && selected.name.toLowerCase() !== name.toLowerCase() && !replace) {
+        return mcpError('negotiator_already_selected', `${selected.name} already negotiates for this owner.`, { agent: { id: selected.id, name: selected.name } });
+      }
+      const existing = (await agentService.listForUser(principal.userId))
+        .find((agent) => agent.type === 'external' && agent.name.toLowerCase() === name.toLowerCase());
+      const target = existing ?? await agentService.create(principal.userId, name);
+      const agent = await agentService.update(target.id, principal.userId, { status: 'active', handleNegotiations: true });
+      return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
+    }),
+  );
+
+  server.registerTool(
     'get_agent_conversation',
     {
       description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
