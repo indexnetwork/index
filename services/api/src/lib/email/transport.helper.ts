@@ -12,15 +12,16 @@ export const executeSendEmail = async (options: {
   text: string;
   headers?: Record<string, string>;
   from?: string;
-  /** Deliver to `to` even outside production, instead of TESTING_EMAIL_ADDRESS. */
-  skipTestRedirect?: boolean;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
     return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
-  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true' || options.skipTestRedirect === true;
+  const passthrough = (process.env.EMAIL_PASSTHROUGH_DOMAINS ?? '').split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
+  const direct = passthrough.length > 0
+    && [options.to].flat().every((to) => passthrough.some((domain) => to.toLowerCase().endsWith(`@${domain}`)));
+  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true' || direct;
   let recipient: string | string[] = options.to;
 
   if (!isProduction) {
