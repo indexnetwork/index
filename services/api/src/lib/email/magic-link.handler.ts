@@ -1,31 +1,21 @@
-import { executeSendEmail } from './transport.helper';
+import { escapeHtml, sanitizeUrlForHref } from '../escapeHtml';
 import { log } from '../log';
+
+import { executeSendEmail } from './transport.helper';
 
 const logger = log.lib.from('email/magic-link.handler');
 
 export async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
   logger.info('Sending magic link email', { email });
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-      <p>Hey,</p>
-      <p>Click the button below to sign in to Index Network.</p>
+  const href = escapeHtml(sanitizeUrlForHref(url));
+  const html = `<div style="font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.7; color: #111; max-width: 560px;">
+  <p>Sign in to Index Network.</p>
+  <p><a href="${href}" style="color: #111;">Sign in</a></p>
+  <p style="color: #999; font-size: 11px; margin-top: 28px;">This link expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
+</div>`;
 
-      <div style="margin: 24px 0;">
-        <a href="${url}" style="text-decoration: none; font-weight: bold; color: #FFFFFF; background-color: #0A0A0A; font-size: 1.1em; padding: 10px 20px; border-radius: 5px; display: inline-block;">Sign In</a>
-      </div>
-
-      <p style="font-size: 0.9em; color: #666;">This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
-
-      <p>&mdash;Index</p>
-
-      <div style="margin-top: 20px; text-align: center;">
-        <img src="https://index.network/logo.png" alt="Index" style="height: 24px; opacity: 0.5;" />
-      </div>
-    </div>
-  `;
-
-  const text = `Sign in to Index Network\n\nClick this link to sign in: ${url}\n\nThis link expires in 10 minutes. If you didn't request this, you can safely ignore this email.\n\n—Index`;
+  const text = `Sign in to Index Network.\n\n${url}\n\nThis link expires in 10 minutes. If you didn't request this, you can ignore this email.`;
 
   await executeSendEmail({
     to: email,
