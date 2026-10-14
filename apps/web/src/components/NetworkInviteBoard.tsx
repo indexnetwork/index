@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 
 import { ensureSiteFonts } from "@/app/site/SiteLayout";
-import { inviteAgentPrompt } from "@/lib/agent-prompt";
+import { hermesInvitePrompt, mcpInvitePrompt } from "@/lib/agent-prompt";
 import "@/app/site/site.css";
 import "./SiteSignIn.css";
 import "./NetworkInviteBoard.css";
@@ -16,6 +16,10 @@ export type NegotiationLogEvent =
 export interface NetworkPulse {
   signals: number;
   opportunities: number;
+  /** Agents whose owner has a signal in this network. */
+  agents?: number;
+  /** Turns taken across negotiations in this network. */
+  turns?: number;
   negotiations: { live: number; total: number; agreed: number; declined?: number };
   /** Distinct people whose agents are mid-negotiation here. */
   agentsLive?: number;
@@ -28,17 +32,89 @@ export interface NetworkPulse {
   negotiationSummary?: string | null;
 }
 
-type JoinPath = "web" | "agent" | "hermes";
+type AgentChoice = "here" | "hermes" | "mcp";
 
-const PATHS: Array<{ id: JoinPath; label: string }> = [
-  { id: "web", label: "Browser" },
-  { id: "agent", label: "Your agent" },
+const AGENT_CHOICES: Array<{ id: AgentChoice; label: string; hint?: string }> = [
+  { id: "here", label: "Make a new one here" },
   { id: "hermes", label: "Hermes" },
+  { id: "mcp", label: "MCP", hint: "Claude Code, or any other agent" },
 ];
 
-/** A plain site card. */
-function Window({ label, children }: { label: string; children: ReactNode }) {
-  return <section className="invite-window" aria-label={label}>{children}</section>;
+/** Same-origin login that returns to this invite, so signing in joins the network. */
+function openAppHref(inviteUrl: string): string {
+  try {
+    const path = new URL(inviteUrl).pathname;
+    if (path.startsWith("/") && !path.startsWith("//")) return `/login?next=${encodeURIComponent(path)}`;
+  } catch { /* fall through */ }
+  return "/login";
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden="true">
+      <rect x="4.5" y="4.5" width="8" height="8" rx="1.2" />
+      <path d="M9.5 4.5V2.7a1.2 1.2 0 0 0-1.2-1.2H2.7a1.2 1.2 0 0 0-1.2 1.2v5.6a1.2 1.2 0 0 0 1.2 1.2h1.8" />
+    </svg>
+  );
+}
+
+/** Each way in is a button. A new agent is made here; Hermes and MCP get the invite to paste. */
+function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string }) {
+  const navigate = useNavigate();
+  const [copied, setCopied] = useState<AgentChoice | null>(null);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(null), 1800);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const go = (id: AgentChoice) => {
+    if (id === "here") {
+      navigate(openAppHref(inviteUrl));
+      return;
+    }
+    const prompt = id === "hermes" ? hermesInvitePrompt(title, inviteUrl) : mcpInvitePrompt(title, inviteUrl);
+    void navigator.clipboard?.writeText(prompt).then(() => setCopied(id));
+  };
+
+  return (
+    <div className="invite-bring">
+      <h2 className="invite-ask">Which agent goes in?</h2>
+      <div className="invite-agents">
+        {AGENT_CHOICES.map((agent) => (
+          <button key={agent.id} type="button" className="invite-agent" onClick={() => go(agent.id)}>
+            <span className="invite-agent__label">
+              <span className="invite-agent__name">
+                {agent.id === "hermes" && <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />}
+                {agent.id === "mcp" && <CopyIcon />}
+                {copied === agent.id ? "copied, paste it in →" : agent.label}
+                {agent.id === "here" && <span className="invite-agent__arrow" aria-hidden="true">→</span>}
+              </span>
+              {agent.hint && copied !== agent.id && <span className="invite-agent__hint">{agent.hint}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="invite-bring__copy">
+        We won&apos;t ask what you&apos;re looking for. It works from what it already
+        knows about you, then reports back in about 6 hours.
+      </p>
+      <p className="invite-send__note">it can&apos;t commit to anything without you</p>
+    </div>
+  );
+}
+
+/** An app window: black frame, striped title bar, same chrome as the workbench. */
+function Window({ label, children, mark = false }: { label: string; children: ReactNode; mark?: boolean }) {
+  return (
+    <section className="invite-window" aria-label={label}>
+      <div className="invite-bar">
+        {mark && <span className="invite-bar__mark" aria-hidden="true" />}
+        <span className="invite-bar__title"><span>{label.toLowerCase()}</span></span>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 /** The current time, ticking every `everyMs` so relative times stay true. */
@@ -76,117 +152,34 @@ function LiveNumber({ value }: { value: number }) {
   return <span className={changed ? "invite-num invite-num--changed" : "invite-num"}>{value.toLocaleString()}</span>;
 }
 
-const OUTCOME: Record<"agreed" | "declined" | "closed", string> = {
-  agreed: "✓ intro agreed",
-  declined: "✕ passed",
-  closed: "✕ closed",
-};
-
-function hhmm(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/**
- * The Hermes agent log, anonymized: turns and outcomes only, between agents
- * with made-up names the server draws fresh on every load.
- */
-function NegotiationLog({ pulse }: { pulse: NetworkPulse }) {
-  const { total, agreed, live } = pulse.negotiations;
-  const declined = pulse.negotiations.declined ?? 0;
-  const agents = pulse.agentsLive ?? 0;
-  const log = pulse.log ?? [];
-  return (
-    <Window label="Negotiations">
-      <div className="invite-log">
-        <div className="invite-log__head">
-          <h2 className="invite-label">Negotiations</h2>
-          <p className="invite-log__live">
-            <span className="invite-live" aria-hidden="true" />
-            <LiveNumber value={agents} /> {agents === 1 ? "agent" : "agents"} talking right now
-          </p>
-        </div>
-        <p className="invite-log__counts">
-          <b><LiveNumber value={total} /></b> sessions · <b><LiveNumber value={agreed} /></b> ✓ · <b><LiveNumber value={declined} /></b> ✕ · <b><LiveNumber value={live} /></b> open
-        </p>
-        {log.length > 0 ? (
-          <ol className="invite-log__lines">
-            {log.map((e, i) => (
-              <li key={i} className={e.kind === "close" ? `invite-log__line invite-log__line--${e.outcome}` : "invite-log__line"}>
-                <span className="invite-log__time">{hhmm(e.at)}</span>
-                {e.kind === "turn" ? (
-                  <span className="invite-log__what">
-                    <span className="invite-log__name">{e.from}</span> → <span className="invite-log__name">{e.to}</span>{" "}
-                    <b>{e.action}</b>
-                    <span className="invite-log__meta"> · turn {e.turn}</span>
-                  </span>
-                ) : (
-                  <span className="invite-log__what">
-                    <span className="invite-log__name">{e.a}</span> &amp; <span className="invite-log__name">{e.b}</span>{" "}
-                    <b>{OUTCOME[e.outcome]}</b>
-                    <span className="invite-log__meta"> · {e.turns} {e.turns === 1 ? "turn" : "turns"}</span>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="invite-copy">The log opens up once the network has a few more members.</p>
-        )}
-        {pulse.negotiationSummary && <p className="invite-log__about">{pulse.negotiationSummary}</p>}
-        <p className="invite-log__note">Names are made up and change on every visit. Members see their own negotiations in full.</p>
-      </div>
-    </Window>
-  );
-}
-
-function CopyInvitePrompt({ title, inviteUrl }: { title: string; inviteUrl: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(t);
-  }, [copied]);
-  const prompt = inviteAgentPrompt(title, inviteUrl);
-  return (
-    <div className="invite-prompt">
-      <pre className="invite-prompt__text">{prompt}</pre>
-      <button
-        type="button"
-        className="site-btn invite-prompt__copy"
-        onClick={() => { void navigator.clipboard?.writeText(prompt).then(() => setCopied(true)); }}
-      >
-        <span aria-live="polite">{copied ? "Copied. Paste it to your agent" : "Copy prompt"}</span>
-      </button>
-    </div>
-  );
-}
-
 /**
  * The invite page's ready state, in the public site's language (site.css):
  * an "invite" card with the network and a summary of what members are after (written
  * on the server, so no single signal shows), and a "join" window with three ways
- * in: the browser, the visitor's own agent, or Hermes.
+ * in through the same actions as the landing page, drawn larger.
  */
-export function NetworkInviteBoard({ title, memberCount, pulse, inviteUrl, webJoin, status }: {
+export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
   title: string;
-  memberCount?: number;
   pulse?: NetworkPulse;
   inviteUrl: string;
-  /** The sign-in form for joining in the browser. */
-  webJoin: ReactNode;
-  /** Set while a join is under way or has an outcome; replaces the choice. */
+  /** Set while a join is under way or has an outcome; replaces the actions. */
   status?: ReactNode;
 }) {
-  const [path, setPath] = useState<JoinPath>("web");
   const now = useNow(15_000);
   useEffect(() => {
     ensureSiteFonts();
   }, []);
 
   const stats: Array<[string, number]> = [];
-  if (memberCount != null) stats.push([memberCount === 1 ? "member" : "members", memberCount]);
-  if (pulse) stats.push(["open signals", pulse.signals], ["matches", pulse.opportunities], ["intros agreed", pulse.negotiations.agreed]);
+  if (pulse) {
+    const agents = pulse.agents ?? 0;
+    const turns = pulse.turns ?? 0;
+    stats.push(
+      [agents === 1 ? "agent" : "agents", agents],
+      ["open signals", pulse.signals],
+      [turns === 1 ? "negotiation turn" : "negotiation turns", turns],
+    );
+  }
 
   return (
     <div className="site invite-wb">
@@ -231,49 +224,14 @@ export function NetworkInviteBoard({ title, memberCount, pulse, inviteUrl, webJo
             </p>
           )}
         </Window>
-
-        {pulse && <NegotiationLog pulse={pulse} />}
         </div>
 
-        <Window label="Join">
+        <Window label="bring your agent" mark>
           <div className="invite-body invite-body--join">
             {status ? (
               <div className="signin invite-signin invite-status">{status}</div>
             ) : (
-              <>
-                <div className="invite-choose">
-                  <h2 className="invite-label">How do you want to join?</h2>
-                  <div className="invite-paths" role="group" aria-label="Ways to join">
-                    {PATHS.map((p) => (
-                      <button key={p.id} type="button" aria-pressed={path === p.id} onClick={() => setPath(p.id)}>
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="invite-panel">
-                  {path === "web" && <div className="signin invite-signin">{webJoin}</div>}
-                  {path === "agent" && (
-                    <>
-                      <p className="invite-copy">
-                        Paste this into your agent. It connects Index if it isn&apos;t already,
-                        then joins {title} with your invite.
-                      </p>
-                      <CopyInvitePrompt title={title} inviteUrl={inviteUrl} />
-                    </>
-                  )}
-                  {path === "hermes" && (
-                    <>
-                      <p className="invite-copy">
-                        Install the Index plugin for Hermes, then paste this into Hermes to join {title}.
-                      </p>
-                      <Link className="site-arrow-link" to="/hermes" target="_blank" rel="noreferrer">Install the Hermes plugin →</Link>
-                      <CopyInvitePrompt title={title} inviteUrl={inviteUrl} />
-                    </>
-                  )}
-                </div>
-              </>
+              <BringYourAgent title={title} inviteUrl={inviteUrl} />
             )}
           </div>
         </Window>

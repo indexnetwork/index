@@ -29,6 +29,10 @@ export interface NetworkShareResponseRow {
 export interface NetworkSharePulseRows {
   signals: number;
   opportunities: number;
+  /** Agents whose owner has a signal in this network. Not the member roster. */
+  agents: number;
+  /** Every turn taken in a negotiation tied to this network. */
+  turns: number;
   negotiations: { live: number; total: number; agreed: number; declined: number };
   /** Distinct people with an unsettled negotiation here; each one's agent is mid-conversation. */
   agentsLive: number;
@@ -1831,7 +1835,7 @@ export class ChatDatabaseAdapter {
 
     const inNetworkNegotiation = and(inNetwork, eq(opportunities.id, negotiations.opportunityId));
 
-    const [[signalRow], [opportunityRow], [negotiationRow], recent, liveSeats, turnRows, closeRows, pairRows, [lastSignal], [lastTurn]] = await Promise.all([
+    const [[signalRow], [opportunityRow], [negotiationRow], [turnCountRow], [agentRow], recent, liveSeats, turnRows, closeRows, pairRows, [lastSignal], [lastTurn]] = await Promise.all([
       db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
       db.select({ n: count() }).from(opportunities).where(inNetwork),
       db.select({
@@ -1840,6 +1844,18 @@ export class ChatDatabaseAdapter {
         agreed: sql<number>`count(*) filter (where ${negotiations.outcome} = 'agreed')`,
         declined: sql<number>`count(*) filter (where ${negotiations.outcome} in ('declined', 'closed'))`,
       }).from(negotiations).innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId)).where(inNetwork),
+      db.select({ n: count() }).from(negotiationTurns)
+        .innerJoin(negotiations, eq(negotiations.id, negotiationTurns.negotiationId))
+        .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+        .where(inNetwork),
+      db.select({ n: count() }).from(schema.agents).where(and(
+        isNull(schema.agents.deletedAt),
+        sql`${schema.agents.ownerId} in (
+          select ${intents.userId} from ${intents}
+          inner join ${intentNetworks} on ${intentNetworks.intentId} = ${intents.id}
+          where ${intentNetworks.networkId} = ${networkId}
+        )`,
+      )),
       !detailed
         ? Promise.resolve([])
         : db.select({ summary: intents.summary, payload: intents.payload, createdAt: intents.createdAt })
@@ -1914,6 +1930,8 @@ export class ChatDatabaseAdapter {
     return {
       signals: Number(signalRow?.n ?? 0),
       opportunities: Number(opportunityRow?.n ?? 0),
+      agents: Number(agentRow?.n ?? 0),
+      turns: Number(turnCountRow?.n ?? 0),
       negotiations: {
         live: Number(negotiationRow?.live ?? 0),
         total: Number(negotiationRow?.total ?? 0),

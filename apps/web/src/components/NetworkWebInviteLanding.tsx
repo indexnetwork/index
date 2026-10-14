@@ -170,8 +170,6 @@ export default function NetworkWebInviteLanding() {
   const inviteUrl =
     typeof window !== "undefined" && code ? `${window.location.origin}/l/${encodeURIComponent(code)}` : "";
 
-  const memberCount = network?._count?.members;
-
   if (previewStep === "loading") {
     return <SiteSignInPage><SiteSignInMeta>Loading invitation…</SiteSignInMeta></SiteSignInPage>;
   }
@@ -213,10 +211,8 @@ export default function NetworkWebInviteLanding() {
   return (
     <NetworkInviteBoard
       title={network.title}
-      memberCount={memberCount}
       pulse={network.pulse}
       inviteUrl={inviteUrl}
-      webJoin={signInCard}
       status={showChoice ? null : linkSentTo ? signInCard : joining ? (
         <SiteSignInMeta>Joining…</SiteSignInMeta>
       ) : joinOutcome === "pending" ? (

@@ -15,6 +15,8 @@ vi.mock("@/services/networks", () => ({
       pulse: {
         signals: 40,
         opportunities: 18,
+        agents: 102,
+        turns: 90,
         negotiations: { live: 3, total: 25, agreed: 7, declined: 15 },
         agentsLive: 6,
         lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
@@ -44,6 +46,7 @@ function renderLanding() {
         <Route path="/l/:code" element={<NetworkWebInviteLanding />} />
         <Route path="/onboarding" element={<p>onboarding page</p>} />
         <Route path="/networks/:id" element={<p>network page</p>} />
+        <Route path="/login" element={<p>login page</p>} />
       </Routes>
     </MemoryRouter>
   );
@@ -77,21 +80,32 @@ describe("NetworkWebInviteLanding", () => {
   it("shows the network's numbers and the summary of what members are after", async () => {
     renderLanding();
     expect(await screen.findByText("A few people want cofounders, others want coffee.")).toBeTruthy();
-    expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === "6 agents talking right now")).toBeTruthy();
-    expect(screen.getByText("✓ intro agreed")).toBeTruthy();
-    expect(screen.getAllByText("Polite Teapot")).toHaveLength(2);
+    expect(screen.queryByText("✓ intro agreed")).toBeNull();
+    expect(screen.queryByText("Polite Teapot")).toBeNull();
     expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === "last change 3m ago")).toBeTruthy();
+    expect(screen.getByText("agents").nextSibling?.textContent).toBe("102");
+    expect(screen.queryByText("members")).toBeNull();
     expect(screen.getByText("open signals").nextSibling?.textContent).toBe("40");
-    expect(screen.getByText("intros agreed").nextSibling?.textContent).toBe("7");
+    expect(screen.getByText("negotiation turns").nextSibling?.textContent).toBe("90");
+    expect(screen.queryByText("matches")).toBeNull();
+    expect(screen.queryByText("intros agreed")).toBeNull();
   });
 
-  it("offers a prompt that joins through the visitor's own agent", async () => {
+  it("sends the invite to the agent you pick", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
     renderLanding();
-    fireEvent.click(await screen.findByRole("button", { name: "Your agent" }));
-    const prompt = screen.getByText(/join_network/);
-    expect(prompt.textContent).toContain("/l/abc");
-    expect(prompt.textContent).toContain("Index Early Birds");
-    expect(screen.queryByRole("button", { name: "send link" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: /which agent goes in/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Hermes/ }));
+    expect(writeText.mock.calls.at(-1)?.[0]).toContain("index_join_network");
+
+    fireEvent.click(screen.getByRole("button", { name: /^MCP/ }));
+    expect(writeText.mock.calls.at(-1)?.[0]).toContain("protocol.index.network/mcp");
+    expect(writeText.mock.calls.at(-1)?.[0]).toContain("/l/abc");
+
+    fireEvent.click(screen.getByRole("button", { name: /make a new one here/i }));
+    expect(await screen.findByText("login page")).toBeTruthy();
   });
 
   it("joins a new account and sends it to onboarding", async () => {
