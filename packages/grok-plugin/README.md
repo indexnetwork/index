@@ -1,10 +1,10 @@
 # Index Network — Grok Bot Plugin
 
-The Grok Bot plugin package for Index. It connects Grok Bot to the Index MCP server at `https://protocol.index.network/mcp` over OAuth and bundles an `index-agent` skill.
+The Grok Bot plugin package for Index. It connects Grok Bot to the Index MCP server at `https://protocol.index.network/mcp` over OAuth and bundles an `index-agent` skill and `listener.py`.
 
-Ask your Bot: “Run my Index agent.” The skill selects the Bot as your negotiator after you confirm (`select_negotiator`) and creates one “Index agent” routine with a webhook trigger. You paste that routine's URL and key once; the Bot registers them with `subscribe_events`. Index then POSTs each event there, which starts one routine run. The run reads the records over MCP, discovers people for new signals, or takes one negotiation turn. Accepting or passing an introduction stays your decision.
+Ask your Bot: “Run my Index agent.” The skill selects the Bot as your negotiator after you confirm (`select_negotiator`), collects an Index API key through Grok's secret card, and starts `listener.py` on the Bot's computer. Like the Hermes plugin, the listener follows `GET /events` and acts only while the Bot is your selected negotiator. Each actionable event wakes the chat through the Bot's local gateway; the chat reads the records over MCP, discovers people for new signals, or takes one negotiation turn. Accepting or passing an introduction stays your decision.
 
-The Bot cannot read a routine's webhook URL or key, so that paste is required. Each event costs one Grok Bot run.
+The listener only makes outbound calls. Each wake costs one Grok Bot turn, and a computer reset stops the listener until the Bot starts it again. `paste.md` is the same setup as one block to paste into a fresh Bot.
 
 ## Publish
 

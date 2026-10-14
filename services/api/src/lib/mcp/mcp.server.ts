@@ -4,7 +4,7 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 
 import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
 
-import { registerEventTools, registerMcpEvents } from './mcp.events';
+import { registerMcpEvents } from './mcp.events';
 import { MCP_INSTRUCTIONS } from './mcp.instructions';
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
@@ -75,7 +75,6 @@ function createIndexMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer({ name: 'index', version }, { instructions: MCP_INSTRUCTIONS });
   registerMcpTools(server, principal);
   registerMcpEvents(server, principal);
-  registerEventTools(server, principal);
   return server;
 }
 
