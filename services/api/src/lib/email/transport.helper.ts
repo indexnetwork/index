@@ -18,10 +18,7 @@ export const executeSendEmail = async (options: {
     return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
-  const passthrough = (process.env.EMAIL_PASSTHROUGH_DOMAINS ?? '').split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
-  const direct = passthrough.length > 0
-    && [options.to].flat().every((to) => passthrough.some((domain) => to.toLowerCase().endsWith(`@${domain}`)));
-  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true' || direct;
+  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true';
   let recipient: string | string[] = options.to;
 
   if (!isProduction) {

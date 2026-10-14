@@ -149,14 +149,14 @@ export interface McpEventSubscription {
   credential: McpCredential;
   name: string;
   arguments: Record<string, unknown>;
-  /** Webhook callback and its signing secret; absent for an email subscription. */
+  /** Webhook callback. ChatGPT signs with secret; Grok Bot authenticates with bearer. */
   url?: string;
   secret?: string;
-  /** Grok Bot mail address that receives each event as an email. */
-  email?: string;
+  /** Grok Bot routine key, sent as Authorization: Bearer. */
+  bearer?: string;
   previousSecret?: string;
   rotatedAt?: number;
-  /** Absent for an email subscription, which lasts until unsubscribed or its credential is revoked. */
+  /** Absent for a bearer subscription, which lasts until unsubscribed or its credential is revoked. */
   expiresAt?: number;
 }
 
@@ -369,13 +369,14 @@ export function registerMcpEvents(server: McpServer, principal: McpPrincipal): v
 }
 
 const EVENT_NAMES = Object.keys(MCP_EVENT_CATALOG) as [string, ...string[]];
-const grokBotEmail = z.string().trim().toLowerCase().regex(/^[^\s@]+@mail\.grokbot\.com$/, 'Must be a @mail.grokbot.com address.');
+const GROK_WEBHOOK_PREFIX = 'https://api2.cursor.sh/automations/webhook/';
+const grokWebhookUrl = z.string().trim().refine((url) => url.startsWith(GROK_WEBHOOK_PREFIX), 'Must be a Grok Bot routine webhook URL.');
+const grokWebhookKey = z.string().trim().refine((key) => key.startsWith('crsr_'), 'Must be the routine key, starting with crsr_.');
 const eventNames = z.array(z.enum(EVENT_NAMES)).min(1).optional();
-const mailto = (email: string) => `mailto:${email}`;
 
 /**
  * Event subscriptions as tools, for hosts that cannot call `events/subscribe`.
- * Delivery is one email per event to a Grok Bot address, whose routine wakes on mail from Index.
+ * Delivery is one POST per event to a Grok Bot routine webhook.
  */
 export function registerEventTools(server: McpServer, principal: McpPrincipal): void {
   const { userId } = principal;
@@ -385,20 +386,20 @@ export function registerEventTools(server: McpServer, principal: McpPrincipal): 
   server.registerTool(
     'subscribe_events',
     {
-      description: 'For hosts without MCP events, such as Grok Bot: email each future Index event to the bot\'s own @mail.grokbot.com address, so a routine triggered by mail from events@agent.index.network can act on it. events defaults to every event; intentId limits them to one signal. Each email is one event: a pointer to read with the other tools.',
-      inputSchema: z.object({ email: grokBotEmail, events: eventNames, intentId: z.string().trim().min(1).optional() }).strict(),
+      description: 'For hosts without MCP events, such as Grok Bot: POST each future Index event to one routine webhook. url and key come from that routine\'s webhook panel; the bot cannot read them, so the owner pastes both. events defaults to every event; intentId limits them to one signal. Each POST is one event: a pointer to read with the other tools. Calling again with the same url replaces the key.',
+      inputSchema: z.object({ url: grokWebhookUrl, key: grokWebhookKey, events: eventNames, intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    ({ email, events = EVENT_NAMES, intentId }) => run('subscribe_events', async () => {
+    ({ url, key, events = EVENT_NAMES, intentId }) => run('subscribe_events', async () => {
       const { credential } = principal;
       if (!credential) return mcpError('credential_required', 'Event subscriptions need an OAuth, API key, or device session credential.');
       const current = await listSubscriptions(userId);
       if (!current.length) await startReading(userId);
       for (const name of events) {
         const args = parseArguments(name, intentId ? { intentId } : {});
-        await saveSubscription({ id: subscriptionId(userId, mailto(email), name, args), userId, credential, name, arguments: args, email });
+        await saveSubscription({ id: subscriptionId(userId, url, name, args), userId, credential, name, arguments: args, url, bearer: key });
       }
-      return mcpSuccess({ email, events, intentId: intentId ?? null });
+      return mcpSuccess({ url, events, intentId: intentId ?? null });
     }),
   );
 
@@ -410,10 +411,10 @@ export function registerEventTools(server: McpServer, principal: McpPrincipal): 
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     () => run('list_event_subscriptions', async () => mcpSuccess({
-      subscriptions: (await listSubscriptions(userId)).map(({ name, arguments: args, email, url, expiresAt }) => ({
+      subscriptions: (await listSubscriptions(userId)).map(({ name, arguments: args, url, expiresAt }) => ({
         name,
         arguments: args,
-        destination: email ?? url,
+        destination: url,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
       })),
     })),
@@ -422,13 +423,13 @@ export function registerEventTools(server: McpServer, principal: McpPrincipal): 
   server.registerTool(
     'unsubscribe_events',
     {
-      description: 'Stop emailing Index events to this @mail.grokbot.com address. Omit events to remove them all.',
-      inputSchema: z.object({ email: grokBotEmail, events: eventNames }).strict(),
+      description: 'Stop POSTing Index events to this Grok Bot routine webhook. Omit events to remove them all.',
+      inputSchema: z.object({ url: grokWebhookUrl, events: eventNames }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    ({ email, events }) => run('unsubscribe_events', async () => {
+    ({ url, events }) => run('unsubscribe_events', async () => {
       const removed = (await listSubscriptions(userId))
-        .filter((subscription) => subscription.email === email && (!events || events.includes(subscription.name)));
+        .filter((subscription) => subscription.url === url && subscription.bearer && (!events || events.includes(subscription.name)));
       for (const subscription of removed) await deleteSubscription(userId, subscription.id);
       return mcpSuccess({ removed: removed.length });
     }),

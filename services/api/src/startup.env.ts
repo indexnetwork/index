@@ -87,8 +87,6 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_PRODUCTION_MODE: optionalBoolean,
   TESTING_EMAIL_ADDRESS: z.union([z.literal(''), z.string().email()]).optional(),
-  /** Comma-separated recipient domains delivered for real outside production, e.g. mail.grokbot.com. */
-  EMAIL_PASSTHROUGH_DOMAINS: z.string().optional(),
 
   // 7. Integrations
   UNSTRUCTURED_API_URL: optionalUrl,

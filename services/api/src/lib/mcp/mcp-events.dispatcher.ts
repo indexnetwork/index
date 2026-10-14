@@ -5,8 +5,6 @@ import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { apikeys, oauthAccessTokens, oauthApplications, sessions } from '../../schemas/database.schema';
 import db from '../drizzle/drizzle';
-import { executeSendEmail } from '../email/transport.helper';
-import { escapeHtml } from '../escapeHtml';
 import { log } from '../log';
 import { ackUserEvent, ensureUserEventGroup, readUserEventGroup, type UserEventRecord } from '../user-events';
 import { WebhookUrlError, postWebhook } from '../webhook';
@@ -15,8 +13,6 @@ import { MCP_EVENTS_GROUP, deleteSubscription, listSubscribedUsers, listSubscrip
 
 const logger = log.server.from('McpEventDispatcher');
 
-/** Grok Bot routines filter on this sender, so it must stay stable and pass SPF and DKIM. */
-const EVENTS_SENDER = 'Index Events <events@agent.index.network>';
 const BLOCK_MS = 5_000;
 const RETRY_DELAYS_MS = [1_000, 5_000];
 
@@ -54,30 +50,20 @@ async function deliver(subscription: McpEventSubscription, event: McpEvent): Pro
     return;
   }
   const body = JSON.stringify(event);
-  if (subscription.email) {
-    await executeSendEmail({
-      to: subscription.email,
-      from: EVENTS_SENDER,
-      subject: `[Index] ${event.name}`,
-      text: body,
-      html: `<pre>${escapeHtml(body)}</pre>`,
-    }).catch((error: unknown) => {
-      logger.warn('MCP event email failed', { subscriptionId: subscription.id, eventId: event.eventId, error: error instanceof Error ? error.message : String(error) });
-    });
-    return;
-  }
   if (!subscription.url) return;
+  const gone = subscription.bearer ? [401, 403, 404, 410] : [410];
   for (let attempt = 0; ; attempt++) {
     try {
       const response = await postWebhook({
         url: subscription.url,
         secrets: signingSecrets(subscription),
+        ...(subscription.bearer && { bearer: subscription.bearer }),
         id: event.eventId,
         subscriptionId: subscription.id,
         body,
       });
       if (response.ok || response.status === 413) return;
-      if (response.status === 410) {
+      if (gone.includes(response.status)) {
         await deleteSubscription(subscription.userId, subscription.id);
         return;
       }
