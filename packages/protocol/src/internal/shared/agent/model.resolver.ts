@@ -22,6 +22,7 @@ export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   inviteGenerator: "google/gemini-3.7-flash",
   userContextGenerator: "google/gemini-3.7-flash",
   networkRecommender: "google/gemini-3.7-flash",
+  networkPulseSummarizer: "google/gemini-3.7-flash",
   interruptClassifier: "google/gemini-3.7-flash",
   chat: "google/gemini-3.7-flash",
 } as const);

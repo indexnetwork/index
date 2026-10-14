@@ -9,6 +9,7 @@ import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../../
 import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
 import { negotiationService, type SubmitTurnRejection } from '../../services/negotiation.service';
+import { networkService } from '../../services/network.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
 import { RuntimeConflictError } from '../agent/runtime-errors';
@@ -33,6 +34,14 @@ const hints = (
 ) => ({ readOnlyHint, destructiveHint, idempotentHint, openWorldHint });
 
 const emptyInputSchema = z.object({}).strict();
+
+/** An invite link (`…/l/<code>`) or the bare code from it. */
+export function inviteCodeFrom(input: string): string | null {
+  const trimmed = input.trim();
+  const fromLink = trimmed.match(/\/l\/([^/?#\s]+)/);
+  const code = fromLink ? decodeURIComponent(fromLink[1]) : trimmed;
+  return /^[\w-]{4,128}$/.test(code) ? code : null;
+}
 const intentIdSchema = z.object({
   intentId: z.string().trim().min(1),
 }).strict();
@@ -506,6 +515,36 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         archived: true,
         message: 'Archiving cannot currently be reversed; network associations were removed and related opportunities were expired.',
       }, `${link} — archived`);
+    }),
+  );
+
+  server.registerTool(
+    'join_network',
+    {
+      description: 'Join a network from an invite link the person gave you (https://index.network/l/<code>) or the code in it. Their signals then start matching with its members. Some networks hold the request for an admin; the result says joined, pending, or already a member.',
+      inputSchema: z.object({
+        invite: z.string().trim().min(1).max(500),
+      }).strict(),
+      annotations: hints(false, false, false, true),
+    },
+    ({ invite }) => runTool('join_network', principal, async () => {
+      const code = inviteCodeFrom(invite);
+      if (!code) return mcpError('invalid_invite', 'That is not an Index invite link or code.');
+      try {
+        const result = await networkService.acceptInvitation(code, principal.userId);
+        const { id, title } = result.network;
+        const summary = {
+          joined: `Joined ${title}.`,
+          already_member: `Already a member of ${title}.`,
+          pending: `Asked to join ${title}. An admin has to approve it.`,
+        }[result.status];
+        return mcpSuccess({ status: result.status, network: { id, title } }, summary);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        if (message.includes('declined')) return mcpError('join_declined', 'An admin declined this request to join.');
+        if (message.includes('Invalid or expired')) return mcpError('invalid_invite', 'This invite link is invalid or has expired.');
+        throw err;
+      }
     }),
   );
 
