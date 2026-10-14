@@ -230,7 +230,7 @@
   border: 0;
   background: none;
   color: #6b6560;
-  font-family: "Public Sans", system-ui, sans-serif;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 12px;
   cursor: pointer;
 }
@@ -246,6 +246,7 @@
   border: 1px solid #000;
   background: #fff;
   color: #000;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   text-align: center;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
@@ -257,7 +258,7 @@
 .invite-agent svg { width: 15px; height: 15px; display: block; flex: none; }
 .invite-agent__logo { width: 16px; height: 16px; display: block; flex: none; object-fit: contain; }
 .invite-agent__label {
-  font-family: "Public Sans", system-ui, sans-serif;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 15px;
   font-weight: 500;
   letter-spacing: -.005em;
@@ -324,7 +325,11 @@
 .invite-wb .site-btn,
 .invite-wb .auth .av-oauth,
 .invite-wb .auth .av-submit,
-.invite-wb .auth .av-input { font-size: 13px; letter-spacing: -.01em; }
+.invite-wb .auth .av-input {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: -.01em;
+}
 .invite-wb .auth .av-oauth,
 .invite-wb .auth .av-input { border-color: #000; }
 

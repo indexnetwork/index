@@ -12,7 +12,7 @@ export function SiteSignInPage({ kicker, title, meta, children }: {
   children?: ReactNode;
 }) {
   return (
-    <AppsShell>
+    <AppsShell bar="sign in" narrow>
       <div className="signin">
         {(kicker || title || meta) && (
           <div className="signin-intro">
@@ -41,7 +41,7 @@ export function SiteSignInMeta({ children, dot = false }: { children: ReactNode;
 export function SiteSignInPanel({ bar, wide = false, children }: { bar: string; wide?: boolean; children: ReactNode }) {
   return (
     <section className={wide ? "signin-card signin-card--wide" : "signin-card"}>
-      <h2 className="signin-card__bar">{bar}</h2>
+      <h2 className="signin-card__bar"><span>{bar}</span></h2>
       <div className="signin-card__body signin-card__body--stack">{children}</div>
     </section>
   );
@@ -50,7 +50,7 @@ export function SiteSignInPanel({ bar, wide = false, children }: { bar: string; 
 function Card({ bar, className, children }: { bar: string; className?: string; children: ReactNode }) {
   return (
     <section className="signin-card">
-      <h2 className="signin-card__bar">{bar}</h2>
+      <h2 className="signin-card__bar"><span>{bar}</span></h2>
       <div className={className ? `signin-card__body ${className}` : "signin-card__body"}>{children}</div>
     </section>
   );

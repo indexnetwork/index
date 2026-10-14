@@ -111,11 +111,16 @@ function AppLaunch({ hermesHref, onContinue }: {
     <a className={openClass(false)} href="/">Open app →</a>
   );
   return (
-    <AppsShell overlay>
-      <div className="apps-intro">
-        <h1 className="site-h1 apps-title">Open in Hermes</h1>
-        <p className="site-p">Pick where to open this link.</p>
-      </div>
+    <AppsShell overlay framed={false}>
+      <section className="apps-board">
+        <h2 className="apps-card-bar"><span>open</span></h2>
+        <div className="apps-board__body">
+          <div className="apps-intro">
+            <h1 className="site-h1 apps-title">Open in Hermes</h1>
+            <p className="site-p">Pick where to open this link.</p>
+          </div>
+        </div>
+      </section>
 
       <div className="apps-cards">
         <AppCard
