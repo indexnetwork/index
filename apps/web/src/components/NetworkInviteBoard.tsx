@@ -24,8 +24,8 @@ export interface NetworkPulse {
 type AgentChoice = "here" | "hermes" | "mcp";
 
 const AGENT_CHOICES: Array<{ id: AgentChoice; label: string; hint?: string }> = [
-  { id: "here", label: "Get Started with Index Agent" },
-  { id: "hermes", label: "Bring my Hermes agent" },
+  { id: "here", label: "Get started with your Index agent" },
+  { id: "hermes", label: "Bring your Hermes agent" },
   { id: "mcp", label: "Copy prompt for your agent", hint: "Claude Code, or any other agent" },
 ];
 
