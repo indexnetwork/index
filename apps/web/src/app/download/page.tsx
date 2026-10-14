@@ -1,7 +1,7 @@
-import { useEffect, type ReactNode } from "react";
-import { ensureSiteFonts, SiteFooter, SiteNav } from "@/app/site/SiteLayout";
+import { useEffect, useState, type ReactNode } from "react";
+import { ensureSiteFonts } from "@/app/site/SiteLayout";
 import CopyPromptButton from "@/app/site/CopyPromptButton";
-import { HERMES_INSTALL_URL } from "@/app/site/links";
+import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import "@/app/site/site.css";
 import "./download.css";
 
@@ -10,17 +10,29 @@ import "./download.css";
  * `main` that scrolls on its own when the window is short, and the footer.
  * `overlay` covers the chrome of a route that renders it in place.
  */
-export function AppsShell({ overlay, children }: { overlay?: boolean; children: ReactNode }) {
+export function AppsShell({ overlay, bar = "index", narrow = false, framed = true, children }: {
+  overlay?: boolean;
+  bar?: string;
+  narrow?: boolean;
+  /** When false, children are separate windows on the desktop, not one pane. */
+  framed?: boolean;
+  children: ReactNode;
+}) {
   useEffect(() => {
     ensureSiteFonts();
   }, []);
 
   return (
     <div className={overlay ? "site apps apps--overlay" : "site apps"}>
-      <div className="apps-col">
-        <SiteNav logoOnly />
-        <main className="apps-main">{children}</main>
-        <SiteFooter className="site-footer apps-footer" />
+      <div className={narrow ? "apps-col apps-col--narrow" : "apps-col"}>
+        <main className="apps-main">
+          {framed ? (
+            <section className="apps-board">
+              <h2 className="apps-card-bar"><span>{bar}</span></h2>
+              <div className="apps-board__body">{children}</div>
+            </section>
+          ) : children}
+        </main>
       </div>
     </div>
   );
@@ -41,15 +53,14 @@ export function AppCard({
 }) {
   return (
     <section className="apps-card">
-      <div className="apps-card-head">
-        {icon}
-        <span className="apps-card-label">{label}</span>
+      <h2 className="apps-card-bar"><span>{label.toLowerCase()}</span></h2>
+      <div className="apps-card-body">
+        <div className="apps-card-text">
+          <h3 className="apps-card-title">{icon}{title}</h3>
+          <p className="site-p">{body}</p>
+        </div>
+        {action}
       </div>
-      <div className="apps-card-text">
-        <h2 className="site-col-title">{title}</h2>
-        <p className="site-p">{body}</p>
-      </div>
-      {action}
     </section>
   );
 }
@@ -81,17 +92,81 @@ export function AgentIcon() {
   );
 }
 
+/** Desktop install and the CLI command, the same two paths as the Hermes page. */
+function HermesInstall() {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  return (
+    <div className="apps-hermes">
+      <div className="apps-hermes__way">
+        <h4 className="apps-hermes__title">
+          <img src="/site/nous-research.png" alt="" />
+          Hermes desktop
+        </h4>
+        <a className="site-btn site-btn--secondary site-btn--block" href={HERMES_INSTALL_URL}>Install plugin</a>
+      </div>
+      <div className="apps-hermes__way">
+        <h4 className="apps-hermes__title">
+          <span className="apps-hermes__term" aria-hidden="true">&gt;_</span>
+          Hermes CLI
+        </h4>
+        <div className="apps-hermes__cmd">
+          <code>
+            <span className="apps-hermes__prompt">$ </span>
+            {HERMES_INSTALL_COMMAND}
+          </code>
+          <button
+            type="button"
+            className="apps-hermes__copy"
+            onClick={() => { void navigator.clipboard?.writeText(HERMES_INSTALL_COMMAND).then(() => setCopied(true)); }}
+            aria-label={copied ? "Copied" : "Copy command"}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+        <a className="site-arrow-link" href={docsUrl("/use/hermes")} target="_blank" rel="noreferrer">
+          Read the docs ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function HermesCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <AppCard
+      icon={<HermesIcon />}
+      label="PLUGIN"
+      title="Hermes plugin"
+      body="Already use Hermes? Add Index to the agent you have."
+      action={
+        <div className="apps-card-actions">
+          {open ? <HermesInstall /> : (
+            <button
+              type="button"
+              className="site-btn site-btn--secondary site-btn--block"
+              aria-expanded={false}
+              onClick={() => setOpen(true)}
+            >
+              Install plugin →
+            </button>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
 /** `/download` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
 export default function Download({ overlay }: { overlay?: boolean }) {
   return (
-    <AppsShell overlay={overlay}>
-      <div className="apps-intro">
-        <h1 className="site-h1 apps-title">Get Index</h1>
-        <p className="site-p">
-          Open the app, add the Hermes plugin, or connect the agent you already use.
-        </p>
-      </div>
-
+    <AppsShell overlay={overlay} framed={false}>
       <div className="apps-cards">
         <AppCard
           icon={<WebIcon />}
@@ -104,17 +179,7 @@ export default function Download({ overlay }: { overlay?: boolean }) {
             </div>
           }
         />
-        <AppCard
-          icon={<HermesIcon />}
-          label="PLUGIN"
-          title="Hermes plugin"
-          body="Already use Hermes? Add Index to the agent you have."
-          action={
-            <div className="apps-card-actions">
-              <a className="site-btn site-btn--secondary site-btn--block" href={HERMES_INSTALL_URL}>Install plugin →</a>
-            </div>
-          }
-        />
+        <HermesCard />
         <AppCard
           icon={<AgentIcon />}
           label="MCP"
