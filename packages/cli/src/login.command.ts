@@ -251,58 +251,35 @@ export async function handleLogin(
   };
 }
 
-/**
- * The web frontend's index-wordmark.svg, inlined (same as apps/mac and the
- * Hermes plugin) so the page renders the same header without depending on the
- * web origin being reachable.
- */
-const WORDMARK_SVG = `<svg viewBox="0 0 522 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M184.51 21.66C184.51 18.33 187.42 15.73 191.23 15.73C195.04 15.73 197.95 18.33 197.95 21.66C197.95 24.99 195.1 27.54 191.23 27.54C187.36 27.54 184.51 25 184.51 21.66Z" fill="currentColor"/>
-<path d="M0 0.72998H7.47V42.61H0V0.72998Z" fill="currentColor"/>
-<path d="M16.6301 0.72998H25.0701L44.3701 27.26H45.4001V0.72998H52.9301V42.61H44.4301L25.1901 16.08H24.1001V42.61H16.6301V0.72998Z" fill="currentColor"/>
-<path d="M99.91 21.67C99.91 33.63 90.74 42.61 78.54 42.61H62.03V0.72998H78.54C90.74 0.72998 99.91 9.70995 99.91 21.67ZM92.2 21.67C92.2 14.93 86.25 9.88998 78.3 9.88998H69.5V33.44H78.3C86.25 33.44 92.2 28.4 92.2 21.66V21.67Z" fill="currentColor"/>
-<path d="M137.61 33.45V42.62H107.08V0.73999H137.31V9.91H114.55V17.13H135.31V25.99H114.55V33.46H137.62L137.61 33.45Z" fill="currentColor"/>
-<path d="M167.53 21.7899L181.49 42.61H172.75L162.43 27.86H160.97L150.71 42.61H141.3L155.56 21.37L141.84 0.72998H150.58L160.66 15.36H162.06L172.14 0.72998H181.55L167.53 21.7899Z" fill="currentColor"/>
-<path d="M209.87 0.72998H218.31L237.61 27.26H238.64V0.72998H246.17V42.61H237.67L218.43 16.08H217.34V42.61H209.87V0.72998Z" fill="currentColor"/>
-<path d="M285.8 33.45V42.62H255.27V0.73999H285.5V9.91H262.74V17.13H283.5V25.99H262.74V33.46H285.81L285.8 33.45Z" fill="currentColor"/>
-<path d="M324.77 9.88998H311.48V42.61H304.01V9.88998H290.72V0.719971H324.77V9.88998Z" fill="currentColor"/>
-<path d="M328.96 0.72998H336.91L346.14 28.35H347.41L356.09 0.72998H362.71L371.45 28.35H372.79L381.89 0.72998H390.33L376.92 42.61H368.42L360.59 17.24H358.71L350.88 42.61H342.38L328.97 0.72998H328.96Z" fill="currentColor"/>
-<path d="M391.54 21.67C391.54 9.34998 401.07 0 413.7 0C426.33 0 435.86 9.34998 435.86 21.67C435.86 33.99 426.33 43.34 413.7 43.34C401.07 43.34 391.54 33.99 391.54 21.67ZM428.14 21.67C428.14 14.63 421.89 9.35004 413.69 9.35004C405.49 9.35004 399.24 14.63 399.24 21.67C399.24 28.71 405.49 33.99 413.69 33.99C421.89 33.99 428.14 28.71 428.14 21.67Z" fill="currentColor"/>
-<path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z" fill="currentColor"/>
-<path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z" fill="currentColor"/>
-</svg>`;
-
-/**
- * Callback page in the index.network site style, matching the Mac app:
- * off-white ground, dark wordmark, serif title.
- */
+/** Loopback page after CLI sign-in: the same dotted desktop and window as the web app. */
 function callbackHtml(title: string, message: string, ok = false): string {
-  const tag = ok ? `<span class="tag">signed in</span>` : "";
+  const bar = ok ? "signed in" : "index";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title} · Index</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400&family=Public+Sans:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
-:root{--ink:#041729;--bg:#FCFEFB;--body:#2E3B45;--green:#123A00;--mono:'SF Mono',Menlo,Consolas,monospace}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink)}
-body{min-height:100vh;display:flex;flex-direction:column;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.col{width:100%;max-width:836px;margin:0 auto;padding:0 24px}
-.nav{padding:26px 0;color:var(--ink)}
-.nav svg{height:14px;width:auto;display:block}
-main{flex:1;display:flex;align-items:center}
-.c{display:flex;flex-direction:column;align-items:flex-start;gap:22px;padding:40px 0 12vh;max-width:520px}
-.tag{display:inline-flex;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;background:#E3F0DE;color:var(--green)}
-h1{margin:0;font-family:'Source Serif 4',Georgia,serif;font-weight:400;font-size:40px;line-height:1.2;letter-spacing:-.015em}
-p{margin:0;font-size:15px;line-height:1.7;font-weight:300;color:var(--body)}
-footer{padding:24px 0;font-family:var(--mono);font-size:11px;color:var(--green)}
-@media (max-width:520px){h1{font-size:32px}}
+html,body{margin:0}
+body{
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
+  background-color:#0055aa;background-image:radial-gradient(rgba(255,255,255,.22) 1px,transparent 1px);background-size:4px 4px;
+  color:#000;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;-webkit-font-smoothing:antialiased;
+}
+.win{width:100%;max-width:520px;background:#fff;color:#000;border:2px solid #000}
+.bar{
+  height:24px;margin:0;display:flex;align-items:center;border-bottom:2px solid #000;
+  background-image:repeating-linear-gradient(0deg,#000 0 2px,transparent 2px 6px);background-position:0 4px;
+  font-size:13px;font-weight:500;letter-spacing:.3px;line-height:1;
+}
+.bar span{background:#fff;padding:0 12px 0 8px;margin-left:4px;height:100%;display:flex;align-items:center}
+.body{padding:28px;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:28px;font-weight:500;line-height:1.25;letter-spacing:-.03em}
+p{margin:0;font-size:14px;line-height:1.6;font-weight:400;color:#000}
 </style></head>
 <body>
-<div class="col"><nav class="nav" aria-label="Index Network">${WORDMARK_SVG}</nav></div>
-<main><div class="col"><div class="c">${tag}<h1>${title}</h1><p>${message}</p></div></div></main>
-<div class="col"><footer>index.network</footer></div>
+<main><section class="win"><h2 class="bar"><span>${bar}</span></h2><div class="body"><h1>${title}</h1><p>${message}</p></div></section></main>
 </body></html>`;
 }
