@@ -18,31 +18,6 @@
   overflow-x: clip;
 }
 
-/* ---------- cream chips ---------- */
-/* Pinned to the viewport's bottom-right corner, above the cards. */
-.invite-bottom {
-  position: fixed;
-  right: 20px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  z-index: 10;
-}
-.invite-badge--link { text-decoration: none; }
-.invite-badge--link:hover { color: var(--bg); background: var(--ink); border-color: var(--ink); }
-.invite-badge--link:focus-visible { outline: 2px solid var(--bg); outline-offset: 2px; }
-.invite-badge {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 14px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid #000;
-  font-variant-numeric: tabular-nums;
-}
 .invite-live { width: 7px; height: 7px; border-radius: 50%; background: #3FBF7F; }
 
 /* ---------- the two cards ---------- */
@@ -186,7 +161,7 @@
 .invite-copy { margin: 0; max-width: 56ch; font-size: 15px; line-height: 1.7; font-weight: 300; color: var(--body); }
 
 /* ---------- join card: which agent goes in ---------- */
-.invite-body--join { flex: 1; display: flex; flex-direction: column; padding: 28px 28px 20px; }
+.invite-body--join { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 28px 28px 20px; }
 .invite-bring {
   flex: 1;
   display: flex;
@@ -197,34 +172,95 @@
 .invite-ask {
   margin: 0;
   font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -.02em;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  line-height: 1.2;
   color: #000;
 }
-.invite-agents { display: flex; flex-direction: column; gap: 14px; }
+.invite-agents { display: flex; flex-direction: column; gap: 10px; }
+.invite-agent-slot { display: flex; flex-direction: column; gap: 10px; }
+.invite-hermes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 2px 6px 4px;
+}
+.invite-hermes__way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.invite-hermes__title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Public Sans", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #000;
+}
+.invite-hermes__term {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  background: #F4F1EA;
+}
+.invite-hermes__cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #F4F1EA;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #000;
+}
+.invite-hermes__cmd code { flex: 1; min-width: 0; font: inherit; overflow-wrap: anywhere; }
+.invite-hermes__prompt { color: #8A9199; }
+.invite-hermes__copy {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #6b6560;
+  font-family: "Public Sans", system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+}
+.invite-hermes__copy svg { width: 14px; height: 14px; }
 .invite-agent {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  min-height: 54px;
+  min-height: 50px;
   padding: 10px 16px;
-  border: 2px solid #000;
+  border: 1px solid #000;
   background: #fff;
   color: #000;
   text-align: center;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
 }
-.invite-agent svg { width: 16px; height: 16px; display: block; flex: none; }
-.invite-agent__logo { width: 18px; height: 18px; display: block; flex: none; object-fit: contain; }
-.invite-agent__arrow { margin-left: 4px; }
+.invite-agent:hover { background: #F4F1EA; }
+.invite-agent--primary { background: #000; color: #fff; }
+.invite-agent--primary:hover { background: #1F2A5C; }
+.invite-agent:focus-visible { outline: 2px solid #1F2A5C; outline-offset: 2px; }
+.invite-agent svg { width: 15px; height: 15px; display: block; flex: none; }
+.invite-agent__logo { width: 16px; height: 16px; display: block; flex: none; object-fit: contain; }
 .invite-agent__label {
   font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -.005em;
   line-height: 1.3;
 }
 .invite-agent__name {
@@ -235,27 +271,10 @@
 }
 .invite-agent__hint {
   display: block;
-  margin-top: 1px;
-  font-size: 13px;
+  margin-top: 2px;
+  font-size: 12.5px;
   font-weight: 400;
-  color: #6b6560;
-}
-.invite-bring__copy {
-  margin: 0;
-  max-width: 42ch;
-  font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #3a3a3a;
-}
-.invite-send__note {
-  margin: auto 0 0;
-  padding-top: 28px;
-  text-align: center;
-  font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 13px;
-  color: #8a8578;
+  color: #7a756d;
 }
 
 /* The browser path and join outcomes reuse the sign-in card and form; here
@@ -272,8 +291,7 @@
   .invite-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 520px) {
-  .site.invite-wb { padding: 28px 16px 64px; gap: 12px; }
-  .invite-bottom { right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .site.invite-wb { padding: 28px 16px; gap: 12px; }
   .invite-hero, .invite-looking, .invite-body--join { padding-left: 16px; padding-right: 16px; }
   .invite-stats { column-gap: 20px; padding-left: 16px; padding-right: 16px; }
   .invite-stat dd { font-size: 24px; }

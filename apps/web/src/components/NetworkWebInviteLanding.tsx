@@ -23,7 +23,7 @@ const PREVIEW_FAILED = "Couldn't load this invitation. Check your connection and
 const JOIN_EXPIRED = "Couldn't join. The invite may have expired.";
 const JOIN_FAILED = "Couldn't join right now. Try again in a moment.";
 
-/** How often the invite page refreshes the network's numbers and log. */
+/** How often the invite page refreshes the network's numbers. */
 const PULSE_REFRESH_MS = 15_000;
 
 /**
@@ -68,6 +68,9 @@ export default function NetworkWebInviteLanding() {
   // email" even after the shared session arrives, rather than joining twice.
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const joinStartedRef = useRef(false);
+  // The summary request can finish before or after the counts. Held here so
+  // whichever lands second still keeps the other's result.
+  const summaryRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     localStorage.setItem("alpha", "true");
@@ -78,6 +81,7 @@ export default function NetworkWebInviteLanding() {
     if (!code) return;
 
     let cancelled = false;
+    summaryRef.current = undefined;
     (async () => {
       try {
         const loaded = await publicNetworksService.getNetworkByShareCode(code);
@@ -99,26 +103,51 @@ export default function NetworkWebInviteLanding() {
     };
   }, [code, previewKey]);
 
-  // Keep the numbers and the log live while the visitor is looking. A failed
-  // refresh keeps what is on screen; the next tick tries again.
+  // Counts arrive after the page is up, then stay live. A failed refresh
+  // keeps what is on screen; the next tick tries again.
   useEffect(() => {
     if (!code || previewStep !== "ready") return;
     let cancelled = false;
     const refresh = async () => {
       if (document.visibilityState !== "visible") return;
       try {
-        const loaded = await publicNetworksService.getNetworkByShareCode(code);
-        if (!cancelled) setNetwork(loaded);
+        const pulse = await publicNetworksService.getNetworkSharePulse(code);
+        if (cancelled) return;
+        setNetwork((prev) => {
+          if (!prev) return prev;
+          const summary = prev.pulse?.summary !== undefined ? prev.pulse.summary : summaryRef.current;
+          return { ...prev, pulse: { ...pulse, ...(summary !== undefined ? { summary } : {}) } };
+        });
       } catch (err) {
         logger.warn("Failed to refresh network activity", { error: err });
       }
     };
+    void refresh();
     const timer = setInterval(() => void refresh(), PULSE_REFRESH_MS);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       cancelled = true;
       clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [code, previewStep]);
+
+  // The written summary can wait on a model. It must not hold the page or the counts.
+  useEffect(() => {
+    if (!code || previewStep !== "ready") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await publicNetworksService.getNetworkShareSummary(code);
+        if (cancelled) return;
+        summaryRef.current = summary;
+        setNetwork((prev) => prev?.pulse ? { ...prev, pulse: { ...prev.pulse, summary } } : prev);
+      } catch (err) {
+        logger.warn("Failed to load network summary", { error: err });
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, [code, previewStep]);
 

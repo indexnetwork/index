@@ -491,6 +491,32 @@ export class NetworkController {
   }
 
   /**
+   * Invite-page counts. Loaded after the network so the page is not blocked on the scans.
+   * IMPORTANT: This must come before GET /share/:code and GET /:id.
+   */
+  @Get('/share/:code/pulse')
+  async getNetworkSharePulse(_req: Request, _user: unknown, params: Record<string, string>) {
+    const pulse = await networkService.getNetworkSharePulse(params.code);
+    if (!pulse) {
+      return Response.json({ error: 'Invalid or expired invitation link' }, { status: 404 });
+    }
+    return Response.json({ pulse });
+  }
+
+  /**
+   * The invite page's written summary. A cache miss waits on the model, so the
+   * page requests it on its own after rendering.
+   */
+  @Get('/share/:code/summary')
+  async getNetworkShareSummary(_req: Request, _user: unknown, params: Record<string, string>) {
+    const result = await networkService.getNetworkShareSummary(params.code);
+    if (!result) {
+      return Response.json({ error: 'Invalid or expired invitation link' }, { status: 404 });
+    }
+    return Response.json(result);
+  }
+
+  /**
    * Get a network by its invitation share code (no auth required).
    * Used by the /l/[code] invitation page to preview the network before authentication.
    * IMPORTANT: This must come before GET /:id to avoid route collision.

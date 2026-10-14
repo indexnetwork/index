@@ -12,21 +12,14 @@ vi.mock("@/services/networks", () => ({
       id: "n1",
       title: "Index Early Birds",
       _count: { members: 122 },
-      pulse: {
-        signals: 40,
-        opportunities: 18,
-        agents: 102,
-        turns: 90,
-        negotiations: { live: 3, total: 25, agreed: 7, declined: 15 },
-        agentsLive: 6,
-        lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
-        log: [
-          { kind: "turn", thread: 1, from: "Polite Teapot", to: "Sleepy Walrus", action: "propose", turn: 1, at: "2026-10-12T09:01:00.000Z" },
-          { kind: "close", thread: 1, a: "Polite Teapot", b: "Sleepy Walrus", outcome: "agreed", turns: 4, at: "2026-10-12T09:05:00.000Z" },
-        ],
-        summary: "A few people want cofounders, others want coffee.",
-      },
     }),
+    getNetworkSharePulse: () => Promise.resolve({
+      signals: 40,
+      agents: 102,
+      turns: 90,
+      lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+    }),
+    getNetworkShareSummary: () => Promise.resolve("A few people want cofounders, others want coffee."),
   },
   useNetworkService: () => ({ acceptInvitation }),
 }));
@@ -97,14 +90,17 @@ describe("NetworkWebInviteLanding", () => {
     renderLanding();
     expect(await screen.findByRole("heading", { name: /which agent goes in/i })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Hermes/ }));
-    expect(writeText.mock.calls.at(-1)?.[0]).toContain("index_join_network");
+    fireEvent.click(screen.getByRole("button", { name: /bring my hermes agent/i }));
+    expect(await screen.findByRole("link", { name: /install plugin/i })).toBeTruthy();
+    expect(screen.getByText("hermes plugins install indexnetwork/hermes-plugin")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /copy command/i }));
+    expect(writeText.mock.calls.at(-1)?.[0]).toBe("hermes plugins install indexnetwork/hermes-plugin");
 
-    fireEvent.click(screen.getByRole("button", { name: /^MCP/ }));
+    fireEvent.click(screen.getByRole("button", { name: /copy prompt for your agent/i }));
     expect(writeText.mock.calls.at(-1)?.[0]).toContain("protocol.index.network/mcp");
     expect(writeText.mock.calls.at(-1)?.[0]).toContain("/l/abc");
 
-    fireEvent.click(screen.getByRole("button", { name: /make a new one here/i }));
+    fireEvent.click(screen.getByRole("button", { name: /get started with index agent/i }));
     expect(await screen.findByText("login page")).toBeTruthy();
   });
 

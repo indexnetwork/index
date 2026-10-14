@@ -207,20 +207,39 @@ export class NetworkService {
   /**
    * Get a network by its invitation share code (public, no auth required).
    * @param code - The invitation share code from the URL
-   * @returns The network with owner info, member count and its activity
-   *   (`pulse`: counts and an aggregate summary, no single signal), or null if not found
+   * @returns The network with owner info and member count, or null if not found.
+   *   Counts and the written summary are separate requests so this one stays fast.
    */
   async getNetworkByShareCode(code: string) {
     logger.verbose('Getting network by share code');
+    return this.adapter.getNetworkByShareCode(code);
+  }
+
+  /**
+   * Counts for the invite page. Separate from the network lookup so the page
+   * can render before these scans finish.
+   */
+  async getNetworkSharePulse(code: string) {
     const network = await this.adapter.getNetworkByShareCode(code);
     if (!network) return null;
-    // Small networks get counts only: a summary or a log of a few people points at them.
-    const detailed = network._count.members >= SUMMARY_MIN_MEMBERS;
-    const { recentSignals, recentPairs, ...counts } = await this.adapter.getNetworkSharePulse(network.id, detailed);
-    const { summary, negotiations: negotiationSummary } = detailed
-      ? await getNetworkPulseSummary(network.id, { networkTitle: network.title, signals: recentSignals, negotiations: recentPairs })
-      : { summary: null, negotiations: null };
-    return { ...network, pulse: { ...counts, summary, negotiationSummary } };
+    return this.adapter.getNetworkShareCounts(network.id);
+  }
+
+  /**
+   * The aggregate "what people are looking for" line. A cache miss waits on
+   * the model, so the page asks for this after it has already rendered.
+   */
+  async getNetworkShareSummary(code: string) {
+    const network = await this.adapter.getNetworkByShareCode(code);
+    if (!network) return null;
+    if (network._count.members < SUMMARY_MIN_MEMBERS) return { summary: null };
+    const signals = await this.adapter.getNetworkShareSummarySignals(network.id);
+    const { summary } = await getNetworkPulseSummary(network.id, {
+      networkTitle: network.title,
+      signals,
+      negotiations: [],
+    });
+    return { summary };
   }
 
   /**

@@ -4,10 +4,11 @@
  * the members' recent signals and negotiating pairs and writes aggregate,
  * lightly funny overviews; no single signal ever reaches the page.
  *
- * The page is public and unauthenticated, so the model runs at most once per
- * network per {@link SUMMARY_TTL_SECONDS}, never on every view: results (empty
- * ones included) are cached in Redis, concurrent views share one call, and a
- * view waits at most {@link WAIT_MS} before the page renders without it.
+ * The page is public and unauthenticated, and it asks for this only after it
+ * has rendered. The model runs at most once per network per
+ * {@link SUMMARY_TTL_SECONDS}: results (empty ones included) are cached in
+ * Redis, concurrent views share one call, and a view waits at most
+ * {@link WAIT_MS} before this request returns without a summary.
  */
 import { NetworkPulseSummarizer, type NetworkPulseSummary } from '@indexnetwork/protocol';
 

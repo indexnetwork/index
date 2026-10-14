@@ -2,42 +2,31 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import { ensureSiteFonts } from "@/app/site/SiteLayout";
-import { hermesInvitePrompt, mcpInvitePrompt } from "@/lib/agent-prompt";
+import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
+import { mcpInvitePrompt } from "@/lib/agent-prompt";
 import "@/app/site/site.css";
 import "./SiteSignIn.css";
 import "./NetworkInviteBoard.css";
 
-/** One line of the anonymized negotiation log: what happened, never what was said or by whom. */
-export type NegotiationLogEvent =
-  | { kind: "turn"; thread: number; from: string; to: string; action: "propose" | "counter" | "accept" | "decline"; turn: number; at: string }
-  | { kind: "close"; thread: number; a: string; b: string; outcome: "agreed" | "declined" | "closed"; turns: number; at: string };
-
 /** Network activity the share-code preview carries. Nothing in it names a member. */
 export interface NetworkPulse {
   signals: number;
-  opportunities: number;
   /** Agents whose owner has a signal in this network. */
   agents?: number;
   /** Turns taken across negotiations in this network. */
   turns?: number;
-  negotiations: { live: number; total: number; agreed: number; declined?: number };
-  /** Distinct people whose agents are mid-negotiation here. */
-  agentsLive?: number;
   /** Newest signal, turn or settlement in the network, to the minute. */
   lastActivityAt?: string | null;
-  log?: NegotiationLogEvent[];
   /** An aggregate overview written on the server; no single signal reaches the page. */
-  summary: string | null;
-  /** A very high-level line on what the agents are negotiating about, written the same way. */
-  negotiationSummary?: string | null;
+  summary?: string | null;
 }
 
 type AgentChoice = "here" | "hermes" | "mcp";
 
 const AGENT_CHOICES: Array<{ id: AgentChoice; label: string; hint?: string }> = [
-  { id: "here", label: "Make a new one here" },
-  { id: "hermes", label: "Hermes" },
-  { id: "mcp", label: "MCP", hint: "Claude Code, or any other agent" },
+  { id: "here", label: "Get Started with Index Agent" },
+  { id: "hermes", label: "Bring my Hermes agent" },
+  { id: "mcp", label: "Copy prompt for your agent", hint: "Claude Code, or any other agent" },
 ];
 
 /** Same-origin login that returns to this invite, so signing in joins the network. */
@@ -49,6 +38,16 @@ function openAppHref(inviteUrl: string): string {
   return "/login";
 }
 
+function WebIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25" />
+      <ellipse cx="8" cy="8" rx="2.6" ry="6.25" />
+      <path d="M1.75 8h12.5" />
+    </svg>
+  );
+}
+
 function CopyIcon() {
   return (
     <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden="true">
@@ -58,13 +57,59 @@ function CopyIcon() {
   );
 }
 
-/** Each way in is a button. A new agent is made here; Hermes and MCP get the invite to paste. */
-function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string }) {
-  const navigate = useNavigate();
-  const [copied, setCopied] = useState<AgentChoice | null>(null);
+/** The two install paths from the Hermes page: desktop plugin, or the CLI command. */
+function HermesInstall() {
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(null), 1800);
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  return (
+    <div className="invite-hermes">
+      <div className="invite-hermes__way">
+        <h3 className="invite-hermes__title">
+          <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />
+          Hermes desktop
+        </h3>
+        <a className="site-btn" href={HERMES_INSTALL_URL}>Install plugin</a>
+      </div>
+      <div className="invite-hermes__way">
+        <h3 className="invite-hermes__title">
+          <span className="invite-hermes__term" aria-hidden="true">&gt;_</span>
+          Hermes CLI
+        </h3>
+        <div className="invite-hermes__cmd">
+          <code>
+            <span className="invite-hermes__prompt">$ </span>
+            {HERMES_INSTALL_COMMAND}
+          </code>
+          <button
+            type="button"
+            className="invite-hermes__copy"
+            onClick={() => { void navigator.clipboard?.writeText(HERMES_INSTALL_COMMAND).then(() => setCopied(true)); }}
+            aria-label={copied ? "Copied" : "Copy command"}
+          >
+            {copied ? "Copied" : <CopyIcon />}
+          </button>
+        </div>
+        <a className="site-arrow-link" href={docsUrl("/use/hermes")} target="_blank" rel="noreferrer">
+          Read the docs ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/** Each way in is a button. Hermes expands its install options; MCP gets the invite to paste. */
+function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string }) {
+  const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+  const [hermesOpen, setHermesOpen] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1800);
     return () => clearTimeout(t);
   }, [copied]);
 
@@ -73,8 +118,11 @@ function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string
       navigate(openAppHref(inviteUrl));
       return;
     }
-    const prompt = id === "hermes" ? hermesInvitePrompt(title, inviteUrl) : mcpInvitePrompt(title, inviteUrl);
-    void navigator.clipboard?.writeText(prompt).then(() => setCopied(id));
+    if (id === "hermes") {
+      setHermesOpen((open) => !open);
+      return;
+    }
+    void navigator.clipboard?.writeText(mcpInvitePrompt(title, inviteUrl)).then(() => setCopied(true));
   };
 
   return (
@@ -82,24 +130,27 @@ function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string
       <h2 className="invite-ask">Which agent goes in?</h2>
       <div className="invite-agents">
         {AGENT_CHOICES.map((agent) => (
-          <button key={agent.id} type="button" className="invite-agent" onClick={() => go(agent.id)}>
-            <span className="invite-agent__label">
-              <span className="invite-agent__name">
-                {agent.id === "hermes" && <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />}
-                {agent.id === "mcp" && <CopyIcon />}
-                {copied === agent.id ? "copied, paste it in →" : agent.label}
-                {agent.id === "here" && <span className="invite-agent__arrow" aria-hidden="true">→</span>}
+          <div key={agent.id} className="invite-agent-slot">
+            <button
+              type="button"
+              className={agent.id === "here" ? "invite-agent invite-agent--primary" : "invite-agent"}
+              aria-expanded={agent.id === "hermes" ? hermesOpen : undefined}
+              onClick={() => go(agent.id)}
+            >
+              <span className="invite-agent__label">
+                <span className="invite-agent__name">
+                  {agent.id === "here" && <WebIcon />}
+                  {agent.id === "hermes" && <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />}
+                  {agent.id === "mcp" && <CopyIcon />}
+                  {agent.id === "mcp" && copied ? "copied, paste it in →" : agent.label}
+                </span>
+                {agent.hint && !(agent.id === "mcp" && copied) && <span className="invite-agent__hint">{agent.hint}</span>}
               </span>
-              {agent.hint && copied !== agent.id && <span className="invite-agent__hint">{agent.hint}</span>}
-            </span>
-          </button>
+            </button>
+            {agent.id === "hermes" && hermesOpen && <HermesInstall />}
+          </div>
         ))}
       </div>
-      <p className="invite-bring__copy">
-        We won&apos;t ask what you&apos;re looking for. It works from what it already
-        knows about you, then reports back in about 6 hours.
-      </p>
-      <p className="invite-send__note">it can&apos;t commit to anything without you</p>
     </div>
   );
 }
@@ -236,10 +287,6 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
           </div>
         </Window>
       </main>
-
-      <footer className="invite-bottom">
-        <a className="invite-badge invite-badge--link" href="https://index.network" target="_blank" rel="noreferrer">index.network →</a>
-      </footer>
     </div>
   );
 }
