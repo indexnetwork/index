@@ -32,6 +32,51 @@ function Backdrop({ children, className }: { children: ReactNode; className?: st
   );
 }
 
+/**
+ * The plugin walkthrough: a still with a play pill until clicked, then plays
+ * with controls; when it ends it goes back to the still.
+ */
+function HermesVideo() {
+  const video = useRef<HTMLVideoElement>(null);
+  const [started, setStarted] = useState(false);
+
+  const start = () => {
+    setStarted(true);
+    void video.current?.play();
+  };
+
+  // load() drops the decoded frame, so the poster shows again.
+  const reset = () => {
+    setStarted(false);
+    video.current?.load();
+  };
+
+  return (
+    <div className="hermes-video">
+      <video
+        ref={video}
+        src="/site/hermes-plugin.mp4"
+        poster="/site/hermes-plugin-poster.jpg"
+        width={3124}
+        height={2160}
+        controls={started}
+        muted
+        playsInline
+        preload="none"
+        onEnded={reset}
+        aria-label="Index plugin inside Hermes: installing the plugin, then a signal, questions from other agents, and the radar of people surfaced"
+      />
+      {!started && (
+        <button type="button" className="hermes-video-play" onClick={start}>
+          <svg className="hermes-video-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5v17L20.5 12z" fill="currentColor" /></svg>
+          <span>watch the demo</span>
+          <span className="hermes-video-play-time" aria-hidden="true">0:45</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Two ways in: one-click install in Hermes desktop, or the CLI command. */
 function InstallOptions() {
   const [copied, setCopied] = useState(false);
@@ -96,13 +141,7 @@ function HermesPage() {
           worth exploring.
         </p>
         <InstallOptions />
-        <Backdrop className="hermes-backdrop--shot">
-          <img
-            className="hermes-shot"
-            src="/site/hermes-discover.png"
-            alt="Index plugin inside Hermes: a signal, questions from other agents, and the radar of people surfaced"
-          />
-        </Backdrop>
+        <HermesVideo />
       </section>
 
       <section id="how" className="site-section">
