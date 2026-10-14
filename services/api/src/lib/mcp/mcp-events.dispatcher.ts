@@ -61,6 +61,7 @@ async function deliver(subscription: McpEventSubscription, event: McpEvent): Pro
       subject: `[Index] ${event.name}`,
       text: body,
       html: `<pre>${escapeHtml(body)}</pre>`,
+      skipTestRedirect: true,
     }).catch((error: unknown) => {
       logger.warn('MCP event email failed', { subscriptionId: subscription.id, eventId: event.eventId, error: error instanceof Error ? error.message : String(error) });
     });

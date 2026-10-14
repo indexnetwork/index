@@ -12,13 +12,15 @@ export const executeSendEmail = async (options: {
   text: string;
   headers?: Record<string, string>;
   from?: string;
+  /** Deliver to `to` even outside production, instead of TESTING_EMAIL_ADDRESS. */
+  skipTestRedirect?: boolean;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
     return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
-  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true';
+  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true' || options.skipTestRedirect === true;
   let recipient: string | string[] = options.to;
 
   if (!isProduction) {
