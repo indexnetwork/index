@@ -77,6 +77,18 @@ function viewerHasCommitted(opportunity: Opportunity, viewerId: string): boolean
   return (opportunity.committedActorIds ?? []).includes(viewerId);
 }
 
+/**
+ * Which row keeps a person's single radar slot.
+ * Accepted first, then a pending row this viewer already committed to,
+ * then other live rows. Rejected and expired never take the slot from those.
+ */
+function counterpartSlotRank(opportunity: Opportunity, viewerId: string): number {
+  if (opportunity.status === 'rejected' || opportunity.status === 'expired') return 3;
+  if (opportunity.status === 'accepted') return 0;
+  if (opportunity.status === 'pending' && viewerHasCommitted(opportunity, viewerId)) return 1;
+  return 2;
+}
+
 function stampViewerCommitted(card: OpportunityCard, viewerCommitted: boolean): OpportunityCard {
   return { ...card, viewerCommitted };
 }
@@ -168,9 +180,11 @@ export async function presentOpportunityCard(
 
 /**
  * List the viewer's opportunities in the given statuses as presented cards,
- * newest first, one card per counterpart. A not-a-fit (rejected) row never
- * takes that slot from another status for the same person. Cards whose
- * presentation fails are dropped.
+ * one card per counterpart. An accepted row keeps that person's slot over a
+ * newer pending or negotiating one, and a pending row this viewer already
+ * committed to keeps it over a newer unanswered one. Among the same rank,
+ * newest wins. A rejected or expired row never takes the slot from a live
+ * one. Cards whose presentation fails are dropped.
  *
  * @param deps - Database, cache, and presenter.
  * @param input - Viewer, statuses, optional network/intent scope, limit, cache bypass, skeleton mode.
@@ -200,8 +214,8 @@ export async function listOpportunityCards(
   const visible = raw
     .filter((opp) => requested.has(opp.status) && canUserSeeOpportunity(opp.actors, opp.status, viewerId))
     .sort((a, b) => {
-      const failed = Number(a.status === 'rejected') - Number(b.status === 'rejected');
-      if (failed !== 0) return failed;
+      const rank = counterpartSlotRank(a, viewerId) - counterpartSlotRank(b, viewerId);
+      if (rank !== 0) return rank;
       return b.createdAt.getTime() - a.createdAt.getTime();
     });
 
