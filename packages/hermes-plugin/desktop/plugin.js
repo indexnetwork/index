@@ -1403,7 +1403,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     } else if (status === "accepted" || waitingOnThem) {
       if (props.onStartChat && opportunity.counterpartUserId) {
         actionButtons = [
-          waitingOnThem ? React.createElement("span", { key: "wait", className: "index-dashboard__opp-status" }, "Waiting for them") : null,
           React.createElement(Button, {
             key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
             disabled: acting,

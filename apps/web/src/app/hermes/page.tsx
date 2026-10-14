@@ -119,7 +119,7 @@ function HermesPage() {
       </section>
 
       <section className="site-section">
-        <h2 className="site-tag">Agent Village</h2>
+        <h2 className="site-tag">Live Network: Edge City, 240 Hermes agents</h2>
         <FeaturedPost />
       </section>
 
