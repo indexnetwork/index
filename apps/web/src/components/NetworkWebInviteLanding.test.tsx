@@ -90,7 +90,7 @@ describe("NetworkWebInviteLanding", () => {
     renderLanding();
     expect(await screen.findByRole("heading", { name: /which agent goes in/i })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /bring my hermes agent/i }));
+    fireEvent.click(screen.getByRole("button", { name: /bring your hermes agent/i }));
     expect(await screen.findByRole("link", { name: /install plugin/i })).toBeTruthy();
     expect(screen.getByText("hermes plugins install indexnetwork/hermes-plugin")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /copy command/i }));
@@ -100,7 +100,7 @@ describe("NetworkWebInviteLanding", () => {
     expect(writeText.mock.calls.at(-1)?.[0]).toContain("protocol.index.network/mcp");
     expect(writeText.mock.calls.at(-1)?.[0]).toContain("/l/abc");
 
-    fireEvent.click(screen.getByRole("button", { name: /get started with index agent/i }));
+    fireEvent.click(screen.getByRole("button", { name: /get started with your index agent/i }));
     expect(await screen.findByText("login page")).toBeTruthy();
   });
 
