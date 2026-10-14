@@ -152,7 +152,7 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.site.apps .apps-hermes .site-arrow-link { color: #000; }
+.site .apps-hermes .site-arrow-link { color: #000; }
 .site .apps-card-alt {
   min-height: 18px;
   font-size: 13px;
@@ -168,10 +168,14 @@
 .apps-card-icon--web { display: flex; align-items: center; justify-content: center; color: #000; }
 .apps-card-icon--web svg { width: 16px; height: 16px; display: block; }
 
-.site.apps .site-btn { border: 2px solid #000; background: #000; color: #fff; }
-.site.apps .site-btn:hover { background: #1F2A5C; border-color: #000; color: #fff; }
-.site.apps .site-btn--secondary { background: #fff; color: #000; }
-.site.apps .site-btn--secondary:hover { background: #F4F1EA; color: #000; }
+.site.apps .site-btn,
+.site .apps-card .site-btn { border: 2px solid #000; background: #000; color: #fff; }
+.site.apps .site-btn:hover,
+.site .apps-card .site-btn:hover { background: #1F2A5C; border-color: #000; color: #fff; }
+.site.apps .site-btn--secondary,
+.site .apps-card .site-btn--secondary { background: #fff; color: #000; }
+.site.apps .site-btn--secondary:hover,
+.site .apps-card .site-btn--secondary:hover { background: #F4F1EA; color: #000; }
 
 @media (max-width: 640px) {
   .apps-title.site-h1 { font-size: 28px; }
