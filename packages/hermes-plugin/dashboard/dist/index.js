@@ -1085,8 +1085,9 @@
       + (props.onSelect ? " index-dashboard__stat--selectable" : "")
       + (props.active ? " index-dashboard__stat--active" : "");
     const children = [
-      React.createElement("strong", { key: "v" }, formatCount(props.value), props.mark || null),
+      React.createElement("strong", { key: "v" }, formatCount(props.value)),
       React.createElement("span", { key: "l" }, props.label),
+      props.mark || null,
     ];
     if (props.onSelect) {
       return React.createElement("button", {

@@ -704,6 +704,26 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   );
 
   server.registerTool(
+    'select_negotiator',
+    {
+      description: agentOnly('select_negotiator') + ' Make the owner\'s external agent with this name (created if missing) the one that negotiates for them. Call only after the owner confirms in this chat. When another agent is already selected this fails with negotiator_already_selected; pass replace=true only after the owner confirms replacing that agent by name.',
+      inputSchema: z.object({ name: z.string().trim().min(1).max(100), replace: z.boolean().optional() }).strict(),
+      annotations: hints(false, true, false, true),
+    },
+    ({ name, replace }) => runTool('select_negotiator', principal, async () => {
+      const selected = await agentService.getSelectedNegotiator(principal.userId);
+      if (selected && selected.name.toLowerCase() !== name.toLowerCase() && !replace) {
+        return mcpError('negotiator_already_selected', `${selected.name} already negotiates for this owner.`, { agent: { id: selected.id, name: selected.name } });
+      }
+      const existing = (await agentService.listForUser(principal.userId))
+        .find((agent) => agent.type === 'external' && agent.name.toLowerCase() === name.toLowerCase());
+      const target = existing ?? await agentService.create(principal.userId, name);
+      const agent = await agentService.update(target.id, principal.userId, { status: 'active', handleNegotiations: true });
+      return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
+    }),
+  );
+
+  server.registerTool(
     'get_agent_conversation',
     {
       description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
@@ -792,64 +812,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     intentId: z.string().trim().min(1),
     agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
   };
-  const writeAnnotations = hints(false, false, false, false);
-
   server.registerTool(
-    'ask_owner',
+    'publish_agent_action',
     {
-      description: agentOnly('ask_owner') + ' Ask the owner one question on their agent conversation. Reuse a pending question for the same fact instead of asking again. scope opportunity names that opportunity. This is not a negotiation turn and not their answer.',
-      inputSchema: z.object({
-        ...agentIds,
-        scope: z.enum(['intent', 'opportunity']),
-        opportunityId: z.string().trim().min(1).optional(),
-        question: z.string().trim().min(1).max(2000),
-        options: z.array(z.string().trim().min(1).max(300)).min(2).max(4),
-      }).strict(),
-      annotations: writeAnnotations,
+      description: agentOnly('publish_agent_action') + ' Publish actions on the owner’s agent conversation, in order: note (private), reply, progress, ask (one question; reuse a pending one for the same fact; scope opportunity needs its opportunityId), or expire (a pending question stops waiting). This is not a negotiation turn and not the owner’s answer.' + LINK_HINT,
+      inputSchema: z.object({ ...agentIds, actions: z.array(agentActionSchema).min(1).max(5) }).strict(),
+      annotations: hints(false, false, false, false),
     },
-    ({ intentId, agentId, scope, opportunityId, question, options }) => publish('ask_owner', intentId, agentId, [{
-      type: 'ask', scope, opportunityId, question, options,
-    }]),
-  );
-
-  server.registerTool(
-    'expire_owner_question',
-    {
-      description: agentOnly('expire_owner_question') + ' Drop one pending question on the owner’s agent conversation. The question stops waiting.',
-      inputSchema: z.object({ ...agentIds, questionId: z.string().uuid() }).strict(),
-      annotations: hints(false, true, false, true),
-    },
-    ({ intentId, agentId, questionId }) => publish('expire_owner_question', intentId, agentId, [{ type: 'expire', questionId }]),
-  );
-
-  server.registerTool(
-    'save_agent_note',
-    {
-      description: agentOnly('save_agent_note') + ' Save one private note on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
-      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
-      annotations: writeAnnotations,
-    },
-    ({ intentId, agentId, text }) => publish('save_agent_note', intentId, agentId, [{ type: 'note', text }]),
-  );
-
-  server.registerTool(
-    'save_agent_reply',
-    {
-      description: agentOnly('save_agent_reply') + ' Save one reply on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
-      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
-      annotations: writeAnnotations,
-    },
-    ({ intentId, agentId, text }) => publish('save_agent_reply', intentId, agentId, [{ type: 'reply', text }]),
-  );
-
-  server.registerTool(
-    'save_agent_progress',
-    {
-      description: agentOnly('save_agent_progress') + ' Save one progress update on the owner’s agent conversation. This does not ask a question or submit a negotiation turn.',
-      inputSchema: z.object({ ...agentIds, text: z.string().trim().min(1).max(8000) }).strict(),
-      annotations: writeAnnotations,
-    },
-    ({ intentId, agentId, text }) => publish('save_agent_progress', intentId, agentId, [{ type: 'progress', text }]),
+    ({ intentId, agentId, actions }) => publish('publish_agent_action', intentId, agentId, actions),
   );
 
   server.registerTool(

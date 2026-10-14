@@ -136,44 +136,12 @@
         "open_world_justification": "Reads a private Index conversation and does not forward it."
       }
     },
-    "ask_owner": {
+    "publish_agent_action": {
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Saves one question on the owner's private agent conversation.",
-        "destructive_justification": "Adds a question and does not delete or overwrite an existing one.",
-        "open_world_justification": "The question stays in the owner's Index conversation and is not sent to the other person."
-      }
-    },
-    "expire_owner_question": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Drops one pending question from the owner's agent conversation.",
-        "destructive_justification": "That question stops waiting and is no longer asked.",
-        "open_world_justification": "Changes only the owner's private Index conversation."
-      }
-    },
-    "save_agent_note": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Appends one private note to the owner's agent conversation.",
-        "destructive_justification": "Adds a note and does not delete or overwrite earlier notes.",
-        "open_world_justification": "The note stays in the owner's private Index conversation."
-      }
-    },
-    "save_agent_reply": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Appends one reply to the owner's agent conversation.",
-        "destructive_justification": "Adds a reply and does not delete earlier messages.",
-        "open_world_justification": "The reply stays in the owner's private Index conversation."
-      }
-    },
-    "save_agent_progress": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Appends one progress update to the owner's agent conversation.",
-        "destructive_justification": "Adds an update and does not delete earlier updates.",
-        "open_world_justification": "The update stays in the owner's private Index conversation."
+        "read_only_justification": "Appends notes, replies, progress updates, or questions to the owner's private agent conversation.",
+        "destructive_justification": "Adds entries and deletes nothing; an expire only stops a pending question waiting.",
+        "open_world_justification": "Everything stays in the owner's private Index conversation and is not sent to the other person."
       }
     },
     "answer_agent_questions": {

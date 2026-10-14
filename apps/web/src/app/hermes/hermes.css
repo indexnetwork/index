@@ -232,3 +232,59 @@
 }
 .hermes-backdrop--shot .hermes-backdrop-inner { padding: clamp(16px, 6vw, 96px); }
 .hermes-backdrop--shot .hermes-shot { max-width: 1200px; }
+/* The plugin video, full frame with its own desktop background, as wide as
+   the old shot backdrop. A still with a play button until clicked. */
+.hermes-video {
+  --shot-w: min(1440px, calc(100vw - 48px));
+  position: relative;
+  width: var(--shot-w);
+  margin: 32px 0 0 calc(50% - var(--shot-w) / 2);
+}
+.hermes-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3124 / 2160;
+  background: #2B2A26;
+}
+/* Play pill over the still: white arrow, bold mono label, the length. */
+.hermes-video-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 22px 0 19px;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: #FCFEFB;
+  white-space: nowrap;
+  background: rgba(18, 24, 33, .9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(4, 23, 41, .28);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.hermes-video-play-icon { width: 17px; height: 17px; flex: none; }
+.hermes-video-play-time { font-weight: 400; color: rgba(252, 254, 251, .55); font-variant-numeric: tabular-nums; }
+.hermes-video-play:hover { background: rgba(4, 23, 41, 1); }
+.hermes-video-play:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { .hermes-video-play { transition: none; } }
+@media (max-width: 900px) {
+  .hermes-video-play { height: 42px; gap: 9px; padding: 0 18px 0 16px; font-size: 14px; }
+  .hermes-video-play-icon { width: 15px; height: 15px; }
+}
+@media (max-width: 520px) {
+  .hermes-video-play { height: 36px; gap: 8px; padding: 0 15px 0 13px; font-size: 12px; }
+  .hermes-video-play-icon { width: 12px; height: 12px; }
+}
+
+

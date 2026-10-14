@@ -50,17 +50,20 @@ async function deliver(subscription: McpEventSubscription, event: McpEvent): Pro
     return;
   }
   const body = JSON.stringify(event);
+  if (!subscription.url) return;
+  const gone = subscription.bearer ? [401, 403, 404, 410] : [410];
   for (let attempt = 0; ; attempt++) {
     try {
       const response = await postWebhook({
         url: subscription.url,
         secrets: signingSecrets(subscription),
+        ...(subscription.bearer && { bearer: subscription.bearer }),
         id: event.eventId,
         subscriptionId: subscription.id,
         body,
       });
       if (response.ok || response.status === 413) return;
-      if (response.status === 410) {
+      if (gone.includes(response.status)) {
         await deleteSubscription(subscription.userId, subscription.id);
         return;
       }

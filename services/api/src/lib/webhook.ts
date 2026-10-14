@@ -55,7 +55,9 @@ export function signWebhook(secrets: readonly string[], id: string, timestamp: n
  */
 export async function postWebhook(options: {
   url: string;
-  secrets: readonly string[];
+  secrets?: readonly string[];
+  /** When set, authenticate with this bearer token instead of a Standard Webhooks signature. */
+  bearer?: string;
   id: string;
   subscriptionId: string;
   body: string;
@@ -68,10 +70,14 @@ export async function postWebhook(options: {
     signal: AbortSignal.timeout(10_000),
     headers: {
       'Content-Type': 'application/json',
-      'webhook-id': options.id,
-      'webhook-timestamp': String(timestamp),
-      'webhook-signature': signWebhook(options.secrets, options.id, timestamp, options.body),
       'X-MCP-Subscription-Id': options.subscriptionId,
+      ...(options.bearer
+        ? { Authorization: `Bearer ${options.bearer}` }
+        : {
+          'webhook-id': options.id,
+          'webhook-timestamp': String(timestamp),
+          'webhook-signature': signWebhook(options.secrets ?? [], options.id, timestamp, options.body),
+        }),
     },
     body: options.body,
   });
