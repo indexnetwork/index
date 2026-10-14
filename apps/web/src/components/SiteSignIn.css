@@ -29,10 +29,25 @@
   color: var(--green);
 }
 
+.apps-board .signin-intro,
+.apps-board .signin-intro .site-p,
+.apps-board .signin-title,
+.apps-board .signin-kicker,
+.apps-board .signin-status,
+.apps-board .signin-status .site-p,
+.apps-board .signin-card,
+.apps-board .signin-card .site-p { color: #000; }
+.apps-board .signin-intro .signin-meta { color: #6b6560; }
+.apps-board .signin { align-items: stretch; }
+.apps-board .signin-intro { align-items: flex-start; text-align: left; }
+.apps-board .signin-card { border: 0; background: transparent; max-width: none; }
+.apps-board .signin-card__bar { display: none; }
+.apps-board .signin-card__body { padding: 0; }
+
 .signin-title {
   margin: 0;
   font-family: var(--serif);
-  font-weight: 400;
+  font-weight: 500;
   /* Scales with width too, so a long title (the MCP consent question) stays
      two lines on a phone instead of pushing the actions below the fold. */
   font-size: min(clamp(32px, 6vh, 44px), 7.4vw);
@@ -72,19 +87,34 @@
 .signin-card {
   width: 100%;
   max-width: 440px;
-  background: var(--bg);
-  border: 1px solid var(--card-border);
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
 }
 .signin-card__bar {
+  height: 24px;
   margin: 0;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--card-border);
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--muted);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid #000;
+  background-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px);
+  background-position: 0 4px;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  text-transform: lowercase;
+  color: #000;
+}
+.signin-card__bar > span {
+  background: #fff;
+  padding: 0 12px 0 8px;
+  margin-left: 4px;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 .signin-card__body { padding: 24px; }
 
@@ -134,9 +164,9 @@
   font-weight: 500;
   color: var(--ink);
   background: var(--bg);
-  border: 1px solid var(--ink);
+  border: 2px solid #000;
 }
-.signin .auth .av-oauth:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.signin .auth .av-oauth:hover { background: #F4F1EA; color: #000; border-color: #000; }
 
 .signin .auth .av-divider {
   margin: 20px 0;
@@ -158,7 +188,7 @@
   font-size: 14px;
   color: var(--ink);
   background: var(--bg);
-  border: 1px solid var(--ink);
+  border: 2px solid #000;
 }
 .signin .auth .av-input::placeholder { color: var(--muted); }
 .signin .auth .av-input:focus { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
@@ -168,11 +198,11 @@
   height: 40px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--bg);
-  background: var(--ink);
-  border: 1px solid var(--ink);
+  color: #fff;
+  background: #000;
+  border: 2px solid #000;
 }
-.signin .auth .av-submit:hover { background: var(--blue); border-color: var(--blue); color: var(--bg); }
+.signin .auth .av-submit:hover { background: #1F2A5C; border-color: #000; color: #fff; }
 
 .signin .auth .av-error { margin: 0; font-size: 13px; color: #B3261E; }
 
@@ -186,7 +216,6 @@
 
 @media (max-width: 480px) {
   .signin { gap: 24px; }
-  .signin-card__bar { padding: 12px 18px; }
   .signin-card__body { padding: 18px; }
   /* Thumb-sized: the actions split the card's width instead of hugging the right edge. */
   .signin-actions .site-btn { flex: 1 1 0; }
@@ -197,7 +226,7 @@
     margin: 0 -18px -18px;
     padding: 12px 18px 18px;
     background: var(--bg);
-    border-top: 1px solid var(--card-border);
+    border-top: 2px solid #000;
   }
 }
 
