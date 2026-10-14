@@ -482,9 +482,16 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
 
 
 def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
-    """Return user ids visible through the caller's opportunity cards."""
+    """Return user ids visible through the caller's opportunity cards.
+
+    Skeleton cards only. A full list re-runs the presenter, and negotiating
+    cards are never cached, so opening a profile would wait on every live
+    negotiation just to read counterpart ids.
+    """
     visible: set[str] = set()
-    opportunities, _ = _fetch_opportunities(f"?statuses={_RADAR_STATUSES}")
+    opportunities, _ = _fetch_opportunities(
+        f"?statuses={_RADAR_STATUSES}&presentation=skeleton"
+    )
     for opp in opportunities:
         counterpart_id = _counterpart_user_id(opp, current_user_id)
         if counterpart_id:
@@ -1686,10 +1693,17 @@ def public_profile(user_id: str) -> dict[str, Any]:
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
-    if user_id != current_user_id and user_id not in _visible_counterpart_user_ids(current_user_id):
-        return {"success": False, "error": "Profile is not visible from the current dashboard."}
-
-    user = _fetch_user(user_id)
+    if user_id == current_user_id:
+        user = _fetch_user(user_id)
+    else:
+        # The user row does not depend on the visibility list, so fetch it
+        # while that list is in flight instead of after it returns.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            visible_future = pool.submit(_visible_counterpart_user_ids, current_user_id)
+            user_future = pool.submit(_fetch_user, user_id)
+            if user_id not in visible_future.result():
+                return {"success": False, "error": "Profile is not visible from the current dashboard."}
+            user = user_future.result()
     if isinstance(user, dict) and user.get("success") is False:
         return user
 
