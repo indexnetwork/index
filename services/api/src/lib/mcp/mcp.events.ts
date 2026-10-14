@@ -6,7 +6,7 @@ import { z } from 'zod-v4';
 import { getRedisClient } from '../../adapters/cache.adapter';
 import { appLink } from '../app-link';
 import { ensureUserEventGroup, skipUserEventGroupToTail } from '../user-events';
-import { WebhookUrlError, postWebhook } from '../webhook';
+import { WebhookUrlError, assertPublicHttpsUrl, postWebhook } from '../webhook';
 
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpCredential, McpPrincipal } from './mcp.types';
@@ -369,9 +369,8 @@ export function registerMcpEvents(server: McpServer, principal: McpPrincipal): v
 }
 
 const EVENT_NAMES = Object.keys(MCP_EVENT_CATALOG) as [string, ...string[]];
-const GROK_WEBHOOK_PREFIX = 'https://api2.cursor.sh/automations/webhook/';
-const grokWebhookUrl = z.string().trim().refine((url) => url.startsWith(GROK_WEBHOOK_PREFIX), 'Must be a Grok Bot routine webhook URL.');
-const grokWebhookKey = z.string().trim().refine((key) => key.startsWith('crsr_'), 'Must be the routine key, starting with crsr_.');
+const webhookUrl = z.string().trim().url();
+const webhookKey = z.string().trim().min(8).max(500);
 const eventNames = z.array(z.enum(EVENT_NAMES)).min(1).optional();
 
 /**
@@ -386,13 +385,19 @@ export function registerEventTools(server: McpServer, principal: McpPrincipal): 
   server.registerTool(
     'subscribe_events',
     {
-      description: 'For hosts without MCP events, such as Grok Bot: POST each future Index event to one routine webhook. url and key come from that routine\'s webhook panel; the bot cannot read them, so the owner pastes both. events defaults to every event; intentId limits them to one signal. Each POST is one event: a pointer to read with the other tools. Calling again with the same url replaces the key.',
-      inputSchema: z.object({ url: grokWebhookUrl, key: grokWebhookKey, events: eventNames, intentId: z.string().trim().min(1).optional() }).strict(),
+      description: 'For hosts without MCP events, such as Grok Bot: POST each future Index event to the webhook URL the owner pastes, with their key as Authorization: Bearer. events defaults to every event; pass a subset to subscribe to only those. intentId limits them to one signal. Each POST is one event: a pointer to read with the other tools. Calling again with the same url replaces the key.',
+      inputSchema: z.object({ url: webhookUrl, key: webhookKey, events: eventNames, intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     ({ url, key, events = EVENT_NAMES, intentId }) => run('subscribe_events', async () => {
       const { credential } = principal;
       if (!credential) return mcpError('credential_required', 'Event subscriptions need an OAuth, API key, or device session credential.');
+      try {
+        await assertPublicHttpsUrl(url);
+      } catch (error) {
+        if (error instanceof WebhookUrlError) return mcpError('invalid_url', error.message);
+        throw error;
+      }
       const current = await listSubscriptions(userId);
       if (!current.length) await startReading(userId);
       for (const name of events) {
@@ -424,7 +429,7 @@ export function registerEventTools(server: McpServer, principal: McpPrincipal): 
     'unsubscribe_events',
     {
       description: 'Stop POSTing Index events to this Grok Bot routine webhook. Omit events to remove them all.',
-      inputSchema: z.object({ url: grokWebhookUrl, events: eventNames }).strict(),
+      inputSchema: z.object({ url: webhookUrl, events: eventNames }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     ({ url, events }) => run('unsubscribe_events', async () => {
