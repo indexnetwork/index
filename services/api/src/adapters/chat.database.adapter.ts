@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -22,6 +22,17 @@ export interface NetworkShareResponseRow {
   ownerId: string;
   userName: string;
   userAvatar: string | null;
+}
+
+/** The invite page's numbers. The written summary is loaded on its own. */
+export interface NetworkShareCounts {
+  signals: number;
+  /** Agents whose owner has a signal in this network. Not the member roster. */
+  agents: number;
+  /** Every turn taken in a negotiation tied to this network. */
+  turns: number;
+  /** Newest signal, turn or settlement here, to the minute; null when nothing has happened. */
+  lastActivityAt: string | null;
 }
 
 /** Map a share-code lookup row to its public invitation response contract. */
@@ -1791,6 +1802,74 @@ export class ChatDatabaseAdapter {
 
     const memberCount = await this.getNetworkMemberCount(row.id);
     return buildNetworkShareResponse(row, memberCount);
+  }
+
+  /** Live, public signals tagged to this network. Incognito and inactive ones never count. */
+  private liveSignalWhere(networkId: string) {
+    return and(
+      eq(intentNetworks.networkId, networkId),
+      isNull(intents.archivedAt),
+      eq(intents.isIncognito, false),
+      activeIntentLifecycleWhere(),
+    );
+  }
+
+  /**
+   * Invite-page counts. The turn scan walks opportunity actors, so callers
+   * load this after the network itself is on screen.
+   */
+  async getNetworkShareCounts(networkId: string): Promise<NetworkShareCounts> {
+    const liveSignalWhere = this.liveSignalWhere(networkId);
+    const inNetwork = sql`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+      WHERE actor->>'networkId' = ${networkId}
+    )`;
+    const inNetworkNegotiation = and(inNetwork, eq(opportunities.id, negotiations.opportunityId));
+
+    const [[signalRow], [turnCountRow], [agentRow], [lastSignal], [lastTurn]] = await Promise.all([
+      db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+      db.select({ n: count() }).from(negotiationTurns)
+        .innerJoin(negotiations, eq(negotiations.id, negotiationTurns.negotiationId))
+        .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+        .where(inNetwork),
+      db.select({ n: count() }).from(schema.agents).where(and(
+        isNull(schema.agents.deletedAt),
+        sql`${schema.agents.ownerId} in (
+          select ${intents.userId} from ${intents}
+          inner join ${intentNetworks} on ${intentNetworks.intentId} = ${intents.id}
+          where ${intentNetworks.networkId} = ${networkId}
+        )`,
+      )),
+      db.select({ at: sql<Date | null>`max(${intents.createdAt})` })
+        .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+      db.select({
+        turn: sql<Date | null>`max(${negotiationTurns.createdAt})`,
+        settled: sql<Date | null>`max(${negotiations.settledAt})`,
+      }).from(negotiations)
+        .innerJoin(opportunities, inNetworkNegotiation)
+        .leftJoin(negotiationTurns, eq(negotiationTurns.negotiationId, negotiations.id)),
+    ]);
+
+    const lastTimes = [lastSignal?.at, lastTurn?.turn, lastTurn?.settled]
+      .filter((t): t is Date => t != null)
+      .map((t) => new Date(t).getTime());
+
+    return {
+      signals: Number(signalRow?.n ?? 0),
+      agents: Number(agentRow?.n ?? 0),
+      turns: Number(turnCountRow?.n ?? 0),
+      lastActivityAt: lastTimes.length ? new Date(Math.floor(Math.max(...lastTimes) / 60_000) * 60_000).toISOString() : null,
+    };
+  }
+
+  /** Recent signal text for the invite summary. Never returned to the page as is. */
+  async getNetworkShareSummarySignals(networkId: string): Promise<string[]> {
+    const rows = await db.select({ summary: intents.summary, payload: intents.payload })
+      .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId))
+      .where(this.liveSignalWhere(networkId))
+      .orderBy(desc(intents.createdAt))
+      .limit(60);
+    return rows.map((r) => r.payload || r.summary || '').filter(Boolean);
   }
 
   /**

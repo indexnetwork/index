@@ -8,7 +8,18 @@ const acceptInvitation = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuthContext: () => auth }));
 vi.mock("@/services/networks", () => ({
   networksService: {
-    getNetworkByShareCode: () => Promise.resolve({ id: "n1", title: "Index Early Birds", _count: { members: 122 } }),
+    getNetworkByShareCode: () => Promise.resolve({
+      id: "n1",
+      title: "Index Early Birds",
+      _count: { members: 122 },
+    }),
+    getNetworkSharePulse: () => Promise.resolve({
+      signals: 40,
+      agents: 102,
+      turns: 90,
+      lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+    }),
+    getNetworkShareSummary: () => Promise.resolve("A few people want cofounders, others want coffee."),
   },
   useNetworkService: () => ({ acceptInvitation }),
 }));
@@ -28,6 +39,7 @@ function renderLanding() {
         <Route path="/l/:code" element={<NetworkWebInviteLanding />} />
         <Route path="/onboarding" element={<p>onboarding page</p>} />
         <Route path="/networks/:id" element={<p>network page</p>} />
+        <Route path="/login" element={<p>login page</p>} />
       </Routes>
     </MemoryRouter>
   );
@@ -56,6 +68,40 @@ describe("NetworkWebInviteLanding", () => {
     expect(screen.getByText("ada@example.com")).toBeTruthy();
     expect(screen.queryByText("onboarding page")).toBeNull();
     expect(acceptInvitation).not.toHaveBeenCalled();
+  });
+
+  it("shows the network's numbers and the summary of what members are after", async () => {
+    renderLanding();
+    expect(await screen.findByText("A few people want cofounders, others want coffee.")).toBeTruthy();
+    expect(screen.queryByText("✓ intro agreed")).toBeNull();
+    expect(screen.queryByText("Polite Teapot")).toBeNull();
+    expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === "last change 3m ago")).toBeTruthy();
+    expect(screen.getByText("agents").nextSibling?.textContent).toBe("102");
+    expect(screen.queryByText("members")).toBeNull();
+    expect(screen.getByText("open signals").nextSibling?.textContent).toBe("40");
+    expect(screen.getByText("negotiation turns").nextSibling?.textContent).toBe("90");
+    expect(screen.queryByText("matches")).toBeNull();
+    expect(screen.queryByText("intros agreed")).toBeNull();
+  });
+
+  it("sends the invite to the agent you pick", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    renderLanding();
+    expect(await screen.findByRole("heading", { name: /which agent goes in/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /bring my hermes agent/i }));
+    expect(await screen.findByRole("link", { name: /install plugin/i })).toBeTruthy();
+    expect(screen.getByText("hermes plugins install indexnetwork/hermes-plugin")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /copy command/i }));
+    expect(writeText.mock.calls.at(-1)?.[0]).toBe("hermes plugins install indexnetwork/hermes-plugin");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy prompt for your agent/i }));
+    expect(writeText.mock.calls.at(-1)?.[0]).toContain("protocol.index.network/mcp");
+    expect(writeText.mock.calls.at(-1)?.[0]).toContain("/l/abc");
+
+    fireEvent.click(screen.getByRole("button", { name: /get started with index agent/i }));
+    expect(await screen.findByText("login page")).toBeTruthy();
   });
 
   it("joins a new account and sends it to onboarding", async () => {

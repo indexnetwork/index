@@ -8,16 +8,23 @@ import { Network } from "@/lib/types";
 import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
 import { SiteSignInCard, SiteSignInMeta, SiteSignInPage } from "@/components/SiteSignIn";
+import { NetworkInviteBoard, type NetworkPulse } from "@/components/NetworkInviteBoard";
 
 const logger = log.page.from("l/[code]");
 
 type PreviewStep = "loading" | "ready" | "error";
+
+/** The share-code preview: the network plus its anonymized activity. */
+type InviteNetwork = Network & { pulse?: NetworkPulse };
 
 /** Friendly copy for a failed invite preview. Raw API strings stay in the console. */
 const INVALID_INVITE = "This link is invalid or has expired.";
 const PREVIEW_FAILED = "Couldn't load this invitation. Check your connection and try again.";
 const JOIN_EXPIRED = "Couldn't join. The invite may have expired.";
 const JOIN_FAILED = "Couldn't join right now. Try again in a moment.";
+
+/** How often the invite page refreshes the network's numbers. */
+const PULSE_REFRESH_MS = 15_000;
 
 /**
  * 4xx (or a 200 without a network) means the code itself is bad; 5xx and
@@ -43,7 +50,7 @@ export default function NetworkWebInviteLanding() {
   const networkService = useNetworkService();
 
   const [previewStep, setPreviewStep] = useState<PreviewStep>(code ? "loading" : "error");
-  const [network, setNetwork] = useState<Network | null>(null);
+  const [network, setNetwork] = useState<InviteNetwork | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(
     code ? null : INVALID_INVITE,
   );
@@ -61,6 +68,9 @@ export default function NetworkWebInviteLanding() {
   // email" even after the shared session arrives, rather than joining twice.
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const joinStartedRef = useRef(false);
+  // The summary request can finish before or after the counts. Held here so
+  // whichever lands second still keeps the other's result.
+  const summaryRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     localStorage.setItem("alpha", "true");
@@ -71,6 +81,7 @@ export default function NetworkWebInviteLanding() {
     if (!code) return;
 
     let cancelled = false;
+    summaryRef.current = undefined;
     (async () => {
       try {
         const loaded = await publicNetworksService.getNetworkByShareCode(code);
@@ -91,6 +102,54 @@ export default function NetworkWebInviteLanding() {
       cancelled = true;
     };
   }, [code, previewKey]);
+
+  // Counts arrive after the page is up, then stay live. A failed refresh
+  // keeps what is on screen; the next tick tries again.
+  useEffect(() => {
+    if (!code || previewStep !== "ready") return;
+    let cancelled = false;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const pulse = await publicNetworksService.getNetworkSharePulse(code);
+        if (cancelled) return;
+        setNetwork((prev) => {
+          if (!prev) return prev;
+          const summary = prev.pulse?.summary !== undefined ? prev.pulse.summary : summaryRef.current;
+          return { ...prev, pulse: { ...pulse, ...(summary !== undefined ? { summary } : {}) } };
+        });
+      } catch (err) {
+        logger.warn("Failed to refresh network activity", { error: err });
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), PULSE_REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [code, previewStep]);
+
+  // The written summary can wait on a model. It must not hold the page or the counts.
+  useEffect(() => {
+    if (!code || previewStep !== "ready") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await publicNetworksService.getNetworkShareSummary(code);
+        if (cancelled) return;
+        summaryRef.current = summary;
+        setNetwork((prev) => prev?.pulse ? { ...prev, pulse: { ...prev.pulse, summary } } : prev);
+      } catch (err) {
+        logger.warn("Failed to load network summary", { error: err });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, previewStep]);
 
   const attemptJoin = useCallback(async () => {
     if (!code || joinStartedRef.current) return;
@@ -136,7 +195,9 @@ export default function NetworkWebInviteLanding() {
   const callbackURL =
     typeof window !== "undefined" ? window.location.href : "/";
 
-  const memberCount = network?._count?.members;
+  // The clean link to hand to an agent, without whatever query the visit carried.
+  const inviteUrl =
+    typeof window !== "undefined" && code ? `${window.location.origin}/l/${encodeURIComponent(code)}` : "";
 
   if (previewStep === "loading") {
     return <SiteSignInPage><SiteSignInMeta>Loading invitation…</SiteSignInMeta></SiteSignInPage>;
@@ -163,25 +224,25 @@ export default function NetworkWebInviteLanding() {
     );
   }
 
+  const signInCard = (
+    <SiteSignInCard
+      bar="Join the network"
+      sentTo={linkSentTo}
+      sentNote="Open the link in the email to join. It expires in 10 minutes."
+      callbackURL={callbackURL}
+      onAuthenticated={() => setLoginRequested(true)}
+      onMagicLinkSent={setLinkSentTo}
+      onBack={() => setLinkSentTo(null)}
+    />
+  );
+  const showChoice = linkSentTo == null && !joining && !joinError && !joinOutcome && !isAuthenticated && isReady;
+
   return (
-    <SiteSignInPage
-      kicker="You're invited to"
+    <NetworkInviteBoard
       title={network.title}
-      meta={memberCount != null && (
-        <SiteSignInMeta dot>{memberCount} {memberCount === 1 ? "member" : "members"}</SiteSignInMeta>
-      )}
-    >
-      {linkSentTo || (!joining && !joinError && !joinOutcome && !isAuthenticated && isReady) ? (
-        <SiteSignInCard
-          bar="Join the network"
-          sentTo={linkSentTo}
-          sentNote="Open the link in the email to join. It expires in 10 minutes."
-          callbackURL={callbackURL}
-          onAuthenticated={() => setLoginRequested(true)}
-          onMagicLinkSent={setLinkSentTo}
-          onBack={() => setLinkSentTo(null)}
-        />
-      ) : joining ? (
+      pulse={network.pulse}
+      inviteUrl={inviteUrl}
+      status={showChoice ? null : linkSentTo ? signInCard : joining ? (
         <SiteSignInMeta>Joining…</SiteSignInMeta>
       ) : joinOutcome === "pending" ? (
         <p className="site-p signin-status">
@@ -198,7 +259,9 @@ export default function NetworkWebInviteLanding() {
           <p className="site-p">{joinError}</p>
           <button type="button" className="site-btn" onClick={() => void attemptJoin()}>Try again</button>
         </div>
-      ) : null}
-    </SiteSignInPage>
+      ) : (
+        <SiteSignInMeta>Loading…</SiteSignInMeta>
+      )}
+    />
   );
 }
