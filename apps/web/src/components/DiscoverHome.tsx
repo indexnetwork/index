@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api";
 import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import IntentList from "@/components/IntentList";
@@ -12,6 +13,7 @@ import InviteNetworksModal from "@/components/modals/InviteNetworksModal";
 import { QCount, RuleLabel, Stage, Window } from "@/components/workbench/Workbench";
 import { AgentGlyph, ChatGlyph, NetworksGlyph } from "@/components/workbench/nav-glyphs";
 import { useCompact } from "@/hooks/useCompact";
+import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { log } from "@/lib/logger";
 
 const logger = log.ui.from("DiscoverHome");
@@ -56,6 +58,7 @@ export default function DiscoverHome() {
   const { user, signOut } = useAuthContext();
   const agentsService = useAgents();
   const { networks } = useNetworksState();
+  const { conversations } = useConversation();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
   const [loading, setLoading] = useState(true);
   const [intentsError, setIntentsError] = useState(false);
@@ -70,6 +73,10 @@ export default function DiscoverHome() {
     (total, network) => total + ((network as { pendingJoinCount?: number }).pendingJoinCount ?? 0),
     0,
   );
+  // Same total as the mobile chats tab.
+  const unreadMessages = conversations
+    .filter(isVisibleH2HConversation)
+    .reduce((total, conv) => total + (conv.unreadCount > 0 ? conv.unreadCount : 0), 0);
 
   const fetchIntents = useCallback(async () => {
     try {
@@ -257,6 +264,7 @@ export default function DiscoverHome() {
                 <ShelfRow
                   onClick={() => navigate("/chat")}
                   label="conversations"
+                  aside={<QCount n={unreadMessages} title={`${unreadMessages} unread ${unreadMessages === 1 ? "message" : "messages"}`} />}
                   icon={<ChatGlyph />}
                 />
                 <ShelfRow
