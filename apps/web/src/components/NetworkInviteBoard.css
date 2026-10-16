@@ -277,6 +277,7 @@
   font-weight: 400;
   color: #7a756d;
 }
+.invite-agent--primary .invite-agent__hint { color: #b8b3aa; }
 
 /* The browser path and join outcomes reuse the sign-in card and form; here
    the card sheds its own frame and fills the column. */
