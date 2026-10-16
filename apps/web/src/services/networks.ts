@@ -338,8 +338,8 @@ export const networksService = {
   },
 
   /** Counts for the invite page. Loaded after the network so the page can render first. */
-  getNetworkSharePulse: async (code: string): Promise<{ signals: number; agents: number; turns: number; lastActivityAt: string | null }> => {
-    const response = await apiClient.getPublic<{ pulse?: { signals: number; agents: number; turns: number; lastActivityAt: string | null } }>(`/networks/share/${code}/pulse`);
+  getNetworkSharePulse: async (code: string): Promise<{ members: number; signals: number; negotiations: number; agents: number; lastActivityAt: string | null }> => {
+    const response = await apiClient.getPublic<{ pulse?: { members: number; signals: number; negotiations: number; agents: number; lastActivityAt: string | null } }>(`/networks/share/${code}/pulse`);
     if (!response.pulse) throw new Error('Network not found');
     return response.pulse;
   },

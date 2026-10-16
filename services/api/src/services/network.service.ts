@@ -6,6 +6,15 @@ import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/netw
 const logger = log.service.from("NetworkService");
 
 /**
+ * Every open invite page polls its counts every few seconds. Viewers of one
+ * invite link share a result this fresh, and a single query while one is running.
+ * Keyed by share code, so a rotated code stops being served within the TTL.
+ */
+const SHARE_PULSE_TTL_MS = 2_500;
+type SharePulse = Awaited<ReturnType<ChatDatabaseAdapter['getNetworkShareCounts']>> | null;
+const sharePulseCache = new Map<string, { at: number; value: Promise<SharePulse> }>();
+
+/**
  * NetworkService
  *
  * Manages network/community operations.
@@ -220,10 +229,21 @@ export class NetworkService {
    * can render before these scans finish.
    */
   async getNetworkSharePulse(code: string) {
-    const network = await this.adapter.getNetworkByShareCode(code);
-    if (!network) return null;
-    return this.adapter.getNetworkShareCounts(network.id);
+    const cached = sharePulseCache.get(code);
+    if (cached && Date.now() - cached.at < SHARE_PULSE_TTL_MS) return cached.value;
+    const value = this.adapter.getNetworkByShareCode(code)
+      .then((network) => (network ? this.adapter.getNetworkShareCounts(network.id) : null));
+    sharePulseCache.set(code, { at: Date.now(), value });
+    // A failed scan must not be served to the next viewer.
+    value.catch(() => {
+      if (sharePulseCache.get(code)?.value === value) sharePulseCache.delete(code);
+    });
+    for (const [key, entry] of sharePulseCache) {
+      if (Date.now() - entry.at >= SHARE_PULSE_TTL_MS) sharePulseCache.delete(key);
+    }
+    return value;
   }
+
 
   /**
    * The aggregate "what people are looking for" line. A cache miss waits on
