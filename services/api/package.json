@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.142.4",
+  "version": "0.142.5",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -22,7 +22,8 @@
     "db:flush": "bun ./src/cli/db-flush.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
-    "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts"
+    "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
+    "eval:match-quality": "bun --no-env-file ./src/cli/match-quality/match-quality.main.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
