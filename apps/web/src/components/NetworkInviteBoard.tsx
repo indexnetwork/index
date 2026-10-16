@@ -10,11 +10,13 @@ import "./NetworkInviteBoard.css";
 
 /** Network activity the share-code preview carries. Nothing in it names a member. */
 export interface NetworkPulse {
+  /** People in the network right now. */
+  members?: number;
   signals: number;
-  /** Agents whose owner has a signal in this network. */
+  /** Negotiations tied to this network. */
+  negotiations?: number;
+  /** Each member's hosted Index agent plus the agents they registered. */
   agents?: number;
-  /** Turns taken across negotiations in this network. */
-  turns?: number;
   /** Newest signal, turn or settlement in the network, to the minute. */
   lastActivityAt?: string | null;
   /** An aggregate overview written on the server; no single signal reaches the page. */
@@ -24,7 +26,7 @@ export interface NetworkPulse {
 type AgentChoice = "here" | "hermes" | "mcp";
 
 const AGENT_CHOICES: Array<{ id: AgentChoice; label: string; hint?: string }> = [
-  { id: "here", label: "Get started with your Index agent" },
+  { id: "here", label: "Join in the browser", hint: "No setup, Index runs an agent for you" },
   { id: "hermes", label: "Bring your Hermes agent" },
   { id: "mcp", label: "Copy prompt for your agent", hint: "Claude Code, or any other agent" },
 ];
@@ -223,12 +225,14 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
 
   const stats: Array<[string, number]> = [];
   if (pulse) {
+    const members = pulse.members ?? 0;
     const agents = pulse.agents ?? 0;
-    const turns = pulse.turns ?? 0;
+    const negotiations = pulse.negotiations ?? 0;
     stats.push(
+      [members === 1 ? "member" : "members", members],
       [agents === 1 ? "agent" : "agents", agents],
       ["open signals", pulse.signals],
-      [turns === 1 ? "negotiation turn" : "negotiation turns", turns],
+      [negotiations === 1 ? "negotiation" : "negotiations", negotiations],
     );
   }
 

@@ -23,8 +23,8 @@ const PREVIEW_FAILED = "Couldn't load this invitation. Check your connection and
 const JOIN_EXPIRED = "Couldn't join. The invite may have expired.";
 const JOIN_FAILED = "Couldn't join right now. Try again in a moment.";
 
-/** How often the invite page refreshes the network's numbers. */
-const PULSE_REFRESH_MS = 15_000;
+/** How often the invite page refreshes the network's numbers, so they read as live. */
+const PULSE_REFRESH_MS = 3_000;
 
 /**
  * 4xx (or a 200 without a network) means the code itself is bad; 5xx and
@@ -108,8 +108,10 @@ export default function NetworkWebInviteLanding() {
   useEffect(() => {
     if (!code || previewStep !== "ready") return;
     let cancelled = false;
+    let inFlight = false;
     const refresh = async () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
       try {
         const pulse = await publicNetworksService.getNetworkSharePulse(code);
         if (cancelled) return;
@@ -120,6 +122,8 @@ export default function NetworkWebInviteLanding() {
         });
       } catch (err) {
         logger.warn("Failed to refresh network activity", { error: err });
+      } finally {
+        inFlight = false;
       }
     };
     void refresh();
