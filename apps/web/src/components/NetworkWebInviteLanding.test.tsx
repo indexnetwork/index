@@ -16,7 +16,6 @@ vi.mock("@/services/networks", () => ({
     getNetworkSharePulse: () => Promise.resolve({
       signals: 40,
       agents: 102,
-      turns: 90,
       lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
     }),
     getNetworkShareSummary: () => Promise.resolve("A few people want cofounders, others want coffee."),
@@ -79,7 +78,6 @@ describe("NetworkWebInviteLanding", () => {
     expect(screen.getByText("agents").nextSibling?.textContent).toBe("102");
     expect(screen.queryByText("members")).toBeNull();
     expect(screen.getByText("open signals").nextSibling?.textContent).toBe("40");
-    expect(screen.getByText("negotiation turns").nextSibling?.textContent).toBe("90");
     expect(screen.queryByText("matches")).toBeNull();
     expect(screen.queryByText("intros agreed")).toBeNull();
   });

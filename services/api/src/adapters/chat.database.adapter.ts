@@ -26,11 +26,14 @@ export interface NetworkShareResponseRow {
 
 /** The invite page's numbers. The written summary is loaded on its own. */
 export interface NetworkShareCounts {
+  /** People in the network right now. */
+  members: number;
+  /** Live signals from current members. */
   signals: number;
-  /** Agents whose owner has a signal in this network. Not the member roster. */
+  /** Negotiations tied to this network. */
+  negotiations: number;
+  /** Each member's hosted Index agent plus every agent they registered (Hermes, Codex, Grok Bot...). */
   agents: number;
-  /** Every turn taken in a negotiation tied to this network. */
-  turns: number;
   /** Newest signal, turn or settlement here, to the minute; null when nothing has happened. */
   lastActivityAt: string | null;
 }
@@ -1804,13 +1807,25 @@ export class ChatDatabaseAdapter {
     return buildNetworkShareResponse(row, memberCount);
   }
 
-  /** Live, public signals tagged to this network. Incognito and inactive ones never count. */
+  /**
+   * Live, public signals tagged to this network whose owner is still a member.
+   * Leaving keeps the tag, so without the member check ex-members kept counting.
+   * Incognito and inactive ones never count.
+   */
   private liveSignalWhere(networkId: string) {
     return and(
       eq(intentNetworks.networkId, networkId),
       isNull(intents.archivedAt),
       eq(intents.isIncognito, false),
       activeIntentLifecycleWhere(),
+      sql`EXISTS (
+        SELECT 1 FROM ${networkMembers}
+        INNER JOIN ${users} ON ${users.id} = ${networkMembers.userId}
+        WHERE ${networkMembers.networkId} = ${networkId}
+          AND ${networkMembers.userId} = ${intents.userId}
+          AND ${networkMembers.deletedAt} IS NULL
+          AND ${users.deletedAt} IS NULL
+      )`,
     );
   }
 
@@ -1826,20 +1841,21 @@ export class ChatDatabaseAdapter {
     )`;
     const inNetworkNegotiation = and(inNetwork, eq(opportunities.id, negotiations.opportunityId));
 
-    const [[signalRow], [turnCountRow], [agentRow], [lastSignal], [lastTurn]] = await Promise.all([
+    const [members, [signalRow], [negotiationRow], [agentRow], [lastSignal], [lastTurn]] = await Promise.all([
+      this.getNetworkMemberCount(networkId),
       db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
-      db.select({ n: count() }).from(negotiationTurns)
-        .innerJoin(negotiations, eq(negotiations.id, negotiationTurns.negotiationId))
-        .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
-        .where(inNetwork),
-      db.select({ n: count() }).from(schema.agents).where(and(
-        isNull(schema.agents.deletedAt),
-        sql`${schema.agents.ownerId} in (
-          select ${intents.userId} from ${intents}
-          inner join ${intentNetworks} on ${intentNetworks.intentId} = ${intents.id}
-          where ${intentNetworks.networkId} = ${networkId}
-        )`,
-      )),
+      db.select({ n: count() }).from(negotiations)
+        .innerJoin(opportunities, inNetworkNegotiation),
+      db.select({ n: count() }).from(schema.agents)
+        .innerJoin(networkMembers, eq(networkMembers.userId, schema.agents.ownerId))
+        .innerJoin(users, eq(users.id, networkMembers.userId))
+        .where(and(
+          eq(networkMembers.networkId, networkId),
+          isNull(networkMembers.deletedAt),
+          isNull(users.deletedAt),
+          eq(schema.agents.type, 'external'),
+          isNull(schema.agents.deletedAt),
+        )),
       db.select({ at: sql<Date | null>`max(${intents.createdAt})` })
         .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
       db.select({
@@ -1855,9 +1871,11 @@ export class ChatDatabaseAdapter {
       .map((t) => new Date(t).getTime());
 
     return {
+      members,
       signals: Number(signalRow?.n ?? 0),
-      agents: Number(agentRow?.n ?? 0),
-      turns: Number(turnCountRow?.n ?? 0),
+      negotiations: Number(negotiationRow?.n ?? 0),
+      // The hosted Index agent has no row per person; every member has one.
+      agents: members + Number(agentRow?.n ?? 0),
       lastActivityAt: lastTimes.length ? new Date(Math.floor(Math.max(...lastTimes) / 60_000) * 60_000).toISOString() : null,
     };
   }
