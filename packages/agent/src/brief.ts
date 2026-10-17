@@ -107,9 +107,10 @@ export function recordBrief(opportunity: Opportunity, decision: Decision, brief?
  * the principal's whole intent into a think pass.
  *
  * @param input - The opportunity, the conversation behind it, and the model.
+ * @param operation - What the run is traced as.
  * @returns The brief and decision to persist, or nothing when both already stand.
  */
-export async function briefIfMissing(input: BriefInput): Promise<WakeAction[]> {
+export async function briefIfMissing(input: BriefInput, operation = "brief"): Promise<WakeAction[]> {
   const { user, intent, opportunity } = input;
   if (opportunity.brief && opportunity.decision) return [];
 
@@ -129,6 +130,7 @@ export async function briefIfMissing(input: BriefInput): Promise<WakeAction[]> {
 
   await run({
     model: input.model,
+    operation,
     identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
     intent,
     // A second step lets the model rewrite a brief recordBrief rejected.
@@ -169,7 +171,7 @@ export async function screens(input: Omit<BriefInput, "opportunity">, candidate:
       bio: candidate.bio,
       location: candidate.location,
     },
-  }).catch(() => []);
+  }, "screen").catch(() => []);
   const decision = actions.flatMap((action) => (action.type === "decision" ? [action.decision] : []))[0];
   return decision !== "decline" && decision !== "stop";
 }

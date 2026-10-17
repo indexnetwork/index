@@ -36769,6 +36769,9 @@ async function run(input2) {
       prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,
+      providerOptions: {
+        openrouter: { user: input2.identity.id, session_id: input2.intent.id, trace: { trace_name: "agent", generation_name: input2.operation } }
+      },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT },
       ...input2.signal ? { abortSignal: input2.signal } : {}
@@ -36844,7 +36847,7 @@ function recordBrief(opportunity, decision, brief) {
   recorded.push({ type: "decision", opportunityId: opportunity.id, decision });
   return recorded;
 }
-async function briefIfMissing(input2) {
+async function briefIfMissing(input2, operation = "brief") {
   const { user, intent, opportunity } = input2;
   if (opportunity.brief && opportunity.decision)
     return [];
@@ -36862,6 +36865,7 @@ async function briefIfMissing(input2) {
   ];
   await run({
     model: input2.model,
+    operation,
     identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
     intent,
     maxSteps: 2,
@@ -36892,7 +36896,7 @@ async function screens(input2, candidate) {
       bio: candidate.bio,
       location: candidate.location
     }
-  }).catch(() => []);
+  }, "screen").catch(() => []);
   const decision = actions.flatMap((action) => action.type === "decision" ? [action.decision] : [])[0];
   return decision !== "decline" && decision !== "stop";
 }
@@ -36961,6 +36965,7 @@ async function negotiate(input2) {
   ];
   await run({
     model: input2.model,
+    operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
     instructions: user.emailVerified === false ? `${SYSTEM_PROMPT}
@@ -37038,6 +37043,7 @@ async function summarize(input2) {
   ];
   await run({
     model: input2.model,
+    operation: "summary",
     identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
     intent,
     instructions: SUMMARY_PROMPT,
@@ -37385,6 +37391,7 @@ async function wake(input2) {
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input2.model,
+    operation: input2.reason === "morning" ? "wake.morning" : "wake",
     identity,
     intent,
     maxSteps: WAKE_STEPS,
@@ -37407,6 +37414,7 @@ ${MORNING}` : WAKE_PROMPT,
     const due = new Set(owed());
     await run({
       model: input2.model,
+      operation: "wake.stalls",
       identity,
       intent,
       maxSteps: 4,
@@ -37432,6 +37440,7 @@ ${MORNING}` : WAKE_PROMPT,
   if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
     await run({
       model: input2.model,
+      operation: "wake.reply",
       identity,
       intent,
       maxSteps: 2,

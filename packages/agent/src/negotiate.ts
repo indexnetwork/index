@@ -74,6 +74,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
 
   await run({
     model: input.model,
+    operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
     instructions: user.emailVerified === false ? `${SYSTEM_PROMPT}\n\n${UNVERIFIED_PROMPT}` : SYSTEM_PROMPT,
