@@ -38,5 +38,8 @@
     "build:desktop": "node desktop/build.mjs",
     "build:runtime": "bun build ./runtime/src/main.ts --outfile runtime/dist/negotiator.js --target bun --format esm",
     "typecheck:runtime": "tsc -p runtime/tsconfig.json"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.71"
   }
 }

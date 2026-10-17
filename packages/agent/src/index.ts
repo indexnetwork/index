@@ -17,8 +17,8 @@ export { summarize } from "./summary.ts";
 export { closeInitiation, encodeActions, owedWork, readConversation, runMorning, runNegotiate, runWake } from "./host.ts";
 export type { NegotiateHook, Runtime } from "./host.ts";
 
-export { ModelClient } from "./model.ts";
-export type { Model, ModelClientOptions, ModelMessage, ToolDefinition } from "./model.ts";
+export { createModel } from "./model.ts";
+export type { Model, ModelClientOptions } from "./model.ts";
 
 export type {
   BriefInput,

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 
 type Provenance = {
   kind?: string;
+  record?: "brief" | "decision" | "stall" | "resolution" | "progress";
   questionId?: string;
   scope?: string;
   options?: string[];
@@ -68,7 +69,7 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
     const text = messageText(message).trim();
     const provenance = message.metadata?.principalMessage as Provenance | undefined;
     if (!text) continue;
-    if (message.role === "agent" && provenance?.kind === "message" && (text.startsWith("Stall: ") || text.startsWith("Resolved: "))) continue;
+    if (provenance?.record === "stall" || provenance?.record === "resolution") continue;
     if (provenance?.kind === "answer" && provenance.questionId && answers.has(provenance.questionId)) continue;
     if (provenance?.kind === "question" && provenance.questionId) {
       flush();
@@ -79,23 +80,22 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
       else if (answer) feed.push({ kind: "answered-question", id: `answered-${provenance.questionId}`, question, answer });
       continue;
     }
-    if (text.startsWith("Brief: ") || text.startsWith("Decision: ")) continue;
+    if (provenance?.record === "brief" || provenance?.record === "decision") continue;
     if (message.role === "user") {
       flush();
       feed.push({ kind: "user", id: message.id, text });
       continue;
     }
-    if (text.startsWith("Progress: ")) {
-      const body = text.slice("Progress: ".length);
-      if (isLoadingLine(body)) {
+    if (provenance?.record === "progress") {
+      if (isLoadingLine(text)) {
         if (!block) {
           block = { kind: "discovery", id: message.id, loading: [], plan: "", queries: [], discovered: null, reached: null, progress: "" };
           feed.push(block);
         }
-        block.loading.push(body);
+        block.loading.push(text);
         continue;
       }
-      const trace = parseDiscovery(body);
+      const trace = parseDiscovery(text);
       if (trace && (trace.plan || trace.queries.length || trace.discovered != null)) {
         if (block && !block.plan && !block.queries.length && block.discovered == null) {
           block.plan = trace.plan;
@@ -109,7 +109,7 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
         continue;
       }
       flush();
-      feed.push({ kind: "progress", id: message.id, text: body });
+      feed.push({ kind: "progress", id: message.id, text });
       continue;
     }
     flush();

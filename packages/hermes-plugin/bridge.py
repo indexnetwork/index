@@ -47,10 +47,12 @@ class HermesBridge:
             server.server_close()
 
     def complete(self, payload: dict) -> dict:
-        """@param payload - Messages and tool definitions for one model step.
-        @returns The assistant message. Tools are not executed here.
+        """@param payload - An OpenAI chat completion request for one model step.
+        @returns The OpenAI chat completion. Tools are not executed here.
         """
-        return complete_turn(payload)
+        message = complete_turn(payload)
+        reason = "tool_calls" if message.get("tool_calls") else "stop"
+        return {"object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": reason}]}
 
 
 def _handler(bridge: HermesBridge):
@@ -69,7 +71,7 @@ def _handler(bridge: HermesBridge):
             except ValueError:
                 return self._send(400, {"error": "The request body must be an object."})
             try:
-                if self.path == "/complete":
+                if self.path == "/v1/chat/completions":
                     return self._send(200, bridge.complete(payload))
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index bridge %s failed: %s", self.path, error)

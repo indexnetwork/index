@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { IndexClient } from '@indexnetwork/client';
-import type { Model, ModelMessage, NegotiateHook, ToolDefinition } from '@indexnetwork/agent';
+import type { Model, NegotiateHook } from '@indexnetwork/agent';
 
 import { startRunner } from '@indexnetwork/agent/runner';
 
@@ -21,36 +22,21 @@ function required(name: string): string {
   return value;
 }
 
-/** One Hermes gateway completion. Tool execution stays in the agent loop. */
-class HermesModel implements Model {
-  constructor(private readonly bridge: Bridge) {}
-
-  async complete(messages: ModelMessage[], tools: ToolDefinition[] = [], signal?: AbortSignal, toolChoice?: "required"): Promise<ModelMessage> {
-    const body = JSON.stringify({ messages, tools, ...(toolChoice ? { tool_choice: toolChoice } : {}) });
-    let last: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const response = await fetch(`${this.bridge.url}/complete`, {
-          method: 'POST',
-          signal,
-          headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
-          body,
-        });
-        const payload = await response.json() as ModelMessage & { error?: string };
-        if (!response.ok) throw new Error(payload.error ?? `Hermes completion failed (${response.status}).`);
-        return {
-          role: 'assistant',
-          content: payload.content ?? null,
-          ...(payload.tool_calls?.length ? { tool_calls: payload.tool_calls } : {}),
-        };
-      } catch (error) {
-        last = error;
-        if (signal?.aborted || attempt === 2 || (error instanceof Error && error.message.startsWith('Hermes completion failed'))) break;
-        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
-      }
+/** A connection the bridge reset is tried again, up to three times. A response, even an error, is final. */
+const retrying = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      if (init?.signal?.aborted || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
-    throw last;
   }
+}) as typeof fetch;
+
+/** Hermes's gateway model, one completion per step. Tool execution stays in the agent loop. */
+function hermesModel(bridge: Bridge): Model {
+  return createOpenAICompatible({ name: 'hermes', baseURL: `${bridge.url}/v1`, apiKey: bridge.token, fetch: retrying }).chatModel('hermes');
 }
 
 /** The resident's negotiator. The sidecar names it only when `custom_negotiator` is on; otherwise, or with no file, the built-in negotiator runs. */
@@ -72,7 +58,7 @@ const runner = startRunner({
     apiKey: required('INDEX_API_KEY'),
     agentId: required('INDEX_AGENT_ID'),
   }),
-  model: new HermesModel(bridge),
+  model: hermesModel(bridge),
   log: (line) => log('info', 'run', { line }),
   onError: (error) => log('warn', 'error', { reason: error instanceof Error ? error.message : String(error) }),
   ...(negotiate ? { negotiate } : {}),

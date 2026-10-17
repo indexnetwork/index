@@ -267,10 +267,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           const provenance = (m.metadata && m.metadata.principalMessage) || {};
           if (!text) return null;
           // A negotiator's stall and the wake's resolution of one are the agent's
-          // own bookkeeping. The principal's words stay, whatever they begin with.
-          const bookkeeping = m.role === "agent" && provenance.kind === "message"
-            && (text.startsWith("Stall: ") || text.startsWith("Resolved: "));
-          if (bookkeeping) return null;
+          // own bookkeeping.
+          if (provenance.record === "stall" || provenance.record === "resolution") return null;
           const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
           const waiting = provenance.kind === "question" && provenance.questionId && carded[provenance.questionId];
           const classified = provenance.kind === "question"
@@ -279,13 +277,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
               ? { kind: "answer-history", text }
               : m.role === "user"
                 ? { kind: "user", text }
-            : text.startsWith("Brief: ")
-              ? { kind: "brief", text: text.slice(7) }
-              : text.startsWith("Decision: ")
-                ? { kind: "decision", text: text.slice(10) }
-                : text.startsWith("Progress: ")
-                  ? { kind: "progress", text: text.slice(10) }
-                  : { kind: "note", text };
+            : { kind: provenance.record || "note", text };
           return {
             id: m.id,
             ...classified,

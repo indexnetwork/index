@@ -3434,22 +3434,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     return { label: source.scope === "match" ? "this match\u2019s agent" : "your agent", id: "" };
   }
 
-  // What the agent writes down as it works, rather than something it is telling
-  // the owner. The API marks each one with its own opening word; stalls are
-  // dropped and the rest become the discovery trace.
-  const AGENT_LOG_PREFIXES = ["Brief: ", "Decision: ", "Progress: ", "Stall: "];
-
-  /** A working note and its kind, or null when the agent is speaking to you. */
-  function agentLogEntry(text) {
-    for (let i = 0; i < AGENT_LOG_PREFIXES.length; i++) {
-      const prefix = AGENT_LOG_PREFIXES[i];
-      if (text.indexOf(prefix) === 0) {
-        return { kind: prefix.slice(0, -2).toLowerCase(), text: text.slice(prefix.length) };
-      }
-    }
-    return null;
-  }
-
   // ── Discovery trace: the mac app's reading of the agent's working notes.
   // A Progress note opens a run; the briefs and decisions after it are who
   // that run reached, keyed by opportunity.
@@ -4223,13 +4207,14 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         entries.push({ id: raw.id, kind: "user", text: content.text });
         continue;
       }
-      const work = agentLogEntry(content.text);
-      if (work && work.kind === "stall") continue;
+      // What the agent writes down as it works carries its `record`. Stalls and
+      // resolutions are dropped and the rest become the discovery trace.
+      if (provenance.record === "stall" || provenance.record === "resolution") continue;
       const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
       entries.push({
         id: raw.id,
-        kind: work ? work.kind : "note",
-        text: work ? work.text : content.text,
+        kind: provenance.record || "note",
+        text: content.text,
         provenance: provenance,
         opportunityId: match && match.opportunityId,
         counterpart: match && match.counterparty && match.counterparty.name,
