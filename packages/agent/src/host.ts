@@ -460,8 +460,10 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
     result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"),
     context,
   );
-  // What the wake did is kept; what it left owed fails it, so the host retries.
-  if (result.unresolved.length) throw new Error(`Wake left stalls unresolved on ${result.unresolved.join(", ")}.`);
+  // What the wake did is kept. What it still owes stands on the conversation for
+  // the next event or restart: rerunning the whole wake for it costs more than
+  // it settles, so only a failed run is retried.
+  if (result.unresolved.length) log(`  stalls left owed on ${result.unresolved.join(", ")}`);
 
   return result;
 }
