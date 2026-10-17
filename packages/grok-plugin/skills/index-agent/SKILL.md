@@ -27,7 +27,7 @@ To pause the agent, write {"paused": true} to ~/.index/grok.json; write {"paused
 - accept_opportunity and reject_opportunity are owner decisions, requiring their explicit instruction. The routine never calls them.
 - Reuse links returned by tools on the person, intent, or opportunity name. Stay quiet on unchanged or non-actionable events; notify for a qualified introduction, a missing owner fact, or a failure needing intervention.
 - After a rejected or uncertain write, reread the record and stop this attempt. Do not blindly replay writes. Stop on executor_changed.
-- The owner's agent conversation is the same inbox the native Index agent uses. Read it with get_intent_conversation. Ask with agent_ask, stop a pending question with agent_expire_question, or save a note, reply, or progress update with agent_send_note, agent_send_reply, or agent_send_progress. Record what the owner wrote with principal_send_message, copying their words and never inventing one. A saved message is not approval to accept or pass an introduction.
+- The hosted negotiator asks the owner and writes the agent conversation. Do not try to read or write that inbox from here.
 
 For ordinary intent and introduction requests, use the MCP tools according to their descriptions. A request to find someone creates an intent; it does not by itself invoke the agent-only tool outside the configured routine.
 
