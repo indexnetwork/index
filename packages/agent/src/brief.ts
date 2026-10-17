@@ -161,6 +161,23 @@ export async function briefIfMissing(input: BriefInput, operation = "brief"): Pr
  * @returns Whether to open them. A screen that fails opens them.
  */
 export async function screens(input: Omit<BriefInput, "opportunity">, candidate: Counterparty): Promise<boolean> {
+  // A decision model, when there is one, answers this alone; if it fails, the briefing below does.
+  const choice = await input.decide?.({
+    state: {
+      principal: principalFacts(input.user),
+      intent: input.intent.statement,
+      said: principalOnly(input.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text),
+      candidate: { statement: candidate.statement, bio: candidate.bio, location: candidate.location },
+    },
+    question: "Should this principal be introduced to this candidate? Reach only if the candidate meets every requirement of the intent and wants what the principal offers; skip a clear mismatch.",
+    options: {
+      reach: "Nothing the candidate states contradicts the intent. What they leave unsaid is unknown, so a conversation can ask.",
+      skip: "The candidate contradicts a requirement of the intent, or wants something it rules out.",
+    },
+    ...(input.signal ? { signal: input.signal } : {}),
+  }).catch(() => undefined);
+  if (choice) return choice === "reach";
+
   const actions = await briefIfMissing({
     ...input,
     opportunity: {

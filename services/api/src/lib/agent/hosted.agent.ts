@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, owedWork, runMorning, runNegotiate, runWake, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
@@ -46,7 +46,7 @@ export class HostedAgent {
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
 
-  constructor(private readonly model: Model) {
+  constructor(private readonly model: Model, private readonly decide?: Decide) {
     this.session = new HostedSession({
       running: () => this.running,
       holdsSeat: (userId) => this.holdsSeat(userId),
@@ -218,10 +218,11 @@ export class HostedAgent {
     return { id: intent.id, statement: intent.payload };
   }
 
-  /** @returns What every run needs beyond Index: the model, cancellation, and somewhere to report. */
+  /** @returns What every run needs beyond Index: the model, the decision model, cancellation, and somewhere to report. */
   private runtime() {
     return {
       model: this.model,
+      ...(this.decide ? { decide: this.decide } : {}),
       signal: this.abort.signal,
       log: (line: string) => { logger.verbose(line.trim()); },
     };
