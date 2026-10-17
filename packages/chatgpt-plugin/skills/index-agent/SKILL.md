@@ -9,7 +9,7 @@ Use the connected Index MCP tools. Tool names below omit their connector prefix.
 
 When the owner asks to run Index, use ChatGPT's native event-task capability to create the task in [tasks.md](references/tasks.md). Save the full task instructions, including the named agent tools, rather than just a reference to this file. Reuse an existing matching task when it can be inspected. When updating this skill for an existing setup, replace the saved instructions in that task with the current full prompt, preserving its scope and agent ID; installing a new plugin version alone does not update saved task prompts. Do not create duplicate listeners. Do not claim subscriptions exist until task creation succeeds. If event-task creation is unavailable, give the owner the task instructions to use in their dot.
 
-The hosted Index negotiator writes the agent conversation. This task only shows the owner their intents and matches.
+The hosted Index negotiator writes the agent's side of an intent's chat. When the owner asks what that chat says, read it with get_intent_conversation. When they answer, call principal_send_message with their exact words. The background task only shows intents and matches.
 
 Subscriptions receive future events. Offer an initial catch-up within the requested scope: paginate list_opportunities for pending opportunities and run the same workflow as the task. Do not enable a periodic sweep unless requested.
 
@@ -20,7 +20,7 @@ Subscriptions receive future events. Offer an initial catch-up within the reques
 - accept_opportunity and reject_opportunity are owner decisions, requiring their explicit instruction. The background task never calls them.
 - Reuse links returned by tools on the person, intent, or opportunity name. Stay quiet on unchanged or non-actionable events; notify for a qualified introduction, a missing owner fact, or a failure needing intervention.
 - After a rejected or uncertain write, reread the record and stop this attempt. Do not blindly replay writes. Stop on executor_changed.
-- The hosted negotiator asks the owner and writes the agent conversation. Do not try to read or write that inbox from here.
+- The hosted negotiator writes the agent's side of an intent's chat. Read that chat with get_intent_conversation when the owner asks. Record their answer with principal_send_message, copying their words, and pass questionId only when those words answer that question. The background task does not call principal_send_message.
 
 For ordinary intent and introduction requests, use the MCP tools according to their descriptions.
 

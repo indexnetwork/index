@@ -49,8 +49,9 @@ function intentEvent(description: string): EventDefinition {
 
 /**
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
- * copy. The hosted negotiator reads the agent conversation itself.
- * `message`, `principal.input` and `question.pending` are omitted.
+ * copy. The owner reads an intent's chat with get_intent_conversation and
+ * answers with principal_send_message. The hosted negotiator writes the
+ * agent's side. `message`, `principal.input` and `question.pending` are omitted.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
   'intent.created': intentEvent('The owner created an intent. Read it with get_intent.'),
