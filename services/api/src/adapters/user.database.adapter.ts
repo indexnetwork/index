@@ -1,6 +1,6 @@
 import { publishUserInvalidation } from '../lib/user-events';
 
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
 
 /** A live session presented as a device: metadata only, never the token. */
 export interface DeviceSession {
@@ -300,6 +300,27 @@ export class UserDatabaseAdapter {
     await db.update(users)
       .set({ lastWeeklyEmailSentAt: new Date() })
       .where(eq(users.id, userId));
+  }
+
+  /**
+   * Whether the user's MCP onboarding already ran.
+   */
+  async isMcpOnboarded(userId: string): Promise<boolean> {
+    const result = await db.select({ onboarding: users.onboarding })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return Boolean(result[0]?.onboarding?.mcpOnboardedAt);
+  }
+
+  /**
+   * Stamp the end of MCP onboarding once. Leaves the rest of onboarding alone
+   * and publishes no invalidation, since no agent configuration changed.
+   */
+  async markMcpOnboarded(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ onboarding: sql`(coalesce(${users.onboarding}::jsonb, '{}'::jsonb) || jsonb_build_object('mcpOnboardedAt', ${new Date().toISOString()}::text))::json` })
+      .where(and(eq(users.id, userId), sql`${users.onboarding}->>'mcpOnboardedAt' is null`));
   }
 
   /**

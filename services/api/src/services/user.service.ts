@@ -116,6 +116,20 @@ export class UserService {
     }
 
     /**
+     * Whether the user's MCP onboarding already ran.
+     */
+    async isMcpOnboarded(userId: string) {
+        return this.db.isMcpOnboarded(userId);
+    }
+
+    /**
+     * Mark MCP onboarding done. Idempotent.
+     */
+    async markMcpOnboarded(userId: string) {
+        await this.db.markMcpOnboarded(userId);
+    }
+
+    /**
      * Find a user by UUID or key.
      * @param idOrKey - UUID or human-readable key
      * @returns User record or null

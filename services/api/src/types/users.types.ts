@@ -23,6 +23,7 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: UUID | null;
   invitationCode?: string;
+  mcpOnboardedAt?: ISODateString;
 }
 
 export interface User {
