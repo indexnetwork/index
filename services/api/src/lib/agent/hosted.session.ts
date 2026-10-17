@@ -106,9 +106,10 @@ export class HostedSession {
   }
 
   /**
-   * A failed wake leaves what it owed on the conversation, so the wake runs
-   * again a few times, further apart each time, then waits for the next event
-   * or restart.
+   * A wake that threw ran again a few times, further apart each time, then
+   * waits for the next event or restart. Stalls a wake finished still owing
+   * are not a failure: they wait on the conversation for the next event or
+   * restart.
    *
    * @param userId - The intent's owner.
    * @param intentId - The intent whose wake failed.

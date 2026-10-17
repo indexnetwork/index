@@ -36770,7 +36770,12 @@ async function run(input2) {
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,
       providerOptions: {
-        openrouter: { user: input2.identity.id, session_id: input2.intent.id, trace: { trace_name: "agent", generation_name: input2.operation } }
+        openrouter: {
+          user: input2.identity.id,
+          session_id: input2.intent.id,
+          trace: { trace_name: "agent", generation_name: input2.operation },
+          metadata: { service: "agent", operation: input2.operation }
+        }
       },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT },
@@ -37077,6 +37082,23 @@ var WAKE_PROMPT = [
 
 `);
 var MORNING = "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+var STALL_PASSES = 3;
+var TURNS_READ = 2;
+function view(opportunities) {
+  const settled = [];
+  const waiting = [];
+  const rest = [];
+  for (const opportunity of opportunities) {
+    const { id, counterpart, status, decision, stall, turns } = opportunity;
+    if (["agreed", "declined", "closed"].includes(status))
+      settled.push({ id, counterpart, status, ...decision ? { decision } : {} });
+    else if (stall?.questionId && !stall.answered)
+      waiting.push({ id, counterpart, status, stall });
+    else
+      rest.push(turns ? { ...opportunity, turns: turns.slice(-TURNS_READ) } : opportunity);
+  }
+  return [...settled, ...waiting, ...rest];
+}
 function openQuestions(conversation) {
   const open2 = new Map;
   for (const entry of conversation) {
@@ -37403,15 +37425,18 @@ ${MORNING}` : WAKE_PROMPT,
     prompt: (input2.reason === "morning" ? MORNING : "Something happened on this intent. Work out what it changes, act only there, and stop.") + `
 ` + JSON.stringify({
       principal: principalFacts(user),
+      opportunities: view(opportunities),
       conversation,
       unansweredMessage,
-      opportunities,
       openQuestions: [...open2].map(([questionId, question]) => ({ questionId, question }))
     }),
     tools
   });
-  if (!unpersisted && owed().length) {
+  for (let pass = 0, before = Infinity;!unpersisted && pass < STALL_PASSES; pass++) {
     const due = new Set(owed());
+    if (!due.size || due.size >= before)
+      break;
+    before = due.size;
     await run({
       model: input2.model,
       operation: "wake.stalls",
@@ -37429,7 +37454,7 @@ ${MORNING}` : WAKE_PROMPT,
       prompt: JSON.stringify({
         principal: principalFacts(user),
         conversation,
-        opportunities: opportunities.filter(({ id }) => due.has(id)),
+        opportunities: opportunities.filter(({ id }) => due.has(id)).sort((a, b) => (a.stall?.reason ?? "").localeCompare(b.stall?.reason ?? "")),
         openQuestions: [...open2].map(([questionId, question]) => ({ questionId, question }))
       }),
       tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name))
@@ -37449,9 +37474,9 @@ ${MORNING}` : WAKE_PROMPT,
       instructions: "Reply to your principal's unanswered direct message in English, even when they wrote in another language. Call reply_principal exactly once; this run has no other product.",
       prompt: JSON.stringify({
         principal: principalFacts(user),
+        opportunities: view(opportunities),
         conversation,
-        unansweredMessage,
-        opportunities
+        unansweredMessage
       }),
       tools: tools.filter((entry) => entry.name === "reply_principal")
     });
@@ -37769,7 +37794,7 @@ async function runWake(client, intent, runtime) {
     log("  silent");
   await publishActions(client, intent.id, result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"), context);
   if (result.unresolved.length)
-    throw new Error(`Wake left stalls unresolved on ${result.unresolved.join(", ")}.`);
+    log(`  stalls left owed on ${result.unresolved.join(", ")}`);
   return result;
 }
 function principalOf(message) {

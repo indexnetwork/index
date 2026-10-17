@@ -3,7 +3,7 @@ import type { Counterparty, CounterpartyPick, Index } from "@indexnetwork/client
 import { BRIEF_LIMIT, BRIEF_PROMPT, DECISIONS, principalFacts, principalOnly, recordBrief, screens } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { ConversationEntry, Decision, Intent, WakeAction, WakeInput, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, Opportunity, WakeAction, WakeInput, WakeResult } from "./types.ts";
 
 /** How many turns a wake gets: room to decide a few things, speak, and search. */
 const WAKE_STEPS = 8;
@@ -30,6 +30,35 @@ const WAKE_PROMPT = [
 /** The line a morning wake adds. */
 const MORNING =
   "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+
+/** How many focused passes a wake makes over the stalls it still owes. */
+const STALL_PASSES = 3;
+
+/** How many of a negotiation's latest turns a wake reads. */
+const TURNS_READ = 2;
+
+/**
+ * What a wake reads of its opportunities: only as much as it can act on, with
+ * the ones that change least first so the prompt's prefix stays cacheable.
+ * Settled ones stay listed so accept and reject still resolve them, and one
+ * whose stall already waits on a question is left alone, so neither needs its
+ * turns or brief.
+ *
+ * @param opportunities - The intent's opportunities as the host assembled them.
+ * @returns Settled, then waiting on a question, then the rest.
+ */
+function view(opportunities: Opportunity[]): Partial<Opportunity>[] {
+  const settled: Partial<Opportunity>[] = [];
+  const waiting: Partial<Opportunity>[] = [];
+  const rest: Partial<Opportunity>[] = [];
+  for (const opportunity of opportunities) {
+    const { id, counterpart, status, decision, stall, turns } = opportunity;
+    if (["agreed", "declined", "closed"].includes(status)) settled.push({ id, counterpart, status, ...(decision ? { decision } : {}) });
+    else if (stall?.questionId && !stall.answered) waiting.push({ id, counterpart, status, stall });
+    else rest.push(turns ? { ...opportunity, turns: turns.slice(-TURNS_READ) } : opportunity);
+  }
+  return [...settled, ...waiting, ...rest];
+}
 
 /**
  * The questions still waiting on the principal, mirroring how the host reads
@@ -443,17 +472,21 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         : "Something happened on this intent. Work out what it changes, act only there, and stop.") + "\n" +
       JSON.stringify({
         principal: principalFacts(user),
+        opportunities: view(opportunities),
         conversation,
         unansweredMessage,
-        opportunities,
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
     tools,
   });
 
-  // A stall is never left to disappear: one focused pass over what is still owed.
-  if (!unpersisted && owed().length) {
+  // A stall is never left to disappear: focused passes over what is still owed,
+  // while each one settles some, so the host does not rerun this whole wake for
+  // what is left.
+  for (let pass = 0, before = Infinity; !unpersisted && pass < STALL_PASSES; pass++) {
     const due = new Set(owed());
+    if (!due.size || due.size >= before) break;
+    before = due.size;
     await run({
       model: input.model,
       operation: "wake.stalls",
@@ -469,7 +502,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       prompt: JSON.stringify({
         principal: principalFacts(user),
         conversation,
-        opportunities: opportunities.filter(({ id }) => due.has(id)),
+        // Stalls on the same missing fact sit together, for one question to cover.
+        opportunities: opportunities
+          .filter(({ id }) => due.has(id))
+          .sort((a, b) => (a.stall?.reason ?? "").localeCompare(b.stall?.reason ?? "")),
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
       tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name)),
@@ -489,9 +525,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       instructions: "Reply to your principal's unanswered direct message in English, even when they wrote in another language. Call reply_principal exactly once; this run has no other product.",
       prompt: JSON.stringify({
         principal: principalFacts(user),
+        opportunities: view(opportunities),
         conversation,
         unansweredMessage,
-        opportunities,
       }),
       tools: tools.filter((entry) => entry.name === "reply_principal"),
     });

@@ -5,7 +5,7 @@
 ### Added
 
 - `OpportunityDetection.source` gains `'introducer'`, stamped on opportunities a third party opens.
-- Protocol agent requests to OpenRouter carry `HTTP-Referer` and `X-Title` headers, so their spend is attributed apart from the hosted agent's, and a `trace` named by the agent key (for example `intentInferrer` or `chat`).
+- Protocol agent requests to OpenRouter carry `HTTP-Referer` and `X-Title` headers, so their spend is attributed apart from the hosted agent's, and a `trace` and `metadata` (`service: "protocol"`, `operation`) named by the agent key (for example `intentInferrer` or `chat`).
 
 ## 66.0.0
 
