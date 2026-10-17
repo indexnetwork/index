@@ -47,7 +47,7 @@ export class AuthDatabaseAdapter {
             }
             // Use ON CONFLICT so a duplicate email is detected atomically.
             // Any email collision is an existing real account: RETURNING comes
-            // back empty and we throw to signal a duplicate signup.
+            // back empty and we throw to intent a duplicate signup.
             const result = await db
               .insert(schema.users)
               .values(data)

@@ -15,11 +15,11 @@ const HAS_OPENROUTER_KEY = Boolean(process.env.OPENROUTER_API_KEY);
 const USER_ID = "alice";
 const NETWORK_ID = "network-1";
 
-const CO_FOUNDER_SIGNAL =
+const CO_FOUNDER_INTENT =
   "I am looking for an ML engineer to co-found my New York developer-tools company; I want to start working together this quarter.";
-const UPDATED_SIGNAL =
+const UPDATED_INTENT =
   "I am looking for an ML engineer with production LLM experience to co-found my New York developer-tools company, starting in October.";
-const VAGUE_SIGNAL = "I want a job.";
+const VAGUE_INTENT = "I want a job.";
 
 /** In-memory host implementing the ports the intent graph uses. No profile text reaches the model. */
 class FakeIntentHost {
@@ -130,15 +130,15 @@ function show(step: string, input: string, output: Record<string, unknown>): voi
   console.info(lines.join("\n"));
 }
 
-describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)", () => {
-  test("creates, reads, updates and deletes one signal", async () => {
+describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — intent lifecycle (live)", () => {
+  test("creates, reads, updates and deletes one intent", async () => {
     const host = new FakeIntentHost();
     const graph = host.graph();
     const scoped = { ...base, scopeType: "network" as const, scopeId: NETWORK_ID };
 
     // Create: prepare → execute.
-    const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_SIGNAL, networkIds: [NETWORK_ID] });
-    show("create", CO_FOUNDER_SIGNAL, {
+    const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_INTENT, networkIds: [NETWORK_ID] });
+    show("create", CO_FOUNDER_INTENT, {
       classification: created.preparation?.metadata?.speechActType,
       persisted: host.intents[0]?.payload,
       linked: host.links.map((link) => link.networkId),
@@ -152,7 +152,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
       expect.objectContaining({ actionType: "create", success: true, intentId: "intent-1", linkedNetworkIds: [NETWORK_ID] }),
     ]);
     expect(host.links).toEqual([{ intentId: "intent-1", networkId: NETWORK_ID }]);
-    expect(host.intents[0]).toMatchObject({ userId: USER_ID, payload: CO_FOUNDER_SIGNAL, embedding: expect.any(Array) });
+    expect(host.intents[0]).toMatchObject({ userId: USER_ID, payload: CO_FOUNDER_INTENT, embedding: expect.any(Array) });
     expect(host.embedded).toEqual([host.intents[0].payload]);
     expect(host.followUpJobs).toEqual([
       { kind: "generate", data: { intentId: "intent-1", userId: USER_ID, scopeType: "network", scopeId: NETWORK_ID } },
@@ -164,8 +164,8 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     expect(read.readResult).toMatchObject({ count: 1, intents: [{ id: "intent-1", description: host.intents[0].payload }] });
 
     // Update: bound to the explicit target.
-    const updated = await graph.invoke({ ...scoped, targetIntentIds: ["intent-1"], inputContent: UPDATED_SIGNAL });
-    show("update intent-1", UPDATED_SIGNAL, {
+    const updated = await graph.invoke({ ...scoped, targetIntentIds: ["intent-1"], inputContent: UPDATED_INTENT });
+    show("update intent-1", UPDATED_INTENT, {
       persisted: host.intents[0].payload,
       trace: updated.trace.map((entry) => entry.detail),
       failures: updated.validationFailures,
@@ -191,8 +191,8 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
   test.concurrent("rejects a vague utterance instead of persisting it", async () => {
     const host = new FakeIntentHost();
-    const result = await host.graph().invoke({ ...base, inputContent: VAGUE_SIGNAL });
-    show("create (vague)", VAGUE_SIGNAL, {
+    const result = await host.graph().invoke({ ...base, inputContent: VAGUE_INTENT });
+    show("create (vague)", VAGUE_INTENT, {
       preparation: result.preparationResult?.status,
       failures: result.validationFailures,
       persisted: host.intents.length,

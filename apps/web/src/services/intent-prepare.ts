@@ -1,4 +1,4 @@
-/** Client for preparing a signal and saving its final revision. */
+/** Client for preparing an intent and saving its final revision. */
 import type { PrepareAnswer, PrepareResult as ProtocolPrepareResult, RecoveryField } from "@indexnetwork/protocol";
 
 import { apiClient } from "@/lib/api";
@@ -10,7 +10,7 @@ export type PrepareResult =
   | (Extract<ProtocolPrepareResult, { status: "ready" }> & { preparationReceipt: string })
   | Extract<ProtocolPrepareResult, { status: "needs_revision" }>;
 
-export const signalService = {
+export const intentService = {
   /** Prepare a draft; fold recovery answers and run admission. */
   prepare: (payload: string, answers: PrepareAnswer[] = []) =>
     apiClient.post<PrepareResult>("/intents/prepare", { payload, answers }),

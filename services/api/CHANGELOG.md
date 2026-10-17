@@ -11,18 +11,18 @@ section before promoting to `main`).
 
 ### Fixed
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
-- Counterparty discovery returns only signals whose owners verified their email.
+- Counterparty discovery returns only intents whose owners verified their email.
 
 ### Changed
 - **MCP conversation tools are renamed by who writes.** `get_agent_conversation` is `get_intent_conversation`, `publish_agent_action` is `agent_send_message`, and `answer_agent_questions` is `principal_send_message`. `principal_send_message` takes `messages`, each `text` with an optional `questionId`; a message without one is saved as a plain owner message. The batch is still written together, then `principal.input` is published.
 - **BREAKING: MCP no longer carries the negotiator tools.** `discover_counterparties`, `create_opportunities`, `get_my_agent`, `select_negotiator` and `submit_negotiation_turn` are removed. The REST routes, the CLI and the hosted agent are unchanged, and the ChatGPT and Grok plugins relay introductions and questions only.
 - Accepting a match publishes `opportunity.status` even when it was already pending.
 - Users, network members and opportunity peers carry `emailVerified` in place of `isGhost`.
-- The hosted agent passes `emailVerified` on its principal; a principal who has not verified is spoken of in the third person, only from their signal, and their negotiator never stalls.
+- The hosted agent passes `emailVerified` on its principal; a principal who has not verified is spoken of in the third person, only from their intent, and their negotiator never stalls.
 
 ### Added
 - **Introductions.** `POST /opportunities` lets a network member open an
-  opportunity between two signals they own neither of, with a `context` both
+  opportunity between two intents they own neither of, with a `context` both
   seats read, with the introducer's id and name, as `introducer` on the
   negotiation. The text is kept in `metadata.introducer`, out of the match
   reasoning presenters read. The introducer holds no seat; the owner of the
@@ -60,16 +60,16 @@ section before promoting to `main`).
   creating or linking the user under provider `edge-city`. Signed-in users are
   auto-joined to `EDGE_CITY_NETWORK_ID`. Enabled when `EDGEOS_TENANT_ID` is set;
   `/api/auth/providers` lists `edge-city`.
-- MCP tools return a canonical `url` on every user (`/u/<id>`), signal
+- MCP tools return a canonical `url` on every user (`/u/<id>`), intent
   (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
   peers and other parties, and the `create_intent` result. Tool descriptions ask
   the agent to link names to it. The link opens the Mac app, then Hermes, then
   the web page, then `/download`.
-- Profile, signal, and opportunity MCP tools lead their result with a markdown
+- Profile, intent, and opportunity MCP tools lead their result with a markdown
   summary whose names are already linked (`[Jane Doe](…/u/<id>)`), followed by
   the JSON in the same text block. Models keep links they can read more reliably
-  than ones they must build from `url` fields. Signal lines read
-  `[signal](…/i/<id>) — 9 waiting` (plus `(paused)` etc. when not active), with
+  than ones they must build from `url` fields. Intent lines read
+  `[intent](…/i/<id>) — 9 waiting` (plus `(paused)` etc. when not active), with
   labels cut at 60 characters; opportunity lines lead with the linked person,
   `[Jane Doe](…/u/<id>) — headline — waiting on you`, using plain-word states
   (`agents talking`, `connected`, `passed`, `expired`). Create/pause/resume/
@@ -98,7 +98,7 @@ section before promoting to `main`).
   focused retry when a wake omits the reply.
 - The hosted personal agent answers an unanswered direct message from its principal
   once per wake, including a bare greeting, instead of treating it as a silent
-  signal update. Wakes without an unanswered message retain their silence rules.
+  intent update. Wakes without an unanswered message retain their silence rules.
 - **`POST /intents/prepare`** replaces `/intents/clarify`. Returns `ready` with a
   preparation receipt or `needs_revision` with admission feedback and a dynamic
   recovery form.
@@ -143,16 +143,16 @@ section before promoting to `main`).
   `POST /conversations/agent/h2a` take `?agentId=` (`INDEX_AGENT_ID` on the
   client). `executorId` and `INDEX_EXECUTOR_ID` are no longer accepted.
 - **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
-  signal on the first negotiator that stalled, so that wake read the transcript
+  intent on the first negotiator that stalled, so that wake read the transcript
   while its siblings were still running and asked about whichever missing fact
   it happened to see; the stalls that landed after it were folded into a
   follow-up wake which then had nothing to say, leaving those negotiations
   waiting on a question nobody had asked. A wake now fires once no negotiator of
-  that signal is in flight and a stall no wake has read is waiting, so every
+  that intent is in flight and a stall no wake has read is waiting, so every
   stall of a burst is put to the owner together, and the wake may ask one
   question per missing fact rather than staying silent whenever any question is
   already open. A stall the owner already has stays standing until they answer
-  and no longer re-wakes the signal over each turn that lands meanwhile.
+  and no longer re-wakes the intent over each turn that lands meanwhile.
 - **The hosted seat is a whole personal agent, not just an A2A responder.**
   `HostedNegotiator` is replaced by `HostedAgent`, which runs
   `@indexnetwork/agentv2` — `briefIfMissing`, `wake`, `negotiate` — for every
@@ -161,14 +161,14 @@ section before promoting to `main`).
   external runner reaches over HTTP: the agent package is unchanged and no
   request leaves the process. Frames route the way the reference runner routes
   them — a counterpart's turn and an opening move one opportunity each and never
-  wake, while the owner's input, a new signal and a resumed one do. The Redis
+  wake, while the owner's input, a new intent and a resumed one do. The Redis
   consumer group is still `hosted-negotiator`, so a wake is taken by exactly one
   API process and no offset is lost on deploy. Consequences for owners on the
   hosted seat: it now searches their communities, opens opportunities, and asks
   them questions, where before it only took one A2A turn per wake.
 - **`agent.status` no longer decides whether there are questions.**
   `GET /conversations/:id/messages` with `intentId` returns the unanswered
-  questions on the signal's transcript for both seats; `status` still names the
+  questions on the intent's transcript for both seats; `status` still names the
   speaker (`hosted` or `external`). It previously hard-coded
   `{ status: 'hosted', questions: [] }`, which was correct only while the hosted
   seat could not speak to its owner.
@@ -182,7 +182,7 @@ section before promoting to `main`).
 - **`POST /intents/:id/discover` returns a top-N, not whatever clears a score.**
   The similarity floor of `0.20` is gone, and the body takes an optional
   `limit` (integer, 1..30, default 10). Retrieval now reads deeper than the
-  limit and drops counterparties this signal already shares a negotiation with
+  limit and drops counterparties this intent already shares a negotiation with
   before cutting, so a caller asking for ten gets the ten strongest people it
   can still open rather than three survivors of a cutoff.
 - **The H2A inbox is a chat, not the responder seat.**
@@ -247,12 +247,12 @@ section before promoting to `main`).
 ### Added
 - **Discovery is on demand, and the agent judges it.**
   `POST /intents/:id/discover` takes `{ query }`, embeds it as written, and
-  returns ranked counterparties from the communities that signal is shared in,
+  returns ranked counterparties from the communities that intent is shared in,
   with each one's statement and owner. It writes nothing, and counterparties the
-  signal already has an opportunity with are left out.
+  intent already has an opportunity with are left out.
   `POST /intents/:id/opportunities` takes the counterparties the caller picked
   and creates one opportunity each, idempotent on the pair. Both are owner-only
-  and need an active signal.
+  and need an active intent.
 
 ### Removed
 - **LangGraph PostgresSaver.** The unused `PostgresSaver` checkpointer, its
@@ -260,10 +260,10 @@ section before promoting to `main`).
   `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` /
   `checkpoint_migrations` tables are gone. Graph runs were already compiling
   without a checkpointer; conversation continuity stays on `chat_messages`.
-- **BREAKING: writing a signal no longer starts a search.** HyDE and lens
+- **BREAKING: writing an intent no longer starts a search.** HyDE and lens
   inference are gone with the `@indexnetwork/discovery` package, along with the
   background `IntentDiscovery` runner, the `protocol_hyde_documents` table and
-  its maintenance cron, and the orphaned-indexing reconcile command. Signals
+  its maintenance cron, and the orphaned-indexing reconcile command. Intents
   still carry embeddings, so they are still findable; nothing is generated ahead
   of a query, and nothing is cached. An owner who wants matches searches for
   them.
@@ -288,11 +288,11 @@ section before promoting to `main`).
 - **BREAKING: `/api/tools` is deleted; every capability is a named REST
   resource.** `GET /api/tools` and `POST /api/tools/:toolName` are 404, and
   `ToolController`, `ToolService` and `EnricherAdapter` are gone. What only the
-  tool layer could do is now routed: `PATCH /intents/:id` rewrites a signal
+  tool layer could do is now routed: `PATCH /intents/:id` rewrites an intent
   through the same intent graph, `GET/POST /intents/:id/networks` and
-  `DELETE /intents/:id/networks/:networkId` manage signal↔community links,
-  `POST /intents/list` accepts an optional `q` for own-signal text search,
-  `GET /networks/:id/intents` browses a community's signals,
+  `DELETE /intents/:id/networks/:networkId` manage intent↔community links,
+  `POST /intents/list` accepts an optional `q` for own-intent text search,
+  `GET /networks/:id/intents` browses a community's intents,
   `POST /scrape` reads a web page, and `GET /docs?topic=` serves canonical
   protocol guidance. `GET /networks/:id/members` is open to any current member
   instead of owners only, so it now answers with the member-scoped roster: no
@@ -302,12 +302,12 @@ section before promoting to `main`).
   Frames are unchanged; the channel was never a conversation resource, so it
   moved to its own `EventsController` and conversation CRUD stayed on
   `/api/conversations`.
-- **`POST /intents` with no `networkIds` shares the signal in every network the
+- **`POST /intents` with no `networkIds` shares the intent in every network the
   owner belongs to.** Naming networks still shares it in exactly those, and a
   non-membership is still rejected; only the unspecified case changed. It used
-  to create an unlinked signal that discovery then skipped fail-closed, so
+  to create an unlinked intent that discovery then skipped fail-closed, so
   `/i/new` — which sends no ids and says "going out to everywhere" — produced
-  signals that reached nobody. A transitional default: the picker comes back
+  intents that reached nobody. A transitional default: the picker comes back
   once choosing networks is something people expect to do.
 - **BREAKING: one SSE stream per user.** Notifications and conversation messages
   share the Redis channel `events:user:<userId>` and the single endpoint
@@ -433,14 +433,14 @@ section before promoting to `main`).
 - **`POST /intents/clarify`** — one stateless clarification round. Send
   `{ payload, answers? }`, get back `{ payload, questions }`. Nothing is stored;
   the client decides whether to ask again or create.
-- **`POST /intents`** — the one way to create a signal. Takes
-  `{ description, networkIds }`, runs the intent graph, and links the signal to
+- **`POST /intents`** — the one way to create an intent. Takes
+  `{ description, networkIds }`, runs the intent graph, and links the intent to
   exactly the networks named, each of which must be a current membership. An
-  empty list is allowed: the signal is saved and reaches nobody until it is
+  empty list is allowed: the intent is saved and reaches nobody until it is
   linked.
 
 ### Changed
-- Signal clarification and creation are rate-limited as `intent_llm` (20/min),
+- Intent clarification and creation are rate-limited as `intent_llm` (20/min),
   the class previously named `intake_synthesis`. Both run a model call per
   request, so the generic write budget was far too loose for them.
 
@@ -452,10 +452,10 @@ section before promoting to `main`).
 - **BREAKING: `/intents/intake/*`, `POST /intents/confirm`, `POST /intents/reject`
   and `POST /intents/proposals/status`.** The guided intake funnel and the
   propose-then-confirm handshake are replaced by clarify-then-create.
-  `signal-intake.service.ts`, the pack and run adapters, the proposal adapter and
-  the `FAST_SIGNAL_INTAKE` feature flag are deleted with them. Migration `0173`
-  drops `signal_intake_packs`, `signal_intake_runs` and `intent_proposals`.
-- **BREAKING: automatic network assignment.** A signal no longer gets scored
+  `intent-intake.service.ts`, the pack and run adapters, the proposal adapter and
+  the `FAST_INTENT_INTAKE` feature flag are deleted with them. Migration `0173`
+  drops `intent_intake_packs`, `intent_intake_runs` and `intent_proposals`.
+- **BREAKING: automatic network assignment.** An intent no longer gets scored
   against every network the owner belongs to. `assignIntentToNetworks`,
   `reconcileIntentNetworks`, `addNetworkReconcileForUser`, the join-time
   re-evaluation hook and the `maintenance:backfill-intent-networks` script are
@@ -522,7 +522,7 @@ section before promoting to `main`).
   `/:opportunityId/delivered` routes are removed, as is
   `getAgentActivitySummary`. Migration `0160` drops `premises`,
   `premise_networks`, `opportunity_deliveries`, the `premise_status` type,
-  `signal_intake_packs.premise_hash`, and `manage:premises` from live
+  `intent_intake_packs.premise_hash`, and `manage:premises` from live
   `agent_permissions.actions`. `ProjectedScreenDecision` drops
   `counterpartyPremiseFit`; the historical `tasks.metadata.screenDecision` rows
   still project their reasoning, `intentAlignment` and `screenedAt`.
@@ -679,21 +679,21 @@ section before promoting to `main`).
   turn context now say explicitly, when the only executed act on a client
   message was `wait`, that nothing was sent, no one was contacted, and
   whatever the message might have answered still stands unresolved.
-- Allow owners to confirm a manually edited Signal proposal by re-verifying the
+- Allow owners to confirm a manually edited Intent proposal by re-verifying the
   edited description and atomically replacing the pending proposal's
   authoritative payload and analysis before confirmation. Network mismatches,
   expired proposals, and concurrent proposal changes still fail closed.
 - Budget refinement questions per intent to 2 per rolling 24 hours (`QUESTIONER_INTENT_DAILY_CAP`), counted across the recovery and pool-discovery families combined. Both families re-arm whenever the intent text changes, and answering a refinement question is what changes it — so without a budget each answer bought another question and the loop only ended when the user stopped replying. Chat intake is not counted, and `0` disables background refinement without touching `QUESTIONER_ENABLED`.
 
 ### Changed
-- Drop the retired `non_web` surface and `WEB_SIGNAL_AGENT_ENABLED` literals from `chat.service.isolated.ts`. The tests passed either way — `"non_web"` fell through to the same branch as `"agent"` — but the strings named a surface that no longer exists, and `tsconfig.json` excludes `src/**/*.isolated.ts`, so nothing would ever have caught the drift.
+- Drop the retired `non_web` surface and `WEB_INTENT_AGENT_ENABLED` literals from `chat.service.isolated.ts`. The tests passed either way — `"non_web"` fell through to the same branch as `"agent"` — but the strings named a surface that no longer exists, and `tsconfig.json` excludes `src/**/*.isolated.ts`, so nothing would ever have caught the drift.
 
 ### Removed
-- **Breaking (API 0.88.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `signal` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
-- **Breaking:** delete `WEB_SIGNAL_AGENT_ENABLED`. Signal is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.signalAgent` is removed from `GET /auth/me`; startup warns while the variable is still set.
+- **Breaking (API 0.88.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `intent` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
+- **Breaking:** delete `WEB_INTENT_AGENT_ENABLED`. Intent is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.intentAgent` is removed from `GET /auth/me`; startup warns while the variable is still set.
 - Remove Telegram inbound chat. It called the orchestrator graph directly, bypassing the persona policy entirely; inbound messages now reply with a pointer to the app. Outbound notification delivery is unchanged.
-- **Breaking (API 0.86.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `signal` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
-- **Breaking:** delete `WEB_SIGNAL_AGENT_ENABLED`. Signal is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.signalAgent` is removed from `GET /auth/me`.
+- **Breaking (API 0.86.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `intent` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
+- **Breaking:** delete `WEB_INTENT_AGENT_ENABLED`. Intent is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.intentAgent` is removed from `GET /auth/me`.
 - Remove Telegram inbound chat. It called the orchestrator graph directly, bypassing the persona policy entirely; inbound messages now reply with a pointer to the app. Outbound notification delivery is unchanged.
 - Remove the inline discovery-question generator, which had no caller: `QuestionGeneratorService`, the `QuestionGeneratorReader` port, `DiscoveryQuestionInput`, the `discovery` questioner preset, and the `QUESTIONER_DISCOVERY_*` accessors. The `discovery` question *mode* and every read path for existing rows are retained; startup warns when the retired variables are still set.
 - **Breaking (API 0.85.0):** remove the Aug-10 dedicated credential layer. The `hermes-authorization` and `index-app-owner-authorization` controllers, services, adapters, PKCE flows, and the `hermes_agent_credentials`, `hermes_authorizations`, `hermes_emergency_receipts`, `index_app_owner_authorizations`, and `index_app_owner_credentials` tables are deleted via forward migration. `idxh_`/`idxo_` credentials stop authenticating; Hermes and the Mac app use ordinary Better Auth API keys.
@@ -701,9 +701,9 @@ section before promoting to `main`).
 - Remove the Hermes production-assurance workflow, migration-preflight and emergency-control CLIs, and their isolated database fixtures, which existed solely for the removed credential layer.
 
 ### Changed
-- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_SIGNAL_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
-- Point the MCP elicitation message writer and the generic protocol-facing session reader at the Signal persona; both previously read the orchestrator's sessions, which are now read-only history.
-- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_SIGNAL_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
+- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_INTENT_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
+- Point the MCP elicitation message writer and the generic protocol-facing session reader at the Intent persona; both previously read the orchestrator's sessions, which are now read-only history.
+- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_INTENT_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
 - Retire the deprecated REST/chat profile and profile-run tool aliases with protocol 12.0.0; direct Tool API callers must use canonical user-context and enrichment-run names.
 - Record production evidence for the separately gated `opportunity_discovery_runs` Release 2 cleanup; no destructive migration is included.
 
@@ -806,15 +806,15 @@ section before promoting to `main`).
   `OPPORTUNITY_OWNER_APPROVAL_SECRET` rotates the proof secret (falls back to
   `BETTER_AUTH_SECRET`). No DB schema, migration, backfill, data action, or
   deployment configuration change ships with this entry.
-- Rename the aggregate agent-activity tool to the canonical `read_activity_summary` on every surface and retire `report_agent_activity` with no alias (IND-605; protocol 7.2.0). MCP authorization admits any activity-domain permission and the typed resolved caller context drives one centralized per-domain projection; signal IDs/titles require `manage:intents`; question counts are meta-network yet inherit the permission of each question's affected domain (`getAgentActivitySummary` now groups pending/answered counts by question mode; conversational and unrecognized modes are human-owner-only); and an optional `networkId` narrows a network agent's opportunity/negotiation aggregates to its bound community inside the adapter queries. Counterparty identities, chats, turns, and transcripts are never returned. The Hermes plugin forwards the new tool as `index_read_activity_summary` (plugin 0.12.0).
+- Rename the aggregate agent-activity tool to the canonical `read_activity_summary` on every surface and retire `report_agent_activity` with no alias (IND-605; protocol 7.2.0). MCP authorization admits any activity-domain permission and the typed resolved caller context drives one centralized per-domain projection; intent IDs/titles require `manage:intents`; question counts are meta-network yet inherit the permission of each question's affected domain (`getAgentActivitySummary` now groups pending/answered counts by question mode; conversational and unrecognized modes are human-owner-only); and an optional `networkId` narrows a network agent's opportunity/negotiation aggregates to its bound community inside the adapter queries. Counterparty identities, chats, turns, and transcripts are never returned. The Hermes plugin forwards the new tool as `index_read_activity_summary` (plugin 0.12.0).
 - Add post-discovery no-opportunity recovery refinement for exact recipient-owned active intents (IND-506). Both authoritative completion paths enqueue a privacy-minimal job on the existing Questioner worker; a focused service suppresses recovery when canonical exact-trigger actionability exists, reduces safely validated rejected negotiations to a bounded aggregate count, validates every user-visible generated string, and persists at most one ordinary intent question per material fingerprint behind a shared recovery/opportunity-create/opportunity-reactivation advisory lock plus migration `0105`'s all-status expression unique index. Exact-trigger reactivation also serializes with task creation on the negotiation-attempt lock, re-reads the opportunity row, and applies the canonical fresh-task predicate immediately before mutation. Answer and material-edit paths use one deadlock-safe lock order, stale recovery answers are rejected again by owner, lifecycle, and fingerprint at the final locked intent write, REST strips every recovery internal, and pool questions retain independent budget/novelty behavior.
-- Add exact negotiation-question admission/read/settlement routing (IND-507): API/DB validation proves the authenticated recipient's exact owned ACTIVE fingerprint-equal signal, assignment, live non-personal membership, opportunity actor binding, network, and purpose-compatible task state. Generation/answer/dismiss/timeout share an advisory → complete stable cohort → provenance lock order. A deterministic settlement outbox in exact task metadata plus exact-task run-existing jobs recovers enqueue failure, worker crash, zero generated/persisted rows, and timeout redelivery without latest-task lookup or duplicate continuation. Scoped/unscoped reads and counts reject stale/legacy/unsafe pending rows; exact answered history survives its own continuation transition. MCP/chat/direct answering now reaches the canonical validated boundary with principal/scope clamps. Migration `0106_add_negotiation_question_provenance_index` is the all-status negotiation idempotency constraint after IND-506's recovery migration.
-- Add the flag-gated persisted `onboarding` chat persona boundary for `POST /chat/onboarding/stream` (IND-450): incomplete session-authenticated users are authoritatively routed to the restricted factory, follow-ups inherit stored persona, spoof/mismatch/unknown/completed access fails closed, and flag-off preserves legacy orchestrator behavior. Profile approval now stamps a durable phase marker without dropping privacy JSON, and `complete_onboarding({ intentId })` validates that the exact active owned first signal was created no earlier than a valid profile-confirmation timestamp before recording completion.
+- Add exact negotiation-question admission/read/settlement routing (IND-507): API/DB validation proves the authenticated recipient's exact owned ACTIVE fingerprint-equal intent, assignment, live non-personal membership, opportunity actor binding, network, and purpose-compatible task state. Generation/answer/dismiss/timeout share an advisory → complete stable cohort → provenance lock order. A deterministic settlement outbox in exact task metadata plus exact-task run-existing jobs recovers enqueue failure, worker crash, zero generated/persisted rows, and timeout redelivery without latest-task lookup or duplicate continuation. Scoped/unscoped reads and counts reject stale/legacy/unsafe pending rows; exact answered history survives its own continuation transition. MCP/chat/direct answering now reaches the canonical validated boundary with principal/scope clamps. Migration `0106_add_negotiation_question_provenance_index` is the all-status negotiation idempotency constraint after IND-506's recovery migration.
+- Add the flag-gated persisted `onboarding` chat persona boundary for `POST /chat/onboarding/stream` (IND-450): incomplete session-authenticated users are authoritatively routed to the restricted factory, follow-ups inherit stored persona, spoof/mismatch/unknown/completed access fails closed, and flag-off preserves legacy orchestrator behavior. Profile approval now stamps a durable phase marker without dropping privacy JSON, and `complete_onboarding({ intentId })` validates that the exact active owned first intent was created no earlier than a valid profile-confirmation timestamp before recording completion.
 - Add canonical owner-and-conversation-scoped `GET /api/agent/actions/proposals/:proposalId` hydration for reporter action cards; confirmation uses the same scope, a five-minute execution lease reclaims interrupted attempts, per-action runtime failures are consumed as safe results, and display responses exclude snapshots while including consumed results (IND-493).
 - Add dark-gated `POST /api/agent/actions/confirm` owner confirmation for reporter cleanup-action proposals (IND-490 PR1). Proposals are persisted with owner/snapshot state, confirmations are session-only, sequential, replay-safe, and use existing premise/intent lifecycle paths; `WEB_AGENT_ACTIONS_ENABLED` remains off everywhere.
 - Add the dark-gated `reporter` persona and owner-scoped `getAgentActivitySummary` adapter read for the PR1 Agent reporting surface (IND-476). The new `read_activity_summary` tool exposes only reproducible counts, never counterparty identity or transcripts; `WEB_AGENT_SURFACE_ENABLED` is registered and surfaced as `features.agentSurface` without changing Railway configuration.
 - Add per-viewer conversation read cursors, server-side unread counts, and `POST /conversations/:id/read` (IND-475; migration `0098`).
-- Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat signal provenance (IND-475).
+- Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat intent provenance (IND-475).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.
 
 ### Security
@@ -830,8 +830,8 @@ section before promoting to `main`).
 - Hardened frame-drift scheduler observability (IND-468): startup now reconciles the stable BullMQ job scheduler non-destructively — reading it first, comparing pattern/timezone/name/template-data/attempts/backoff/removal-retention, reusing materially matching schedulers (including overdue `next` values, which previously risked losing the pending iteration to an `upsertJobScheduler` override), upserting only on missing or materially changed definitions, and logging `schedulerAction: created|reused|updated` with the authoritative next timestamp. Every BullMQ attempt is durably tracked in the new privacy-minimized `frame_drift_execution_attempts` table (migration `0097`, unique on `(job_id, attempt)`, no observation-run FK, no vectors/prompts/user-network IDs/raw errors — only an allowlisted failure category), with idempotent start/terminal recording, started-before-flag-before-measurement ordering, redelivery short-circuiting on existing terminal rows, and tracking failures failing the job so measurement never succeeds untracked. Absent attempt rows are unobserved/unknown, not proof BullMQ never enqueued.
 
 ### Added
-- feat: answered-questions listing (`GET /questions?status=answered`) for the signal workspace Q&A log (IND-472).
-- Default-off `WEB_SIGNAL_AGENT_ENABLED` main-web cutover (IND-449): new session-authenticated ordinary web chats explicitly persist `persona=signal`, scoped Signal sessions use persona-distinct registry keys, follow-ups inherit the stored persona, and legacy orchestrator web sessions remain readable but reject new turns with a typed continuation action. Session-authenticated compatibility routes use authenticated provenance and cannot bypass Signal policy; API-key callers retain orchestrator behavior. Compatibility history is orchestrator-only, dedicated web history includes legacy plus Signal sessions, and proposal confirmation returns committed retries before a cheap membership preflight/embedding, then serializes the exact owner/proposal pair in one transaction as the final concurrency authority, returns racing retries to the same intent, and atomically validates current network membership before its single assignment. A project-JWT-authenticated `POST /auth/cli-credential` endpoint now mints only fixed-name, 90-day credentials with immutable `{client:'cli', protocolVersion:1|2}` metadata, a server-only permission marker, and no agent binding, instead of relying on Better Auth's generic create route. Better Auth API-key session promotion is disabled so generic management remains browser-cookie-only, while `POST /auth/cli-credential/revoke` accepts an active CLI `x-api-key` only and deletes an exact same-owner server-issued CLI target after verifying both its row ID and raw-secret hash. Signal's newly allowlisted `create_intent_index` now routes direct, no-prompts, and evaluated writes through one transaction that locks and rechecks the owned unarchived intent, undeleted network, and current accepted membership before preserving the scored assignment metadata. A temporary CLI-v1 Bearer bridge activates only after JWT failure and only for enabled, unexpired keys tagged `{client:'cli', protocolVersion:1}`; it records API-key provenance with no agent binding, never applies to query tokens/default/agent/v2 keys, and leaves ordinary JWTs on the web/Signal surface. Persona spoofing/unknown values fail closed while Telegram, MCP, CLI, and direct-tool orchestrator behavior remains unchanged. Frontend message-metadata writes are session-only; API-key-capable chat, Telegram, MCP, and direct-tool paths are unchanged.
+- feat: answered-questions listing (`GET /questions?status=answered`) for the intent workspace Q&A log (IND-472).
+- Default-off `WEB_INTENT_AGENT_ENABLED` main-web cutover (IND-449): new session-authenticated ordinary web chats explicitly persist `persona=intent`, scoped Intent sessions use persona-distinct registry keys, follow-ups inherit the stored persona, and legacy orchestrator web sessions remain readable but reject new turns with a typed continuation action. Session-authenticated compatibility routes use authenticated provenance and cannot bypass Intent policy; API-key callers retain orchestrator behavior. Compatibility history is orchestrator-only, dedicated web history includes legacy plus Intent sessions, and proposal confirmation returns committed retries before a cheap membership preflight/embedding, then serializes the exact owner/proposal pair in one transaction as the final concurrency authority, returns racing retries to the same intent, and atomically validates current network membership before its single assignment. A project-JWT-authenticated `POST /auth/cli-credential` endpoint now mints only fixed-name, 90-day credentials with immutable `{client:'cli', protocolVersion:1|2}` metadata, a server-only permission marker, and no agent binding, instead of relying on Better Auth's generic create route. Better Auth API-key session promotion is disabled so generic management remains browser-cookie-only, while `POST /auth/cli-credential/revoke` accepts an active CLI `x-api-key` only and deletes an exact same-owner server-issued CLI target after verifying both its row ID and raw-secret hash. Intent's newly allowlisted `create_intent_index` now routes direct, no-prompts, and evaluated writes through one transaction that locks and rechecks the owned unarchived intent, undeleted network, and current accepted membership before preserving the scored assignment metadata. A temporary CLI-v1 Bearer bridge activates only after JWT failure and only for enabled, unexpired keys tagged `{client:'cli', protocolVersion:1}`; it records API-key provenance with no agent binding, never applies to query tokens/default/agent/v2 keys, and leaves ordinary JWTs on the web/Intent surface. Persona spoofing/unknown values fail closed while Telegram, MCP, CLI, and direct-tool orchestrator behavior remains unchanged. Frontend message-metadata writes are session-only; API-key-capable chat, Telegram, MCP, and direct-tool paths are unchanged.
 - Lens C evidence segments now carry answeredBy-verified owner answers
   (IND-465 slice 2, wiring the `owner_answer` evidence family the extractor
   already supports). AUTHORITATIVE SOURCE is the questions table only: a new

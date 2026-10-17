@@ -9,21 +9,21 @@ import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
 const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; body: string }> = {
-  active: { title: 'Signal resumed', body: 'Discovery is running for this signal again.' },
-  paused: { title: 'Signal paused', body: 'Discovery and negotiations are on hold.' },
-  archived: { title: 'Signal removed', body: 'This signal is no longer active.' },
+  active: { title: 'Intent resumed', body: 'Discovery is running for this intent again.' },
+  paused: { title: 'Intent paused', body: 'Discovery and negotiations are on hold.' },
+  archived: { title: 'Intent removed', body: 'This intent is no longer active.' },
 };
 
 /**
- * Tell a signal's owner that its effective state changed, so an agent holding
+ * Tell an intent's owner that its effective state changed, so an agent holding
  * the seat stops or resumes work without waiting for a poll.
  *
  * Called after the writing transaction commits and never inside it: a failed
  * publish must not roll back a transition that already happened, so delivery
  * errors are logged and swallowed.
  *
- * @param userId - The signal owner, whose channel carries the frame.
- * @param intentId - The signal whose state changed.
+ * @param userId - The intent owner, whose channel carries the frame.
+ * @param intentId - The intent whose state changed.
  * @param status - Its effective state as agents see it.
  * @param lifecycleVersionMs - Monotonic version, letting agents order frames.
  */
@@ -572,7 +572,7 @@ export class IntentDatabaseAdapter {
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
    * @returns The rows with `networks`, `waitingOpportunityCount`, and
    *   `pendingQuestionCount` populated (empty/zero when none), plus a
-   *   deduplicated total of waiting opportunities across the page's signals.
+   *   deduplicated total of waiting opportunities across the page's intents.
    */
   private async attachIntentExtras(
     rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'pendingQuestionCount' | 'warming'> & {
@@ -632,7 +632,7 @@ export class IntentDatabaseAdapter {
 
   /**
    * Per-intent counts of opportunities awaiting the viewer. The query also
-   * returns one deduplicated total across every requested signal. Every
+   * returns one deduplicated total across every requested intent. Every
    * requested ID is present in the returned map (zero when it has none).
    */
   private async countsByIntent(
@@ -686,11 +686,11 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Unanswered agent questions on each signal, matching the agent-DM queue:
+   * Unanswered agent questions on each intent, matching the agent-DM queue:
    * a question stays open until a later answer or expire names it.
    *
-   * @param intentIds - Signals on this page.
-   * @param userId - Owner, whose single agent DM holds every signal's questions.
+   * @param intentIds - Intents on this page.
+   * @param userId - Owner, whose single agent DM holds every intent's questions.
    * @returns A count for every requested id, zero when none are open.
    */
   private async pendingQuestionsByIntent(intentIds: string[], userId: string): Promise<Map<string, number>> {
@@ -785,12 +785,12 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Read discovered candidate signals with the facts an agent needs to judge
+   * Read discovered candidate intents with the facts an agent needs to judge
    * them. A later search can return the same people. Whether an opportunity
    * already exists is decided when one is opened, not here.
    *
-   * @param _intentId - The searching signal. Kept so callers stay stable.
-   * @param candidateIntentIds - Candidate signal ids from vector retrieval.
+   * @param _intentId - The searching intent. Kept so callers stay stable.
+   * @param candidateIntentIds - Candidate intent ids from vector retrieval.
    * @returns One row per candidate, with its statement and owner.
    */
   async listCounterpartyCandidates(

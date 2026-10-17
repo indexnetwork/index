@@ -17,13 +17,13 @@ function isMutableIntentLifecycleStatus(value: unknown): value is MutableIntentL
 
 function parseIntentStatusResponse(value: unknown): IntentStatusResult {
   if (!value || typeof value !== 'object') {
-    throw new Error('Invalid signal status response');
+    throw new Error('Invalid intent status response');
   }
 
   const response = value as Record<string, unknown>;
   const intent = response.intent;
   if (!intent || typeof intent !== 'object') {
-    throw new Error('Invalid signal status response');
+    throw new Error('Invalid intent status response');
   }
 
   const authoritativeIntent = intent as Record<string, unknown>;
@@ -35,7 +35,7 @@ function parseIntentStatusResponse(value: unknown): IntentStatusResult {
     typeof authoritativeIntent.lifecycleVersionMs !== 'number' ||
     !Number.isFinite(authoritativeIntent.lifecycleVersionMs)
   ) {
-    throw new Error('Invalid signal status response');
+    throw new Error('Invalid intent status response');
   }
 
   return {
@@ -65,7 +65,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   getIntent: async (id: string): Promise<IntentDetail> => {
     const response = await api.get<APIResponse<IntentDetail>>(`/intents/${id}`);
     if (!response.intent) {
-      throw new Error('Signal not found');
+      throw new Error('Intent not found');
     }
     return response.intent;
   },
@@ -88,7 +88,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   refineIntent: async (id: string, followupText: string): Promise<Intent> => {
     const response = await api.post<{ intent: Intent }>(`/intents/${id}/refine`, { followupText });
     if (!response.intent) {
-      throw new Error('Failed to refine signal');
+      throw new Error('Failed to refine intent');
     }
     return response.intent;
   },

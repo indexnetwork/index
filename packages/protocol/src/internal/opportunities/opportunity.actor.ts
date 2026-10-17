@@ -16,7 +16,7 @@ export function normalizeOpportunityActorIntent(value: unknown): string | undefi
     // persisted with `intent: "None"` in dev and every downstream reader took
     // it for a real binding — the counterparty seat was granted a
     // consultation (whose park writes `recipientIntentId` straight at the
-    // intents table) on a signal that does not exist.
+    // intents table) on an intent that does not exist.
     || normalized.toLowerCase() === 'none'
   ) {
     return undefined;

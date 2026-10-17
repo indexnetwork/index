@@ -55,7 +55,7 @@ const CreateOpportunitiesSchema = z.object({
 export class IntentController {
   /**
    * List intents with pagination, filters, and an optional text query over
-   * the caller's own signals (`q`, matched against description and summary).
+   * the caller's own intents (`q`, matched against description and summary).
    */
   @Post('/list')
   @UseGuards(AuthGuard)
@@ -89,7 +89,7 @@ export class IntentController {
   }
 
   /**
-   * Prepare a draft signal for creation admission.
+   * Prepare a draft intent for creation admission.
    *
    * @param req - Current payload and recovery answers not yet folded into it.
    * @param user - Authenticated owner.
@@ -111,12 +111,12 @@ export class IntentController {
       return Response.json(await intentService.prepare(user.id, parsed.data));
     } catch (error) {
       logger.error('Intent preparation failed', { userId: user.id, error });
-      return Response.json({ error: 'preparation_failed', detail: 'Could not prepare this signal. Your answers are kept; try again.', retryable: true }, { status: 503 });
+      return Response.json({ error: 'preparation_failed', detail: 'Could not prepare this intent. Your answers are kept; try again.', retryable: true }, { status: 503 });
     }
   }
 
   /**
-   * Create one signal and share it in the networks the owner chose.
+   * Create one intent and share it in the networks the owner chose.
    *
    * @param req - Request with body `{ description: string; networkIds?: string[]; preparationReceipt?: string }`
    * @param user - Authenticated user from AuthGuard
@@ -162,12 +162,12 @@ export class IntentController {
   }
 
   /**
-   * Search an owned signal's communities for counterparties.
+   * Search an owned intent's communities for counterparties.
    *
    * Nothing is written and nothing is judged here: the caller reads the ranked
    * counterparties and decides which are worth an opportunity.
    *
-   * @param req - Request with body `{ query: string, limit?: number, since?: string }`, `limit` being the top-N to return and `since` an ISO time before which arrived signals are left out.
+   * @param req - Request with body `{ query: string, limit?: number, since?: string }`, `limit` being the top-N to return and `since` an ISO time before which arrived intents are left out.
    * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
    * @returns The ranked counterparties this query found.
@@ -194,7 +194,7 @@ export class IntentController {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
     if (result.kind === 'inactive') {
-      return Response.json({ error: 'Only an active signal can be searched' }, { status: 409 });
+      return Response.json({ error: 'Only an active intent can be searched' }, { status: 409 });
     }
 
     return Response.json({ counterparties: result.counterparties });
@@ -204,7 +204,7 @@ export class IntentController {
    * Create one opportunity per counterparty the caller picked.
    *
    * Idempotent on the pair: a counterparty that already shares an opportunity
-   * with this signal reports that one rather than a second.
+   * with this intent reports that one rather than a second.
    *
    * @param req - Request with body `{ counterparties: { intentId, networkId }[] }`.
    * @param user - Authenticated owner.
@@ -233,7 +233,7 @@ export class IntentController {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
     if (result.kind === 'inactive') {
-      return Response.json({ error: 'Only an active signal can open opportunities' }, { status: 409 });
+      return Response.json({ error: 'Only an active intent can open opportunities' }, { status: 409 });
     }
 
     const opportunities = await Promise.all(
@@ -253,7 +253,7 @@ export class IntentController {
   }
 
   /**
-   * GET /intents/:id/opportunities — presented opportunity cards scoped to one signal.
+   * GET /intents/:id/opportunities — presented opportunity cards scoped to one intent.
    */
   @Get('/:id/opportunities')
   @UseGuards(AuthGuard)
@@ -454,7 +454,7 @@ export class IntentController {
   }
 
   /**
-   * Rewrite an owned signal's description or source fields by ID or short prefix.
+   * Rewrite an owned intent's description or source fields by ID or short prefix.
    *
    * @param req - Request with body `{ description?: string; sourceType?: string | null; sourceId?: string | null }`.
    * @param user - Authenticated owner.
@@ -500,7 +500,7 @@ export class IntentController {
   }
 
   /**
-   * List the communities an owned signal is shared in.
+   * List the communities an owned intent is shared in.
    */
   @Get('/:id/networks')
   @UseGuards(AuthGuard)
@@ -518,7 +518,7 @@ export class IntentController {
   }
 
   /**
-   * Share an owned signal in one community.
+   * Share an owned intent in one community.
    *
    * @param req - Request with body `{ networkId: string }`.
    */
@@ -547,7 +547,7 @@ export class IntentController {
   }
 
   /**
-   * Withdraw an owned signal from one community.
+   * Withdraw an owned intent from one community.
    */
   @Delete('/:id/networks/:networkId')
   @UseGuards(AuthGuard)

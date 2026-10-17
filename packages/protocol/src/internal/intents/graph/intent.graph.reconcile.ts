@@ -1,5 +1,5 @@
 /**
- * Intent graph, stages 2-3: verify inferred signals, then reconcile against what exists.
+ * Intent graph, stages 2-3: verify inferred intents, then reconcile against what exists.
  */
 
 import { admissionFailure } from "../intent.admission.js";

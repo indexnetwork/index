@@ -196,7 +196,7 @@ window.IndexApp = (function () {
     const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, radarItems: [] });
     return {
       snapshot,
-      // A failed list is not an empty shelf. Callers that already have signals
+      // A failed list is not an empty shelf. Callers that already have intents
       // must keep them; only a successful read may replace the list.
       intentsOk: intentR.ok,
       me: mapMe(user),
@@ -302,7 +302,7 @@ window.IndexApp = (function () {
       invitationCode: invite && invite.code ? invite.code : null,
       // Same key resolution as user avatars: S3 keys need the storage base.
       photo: avatarUrl(n.imageUrl || n.photo || null),
-      signals: [],
+      intents: [],
       source: n,
     };
   }

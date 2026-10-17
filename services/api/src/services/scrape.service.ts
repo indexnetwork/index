@@ -9,7 +9,7 @@ const MAX_CONTENT_CHARS = 10_000;
 /**
  * ScrapeService
  *
- * Reads the text of a public web page so a caller can turn it into a signal.
+ * Reads the text of a public web page so a caller can turn it into an intent.
  */
 export class ScrapeService {
   constructor(private scraper = new ScraperAdapter()) {}
@@ -22,7 +22,7 @@ export class ScrapeService {
    *
    * @param url - The page to read.
    * @param objective - Why it is being read; steers extraction.
-   * @param signal - Cancels the fetch when the HTTP request goes away.
+   * @param intent - Cancels the fetch when the HTTP request goes away.
    * @returns The normalized url and its text, or null when nothing is readable.
    */
   async extract(

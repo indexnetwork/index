@@ -386,8 +386,8 @@ export class ConversationDatabaseAdapter {
   /**
    * The owner's single agent DM, created on first use.
    *
-   * One conversation per owner, not one per signal: an untagged message is how
-   * the owner says something that holds for every signal, which only works if
+   * One conversation per owner, not one per intent: an untagged message is how
+   * the owner says something that holds for every intent, which only works if
    * they all share a thread. `dm_pair` is unique, so a concurrent first use
    * loses the insert and re-reads the winner.
    *
@@ -619,8 +619,8 @@ export class ConversationDatabaseAdapter {
   ): Promise<Message[]> {
     const conditions = [eq(schema.messages.conversationId, conversationId)];
 
-    // The agent DM is one conversation carrying every signal's questions, so a
-    // message belongs to the signal it is tagged with and to no other.
+    // The agent DM is one conversation carrying every intent's questions, so a
+    // message belongs to the intent it is tagged with and to no other.
     if (opts?.intentId) {
       conditions.push(sql`${schema.messages.metadata}->>'intentId' = ${opts.intentId}`);
     }

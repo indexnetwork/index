@@ -65,13 +65,13 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
 
-The same connection carries three tools for a signal's agent conversation.
+The same connection carries three tools for an intent's agent conversation.
 `agent_send_message` begins "Agent tool", and a model calls it only when its
 task instructions name it.
 
 | I want to… | Tool |
 | --- | --- |
-| Read a signal's agent conversation | `get_intent_conversation` |
+| Read an intent's agent conversation | `get_intent_conversation` |
 | Record what the owner wrote | `principal_send_message` |
 | Write as the owner's agent | `agent_send_message` |
 
@@ -89,7 +89,7 @@ ambient intent, to the published intent. `update_intent` can change them
 without a new description; `null` clears one.
 
 Successful create, list, get, update, pause, resume, and archive results lead
-with a markdown line whose signal name is already linked to `/i/<id>`, then the
+with a markdown line whose intent name is already linked to `/i/<id>`, then the
 JSON (including a `url` field). Opportunity tools do the same for people
 (`/u/<id>`) and opportunities (`/o/<id>`).
 
@@ -114,7 +114,7 @@ negotiator), and `actions`: `note`, `reply`, `progress`, `ask`, or `expire`.
 ## For the agent
 
 :::prompt
-This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into a signal, then review the intros. Accept or pass only after you ask them.
+This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into an intent, then review the intros. Accept or pass only after you ask them.
 Add this as an MCP server:
 
 ```json

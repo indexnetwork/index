@@ -4,7 +4,6 @@ import { Check, CheckCircle2, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
-import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,7 +26,7 @@ export interface OpportunityCardData {
   primaryActionLabel?: string;
   /** Label for secondary action button (e.g. "Skip"). */
   secondaryActionLabel?: string;
-  /** Subtitle under the other party name (e.g. "1 mutual signal"). */
+  /** Subtitle under the other party name (e.g. "1 mutual intent"). */
   mutualIntentsLabel?: string;
   /** Narrator chip. */
   narratorChip?: {
@@ -303,7 +302,7 @@ export default function OpportunityCard({
                 {card.name || "Someone"}
               </h4>
               <p className="text-[11px] text-[#3D3D3D]">
-                {toSignalProductLanguage(card.mutualIntentsLabel || "Potential connection")}
+                {card.mutualIntentsLabel || "Potential connection"}
               </p>
             </div>
           </div>

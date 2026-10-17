@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (shouldRedirectToHome) {
       // Preserve the destination so the user returns to it after authenticating,
       // instead of being stranded on the home page. This makes protected deep
-      // links work when opened while logged out, e.g. a signal link surfaced
+      // links work when opened while logged out, e.g. an intent link surfaced
       // in the daily digest: /login?next= carries it through sign-in.
       openLoginModal(window.location.href);
       return;

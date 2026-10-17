@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
-import { signalStatus, signalTitle } from "@/lib/signal-display";
+import { intentStatus, intentTitle } from "@/lib/intent-display";
 import { QCount } from "@/components/workbench/Workbench";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -70,19 +70,19 @@ export default function IntentList<T extends BaseIntent>({
         tone="error"
         align={shelf ? "start" : "center"}
         className={className}
-        message="couldn't load your signals."
+        message="couldn't load your intents."
         action={onRetry ? { label: "try again", onClick: onRetry } : undefined}
       />
     );
   }
 
   if (sortedIntents.length === 0) {
-    // Shelf mode: the "new signal" button sits directly under this line and is the CTA.
+    // Shelf mode: the "new intent" button sits directly under this line and is the CTA.
     return (
       <EmptyState
         align={shelf ? "start" : "center"}
         className={className}
-        message={shelf ? "no signals yet. start one and your agent goes looking." : emptyMessage}
+        message={shelf ? "no intents yet. start one and your agent goes looking." : emptyMessage}
       />
     );
   }
@@ -102,7 +102,7 @@ export default function IntentList<T extends BaseIntent>({
       {sortedIntents.map((intent) => {
         const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
         const status = (intent.status || "active").toLowerCase();
-        const label = signalStatus(intent);
+        const label = intentStatus(intent);
         const running = label === "live" || label === "agents in talks";
         const pending = status === "active" ? (intent.waitingOpportunityCount ?? 0) : 0;
         return (
@@ -124,7 +124,7 @@ export default function IntentList<T extends BaseIntent>({
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }} title={summary}>
-                {signalTitle(summary)}
+                {intentTitle(summary)}
               </span>
               <span style={{
                 display: "flex",

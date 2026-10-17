@@ -105,7 +105,7 @@ function Eye() {
 
 /* ---------- Mac app: home ---------- */
 
-const MAC_SIGNALS: Array<{ title: string; count?: number }> = [
+const MAC_INTENTS: Array<{ title: string; count?: number }> = [
   { title: "i am building a software/saas application and..." },
   { title: "traveling soon to sf and looking to meet cool...", count: 6 },
   { title: "i just launched a new consumer app and..." },
@@ -115,7 +115,7 @@ const MAC_SIGNALS: Array<{ title: string; count?: number }> = [
 
 export function MacMock() {
   return (
-    <Scaled label="The Index Mac app: your live signals, each one negotiated by your agent">
+    <Scaled label="The Index Mac app: your live intents, each one negotiated by your agent">
       <div className="pm-mac">
         <div className="pm-mac-bar">
           <span className="pm-mac-close"><span /></span>
@@ -128,7 +128,7 @@ export function MacMock() {
             <div className="pm-mac-hero">
               <h4 className="pm-mac-h">find your others</h4>
               <p className="pm-mac-p">
-                start a signal by talking to your agent. it negotiates it with the other agents and
+                start an intent by talking to your agent. it negotiates it with the other agents and
                 makes an intro when both sides are interested.
               </p>
               <span className="pm-mac-invite"><Diamond />invite friends</span>
@@ -145,12 +145,12 @@ export function MacMock() {
             </div>
           </div>
           <div className="pm-mac-right">
-            <div className="pm-mac-label">YOUR SIGNALS<span /></div>
+            <div className="pm-mac-label">YOUR INTENTS<span /></div>
             <div className="pm-mac-list">
-              {MAC_SIGNALS.map((s) => (
-                <div key={s.title} className="pm-mac-signal">
+              {MAC_INTENTS.map((s) => (
+                <div key={s.title} className="pm-mac-intent">
                   <div>
-                    <div className="pm-mac-signal-t">{s.title}</div>
+                    <div className="pm-mac-intent-t">{s.title}</div>
                     <div className="pm-mac-live"><span />live</div>
                   </div>
                   {s.count ? <b className="pm-mac-count">{s.count}</b> : null}
@@ -158,7 +158,7 @@ export function MacMock() {
               ))}
               <span className="pm-mac-scroll" />
             </div>
-            <div className="pm-mac-new"><span>+</span>new signal</div>
+            <div className="pm-mac-new"><span>+</span>new intent</div>
           </div>
         </div>
       </div>
@@ -166,7 +166,7 @@ export function MacMock() {
   );
 }
 
-/* ---------- Hermes plugin: a signal and its radar ---------- */
+/* ---------- Hermes plugin: an intent and its radar ---------- */
 
 const RADAR: Array<{ name: string; line: string; awaiting?: boolean }> = [
   { name: "Chloe Garcia", line: "Meet during your upcoming trip to SF", awaiting: true },
@@ -178,10 +178,10 @@ const RADAR: Array<{ name: string; line: string; awaiting?: boolean }> = [
 
 export function HermesMock() {
   return (
-    <Scaled label="Index inside Hermes: a signal, a question from the agent, and the radar of people surfaced">
+    <Scaled label="Index inside Hermes: an intent, a question from the agent, and the radar of people surfaced">
       <div className="pm-her">
-        <div className="pm-her-signal">
-          <div className="pm-her-label">SIGNAL</div>
+        <div className="pm-her-intent">
+          <div className="pm-her-label">INTENT</div>
           <div className="pm-her-head">
             <h4 className="pm-her-h">
               Traveling soon to SF and looking to meet cool people in AI, specifically founders and

@@ -333,7 +333,7 @@ function DangerZone() {
               marginTop:3, fontFamily:"var(--mac-sans)", fontSize:12,
               lineHeight:1.45, color:"var(--ink-2)",
             }}>
-              index stops immediately and every signal closes. connections
+              index stops immediately and every intent closes. connections
               you've already made stay with the other person.
             </div>
           </div>
@@ -353,7 +353,7 @@ function DangerZone() {
 
 const NOTIFY_OPTIONS = [
   { id:"opportunity", title:"an opportunity surfaces",
-    blurb:"your agent found someone who meets your signals and wants you to review." },
+    blurb:"your agent found someone who meets your intents and wants you to review." },
   { id:"accepted",  title:"an intro is accepted",
     blurb:"both of you said yes, and the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",

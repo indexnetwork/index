@@ -17,7 +17,7 @@ import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
-const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, signal, or opportunity name itself, never as a separate "link" word.';
+const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, intent, or opportunity name itself, never as a separate "link" word.';
 
 /** Shares one connection with the owner's chat, so the description is the only gate. */
 const agentOnly = (name: string) =>
@@ -52,15 +52,15 @@ function mdLink(label: string, url: string): string {
   return `[${label.replace(/[[\]]/g, '\\$&')}](${url})`;
 }
 
-function signalLabel(text: string | null | undefined): string {
+function intentLabel(text: string | null | undefined): string {
   const flat = (text ?? '').replace(/\s+/g, ' ').trim();
-  if (!flat) return 'Untitled signal';
+  if (!flat) return 'Untitled intent';
   return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
 }
 
 function intentLine(intent: ReturnType<typeof conciseIntent>): string {
   const state = intent.status === 'active' ? '' : ` (${intent.status.toLowerCase()})`;
-  return `${mdLink(signalLabel(intent.summary ?? intent.description), intent.url)} — ${intent.waitingOpportunityCount} waiting${state}`;
+  return `${mdLink(intentLabel(intent.summary ?? intent.description), intent.url)} — ${intent.waitingOpportunityCount} waiting${state}`;
 }
 
 const OPPORTUNITY_STATE: Record<string, string> = {
@@ -82,7 +82,7 @@ function opportunityLine(peerName: string, peerUrl: string, headline: string | u
 async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
   const url = appLink('i', intentId);
   const intent = await intentService.getById(intentId, userId);
-  const label = intent ? signalLabel(intent.summary ?? intent.payload) : 'signal';
+  const label = intent ? intentLabel(intent.summary ?? intent.payload) : 'intent';
   return { url, link: mdLink(label, url) };
 }
 
@@ -120,7 +120,7 @@ function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listInten
   };
 }
 
-const SOURCE_FIELDS_HINT = ' Optional sourceType and sourceId are client-owned strings Index stores and returns unchanged, for mapping your own records (such as an inferred ambient intent) to this signal.';
+const SOURCE_FIELDS_HINT = ' Optional sourceType and sourceId are client-owned strings Index stores and returns unchanged, for mapping your own records (such as an inferred ambient intent) to this intent.';
 const sourceFieldSchema = z.string().max(1024).nullable().optional();
 
 async function resolveIntent(intentId: string, principal: McpPrincipal) {
@@ -298,7 +298,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_intents',
     {
-      description: 'List the authenticated owner\'s signals with lifecycle, networks, waiting counts, and pagination.' + LINK_HINT,
+      description: 'List the authenticated owner\'s intents with lifecycle, networks, waiting counts, and pagination.' + LINK_HINT,
       inputSchema: z.object({
         archived: z.boolean().optional(),
         query: z.string().optional(),
@@ -319,14 +319,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         intents,
         totalWaitingOpportunities: result.totalWaitingOpportunities,
         pagination: result.pagination,
-      }, intents.length ? ['Signals:', ...intents.map((intent) => `- ${intentLine(intent)}`)].join('\n') : 'No signals.');
+      }, intents.length ? ['Intents:', ...intents.map((intent) => `- ${intentLine(intent)}`)].join('\n') : 'No intents.');
     }),
   );
 
   server.registerTool(
     'get_intent',
     {
-      description: 'Get one owned signal by UUID or supported short ID prefix, including its associated networks.' + LINK_HINT,
+      description: 'Get one owned intent by UUID or supported short ID prefix, including its associated networks.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: hints(true, false, false, true),
     },
@@ -339,14 +339,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       ]);
       if (!intent || !networkIds) return mcpError('intent_not_found', 'Intent not found.');
       const concise = conciseIntent(intent);
-      return mcpSuccess({ intent: { ...concise, networkIds } }, `Signal: ${intentLine(concise)}`);
+      return mcpSuccess({ intent: { ...concise, networkIds } }, `Intent: ${intentLine(concise)}`);
     }),
   );
 
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
@@ -366,7 +366,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         throw error;
       }
       if (prepared.status !== 'ready') {
-        return mcpError('intent_needs_revision', 'The signal needs revision before it can be created.', {
+        return mcpError('intent_needs_revision', 'The intent needs revision before it can be created.', {
           feedback: prepared.feedback,
           proposedPayload: prepared.payload,
           recovery: prepared.recovery,
@@ -382,7 +382,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           { sourceType, sourceId },
         );
         const url = appLink('i', created.id);
-        const label = signalLabel(prepared.payload);
+        const label = intentLabel(prepared.payload);
         return mcpSuccess(
           { intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId },
           `${mdLink(label, url)} — created`,
@@ -408,7 +408,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'update_intent',
     {
-      description: 'Replace the description or source fields of one owned, non-archived signal. The previous description is not kept. Omitted fields stay; null clears a source field.' + SOURCE_FIELDS_HINT + LINK_HINT,
+      description: 'Replace the description or source fields of one owned, non-archived intent. The previous description is not kept. Omitted fields stay; null clears a source field.' + SOURCE_FIELDS_HINT + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         description: z.string().trim().min(1).max(65_536).optional(),
@@ -432,7 +432,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const fallbackUrl = appLink('i', resolved.id);
       return mcpSuccess(
         { intent: concise ?? { id: resolved.id, url: fallbackUrl, description } },
-        concise ? intentLine(concise) : `${mdLink(signalLabel(description ?? 'Signal'), fallbackUrl)} — updated`,
+        concise ? intentLine(concise) : `${mdLink(intentLabel(description ?? 'Intent'), fallbackUrl)} — updated`,
       );
     }),
   );
@@ -440,7 +440,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'pause_intent',
     {
-      description: 'Pause one owned signal. Pausing an already paused signal succeeds without changing it.' + LINK_HINT,
+      description: 'Pause one owned intent. Pausing an already paused intent succeeds without changing it.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: hints(false, true, false, true),
     },
@@ -460,7 +460,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'resume_intent',
     {
-      description: 'Resume one owned signal. Resuming an already active signal succeeds; archived signals stay archived.' + LINK_HINT,
+      description: 'Resume one owned intent. Resuming an already active intent succeeds; archived intents stay archived.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: hints(false, false, false, true),
     },
@@ -480,7 +480,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'archive_intent',
     {
-      description: 'Permanently archive one owned signal. This cannot currently be reversed, removes network associations, and expires related opportunities.' + LINK_HINT,
+      description: 'Permanently archive one owned intent. This cannot currently be reversed, removes network associations, and expires related opportunities.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         confirm: z.literal(true),
@@ -505,7 +505,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'join_network',
     {
-      description: 'Join a network from an invite link the person gave you (https://index.network/l/<code>) or the code in it. Their signals then start matching with its members. Some networks hold the request for an admin; the result says joined, pending, or already a member.',
+      description: 'Join a network from an invite link the person gave you (https://index.network/l/<code>) or the code in it. Their intents then start matching with its members. Some networks hold the request for an admin; the result says joined, pending, or already a member.',
       inputSchema: z.object({
         invite: z.string().trim().min(1).max(500),
       }).strict(),
@@ -535,7 +535,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned signal. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -624,7 +624,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
+      description: 'Read one owned intent’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: hints(true, false, false, true),
     },
@@ -675,10 +675,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           if (!counterparts.has(found.id)) {
             const opportunity = await opportunityService.getOpportunityWithPresentation(found.id, principal.userId, { presentation: 'skeleton' });
             if (!opportunity || 'error' in opportunity || opportunity.id !== found.id || opportunity.intentId !== resolved.id) {
-              return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned signal.');
+              return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned intent.');
             }
             const peer = opportunity.otherParties[0];
-            if (!peer) return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned signal.');
+            if (!peer) return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned intent.');
             counterparts.set(found.id, { opportunityId: found.id, counterparty: { id: peer.id, name: peer.name } });
           }
           canonical.set(action.opportunityId, found.id);
@@ -765,8 +765,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       name,
       {
         description: (accepted
-          ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned signal.'
-          : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned signal. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
+          ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned intent.'
+          : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned intent. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
         inputSchema: opportunityActionSchema,
         annotations: hints(false, true, false, false),
       },

@@ -41,7 +41,7 @@ Commands:
                 OpportunityEventService (SSE).
   message       Insert a real conversation message from a counterpart so the
                 production conversation SSE publishes type:message.
-  question      Park a pending question on the user's newest signal and publish
+  question      Park a pending question on the user's newest intent and publish
                 question.pending, as a suspended personal agent would.
 
 Options:
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       .orderBy(desc(intents.createdAt))
       .limit(1);
     if (!intent) {
-      throw new Error(`${recipientEmail} has no active signal to ask about. Create one first.`);
+      throw new Error(`${recipientEmail} has no active intent to ask about. Create one first.`);
     }
     return intent;
   }
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
       console.log('Published question.pending via publishPendingQuestionEvent');
       console.log('  stream:', userEventStream(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
-      console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
+      console.log('  intent:', intent.id, `(${intent.payload.slice(0, 60)})`);
       console.log('  question:', question.question);
       return;
     }
@@ -209,8 +209,8 @@ async function main(): Promise<void> {
     const counterpart = await resolveCounterpart(recipient.id, args.counterpartEmail);
 
     if (args.command === 'opportunity') {
-      // A real opportunity records the signal it was found for, and the app
-      // reads it to open that signal, so a simulated one has to carry it too.
+      // A real opportunity records the intent it was found for, and the app
+      // reads it to open that intent, so a simulated one has to carry it too.
       const intent = await newestActiveIntent(recipient.email, recipient.id);
       const opportunities = new OpportunityDatabaseAdapter();
       const created = await opportunities.createOpportunity({
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
           category: 'collaboration',
           reasoning: `${counterpart.name ?? 'Someone'} is working on something that overlaps with what ${recipient.name ?? 'you'} are looking for.`,
           confidence: 0.9,
-          signals: [{ type: 'notify_simulate', weight: 1, detail: 'Local notification simulator' }],
+          intents: [{ type: 'notify_simulate', weight: 1, detail: 'Local notification simulator' }],
         },
         context: { networkId: COMMONS_NETWORK_ID },
         confidence: '0.9',
@@ -248,7 +248,7 @@ async function main(): Promise<void> {
       console.log('  stream:', userEventStream(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);
-      console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
+      console.log('  intent:', intent.id, `(${intent.payload.slice(0, 60)})`);
       return;
     }
 

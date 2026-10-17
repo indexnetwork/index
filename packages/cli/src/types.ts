@@ -70,7 +70,7 @@ export interface ListIntentsOptions {
   limit?: number;
   archived?: boolean;
   sourceType?: string;
-  /** Case-insensitive text match over the signal's description and summary. */
+  /** Case-insensitive text match over the intent's description and summary. */
   query?: string;
 }
 
@@ -326,7 +326,7 @@ export interface NegotiationTurn {
 export interface Negotiation {
   id: string;
   opportunityId: string;
-  /** The viewer's own signal behind this negotiation. */
+  /** The viewer's own intent behind this negotiation. */
   intentId: string;
   /** The seat whose turn it is; null once settled. */
   awaitingUserId: string | null;

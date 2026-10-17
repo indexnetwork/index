@@ -3,7 +3,7 @@ import { useState } from "react";
 import { OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn } from "@/components/workbench/Workbench";
-import type { PrepareAnswer, RecoveryField } from "@/services/signals";
+import type { PrepareAnswer, RecoveryField } from "@/services/intent-prepare";
 
 /** Dynamic recovery form rendered from server-generated fields and options. */
 export function RecoveryForm({
@@ -100,7 +100,7 @@ export function RecoveryForm({
             )}
           </div>
         ))}
-        <div><Btn primary onClick={() => void onSubmit(buildAnswers())}>create signal</Btn></div>
+        <div><Btn primary onClick={() => void onSubmit(buildAnswers())}>create intent</Btn></div>
       </div>
     </div>
   );

@@ -36,8 +36,8 @@ export function AgentGlyph({ size = 20.8 }: { size?: number }) {
   );
 }
 
-/** A dot broadcasting outward: a signal your agent carries. */
-export function SignalGlyph({ size = 20 }: { size?: number }) {
+/** A dot broadcasting outward: an intent your agent carries. */
+export function IntentGlyph({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="square" style={{ display: "block" }}>
       <rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none" />

@@ -47,10 +47,10 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
     pass: actionLink(person.opportunityId, p.viewerId, 'decline'),
   }));
   const more = everyone.length - waiting.length;
-  const signal = (intentId: string | null) => (intentId ? appLink('i', intentId) : p.appUrl);
-  const notes = p.notes.map((note) => ({ text: firstSentences(note.text, 2), url: signal(note.intentId) }))
+  const intent = (intentId: string | null) => (intentId ? appLink('i', intentId) : p.appUrl);
+  const notes = p.notes.map((note) => ({ text: firstSentences(note.text, 2), url: intent(note.intentId) }))
     .filter((note) => note.text).slice(0, MAX_NOTES);
-  const questions = p.questions.slice(0, MAX_QUESTIONS).map((q) => ({ ...q, url: signal(q.intentId) }));
+  const questions = p.questions.slice(0, MAX_QUESTIONS).map((q) => ({ ...q, url: intent(q.intentId) }));
 
   const subject = everyone.length
     ? everyone.length === 1 ? `${everyone[0].name} wants to meet you` : `${everyone.length} people want to meet you`

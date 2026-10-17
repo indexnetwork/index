@@ -6,7 +6,7 @@
  * implementation, grouped by what they do rather than by layer:
  *
  *   graph/               the lifecycle graph — prepare/create; infer/verify explicit updates
- *   intent.inferrer      an utterance into candidate signals
+ *   intent.inferrer      an utterance into candidate intents
  *   intent.verifier      felicity and entropy verdicts
  *   intent.preparer        a typed payload into an admitted draft or recovery form
  *
@@ -49,9 +49,9 @@ export type {
  * {@link Intents.createGraph} is the one method that requires `database`.
  */
 export interface IntentsDeps {
-  /** Signal persistence. Required by {@link Intents.createGraph}. */
+  /** Intent persistence. Required by {@link Intents.createGraph}. */
   database?: IntentGraphDatabase;
-  /** Embedding generator used to vectorize executed signals. */
+  /** Embedding generator used to vectorize executed intents. */
   embedder?: EmbeddingGenerator;
   /** Host follow-up work started after a persist. */
   followUp?: IntentFollowUp;
@@ -114,7 +114,7 @@ export class Intents {
   // ── Preparation ─────────────────────────────────────────────────────────────
 
   /**
-   * Prepare one signal draft for creation admission.
+   * Prepare one intent draft for creation admission.
    *
    * Fold recovery answers into the draft, then apply creation admission. A
    * ready result authorizes final review; needs_revision returns admission

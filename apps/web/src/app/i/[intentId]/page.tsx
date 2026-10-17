@@ -21,7 +21,7 @@ import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/u
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
-import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
@@ -31,7 +31,7 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
   return "active";
 }
 
-/** A signal can match nobody, so the radar stops showing the loader after this. Same as the Mac app. */
+/** An intent can match nobody, so the radar stops showing the loader after this. Same as the Mac app. */
 const DISCOVERY_GIVE_UP_MS = 120_000;
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
@@ -44,7 +44,7 @@ const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "expired",
 ];
 
-/** Intent detail view: the signal window beside the radar. */
+/** Intent detail view: the intent window beside the radar. */
 export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
   return <AppHandoff kind="i" id={intentId ?? ""} webPage={<IntentDetail />} />;
@@ -261,7 +261,7 @@ function IntentDetail() {
       await intentsService.archiveIntent(intentId);
       navigate("/");
     } catch {
-      showError("couldn't archive this signal.");
+      showError("couldn't archive this intent.");
     } finally {
       setArchiving(false);
     }
@@ -303,8 +303,8 @@ function IntentDetail() {
         if (!isCurrentRequest()) return;
         showError(
           status === "paused"
-            ? "Failed to pause signal"
-            : "Failed to resume signal",
+            ? "Failed to pause intent"
+            : "Failed to resume intent",
         );
       } finally {
         if (isCurrentRequest()) {
@@ -328,7 +328,7 @@ function IntentDetail() {
         void loadOpportunities();
         return true;
       } catch {
-        showError("Failed to refine signal");
+        showError("Failed to refine intent");
         return false;
       }
     },
@@ -403,27 +403,27 @@ function IntentDetail() {
   // Medium widths fit two panes, so an open person takes the agent chat's place.
   const hideChat = !compact && medium && !!openPerson;
 
-  const signalHeader = (
+  const intentHeader = (
     <div style={{ padding: "12px 18px", minHeight: 68, boxSizing: "border-box", borderBottom: "1px solid #000", background: "#fff" }}>
       {intentLoading ? (
         <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <h2 title={title || "your signal"} style={{
+            <h2 title={title || "your intent"} style={{
               margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
               fontSize: 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
               flex: 1, minWidth: 0,
               display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3,
               maxHeight: "3.6em", overflow: "hidden",
-            }}>{title || "your signal"}</h2>
+            }}>{title || "your intent"}</h2>
             <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
-              <SignalAction
+              <IntentAction
                 label={lifecycleStatus === "paused" ? "▶ resume" : "❚❚ pause"}
                 active={lifecycleStatus === "paused"}
                 onClick={() => { if (!lifecycleBusy) void handleSetIntentStatus(lifecycleStatus === "paused" ? "active" : "paused"); }}
               />
-              <SignalAction
+              <IntentAction
                 danger
                 label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
                 active={archiveArmed || archiving}
@@ -477,7 +477,7 @@ function IntentDetail() {
           framed
           style={{ padding: 28, borderColor: "#000" }}
           message={selectedBucket === "all" && lifecycleStatus === "paused" && shownCount === 0
-            ? "this signal is paused, so your agent isn't looking right now."
+            ? "this intent is paused, so your agent isn't looking right now."
             : radarEmptyLine(selectedBucket)}
           action={selectedBucket === "accepted" && (bucketCounts["awaiting you"] ?? 0) > 0
             ? { label: "see awaiting you", onClick: () => setSelectedBucket("awaiting you") }
@@ -524,7 +524,7 @@ function IntentDetail() {
       item={openPerson}
       bucket={bucketOf(openPerson)}
       intentId={intentId}
-      signal={title}
+      intent={title}
       senderName={user?.name}
       pane={pane}
       onPane={setPane}
@@ -534,24 +534,24 @@ function IntentDetail() {
     />
   ) : null;
 
-  // Compact: one window. The signal switches between the agent chat and the
-  // radar, and an open person drills in full screen with back to the signal.
+  // Compact: one window. The intent switches between the agent chat and the
+  // radar, and an open person drills in full screen with back to the intent.
   if (compact) {
     return (
       <>
         {opportunityModalElement}
         <Stage>
           {!intent ? (
-            <Window title="signal" onClose={leave}>
+            <Window title="intent" onClose={leave}>
               <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
                 {intentLoading ? (
                   <EmptyState tone="loading" />
                 ) : intentMissing ? (
-                  <EmptyState message="this signal doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
+                  <EmptyState message="this intent doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
                 ) : intentFailed ? (
                   <EmptyState
                     tone="error"
-                    message="couldn't load this signal."
+                    message="couldn't load this intent."
                     action={{ label: "try again", onClick: () => setIntentReloadKey((k) => k + 1) }}
                   />
                 ) : null /* signed out: the effect above is already redirecting to /login */}
@@ -562,8 +562,8 @@ function IntentDetail() {
               {personPane}
             </Window>
           ) : (
-            <Window title="signal" onClose={leave}>
-              {signalHeader}
+            <Window title="intent" onClose={leave}>
+              {intentHeader}
               <div style={{ padding: "8px 12px", borderBottom: "1px solid #000", background: "#fff" }}>
                 <Segmented
                   value={compactPane}
@@ -601,16 +601,16 @@ function IntentDetail() {
         minHeight: 0,
       }}>
         {!intent ? (
-          <Window title="signal" onClose={leave}>
+          <Window title="intent" onClose={leave}>
             <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
               {intentLoading ? (
                 <EmptyState tone="loading" />
               ) : intentMissing ? (
-                <EmptyState message="this signal doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
+                <EmptyState message="this intent doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
               ) : intentFailed ? (
                 <EmptyState
                   tone="error"
-                  message="couldn't load this signal."
+                  message="couldn't load this intent."
                   action={{ label: "try again", onClick: () => setIntentReloadKey((k) => k + 1) }}
                 />
               ) : null /* signed out: the effect above is already redirecting to /login */}
@@ -619,9 +619,9 @@ function IntentDetail() {
         ) : (
           <>
             {!hideChat && (
-              <Window title="signal" onClose={leave}>
+              <Window title="intent" onClose={leave}>
                 <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
-                  {signalHeader}
+                  {intentHeader}
                   {agentChat}
                 </div>
               </Window>
@@ -677,10 +677,10 @@ function PersonHead({ name, photo, userId, unverified, sub, size = 34, action, o
  * when their profile lists an address. With neither there is nothing to send
  * the message through, so it gives way to the invite link to copy.
  */
-function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiation }: {
+function InvitePane({ item, name, intent, senderName, onOpenProfile, onNegotiation }: {
   item: RadarCardItem;
   name: string;
-  signal?: string;
+  intent?: string;
   senderName?: string | null;
   onOpenProfile: () => void;
   onNegotiation?: () => void;
@@ -699,7 +699,7 @@ function InvitePane({ item, name, signal, senderName, onOpenProfile, onNegotiati
   }, [item.userId]);
 
   // Drafted once; the pane is keyed by opportunity, so another person starts fresh.
-  const [message, setMessage] = useState(() => buildInviteMessage({ name, signal, senderName }));
+  const [message, setMessage] = useState(() => buildInviteMessage({ name, intent, senderName }));
 
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -785,7 +785,7 @@ function PersonPane({
   item,
   bucket,
   intentId,
-  signal,
+  intent,
   senderName,
   pane,
   onPane,
@@ -796,7 +796,7 @@ function PersonPane({
   item: RadarCardItem;
   bucket: ReturnType<typeof radarBucketForOpportunity>;
   intentId?: string;
-  signal?: string;
+  intent?: string;
   senderName?: string | null;
   pane: "stage" | "profile" | "negotiation";
   onPane: (pane: "stage" | "profile" | "negotiation") => void;
@@ -853,7 +853,7 @@ function PersonPane({
         key={item.opportunityId}
         item={item}
         name={name}
-        signal={signal}
+        intent={intent}
         senderName={senderName}
         onOpenProfile={openProfile}
         onNegotiation={intentId ? () => onPane("negotiation") : undefined}
@@ -912,7 +912,7 @@ function PersonPane({
         ) : bucket === "accepted" ? (
           <Btn small onClick={() => onPane("stage")}>{notOnIndex ? "invite ›" : "chat ›"}</Btn>
         ) : bucket === "closed" ? (
-          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>this signal closed.</span>
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>this intent closed.</span>
         ) : bucket !== "negotiating" ? (
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>
             answer their question in your feed to move forward.

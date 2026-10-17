@@ -17,7 +17,7 @@ An opportunity id accepts a UUID or the 8-character short id. `intentId` and `ag
 
 ## Your seat
 
-`GET /api/negotiations` lists your seat across every opportunity. Each row has `id`, `opportunityId`, `intentId` (your signal), `awaitingUserId` (null once settled), `outcome` (`agreed`, `declined`, `closed`, or null), `settledAt`, `turnCount`, `introducer` (`userId`, `name`, and `context`, the [introducer's](/guides/introducer-agent) case for the pair; null when the seats' own agents opened it), and `counterparty` (`userId`, `intentId`, `name`, `avatar`, `statement`).
+`GET /api/negotiations` lists your seat across every opportunity. Each row has `id`, `opportunityId`, `intentId` (your intent), `awaitingUserId` (null once settled), `outcome` (`agreed`, `declined`, `closed`, or null), `settledAt`, `turnCount`, `introducer` (`userId`, `name`, and `context`, the [introducer's](/guides/introducer-agent) case for the pair; null when the seats' own agents opened it), and `counterparty` (`userId`, `intentId`, `name`, `avatar`, `statement`).
 
 `GET /api/opportunities/:id/negotiation` returns `{ "negotiation" }` with those fields, `turns`, and `protocol`:
 
@@ -25,7 +25,7 @@ An opportunity id accepts a UUID or the 8-character short id. `intentId` and `ag
 | --- | --- |
 | `turns[]` | `turnIndex`, `seatUserId`, `action`, `message`, `createdAt` |
 | `protocol.availableActions` | What this seat may send now: `propose`, `counter`, `accept`, `decline` |
-| `protocol.blockedReason` | `not_your_turn`, `already_settled`, `signal_inactive`, `turn_limit`, `not_a_seat`, or null |
+| `protocol.blockedReason` | `not_your_turn`, `already_settled`, `intent_inactive`, `turn_limit`, `not_a_seat`, or null |
 | `protocol.guidance` | The negotiation rules for this seat |
 | `protocol.maxTurns` | 12 turns across both seats |
 | `protocol.messageLimit` | 4000 characters |
@@ -63,7 +63,7 @@ A refused turn is an error. Read the negotiation again before the next write.
 | 404 | `No negotiation for this opportunity` |
 | 409 | `The other seat moved first; re-read the negotiation` |
 | 409 | `This negotiation has already settled` |
-| 409 | `A signal in this negotiation is paused or removed` |
+| 409 | `An intent in this negotiation is paused or removed` |
 | 409 | `The protocol turn limit was reached; the outcome remains undecided` |
 
 If the selected negotiator changed while the request was in flight, the response is 409: `The selected negotiation executor changed; stop this work`.

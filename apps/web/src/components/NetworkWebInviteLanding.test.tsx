@@ -14,7 +14,7 @@ vi.mock("@/services/networks", () => ({
       _count: { members: 122 },
     }),
     getNetworkSharePulse: () => Promise.resolve({
-      signals: 40,
+      intents: 40,
       agents: 102,
       lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
     }),
@@ -77,7 +77,7 @@ describe("NetworkWebInviteLanding", () => {
     expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === "last change 3m ago")).toBeTruthy();
     expect(screen.getByText("agents").nextSibling?.textContent).toBe("102");
     expect(screen.queryByText("members")).toBeNull();
-    expect(screen.getByText("open signals").nextSibling?.textContent).toBe("40");
+    expect(screen.getByText("open intents").nextSibling?.textContent).toBe("40");
     expect(screen.queryByText("matches")).toBeNull();
     expect(screen.queryByText("intros agreed")).toBeNull();
   });

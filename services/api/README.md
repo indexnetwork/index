@@ -43,7 +43,7 @@ start command `bun run start:hosted-agents` is set in its Railway service settin
 `@indexnetwork/agent` — brief, wake and negotiate — against `HostedIndex`, an
 in-process implementation of the same `Index` protocol an external runner reaches
 over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
-one opportunity; the owner's own input, a new signal and a resumed one are what
+one opportunity; the owner's own input, a new intent and a resumed one are what
 cause a wake. So a hosted seat searches, opens opportunities and asks its owner
 questions, where the former `HostedNegotiator` only took A2A turns.
 `GET /api/conversations/:id/messages` with `intentId` returns that intent's H2A
@@ -78,7 +78,7 @@ normal lifecycle graph with 5–10-second gaps. Discovery scans can overlap; the
 finish and exits. Progress logs include activation times, intent IDs, and scan
 failures, with selected, resumed, and remaining eligible paused counts in the
 final result (`remaining` is unavailable if the control connection is lost).
-Archived intents and intents without a current network assignment/member are
+Archived intents and those without a current network assignment/member are
 reported and skipped. Re-running resume selects another batch from the remaining
 eligible paused intents. Use reset to start the experiment from the beginning.
 
@@ -94,7 +94,7 @@ the transaction rolls back uncommitted cleanup.
 
 ## Web onboarding boundary
 
-`POST /api/auth/onboarding/complete` accepts an optional exact first-signal `intentId`, validates a durable profile-approval timestamp and an active owned signal created at or after it, and awaits the `users.onboarding` completion write.
+`POST /api/auth/onboarding/complete` accepts an optional exact first-intent `intentId`, validates a durable profile-approval timestamp and an active owned intent created at or after it, and awaits the `users.onboarding` completion write.
 
 ## More
 
