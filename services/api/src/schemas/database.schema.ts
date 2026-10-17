@@ -24,6 +24,8 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: string;
   invitationCode?: string;
+  /** When the owner's first MCP agent made its first tool call, ending MCP onboarding. */
+  mcpOnboardedAt?: string;
 }
 
 export interface NetworkPermissionsState {

@@ -3,14 +3,22 @@ import { readFileSync } from 'node:fs';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 
 import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
+import { userService } from '../../services/user.service';
+import { log } from '../log';
 
 import { registerMcpEvents } from './mcp.events';
-import { MCP_INSTRUCTIONS } from './mcp.instructions';
+import { mcpInstructions } from './mcp.instructions';
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
 
 // `src/` and `dist/` sit at the same depth, and `package.json` is outside `rootDir`, so it cannot be imported.
 const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string };
+
+const logger = log.lib.from('mcp/mcp.server');
+
+/** Methods whose result carries the instructions, and the one that ends onboarding. */
+const INSTRUCTION_METHODS = new Set(['initialize', 'server/discover']);
+const TOOL_CALL = 'tools/call';
 
 /**
  * An MCP OAuth access token is an opaque string, so a failed session check
@@ -70,9 +78,43 @@ export async function authenticateMcpRequest(request: Request): Promise<McpPrinc
   }
 }
 
+/** JSON-RPC methods in one POST body, single or batched. Anything unreadable yields none. */
+async function rpcMethods(request: Request): Promise<string[]> {
+  if (request.method !== 'POST') return [];
+  try {
+    const body: unknown = await request.clone().json();
+    return (Array.isArray(body) ? body : [body])
+      .map((message) => (message && typeof message === 'object' ? (message as { method?: unknown }).method : undefined))
+      .filter((method): method is string => typeof method === 'string');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether this request should carry the onboarding instructions. Onboarding
+ * lasts until the owner's agent makes its first tool call, so a client that
+ * probes the server more than once still sees it, and later sessions don't.
+ */
+async function firstConnection(request: Request, principal: McpPrincipal): Promise<boolean> {
+  const methods = await rpcMethods(request);
+  const handshake = methods.some((method) => INSTRUCTION_METHODS.has(method));
+  const toolCall = methods.includes(TOOL_CALL);
+  if (!handshake && !toolCall) return false;
+  try {
+    if (await userService.isMcpOnboarded(principal.userId)) return false;
+    if (toolCall) await userService.markMcpOnboarded(principal.userId);
+    return handshake;
+  } catch (error) {
+    // Onboarding is a nicety: a failed read must never break the connection.
+    logger.warn('MCP onboarding state unavailable', { userId: principal.userId, error: String(error) });
+    return false;
+  }
+}
+
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
-function createIndexMcpServer(principal: McpPrincipal): McpServer {
-  const server = new McpServer({ name: 'index', version }, { instructions: MCP_INSTRUCTIONS });
+function createIndexMcpServer(principal: McpPrincipal, onboarding: boolean): McpServer {
+  const server = new McpServer({ name: 'index', version }, { instructions: mcpInstructions(onboarding) });
   registerMcpTools(server, principal);
   registerMcpEvents(server, principal);
   return server;
@@ -80,6 +122,7 @@ function createIndexMcpServer(principal: McpPrincipal): McpServer {
 
 /** Serve one stateless MCP request, in either protocol era, with no protocol session state. */
 export async function handleMcpRequest(request: Request, principal: McpPrincipal): Promise<Response> {
-  const handler = createMcpHandler(() => createIndexMcpServer(principal));
+  const onboarding = await firstConnection(request, principal);
+  const handler = createMcpHandler(() => createIndexMcpServer(principal, onboarding));
   return handler.fetch(request);
 }
