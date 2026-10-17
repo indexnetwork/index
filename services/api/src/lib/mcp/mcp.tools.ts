@@ -21,11 +21,12 @@ const LINK_HINT = ' The result starts with a markdown summary whose names are al
 
 /** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
 const hints = (
+  title: string,
   readOnlyHint: boolean,
   destructiveHint: boolean,
   openWorldHint: boolean,
   idempotentHint: boolean,
-) => ({ readOnlyHint, destructiveHint, idempotentHint, openWorldHint });
+) => ({ title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint });
 
 const emptyInputSchema = z.object({}).strict();
 
@@ -215,7 +216,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get the authenticated API key owner\'s safe Index profile.' + LINK_HINT,
       inputSchema: emptyInputSchema,
-      annotations: hints(true, false, false, true),
+      annotations: hints('Get my profile', true, false, false, true),
     },
     () => runTool('get_my_profile', principal, async () => {
       const profile = await userService.findWithGraph(principal.userId);
@@ -240,7 +241,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           value: z.string().min(1),
         }).strict()).optional(),
       }).strict(),
-      annotations: hints(false, true, false, true),
+      annotations: hints('Update my profile', false, true, false, true),
     },
     (input) => runTool('update_my_profile', principal, async () => {
       const { socials, ...fields } = input;
@@ -269,7 +270,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         telegram: z.string().optional(),
         websites: z.array(z.string()).optional(),
       }).strict(),
-      annotations: hints(true, false, true, true),
+      annotations: hints('Enrich my profile', true, false, true, true),
     },
     (input) => runTool('enrich_my_profile', principal, async () => {
       const result = await enrichmentService.prefillPublicProfile(principal.userId, input);
@@ -287,7 +288,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         page: z.number().int().min(1).optional(),
         limit: z.number().int().min(1).max(100).optional(),
       }).strict(),
-      annotations: hints(true, false, false, true),
+      annotations: hints('List intents', true, false, false, true),
     },
     (input) => runTool('list_intents', principal, async () => {
       const result = await intentService.listIntents(principal.userId, {
@@ -310,7 +311,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get one owned intent by UUID or supported short ID prefix, including its associated networks.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: hints(true, false, false, true),
+      annotations: hints('Get intent', true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -335,7 +336,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
-      annotations: hints(false, false, false, false),
+      annotations: hints('Create intent', false, false, false, false),
     },
     ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
       let prepared;
@@ -397,7 +398,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
-      annotations: hints(false, true, false, true),
+      annotations: hints('Update intent', false, true, false, true),
     },
     ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
       if (description === undefined && sourceType === undefined && sourceId === undefined) {
@@ -424,7 +425,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Pause one owned intent. Pausing an already paused intent succeeds without changing it.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: hints(false, true, false, true),
+      annotations: hints('Pause intent', false, true, false, true),
     },
     ({ intentId }) => runTool('pause_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -444,7 +445,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Resume one owned intent. Resuming an already active intent succeeds; archived intents stay archived.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: hints(false, false, false, true),
+      annotations: hints('Resume intent', false, false, false, true),
     },
     ({ intentId }) => runTool('resume_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -467,7 +468,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         intentId: z.string().trim().min(1),
         confirm: z.literal(true),
       }).strict(),
-      annotations: hints(false, true, false, false),
+      annotations: hints('Archive intent', false, true, false, false),
     },
     ({ intentId }) => runTool('archive_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -491,7 +492,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: z.object({
         invite: z.string().trim().min(1).max(500),
       }).strict(),
-      annotations: hints(false, false, false, true),
+      annotations: hints('Join network', false, false, false, true),
     },
     ({ invite }) => runTool('join_network', principal, async () => {
       const code = inviteCodeFrom(invite);
@@ -524,7 +525,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         limit: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).max(10_000).optional(),
       }).strict(),
-      annotations: hints(true, false, false, true),
+      annotations: hints('List opportunities', true, false, false, true),
     },
     (input) => runTool('list_opportunities', principal, async () => {
       const limit = input.limit ?? 50;
@@ -574,7 +575,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Get one visible opportunity by UUID or supported short ID prefix, plus its negotiation when one exists.' + LINK_HINT,
       inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
-      annotations: hints(true, false, false, true),
+      annotations: hints('Get opportunity', true, false, false, true),
     },
     ({ opportunityId }) => runTool('get_opportunity', principal, async () => {
       const resolved = await resolveOpportunity(opportunityId, principal);
@@ -608,7 +609,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     {
       description: 'Read one owned intent’s chat: the agent’s notes, progress, and questions, and what the owner has already said. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
       inputSchema: intentIdSchema,
-      annotations: hints(true, false, false, true),
+      annotations: hints('Get intent conversation', true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -646,7 +647,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           questionId: z.string().uuid().optional(),
         }).strict()).min(1).max(20),
       }).strict(),
-      annotations: hints(false, false, false, false),
+      annotations: hints('Send message', false, false, false, false),
     },
     ({ intentId, messages }) => runTool('principal_send_message', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
@@ -683,7 +684,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned intent.'
           : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned intent. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
         inputSchema: opportunityActionSchema,
-        annotations: hints(false, true, false, false),
+        annotations: hints(accepted ? 'Accept opportunity' : 'Pass on opportunity', false, true, false, false),
       },
       ({ opportunityId, intentId }) => runTool(name, principal, async () => {
         const resolvedOpportunity = await resolveOpportunity(opportunityId, principal);
