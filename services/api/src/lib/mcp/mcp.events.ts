@@ -109,7 +109,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'principal.input': {
-    description: 'The owner wrote in their Index agent conversation. Read get_agent_conversation for this signal. questionId is set when the message answers a question. The owner\'s text is not included.',
+    description: 'The owner wrote in their Index agent conversation. Read get_intent_conversation for this signal. questionId is set when the message answers a question. The owner\'s text is not included.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       intentId: z.string(),

@@ -104,31 +104,7 @@
         "open_world_justification": "Reads one match the owner can already see inside Index."
       }
     },
-    "discover_counterparties": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Searches the owner's networks for people and writes nothing.",
-        "destructive_justification": "Does not open a match or contact anyone.",
-        "open_world_justification": "Searches only Index networks the owner belongs to."
-      }
-    },
-    "create_opportunities": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Opens a match with counterparties already returned inside Index.",
-        "destructive_justification": "Adds a match, and a pair that already has one returns that one.",
-        "open_world_justification": "Opens the match only between Index members, not on the public web."
-      }
-    },
-    "get_my_agent": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Reads which agent is selected to negotiate and does not change it.",
-        "destructive_justification": "Does not send a turn or edit the agent.",
-        "open_world_justification": "Reads one setting on the owner's Index account."
-      }
-    },
-    "get_agent_conversation": {
+    "get_intent_conversation": {
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
         "read_only_justification": "Reads the owner's private agent conversation for one signal.",
@@ -136,7 +112,7 @@
         "open_world_justification": "Reads a private Index conversation and does not forward it."
       }
     },
-    "publish_agent_action": {
+    "agent_send_message": {
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
         "read_only_justification": "Appends notes, replies, progress updates, or questions to the owner's private agent conversation.",
@@ -144,20 +120,12 @@
         "open_world_justification": "Everything stays in the owner's private Index conversation and is not sent to the other person."
       }
     },
-    "answer_agent_questions": {
+    "principal_send_message": {
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Saves the owner's own words as answers on their agent conversation.",
-        "destructive_justification": "Adds the answer and does not delete the question or accept a match.",
-        "open_world_justification": "The answer stays in the owner's private Index conversation."
-      }
-    },
-    "submit_negotiation_turn": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Sends one negotiator message on a match.",
-        "destructive_justification": "accept and decline settle that exchange and are not a draft.",
-        "open_world_justification": "The message goes to the other Index member in that match, not to the public web."
+        "read_only_justification": "Saves the owner's own words on their agent conversation.",
+        "destructive_justification": "Adds the message and does not delete the question or accept a match.",
+        "open_world_justification": "The message stays in the owner's private Index conversation."
       }
     },
     "accept_opportunity": {

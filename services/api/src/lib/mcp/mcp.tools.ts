@@ -1,14 +1,12 @@
 import { encodeActions, readConversation, type WakeAction } from '@indexnetwork/agent';
 import type { ConversationMessage, MatchReference } from '@indexnetwork/client';
-import { NEGOTIATION_MESSAGE_LIMIT } from '@indexnetwork/protocol';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
-import { agentService } from '../../services/agent.service';
 import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../../services/conversation.service';
-import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
+import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
-import { negotiationService, type SubmitTurnRejection } from '../../services/negotiation.service';
+import { negotiationService } from '../../services/negotiation.service';
 import { networkService } from '../../services/network.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
@@ -172,20 +170,6 @@ function intentTransitionError(
     retryable: true,
   });
 }
-
-const TURN_ERRORS: Record<SubmitTurnRejection, string> = {
-  not_found: 'No negotiation for this opportunity',
-  not_a_seat: 'You do not hold a seat in this negotiation',
-  already_settled: 'This negotiation has already settled',
-  not_your_turn: 'It is not your turn',
-  counter_is_first: 'counter needs a turn to answer; use propose',
-  accept_without_offer: 'accept needs a standing propose from the other seat; answer a counter by proposing again',
-  propose_over_offer: 'a proposal from the other seat is already standing; counter, accept or decline it',
-  signal_inactive: 'A signal in this negotiation is paused or removed',
-  turn_limit: 'The protocol turn limit was reached; the outcome remains undecided',
-  invalid_turn: 'Invalid negotiation action or message',
-  raced: 'The other seat moved first; re-read the negotiation',
-};
 
 function runTool(
   name: string,
@@ -638,99 +622,13 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   );
 
   server.registerTool(
-    'discover_counterparties',
-    {
-      description: agentOnly('discover_counterparties') + ' Search one active signal\'s communities for people who could serve it, strongest first. Writes nothing.'
-        + ' Use when a task is finding people for a signal that was just created, changed, or needs more reach.'
-        + ' Do not use when the person asks who to meet, what matches they have, or what is waiting: that is list_opportunities.'
-        + ' Do not use to look up a specific person, or for a paused or archived signal.',
-      inputSchema: z.object({
-        intentId: z.string().trim().min(1),
-        query: z.string().trim().min(1).max(2_000).describe('The kind of person this signal needs, in your own words.'),
-        limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
-      }).strict(),
-      annotations: hints(true, false, false, true),
-    },
-    ({ intentId, query, limit }) => runTool('discover_counterparties', principal, async () => {
-      const resolved = await resolveIntent(intentId, principal);
-      if ('error' in resolved) return resolved.error;
-      const result = await intentService.discover(resolved.id, principal.userId, { query, limit });
-      if (result.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
-      if (result.kind === 'inactive') return mcpError('intent_inactive', 'Only an active signal can be searched.');
-      return mcpSuccess({ counterparties: result.counterparties });
-    }),
-  );
-
-  server.registerTool(
-    'create_opportunities',
-    {
-      description: agentOnly('create_opportunities') + ' Open an opportunity with each counterparty discover_counterparties returned, passing its intentId and networkId. A pair that already has one reports that one.'
-        + ' Use right after discover_counterparties in the same task, only for counterparties you judged worth a negotiation.'
-        + ' Do not use when the person asks to meet, connect with, or be introduced to someone: that is accept_opportunity on an existing opportunity.'
-        + ' Do not use with ids that did not come from discover_counterparties, or to re-open a passed or expired opportunity.',
-      inputSchema: z.object({
-        intentId: z.string().trim().min(1),
-        counterparties: z.array(z.object({
-          intentId: z.string().uuid(),
-          networkId: z.string().uuid(),
-        }).strict()).min(1).max(CREATE_OPPORTUNITIES_LIMIT),
-      }).strict(),
-      annotations: hints(false, false, false, true),
-    },
-    ({ intentId, counterparties }) => runTool('create_opportunities', principal, async () => {
-      const resolved = await resolveIntent(intentId, principal);
-      if ('error' in resolved) return resolved.error;
-      const result = await intentService.createOpportunities(resolved.id, principal.userId, counterparties);
-      if (result.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
-      if (result.kind === 'inactive') return mcpError('intent_inactive', 'Only an active signal can open opportunities.');
-      return mcpSuccess({
-        opportunities: result.opportunities.map(({ opportunityId }) => ({ id: opportunityId, url: appLink('o', opportunityId) })),
-      });
-    }),
-  );
-
-  server.registerTool(
-    'get_my_agent',
-    {
-      description: agentOnly('get_my_agent') + ' Read the agent selected to negotiate for the owner. Its id is the agentId a negotiation turn takes.',
-      inputSchema: emptyInputSchema,
-      annotations: hints(true, false, false, true),
-    },
-    () => runTool('get_my_agent', principal, async () => {
-      const agent = await agentService.getSelectedNegotiator(principal.userId);
-      if (!agent) return mcpError('negotiator_not_selected', 'No agent is selected to negotiate for this owner.');
-      return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
-    }),
-  );
-
-  server.registerTool(
-    'select_negotiator',
-    {
-      description: agentOnly('select_negotiator') + ' Make the owner\'s external agent with this name (created if missing) the one that negotiates for them. Call only after the owner confirms in this chat. When another agent is already selected this fails with negotiator_already_selected; pass replace=true only after the owner confirms replacing that agent by name.',
-      inputSchema: z.object({ name: z.string().trim().min(1).max(100), replace: z.boolean().optional() }).strict(),
-      annotations: hints(false, true, false, true),
-    },
-    ({ name, replace }) => runTool('select_negotiator', principal, async () => {
-      const selected = await agentService.getSelectedNegotiator(principal.userId);
-      if (selected && selected.name.toLowerCase() !== name.toLowerCase() && !replace) {
-        return mcpError('negotiator_already_selected', `${selected.name} already negotiates for this owner.`, { agent: { id: selected.id, name: selected.name } });
-      }
-      const existing = (await agentService.listForUser(principal.userId))
-        .find((agent) => agent.type === 'external' && agent.name.toLowerCase() === name.toLowerCase());
-      const target = existing ?? await agentService.create(principal.userId, name);
-      const agent = await agentService.update(target.id, principal.userId, { status: 'active', handleNegotiations: true });
-      return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
-    }),
-  );
-
-  server.registerTool(
-    'get_agent_conversation',
+    'get_intent_conversation',
     {
       description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: hints(true, false, false, true),
     },
-    ({ intentId }) => runTool('get_agent_conversation', principal, async () => {
+    ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
       try {
@@ -813,41 +711,41 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
   };
   server.registerTool(
-    'publish_agent_action',
+    'agent_send_message',
     {
-      description: agentOnly('publish_agent_action') + ' Publish actions on the owner’s agent conversation, in order: note (private), reply, progress, ask (one question; reuse a pending one for the same fact; scope opportunity needs its opportunityId), or expire (a pending question stops waiting). This is not a negotiation turn and not the owner’s answer.' + LINK_HINT,
+      description: agentOnly('agent_send_message') + ' Send actions on the owner’s agent conversation as their agent, in order: note (private), reply, progress, ask (one question; reuse a pending one for the same fact; scope opportunity needs its opportunityId), or expire (a pending question stops waiting). This is not a negotiation turn and not the owner’s message.' + LINK_HINT,
       inputSchema: z.object({ ...agentIds, actions: z.array(agentActionSchema).min(1).max(5) }).strict(),
       annotations: hints(false, false, false, false),
     },
-    ({ intentId, agentId, actions }) => publish('publish_agent_action', intentId, agentId, actions),
+    ({ intentId, agentId, actions }) => publish('agent_send_message', intentId, agentId, actions),
   );
 
   server.registerTool(
-    'answer_agent_questions',
+    'principal_send_message',
     {
-      description: 'Record the owner’s explicit answers to their agent’s questions, the same way the Index app does. Copy their words; never infer or invent an answer. An answer that names a question no longer waiting is kept as a plain message. A saved answer is not approval to accept or pass a match.' + LINK_HINT,
+      description: 'Record what the owner wrote in their agent conversation, the same way the Index app does. Copy their words; never infer or invent a message. Pass a questionId only when the words answer that question. A message without one is saved as a plain message, and so is one naming a question no longer waiting. A saved message is not approval to accept or pass a match.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
-        answers: z.array(z.object({
-          questionId: z.string().uuid(),
+        messages: z.array(z.object({
           text: z.string().trim().min(1).max(8000),
+          questionId: z.string().uuid().optional(),
         }).strict()).min(1).max(20),
       }).strict(),
       annotations: hints(false, false, false, false),
     },
-    ({ intentId, answers }) => runTool('answer_agent_questions', principal, async () => {
+    ({ intentId, messages }) => runTool('principal_send_message', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
       const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
       if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
       try {
         const persisted = await conversationService.answerQuestions({
-          userId: principal.userId, intentId: resolved.id, conversationId: conversation.id, answers,
+          userId: principal.userId, intentId: resolved.id, conversationId: conversation.id, answers: messages,
         });
         const { url, link } = await linkedIntent(resolved.id, principal.userId);
         return mcpSuccess({
           intentId: resolved.id,
-          answers: persisted.map((message) => {
+          messages: persisted.map((message) => {
             const principalMessage = (message.metadata as { principalMessage?: { kind?: string; questionId?: string } } | null)?.principalMessage;
             return { id: message.id, kind: principalMessage?.kind ?? 'user', questionId: principalMessage?.questionId ?? null };
           }),
@@ -858,40 +756,6 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         if (mapped) return mapped;
         throw error;
       }
-    }),
-  );
-
-  server.registerTool(
-    'submit_negotiation_turn',
-    {
-      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. accept and decline settle that exchange and are not a draft. This is not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
-      inputSchema: z.object({
-        opportunityId: z.string().trim().min(1),
-        agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
-        action: z.enum(['propose', 'counter', 'accept', 'decline']),
-        message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
-      }).strict(),
-      annotations: hints(false, true, false, false),
-    },
-    ({ opportunityId, agentId, action, message }) => runTool('submit_negotiation_turn', principal, async () => {
-      const resolved = await resolveOpportunity(opportunityId, principal);
-      if ('error' in resolved) return resolved.error;
-      let result;
-      try {
-        result = await negotiationService.submitTurn(resolved.id, principal.userId, { action, message }, {
-          userId: principal.userId,
-          agentId,
-        });
-      } catch (error) {
-        if (error instanceof RuntimeConflictError) {
-          return mcpError('executor_changed', 'The selected negotiation executor changed; stop this work');
-        }
-        throw error;
-      }
-      if ('rejection' in result) return mcpError(result.rejection, TURN_ERRORS[result.rejection]);
-      const url = appLink('o', resolved.id);
-      const settled = result.outcome ? ` — ${result.outcome}` : '';
-      return mcpSuccess({ negotiation: result, url }, `${mdLink('Opportunity', url)} — ${action} submitted${settled}`);
     }),
   );
 

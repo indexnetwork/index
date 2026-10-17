@@ -327,12 +327,13 @@ export class ConversationService {
   }
 
   /**
-   * Persist several owner answers at once.
+   * Persist several owner messages at once.
    *
-   * Every answer is matched against one reading of the queue and written in a
+   * Every message is matched against one reading of the queue and written in a
    * single transaction, so the wake they trigger sees all of them rather than
-   * deciding on the first and clearing the rest. An answer naming a question
-   * that is no longer waiting is still kept, as a plain message. Like
+   * deciding on the first and clearing the rest. A message with no
+   * `questionId`, or naming a question that is no longer waiting, is still
+   * kept, as a plain message. Like
    * {@link sendOwnerInput}, the write is accepted whether or not a negotiator
    * is selected: the inbox is a chat, not the responder seat.
    *
@@ -340,7 +341,7 @@ export class ConversationService {
    * @returns The persisted messages, in the order given.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId: string; text: string }[] }) {
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
