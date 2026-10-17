@@ -141,8 +141,12 @@ function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfi
     maxTokens: cfg.maxTokens,
     timeout,
     maxRetries,
-    // `trace` names each call by its agent, so OpenRouter traces read spend per agent.
-    modelKwargs: { trace: { trace_name: "protocol", generation_name: agent }, ...(cfg.reasoning && { reasoning: cfg.reasoning }) },
+    // `trace` and `metadata` name each call by its agent, so OpenRouter reads spend per agent.
+    modelKwargs: {
+      trace: { trace_name: "protocol", generation_name: agent },
+      metadata: { service: "protocol", operation: agent },
+      ...(cfg.reasoning && { reasoning: cfg.reasoning }),
+    },
   });
 }
 

@@ -36770,7 +36770,12 @@ async function run(input2) {
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,
       providerOptions: {
-        openrouter: { user: input2.identity.id, session_id: input2.intent.id, trace: { trace_name: "agent", generation_name: input2.operation } }
+        openrouter: {
+          user: input2.identity.id,
+          session_id: input2.intent.id,
+          trace: { trace_name: "agent", generation_name: input2.operation },
+          metadata: { service: "agent", operation: input2.operation }
+        }
       },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT },

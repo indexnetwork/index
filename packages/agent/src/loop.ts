@@ -84,7 +84,12 @@ export async function run(input: RunInput): Promise<void> {
       maxOutputTokens: MAX_TOKENS,
       // Other providers ignore this. OpenRouter groups one intent's runs and names each one.
       providerOptions: {
-        openrouter: { user: input.identity.id, session_id: input.intent.id, trace: { trace_name: "agent", generation_name: input.operation } },
+        openrouter: {
+          user: input.identity.id,
+          session_id: input.intent.id,
+          trace: { trace_name: "agent", generation_name: input.operation },
+          metadata: { service: "agent", operation: input.operation },
+        },
       },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT },
