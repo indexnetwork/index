@@ -108,7 +108,10 @@ export async function replayFixtures(name: string, fixtures: Fixture[], transfor
     labelled.push({ id: fixture.id, gold: fixture.gold.findings, predicted: record.findings.map((f) => ({ turnIndex: f.turnIndex, kind: f.kind as FindingKind })) });
     const predictedExceeded = new Set(record.turnActs.filter((act) => act.authorityVerdict === 'exceeded').map((act) => act.turnIndex));
     const goldExceeded = new Set(fixture.gold.authorityExceededTurns);
-    for (const turn of goldExceeded) predictedExceeded.has(turn) ? (exceeded.tp += 1) : (exceeded.fn += 1);
+    for (const turn of goldExceeded) {
+      if (predictedExceeded.has(turn)) exceeded.tp += 1;
+      else exceeded.fn += 1;
+    }
     for (const turn of predictedExceeded) if (!goldExceeded.has(turn)) exceeded.fp += 1;
     if (fixture.gold.outcomeClass) {
       outcome.total += 1;

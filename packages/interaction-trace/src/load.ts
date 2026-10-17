@@ -48,6 +48,7 @@ function classifyNote(text: string): AgentNote['kind'] | null {
 
 export interface LoadOptions {
   scrub?: boolean;
+  turnsOnly?: boolean;
 }
 
 async function loadMessages(sql: Sql, intentId: string, opportunityId: string) {
@@ -105,7 +106,7 @@ export async function loadTrace(sql: Sql, opportunityId: string, options: LoadOp
   const seatIntent: Record<Seat, string> = { A: negotiation.initiator_intent_id, B: negotiation.responder_intent_id };
   const principals = {} as TraceInput['principals'];
   for (const seat of ['A', 'B'] as const) {
-    const messageRows = await loadMessages(sql, seatIntent[seat], opportunityId);
+    const messageRows = options.turnsOnly ? [] : await loadMessages(sql, seatIntent[seat], opportunityId);
     const conversation: TextItem[] = [];
     const agentNotes: AgentNote[] = [];
     messageRows.forEach((row, index) => {

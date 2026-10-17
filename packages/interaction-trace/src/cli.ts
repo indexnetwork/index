@@ -8,6 +8,7 @@ import { connect, connectionUrl } from './db.ts';
 import { replayFixtures, scoreDetection, corruptQuotes } from './eval.ts';
 import type { DetectionReport, Metric } from './eval.ts';
 import { loadFixture, loadFixtureDir } from './fixtures.ts';
+import { evaluateReal, scanBaseline } from './eval-real.ts';
 import { loadTrace } from './load.ts';
 import { persistRecord } from './persist.ts';
 import { renderTrace } from './annotate/prompts.ts';
@@ -21,6 +22,9 @@ const USAGE = `trace <command>
   analyze <opportunity-id> [--annotations <file>] [--no-persist] [--json]
   analyze --fixture <file> [--no-persist] [--json]
   eval [--fixtures <dir>]                  replay fixtures through the verifier and score the baseline detector
+  eval-real [--gold <file>] [--annotations <dir>] [--persist]
+                                           replay hand annotations of the labelled real cases and score both against the gold
+  scan [--limit <n>] [--seed <text>]       run the baseline detector over random real negotiations and print its hits for review
 
 Environment: TRACE_DATABASE_URL (a dev branch of production, never the primary), OPENROUTER_API_KEY (live annotator, optional).`;
 
@@ -40,7 +44,7 @@ function parseArgs(argv: string[]): Args {
     }
     const name = arg.slice(2);
     const next = argv[index + 1];
-    if (next !== undefined && !next.startsWith('--') && ['annotations', 'fixture', 'fixtures'].includes(name)) {
+    if (next !== undefined && !next.startsWith('--') && ['annotations', 'fixture', 'fixtures', 'gold', 'limit', 'seed'].includes(name)) {
       flags.set(name, next);
       index += 1;
     } else flags.set(name, true);
@@ -147,12 +151,49 @@ async function evaluate(args: Args): Promise<void> {
   printDetection(scoreDetection('keyword baseline (no model)', fixtures.map((fixture) => ({ id: fixture.id, gold: fixture.gold.findings, predicted: detectBaseline(fixture.trace) }))));
 }
 
+async function evalReal(args: Args): Promise<void> {
+  const gold = args.flags.get('gold');
+  const annotations = args.flags.get('annotations');
+  const sql = connect(connectionUrl());
+  try {
+    const result = await evaluateReal(
+      sql,
+      typeof gold === 'string' ? gold : join(import.meta.dir, '..', 'fixtures', 'real-gold.json'),
+      typeof annotations === 'string' ? annotations : join(import.meta.dir, '..', 'annotations', 'real'),
+      args.flags.has('persist'),
+    );
+    console.log(`${result.cases} real cases, labelled by one reviewer`);
+    console.log(`  annotations kept after quote check: ${result.quoteKept} of ${result.quoteEmitted}`);
+    console.log(`  outcome class matches gold: ${result.outcomeMatched}/${result.cases}`);
+    printDetection(result.recordedDetection);
+    printDetection(result.baselineDetection);
+    for (const item of result.perCase) console.log(`  ${item.id} ${item.stratum.padEnd(26)} class ${item.outcomeClass}${item.outcomeClass === item.goldOutcomeClass ? '' : ` (gold ${item.goldOutcomeClass})`} dropped ${item.dropped}`);
+  } finally {
+    await sql.end();
+  }
+}
+
+async function scan(args: Args): Promise<void> {
+  const limit = Number(args.flags.get('limit') ?? 200);
+  const seed = String(args.flags.get('seed') ?? 'scan-1');
+  const sql = connect(connectionUrl());
+  try {
+    const result = await scanBaseline(sql, limit, seed);
+    console.log(`scanned ${result.scanned} negotiations, ${result.turns} turns, ${result.hits.length} baseline hits`);
+    for (const hit of result.hits) console.log(`\n${hit.opportunityId} turn ${hit.turnIndex} seat ${hit.seat} ${hit.kind}\n  ${hit.excerpt}`);
+  } finally {
+    await sql.end();
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const command = args.positional[0];
   if (command === 'analyze') return analyze(args);
   if (command === 'dump') return dump(args);
   if (command === 'eval') return evaluate(args);
+  if (command === 'eval-real') return evalReal(args);
+  if (command === 'scan') return scan(args);
   console.log(USAGE);
   process.exitCode = command ? 1 : 0;
 }
