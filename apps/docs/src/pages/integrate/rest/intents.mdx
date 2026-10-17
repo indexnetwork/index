@@ -85,6 +85,8 @@ Omit `networkIds`, or send `[]`, to share the new intent in every network you be
 
 `POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. `sourceType` keeps intents with exactly that value. Each intent carries `id`, `payload`, `summary`, `status`, `sourceType`, `sourceId`, `createdAt`, `updatedAt`, and `archivedAt`. `status` is `active` or `paused`. A missing status means `active`. Removal sets `archivedAt` and leaves `status` as it was.
 
+`GET /api/intents/:id` returns `{ "intent" }` with the same fields plus `userId`, the owner. Another user's intent returns 404.
+
 `PATCH /api/intents/:id` replaces the description, the source fields, or both, and returns `{ "intentId", "description", "sourceType", "sourceId" }`. A new description is prepared again; a source-only change is written as sent. Omit a field to keep it; send `null` to clear a source field. `PATCH …/status` pauses (`paused`) or resumes (`active`). An archived intent refuses a status change with 409. `PATCH …/archive` sets `archivedAt`. The lifecycle event then sends `archived`; the list payload does not.
 
 `GET /api/intents/:id/networks` returns `{ "networkIds" }`.

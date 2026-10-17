@@ -381,6 +381,7 @@ export class IntentController {
     return Response.json({
       intent: {
         ...r,
+        userId: user.id,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,
