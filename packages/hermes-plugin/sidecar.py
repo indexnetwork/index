@@ -160,7 +160,7 @@ class Sidecar:
             sync_index_mcp()
             self.bridge.start()
 
-            # Same process group as the gateway: a group signal reaches Bun too.
+            # Same process group as the gateway: a group intent reaches Bun too.
             # The child authenticates with the API key. It does not read the
             # device session, so that token stays in the gateway process.
             child_env = negotiator_child_env()

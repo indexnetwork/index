@@ -33,8 +33,8 @@ ChatGPT reads the full record with the tools.
 
 | Event | When | Filters |
 | --- | --- | --- |
-| `intent.created` | You created a signal | `intentId` |
-| `intent.updated` | You changed a signal's goal or constraints | `intentId` |
+| `intent.created` | You created an intent | `intentId` |
+| `intent.updated` | You changed an intent's goal or constraints | `intentId` |
 | `opportunity.new` | An opportunity is waiting on you | `intentId` |
 | `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
 | `negotiation.turn` | Your negotiator owes the next turn, or the turn limit paused it | `intentId` |
@@ -55,5 +55,5 @@ read it with `get_opportunity` and tell them their negotiator owes a turn, or
 that the turn limit paused it. A task that negotiates for them names its own
 tools; never call a tool whose description begins "Agent tool" from this chat.
 When a `question.pending` event arrives,
-ask them the question and send them the link to the signal.
+ask them the question and send them the link to the intent.
 :::

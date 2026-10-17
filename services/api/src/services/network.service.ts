@@ -169,7 +169,7 @@ export class NetworkService {
   }
 
   /**
-   * List the active signals shared in a network, across all members. Any
+   * List the active intents shared in a network, across all members. Any
    * current member can call this; the adapter refuses non-members.
    */
   async getNetworkIntents(networkId: string, userId: string, options: { page: number; limit: number }) {
@@ -253,10 +253,10 @@ export class NetworkService {
     const network = await this.adapter.getNetworkByShareCode(code);
     if (!network) return null;
     if (network._count.members < SUMMARY_MIN_MEMBERS) return { summary: null };
-    const signals = await this.adapter.getNetworkShareSummarySignals(network.id);
+    const intents = await this.adapter.getNetworkShareSummaryIntents(network.id);
     const { summary } = await getNetworkPulseSummary(network.id, {
       networkTitle: network.title,
-      signals,
+      intents,
       negotiations: [],
     });
     return { summary };

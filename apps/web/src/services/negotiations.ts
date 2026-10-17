@@ -17,7 +17,7 @@ export interface NegotiationTurn {
 export interface NegotiationSummary {
   id: string;
   opportunityId: string;
-  /** The viewer's own signal behind this negotiation. */
+  /** The viewer's own intent behind this negotiation. */
   intentId: string;
   /** The seat whose turn it is; null once settled. */
   awaitingUserId: string | null;

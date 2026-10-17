@@ -53,7 +53,7 @@ def _text(message: dict) -> str:
 
 
 def _chat(messages: list) -> tuple[str, str] | None:
-    """@returns The Hermes chat id and title for this run, or None when it names no signal."""
+    """@returns The Hermes chat id and title for this run, or None when it names no intent."""
     system = next((_text(message) for message in messages if message.get("role") == "system"), "")
     user = next((_text(message) for message in messages if message.get("role") == "user"), "")
     intent_id = ""

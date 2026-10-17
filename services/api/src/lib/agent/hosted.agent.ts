@@ -1,5 +1,5 @@
 /**
- * Index's own personal agent: the seat that works a signal whose owner has
+ * Index's own personal agent: the seat that works an intent whose owner has
  * bound no external negotiator.
  *
  * A wake happens because something changed, and once each local morning.
@@ -77,7 +77,7 @@ export class HostedAgent {
   }
 
   /**
-   * One signal's morning. The signal id stays here, so a person it opens takes
+   * One intent's morning. The intent id stays here, so a person it opens takes
    * the same negotiator an event wake starts.
    *
    * @param since - The owner's previous morning; people who arrived after it are reached without the model.
@@ -172,7 +172,7 @@ export class HostedAgent {
    * Route one frame the way the reference runner routes it: a counterpart's
    * turn moves one opportunity and reaches the principal only if that
    * negotiator stalls, because it is not something they have to think about.
-   * Their own input, a new signal, and a resumed one are.
+   * Their own input, a new intent, and a resumed one are.
    *
    * @param record - One entry from an owner's stream.
    */
@@ -194,7 +194,7 @@ export class HostedAgent {
         if (intentId) this.session.run(this.session.wake(userId, intentId));
         break;
       case 'intent.lifecycle':
-        // A resumed signal is worth a think pass; pausing and removing are not.
+        // A resumed intent is worth a think pass; pausing and removing are not.
         if (intentId && status === 'active') this.session.run(this.session.wake(userId, intentId));
         break;
       default:
@@ -208,9 +208,9 @@ export class HostedAgent {
   }
 
   /**
-   * @param userId - The signal's owner.
-   * @param intentId - The signal a frame named.
-   * @returns The signal as a run reads it, or null when it cannot be worked now.
+   * @param userId - The intent's owner.
+   * @param intentId - The intent a frame named.
+   * @returns The intent as a run reads it, or null when it cannot be worked now.
    */
   private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
     const intent = await intentService.getById(intentId, userId);
@@ -240,7 +240,7 @@ export class HostedAgent {
 
   /**
    * Take up whatever one owner is still owed, as Index records it: the wake a
-   * stall is waiting on, and the turns nothing is holding, on every signal with
+   * stall is waiting on, and the turns nothing is holding, on every intent with
    * an open negotiation.
    *
    * @param userId - The owner.

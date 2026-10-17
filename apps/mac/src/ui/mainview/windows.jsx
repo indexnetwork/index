@@ -54,7 +54,7 @@ function useCounterpartProfile(person) {
 
 /* Full profile for a person, opens in the 3rd window when you click their
    name or avatar on the radar. `actions` off drops the stage CTA, for a
-   profile opened outside a signal (see DeepLinkWindow) where accepting or
+   profile opened outside an intent (see DeepLinkWindow) where accepting or
    passing has no scope to act in. */
 function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNegotiation, actions = true }) {
   const status = person.status;
@@ -155,7 +155,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
               onClick={() => onOpenChat && onOpenChat(person.id)}
               style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>{person.notOnIndex ? "invite" : "send message"}</button>
           ) : isClosed ? (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this signal closed.</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this intent closed.</span>
           ) : (
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>
               answer their question in your feed to move forward.
@@ -198,18 +198,18 @@ function NotOnIndexTag() {
    and the user picks them), email when their profile lists an address. With
    neither there is nothing to send the message through, so it gives way to
    the invite link to copy and share however the user reaches them. */
-function InviteWindow({ person, signal, onClose, onProfile, onOpenNegotiation }) {
+function InviteWindow({ person, intent, onClose, onProfile, onOpenNegotiation }) {
   const merged = useCounterpartProfile(person);
   const env = useIndexEnv();
   const senderName = (env.me && env.me.name) || "";
   const { INVITE_URL, buildInviteMessage, inviteSubject, inviteEmailHref, inviteXHref } = window.IndexApi;
-  const [message, setMessage] = useState(() => buildInviteMessage({ name: person.name, signal, senderName }));
+  const [message, setMessage] = useState(() => buildInviteMessage({ name: person.name, intent, senderName }));
   // Re-draft for a different person, but never over what the user typed.
   const draftFor = useRef(person.id);
   useEffect(() => {
     if (draftFor.current === person.id) return;
     draftFor.current = person.id;
-    setMessage(buildInviteMessage({ name: person.name, signal, senderName }));
+    setMessage(buildInviteMessage({ name: person.name, intent, senderName }));
   }, [person.id]);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef(null);
@@ -351,7 +351,7 @@ function ChatWindow({ person, messages, loading = false, failed = false, onRetry
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
-  // Same composer as the signal thread: grows with what you type, stops at
+  // Same composer as the intent thread: grows with what you type, stops at
   // three lines and scrolls from there.
   const draftRef = useRef(null);
   const draftMax = Math.round(13 * 1.4 * 3) + 8;

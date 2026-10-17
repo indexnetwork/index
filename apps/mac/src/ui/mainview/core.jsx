@@ -5,7 +5,7 @@
 // readable, the radar steps aside for the third window instead.
 const THREE_COLUMN_MIN = 1020;
 
-// How long the radar describes discovery before accepting that a signal simply
+// How long the radar describes discovery before accepting that an intent simply
 // has not matched anyone yet. Long enough to cover a slow first pass, short
 // enough that an empty radar stops pretending to be busy.
 const DISCOVERY_GIVE_UP_MS = 120000;
@@ -23,11 +23,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // still filters; nothing starts filtered.
   const [tab, setTab] = useState("all");
   // Counterparty discovery is what the radar shows while it has nothing to show
-  // yet: the window between a signal going live and the first counterparty
-  // landing. Deliberately not tied to having just created the signal, because
-  // reopening a young signal lands in exactly the same empty state and "no one
+  // yet: the window between an intent going live and the first counterparty
+  // landing. Deliberately not tied to having just created the intent, because
+  // reopening a young intent lands in exactly the same empty state and "no one
   // here right now" is the wrong thing to say while the agents are still out.
-  // A signal can legitimately match nobody, so discovery is not allowed to spin
+  // An intent can legitimately match nobody, so discovery is not allowed to spin
   // forever: past this it gives up and the ordinary empty state takes over.
   const [discoveryExpired, setDiscoveryExpired] = useState(false);
   const [paused, setPaused] = useState(() => profile.status === "paused");
@@ -35,7 +35,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const modeTimerRef = useRef(null);
 
   // ---- live backend wiring ------------------------------------------------
-  // When signed in and this signal maps to a real intent, the radar, agent
+  // When signed in and this intent maps to a real intent, the radar, agent
   // chat, and H2H threads come from services/api; otherwise the simulation
   // below runs as the signed-out (browser preview) demo. The polling loop,
   // handlers, and inbox stream that consume these live below.
@@ -118,7 +118,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       flashMode("expanding", 5000);
       const lines = [
         "field widened · a new candidate just walked in.",
-        "ambient discovery · agent caught a new signal nearby.",
+        "ambient discovery · agent caught a new intent nearby.",
         "someone new just got an agent online · indexing.",
         "passing-by candidate just opted into the field.",
       ];
@@ -147,7 +147,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   }, (paused || live) ? null : 14000 / simRate);
 
   /* ----- live radar polling ----- */
-  // Intent switches keep MainView mounted; wipe the previous signal's radar
+  // Intent switches keep MainView mounted; wipe the previous intent's radar
   // before the next poll lands.
   const [radarError, setRadarError] = useState(false);
   useEffect(() => {
@@ -170,8 +170,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "opportunities");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
-        // The radar is intent-scoped, so stamping the signal onto each person
-        // lets a deep link know which signal already owns the one it names.
+        // The radar is intent-scoped, so stamping the intent onto each person
+        // lets a deep link know which intent already owns the one it names.
         ...p, intentId: forIntent, hidden: false,
         score: typeof p.score === "number" ? p.score : 0.7,
       }));
@@ -222,10 +222,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     [visiblePeople]
   );
   // Nothing on the radar and not yet given up: the agents are still out.
-  // A paused signal is not looking, so it gets its own line instead of the loader.
+  // A paused intent is not looking, so it gets its own line instead of the loader.
   const discovering = live && shownPeople.length === 0 && !discoveryExpired && !paused;
 
-  // The clock starts per signal, and a signal that lands someone stops it for
+  // The clock starts per intent, and an intent that lands someone stops it for
   // good: the give-up state only exists for the empty case.
   useEffect(() => {
     setDiscoveryExpired(false);
@@ -244,7 +244,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => clearInterval(t);
   }, [live, refreshRadar]);
 
-  /* ----- the signal inbox: transcript, pending questions, owner writes ----- */
+  /* ----- the intent inbox: transcript, pending questions, owner writes ----- */
   // GET /conversations/agent/messages?intentId= is the H2A inbox. Questions
   // from a responder are `agent.questions`; the owner's own words are just
   // messages. Same poll the web app runs.
@@ -301,7 +301,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => clearInterval(t);
   }, [live, client, refreshInbox]);
 
-  // The app's one /events connection already carries this signal's H2A: a new
+  // The app's one /events connection already carries this intent's H2A: a new
   // agent message arrives as `message` tagged with the intent, a new question
   // as `question.pending`. Read on either so the inbox is live; the poll above
   // stays as the backstop, since the native stream does not resume by event id.
@@ -532,8 +532,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => { if (sub && sub.close) sub.close(); };
   }, [live]);
 
-  // Pause holds the signal: the agent stops taking on new work, but the
-  // opportunities and questions it already surfaced stay put. On a live signal
+  // Pause holds the intent: the agent stops taking on new work, but the
+  // opportunities and questions it already surfaced stay put. On a live intent
   // that's a real status change, not just a local hold, revert if it doesn't
   // land so the button never claims something the backend didn't do. Also patch
   // the shared INTENTS snapshot so the hub shows paused/active without a reload.
@@ -549,10 +549,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   };
 
-  // Archive retires the signal and drops it off the hub. Only leave the screen
+  // Archive retires the intent and drops it off the hub. Only leave the screen
   // once the backend has taken it, otherwise you'd land back on a hub still
-  // showing the signal you thought you'd just archived.
-  const archiveSignal = () => {
+  // showing the intent you thought you'd just archived.
+  const archiveIntent = () => {
     if (!(live && client && intentId)) { onBack && onBack(); return Promise.resolve(); }
     return client.intents.archive(intentId).then(async () => {
       if (patchIntentStatus) patchIntentStatus(intentId, "archived");
@@ -603,21 +603,21 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     };
   }).sort((a, b) => b.unread - a.unread);
 
-  // Publish this signal's chat list up to the top menubar (which groups by
-  // signal). Keep openChat fresh via a ref; re-publish only when the list/unread
+  // Publish this intent's chat list up to the top menubar (which groups by
+  // intent). Keep openChat fresh via a ref; re-publish only when the list/unread
   // change (rosterKey). We don't clear on unmount, so the menu persists across
   // screens (works from the landing screen too).
   const openChatRef = useRef(openChat);
   openChatRef.current = openChat;
-  const signalTitle = profile.intent || "your signal";
+  const intentTitle = profile.intent || "your intent";
   const rosterKey = roster.map(r => `${r.id}:${r.unread}`).join("|");
   useEffect(() => {
-    if (registerChats) registerChats(signalTitle, roster, (id) => openChatRef.current(id));
-  }, [rosterKey, signalTitle]);
+    if (registerChats) registerChats(intentTitle, roster, (id) => openChatRef.current(id));
+  }, [rosterKey, intentTitle]);
 
-  // What the menubar or a deep link asked to open once this signal mounted.
+  // What the menubar or a deep link asked to open once this intent mounted.
   // A chat opens from the id alone, but a profile renders from the radar row,
-  // which arrives a moment after the signal does — so hold the request until
+  // which arrives a moment after the intent does — so hold the request until
   // that person lands rather than opening an empty panel.
   const focusedTabRef = useRef(null);
   useEffect(() => {
@@ -661,7 +661,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         gridTemplateRows: "minmax(0, 1fr)",
         gap: 8, minHeight:0,
       }}>
-        <MacWindow title="signal" onClose={onBack}>
+        <MacWindow title="intent" onClose={onBack}>
           <ConversationPane
             profile={profile}
             conversation={conversation}
@@ -674,7 +674,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             focusQuestion={focusQuestion}
             paused={paused}
             onTogglePause={togglePause}
-            onArchive={archiveSignal}
+            onArchive={archiveIntent}
           />
         </MacWindow>
 
@@ -735,7 +735,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           ) : invitePerson ? (
             <InviteWindow
               person={invitePerson}
-              signal={profile.intent}
+              intent={profile.intent}
               onClose={closeChats}
               onProfile={openProfile}
               onOpenNegotiation={openNegotiation}

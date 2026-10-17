@@ -7,13 +7,13 @@ import { intentDatabaseAdapter } from '../../adapters/database.adapter';
 /**
  * The host side of {@link IntentFollowUp}.
  *
- * Writing a signal no longer starts a search. Discovery is on demand: the
+ * Writing an intent no longer starts a search. Discovery is on demand: the
  * owner's agent searches with its own query through `POST /intents/:id/discover`
  * and picks who becomes an opportunity, so there is nothing to prepare when a
- * signal is saved, archived, or resumed.
+ * intent is saved, archived, or resumed.
  *
  * Rescoring stays: it measures the text that was just written and is
- * independent of who the signal reaches.
+ * independent of who the intent reaches.
  */
 export class IntentIndexing implements IntentFollowUp {
   /**
@@ -29,17 +29,17 @@ export class IntentIndexing implements IntentFollowUp {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. A saved signal is searched on demand, not on write. */
+  /** @returns Immediately. A saved intent is searched on demand, not on write. */
   onIntentSaved(): Promise<unknown> {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. There are no per-signal search artifacts to clean up. */
+  /** @returns Immediately. There are no per-intent search artifacts to clean up. */
   onIntentArchived(): Promise<unknown> {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. A resumed signal is searched on demand, not on resume. */
+  /** @returns Immediately. A resumed intent is searched on demand, not on resume. */
   onIntentResumed(): Promise<unknown> {
     return Promise.resolve();
   }

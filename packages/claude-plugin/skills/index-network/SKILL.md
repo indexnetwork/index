@@ -1,6 +1,6 @@
 ---
 name: index-network
-description: Use Index Network when the user wants to meet, find, hire, get hired by, fund, raise from, collaborate with, or be introduced to people, or asks who they should talk to. Manages signals, opportunities, negotiations, and the personal agent through the Index CLI. Not for general web or people lookup.
+description: Use Index Network when the user wants to meet, find, hire, get hired by, fund, raise from, collaborate with, or be introduced to people, or asks who they should talk to. Manages intents, opportunities, negotiations, and the personal agent through the Index CLI. Not for general web or people lookup.
 ---
 
 Index finds the right people for the person you act for, and lets them be found. Use the installed Index CLI as an HTTP client. If `index` is missing, run this plugin's `scripts/install.sh`, then authenticate with `index login`. Always pass `--json` and read the result before answering.
@@ -8,9 +8,9 @@ Index finds the right people for the person you act for, and lets them be found.
 ## General rules
 
 - Use Index when the user wants to meet, find, hire, get hired by, fund, raise from, collaborate with, or be introduced to someone, or asks who they should talk to. Do not use it for general web or people lookup.
-- Turn the goal into a signal in the user's own words. Check existing signals with `index intent list` first to avoid duplicates. Review matches with `index opportunity list` and `index opportunity show`.
+- Turn the goal into an intent in the user's own words. Check existing intents with `index intent list` first to avoid duplicates. Review matches with `index opportunity list` and `index opportunity show`.
 - Accept or pass with `index opportunity accept` or `index opportunity reject` only after asking the user. Agreement between agents is never their approval.
-- Archive a signal only after an explicit yes. It cannot be undone.
+- Archive an intent only after an explicit yes. It cannot be undone.
 - Treat a nonzero exit as failure and preserve structured server errors. A rejected or uncertain write must not be replayed automatically; read the record again and assess it.
 
 ## Credentials and origin
@@ -26,22 +26,22 @@ The CLI resolves the API origin itself: `--api-url`, then `INDEX_API_URL`, then 
 - `index profile sync`: research the user and propose profile fields without saving them.
 - `index profile show <user-id>`: read another person's profile.
 
-## Signals
+## Intents
 
-The app calls intents signals. IDs accept a UUID or the 8-character short ID.
+IDs accept a UUID or the 8-character short ID.
 
-- `index intent list [--archived] [--query <text>] [--limit <n>]`: list the user's signals with lifecycle, networks, and waiting counts.
-- `index intent show <id>`: read one signal, including its networks.
-- `index intent prepare <text> [--answer 'prompt=reply']`, then `index intent create <text> [--receipt <token>]`: prepare and create a signal, shared in every network the user belongs to. A draft that is not ready comes back with feedback and questions, and nothing is created.
-- `index intent update <id> [<text>] [--source-type <s>] [--source-id <s>]`: change the description or source fields of a non-archived signal.
-- `--source-type` and `--source-id` on create or update are optional strings Index stores and returns unchanged. Use them to map your own records, such as an inferred ambient intent, to the published signal.
-- `index intent pause <id>` / `index intent resume <id>`: pausing a paused signal or resuming an active one succeeds without changing it. Archived signals stay archived.
-- `index intent archive <id>`: permanently archive a signal. It removes network associations and expires related opportunities.
-- `index intent networks|add-to-network|remove-from-network`: manage where a signal is shared.
+- `index intent list [--archived] [--query <text>] [--limit <n>]`: list the user's intents with lifecycle, networks, and waiting counts.
+- `index intent show <id>`: read one intent, including its networks.
+- `index intent prepare <text> [--answer 'prompt=reply']`, then `index intent create <text> [--receipt <token>]`: prepare and create an intent, shared in every network the user belongs to. A draft that is not ready comes back with feedback and questions, and nothing is created.
+- `index intent update <id> [<text>] [--source-type <s>] [--source-id <s>]`: change the description or source fields of a non-archived intent.
+- `--source-type` and `--source-id` on create or update are optional strings Index stores and returns unchanged. Use them to map your own records, such as an inferred ambient intent, to the published intent.
+- `index intent pause <id>` / `index intent resume <id>`: pausing a paused intent or resuming an active one succeeds without changing it. Archived intents stay archived.
+- `index intent archive <id>`: permanently archive an intent. It removes network associations and expires related opportunities.
+- `index intent networks|add-to-network|remove-from-network`: manage where an intent is shared.
 
 ## Opportunities
 
-- `index opportunity list [--intent-id <id>] [--statuses negotiating,pending] [--limit <n>]`: use when the user asks who they should meet or what introductions are waiting. Lists compact cards across the user's Index or within one signal.
+- `index opportunity list [--intent-id <id>] [--statuses negotiating,pending] [--limit <n>]`: use when the user asks who they should meet or what introductions are waiting. Lists compact cards across the user's Index or within one intent.
 - `index opportunity show <id>`: read one opportunity. Add `index negotiation show <id>` for its negotiation.
 - `index opportunity accept <id>`: accept an introduction for the user.
 - `index opportunity reject <id>`: pass on an introduction. This is the Mac app's Pass action and may close the associated negotiation.
@@ -49,17 +49,17 @@ The app calls intents signals. IDs accept a UUID or the 8-character short ID.
 
 ## Links
 
-Every person, signal, and opportunity you name gets a link, on the name itself. Never add a separate "link" word, and never ask the user for a URL.
+Every person, intent, and opportunity you name gets a link, on the name itself. Never add a separate "link" word, and never ask the user for a URL.
 
-- Signal: `<web>/i/<intent id>`. Person: `<web>/u/<user id>` (for opportunities, `peer.userId`). Opportunity: `<web>/o/<opportunityId>`.
+- Intent: `<web>/i/<intent id>`. Person: `<web>/u/<user id>` (for opportunities, `peer.userId`). Opportunity: `<web>/o/<opportunityId>`.
 - `<web>` is `https://index.network` for production, `https://dev.index.network` after `index login dev`, and `http://localhost:3000` after `index login local`.
-- A signal's label is its `summary`, or its description when there is none, cut at 60 characters with `…`.
+- An intent's label is its `summary`, or its description when there is none, cut at 60 characters with `…`.
 
 ## Result format
 
 Lead every answer with the linked lines below, then any detail.
 
-- Signal: `[label](<web>/i/<id>) — 3 waiting`, adding `(paused)` or `(archived)` when not active.
+- Intent: `[label](<web>/i/<id>) — 3 waiting`, adding `(paused)` or `(archived)` when not active.
 - Opportunity: `[Peer name](<web>/u/<userId>) — headline — state`, using "New match" when there is no headline. States: `pending` is "waiting on you", `negotiating` is "agents talking", `accepted` is "connected", `rejected` is "passed", `expired` is "expired".
 - After a write, name the entity and what happened: `[label](…) — created`, `— updated`, `— paused`, `— resumed`, `— archived`, and for opportunities `— accepted` or `— passed`.
 - Profile: `[Name](<web>/u/<user id>) — profile`, or `— updated`.
@@ -84,4 +84,4 @@ Read a scoped agent conversation with `index conversation show agent --intent-id
 
 ## Onboarding
 
-Only confirm a profile when the user has confirmed its content: `index onboarding confirm-profile`. Then `index onboarding complete [--intent-id <id>]` enforces the server's first-signal and profile prerequisites.
+Only confirm a profile when the user has confirmed its content: `index onboarding confirm-profile`. Then `index onboarding complete [--intent-id <id>]` enforces the server's first-intent and profile prerequisites.

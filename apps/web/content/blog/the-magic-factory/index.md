@@ -30,7 +30,7 @@ First, we'd need to understand what kills it. Social platforms today assume peop
 
 **Opportunities depend on trust.** Technology can’t replace the trust that already resides within familiar contexts - but it can augment it. This is where agents come in, as actors that operate within existing networks of trust. You're not outsourcing judgment to a machine, but rather delegating the exhausting work of constant pattern-matching.
 
-**Opportunity requires privacy before visibility.** They need space to take shape. A place to putter around before parading itself on external channels or social media platforms. So we propose to instead start with intents: a private signal on what you're actually looking for, expressed in natural language. Not a post for the algorithm, just the raw need or the first insight.
+**Opportunity requires privacy before visibility.** They need space to take shape. A place to putter around before parading itself on external channels or social media platforms. So we propose to instead start with intents: a private intent on what you're actually looking for, expressed in natural language. Not a post for the algorithm, just the raw need or the first insight.
 
 **Opportunity timing is rarely written down.** You can’t always see “the right time” but you can feel it. It’s sensed in conversations: through tone, urgency, and what people start or stop saying. Maybe they just crossed a threshold (funding, conviction, frustration), or they’re tinkering with a prototype but haven’t registered the business. In any case, public channels aren’t usually where you discover someone at those early moments.
 

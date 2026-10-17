@@ -104,7 +104,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         ) : peopleForTab.length === 0 ? (
           <EmptyState
             message={
-              paused && shownPeople.length === 0 ? "this signal is paused, so your agent isn't looking right now."
+              paused && shownPeople.length === 0 ? "this intent is paused, so your agent isn't looking right now."
               : tab === "awaiting you" ? "nothing waiting on you right now."
               : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
               : tab === "accepted"    ? "no one accepted yet."
@@ -354,7 +354,7 @@ function seedChat(person, priorAnswer) {
     msgs.push({ who: "them",
       text: ov
         ? `hi, good to meet you. looks like we've both got '${ov}' in common, so this might be easy. what are you hoping to get out of this?`
-        : `hi, good to meet you. looks like our signals line up. what are you hoping to get out of this?` });
+        : `hi, good to meet you. looks like our intents line up. what are you hoping to get out of this?` });
   }
   // Seeded threads read as a conversation that just happened: the oldest line
   // a couple of minutes back, the newest now.
@@ -376,7 +376,7 @@ function chatReplyFor(text) {
 function incomingPing(person) {
   const lines = [
     "quick follow-up: i freed up some time this week if you want it.",
-    "i just re-read your signal. still keen.",
+    "i just re-read your intent. still keen.",
     "small nudge: i'd love to compare notes when you're free.",
     "i'm around tomorrow afternoon if that helps.",
     "wanted to check: would you want a warm intro first?",

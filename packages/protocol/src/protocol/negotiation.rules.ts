@@ -24,7 +24,7 @@ export interface NegotiationState {
   eligible: boolean;
   turns: { seatUserId: string; action: NegotiationAction; message: string }[];
 }
-export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
+export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive'
   | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
   | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
@@ -54,7 +54,7 @@ export function decideNegotiationOpening(pair: NegotiationOpening): NegotiationO
 export function negotiationBlockedReason(state: NegotiationState, userId: string): NegotiationRejection | null {
   if (userId !== state.initiatorUserId && userId !== state.responderUserId) return 'not_a_seat';
   if (state.settled) return 'already_settled';
-  if (!state.eligible) return 'signal_inactive';
+  if (!state.eligible) return 'intent_inactive';
   if (state.turns.length >= NEGOTIATION_MAX_TURNS) return 'turn_limit';
   if (state.awaitingUserId !== userId) return 'not_your_turn';
   return null;

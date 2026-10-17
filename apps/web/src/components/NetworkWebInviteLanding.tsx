@@ -41,7 +41,7 @@ type JoinOutcome = "pending" | "declined";
 /**
  * Web invite landing (`/l/:code`): preview the network, sign in inline, accept
  * the invitation automatically, then go straight on: a new account to
- * onboarding (which ends on its first signal), an existing one to the network.
+ * onboarding (which ends on its first intent), an existing one to the network.
  */
 export default function NetworkWebInviteLanding() {
   const { code } = useParams();

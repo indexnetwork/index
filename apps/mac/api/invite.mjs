@@ -3,7 +3,7 @@
  *
  * Accepting a person who has no account cannot open a chat, because there is
  * nobody on the other end to read it. What the app offers instead is a message
- * the user sends themselves, through X or their own mail, with the signal that
+ * the user sends themselves, through X or their own mail, with the intent that
  * matched them so the invite says why.
  *
  * Each way to send only shows when there is somewhere to send it: X when they
@@ -23,12 +23,12 @@ function firstName(name) {
 
 /**
  * The pre-written invite, in the sender's own voice.
- * @param {{name?: string, signal?: string, senderName?: string}} input
+ * @param {{name?: string, intent?: string, senderName?: string}} input
  */
-export function buildInviteMessage({ name, signal, senderName } = {}) {
+export function buildInviteMessage({ name, intent, senderName } = {}) {
   const them = firstName(name);
   const me = firstName(senderName);
-  const what = String(signal || '').trim().replace(/\s+/g, ' ');
+  const what = String(intent || '').trim().replace(/\s+/g, ' ');
   const lines = [
     them ? `Hi ${them},` : 'Hi,',
     '',

@@ -38,7 +38,7 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)
 - `enrichment.controller.ts`: `POST /enrichment/enrich` (`client.enrichment.trigger`; runs the full public-research enrichment inline and returns the resolved identity + discovered socials)
 
-Signal creation is `POST /intents` with `{description}`. JavaScript never receives credentials. User events use the bounded native SSE operation on `GET /events`.
+Intent creation is `POST /intents` with `{description}`. JavaScript never receives credentials. User events use the bounded native SSE operation on `GET /events`.
 
 ## Data loading
 

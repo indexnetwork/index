@@ -6,11 +6,11 @@ import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
-import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
+import { intentService, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
-import { awaitsFirstSignal, onboardingService } from "@/services/onboarding";
+import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -28,7 +28,7 @@ type Stage = "opening" | "recovery" | "summary" | "retry";
 type Turn = { id: string; prompt: string; answer: string };
 
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
-export default function NewSignalPage() {
+export default function NewIntentPage() {
   const navigate = useNavigate();
   const compact = useCompact();
   useVisualViewport();
@@ -46,7 +46,7 @@ export default function NewSignalPage() {
   const runPrepare = async (text: string, answers: PrepareAnswer[] = []) => {
     setThinking(true);
     try {
-      const result = await signalService.prepare(text, answers);
+      const result = await intentService.prepare(text, answers);
       setPayload(result.payload);
       if (result.status === "ready") {
         setPreparationReceipt(result.preparationReceipt);
@@ -78,9 +78,9 @@ export default function NewSignalPage() {
     if (creating || !description.trim() || description.length > 65_536 || !receipt) return;
     setCreating(true);
     try {
-      const created = await signalService.create(description, receipt);
-      // The first signal after the profile review finishes onboarding, as on the Mac.
-      if (awaitsFirstSignal(user)) {
+      const created = await intentService.create(description, receipt);
+      // The first intent after the profile review finishes onboarding, as on the Mac.
+      if (awaitsFirstIntent(user)) {
         void onboardingService.complete(created.intentId).then(() => refetchUser()).catch(() => {});
       }
       navigate(`/i/${created.intentId}`);
@@ -136,8 +136,8 @@ export default function NewSignalPage() {
                     </div>
                   ) : stage === "summary" ? (
                     <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine>Here&apos;s your signal.</AgentLine>
-                      <SignalSummary
+                      <AgentLine>Here&apos;s your intent.</AgentLine>
+                      <IntentSummary
                         description={payload}
                         note={preparationReceipt ? "" : feedback}
                         canCreate={Boolean(preparationReceipt)}
@@ -238,7 +238,7 @@ function PastTurn({ prompt, answer }: {
   );
 }
 
-function SignalSummary({ description, note, canCreate, onChange, onCreate, onRecheck }: {
+function IntentSummary({ description, note, canCreate, onChange, onCreate, onRecheck }: {
   description: string;
   note: string;
   canCreate: boolean;
@@ -250,7 +250,7 @@ function SignalSummary({ description, note, canCreate, onChange, onCreate, onRec
     <div style={{ marginLeft: 36, maxWidth: 560, display: "grid", gap: 14 }}>
       <div style={{ borderLeft: "2px solid #000", paddingLeft: 14, display: "grid", gap: 8 }}>
         <textarea
-          aria-label="Signal description"
+          aria-label="Intent description"
           value={description}
           onChange={(event) => onChange(event.target.value)}
           maxLength={65_536}
@@ -261,9 +261,9 @@ function SignalSummary({ description, note, canCreate, onChange, onCreate, onRec
       </div>
       <div>
         {canCreate ? (
-          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this signal</Btn>
+          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this intent</Btn>
         ) : (
-          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check signal</Btn>
+          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check intent</Btn>
         )}
       </div>
     </div>
@@ -342,9 +342,9 @@ function Calibrating() {
   );
 }
 
-export const Component = NewSignalPage;
+export const Component = NewIntentPage;
 
-/** A server reason worth showing ("Signal limit reached."), or "try again." for transport noise. */
+/** A server reason worth showing ("Intent limit reached."), or "try again." for transport noise. */
 function createFailureReason(error: unknown): string {
   const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
   if (!raw || /^HTTP \d/.test(raw)) return "try again.";

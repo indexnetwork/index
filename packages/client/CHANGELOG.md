@@ -4,7 +4,7 @@
 
 ### Added
 - `createOpportunity({ networkId, intents, context })` opens an opportunity
-  between two signals the caller owns neither of.
+  between two intents the caller owns neither of.
 - `Negotiation.introducer` (`userId`, `name`, `context`) names the third party
   who opened the pair and carries their case for it.
 - `Me.emailVerified` says whether the owner verified their email.

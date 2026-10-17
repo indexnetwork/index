@@ -25,7 +25,7 @@ export class IntentCreateRejectedError extends Error {
 
 /** Model failures during preparation are retryable, never a completed round. */
 export class IntentPreparationFailedError extends Error {
-  constructor() { super('Could not prepare this signal. Your answers are kept; try again.'); }
+  constructor() { super('Could not prepare this intent. Your answers are kept; try again.'); }
 }
 
 /** Stable typed failure for a create naming a network the caller is not a member of. */
@@ -50,7 +50,7 @@ const DISCOVER_LIMIT = 10;
 export const DISCOVER_LIMIT_MAX = 30;
 
 /**
- * How deep retrieval reads to fill one search. A signal shared in several of
+ * How deep retrieval reads to fill one search. An intent shared in several of
  * the searched communities takes one row per community, so reading exactly the
  * caller's limit would return fewer than it asked for.
  */
@@ -68,7 +68,7 @@ const AGENT_PICK_REASONING =
   'Created by the owner\'s personal agent after an on-demand search, so it carries no compatibility score.';
 
 /** Provenance for an opportunity a third party opened. Their own words stay out of it. */
-const INTRODUCER_REASONING = 'Opened by a third party who owns neither signal.';
+const INTRODUCER_REASONING = 'Opened by a third party who owns neither intent.';
 
 /** One counterparty a search surfaced, as an agent judging it needs to see it. */
 export interface DiscoveredCounterparty {
@@ -82,7 +82,7 @@ export interface DiscoveredCounterparty {
   score: number;
 }
 
-/** The outcome of searching an owned signal's communities. */
+/** The outcome of searching an owned intent's communities. */
 export type IntentDiscoverOutcome =
   | { kind: 'ok'; counterparties: DiscoveredCounterparty[] }
   | { kind: 'not_found' }
@@ -100,7 +100,7 @@ export type CreateOpportunitiesOutcome =
   | { kind: 'not_found' }
   | { kind: 'inactive' };
 
-/** The outcome of a third party opening an opportunity between two signals. */
+/** The outcome of a third party opening an opportunity between two intents. */
 export type OpenOpportunityOutcome =
   | { kind: 'ok'; opportunityId: string }
   | { kind: 'not_member' }
@@ -113,14 +113,14 @@ export interface IntentSource {
   sourceId?: string | null;
 }
 
-/** The outcome of rewriting an owned signal's description. */
+/** The outcome of rewriting an owned intent's description. */
 export type IntentUpdateOutcome =
   | { kind: 'updated' }
   | { kind: 'not_found' }
   | { kind: 'archived' }
   | { kind: 'rejected'; detail: string };
 
-/** The outcome of linking or unlinking one signal and one community. */
+/** The outcome of linking or unlinking one intent and one community. */
 export type IntentNetworkLinkOutcome =
   | { kind: 'ok'; message: string }
   | { kind: 'refused'; detail: string };
@@ -199,10 +199,10 @@ export class IntentService {
    * and a network the caller is not a member of is rejected outright rather
    * than silently dropped. Naming none shares it in every network the owner
    * currently belongs to: discovery only admits an intent in the networks it
-   * is assigned to, so an unlinked signal would reach nobody.
+   * is assigned to, so an unlinked intent would reach nobody.
    *
    * @param userId - The authenticated owner.
-   * @param description - The signal text as the owner wrote it.
+   * @param description - The intent text as the owner wrote it.
    * @param networkIds - Networks to share it in; empty means all memberships.
    * @param preparationReceipt - Server authorization from guided preparation, valid for final revisions.
    * @param source - Optional client-owned source fields, stored unchanged.
@@ -228,7 +228,7 @@ export class IntentService {
     if (preparationReceipt) {
       preparation = await readPreparationReceipt(userId, description, preparationReceipt);
     } else if (source.sourceType === AGENTVILLAGE_SOURCE_TYPE) {
-      // Agentvillage signals are the resident's own words; admission is skipped and no measurements are taken.
+      // Agentvillage intents are the resident's own words; admission is skipped and no measurements are taken.
       preparation = { metadata: null };
     } else {
       const result = await this.runPrepare({ payload: description });
@@ -249,7 +249,7 @@ export class IntentService {
     const created = result.executionResults?.find((execution) => execution.actionType === 'create' && execution.success);
     if (!created?.intentId) {
       const failure = result.validationFailures?.[0];
-      throw new IntentCreateRejectedError(failure?.message ?? 'The signal could not be created from this description.');
+      throw new IntentCreateRejectedError(failure?.message ?? 'The intent could not be created from this description.');
     }
 
     const linked = created.linkedNetworkIds ?? [];
@@ -265,17 +265,17 @@ export class IntentService {
   }
 
   /**
-   * Rewrite an owned signal's description, its source fields, or both.
+   * Rewrite an owned intent's description, its source fields, or both.
    *
    * A description rewrite goes through the graph, which re-infers and
    * re-verifies the text, persists it with any source fields, and re-evaluates
-   * the signal's community assignments. A source-only update writes the columns
+   * the intent's community assignments. A source-only update writes the columns
    * without re-verifying. Ownership is checked here because the graph's update
    * path, like create, does not filter by owner.
    *
    * @param intentId - Full intent UUID.
    * @param userId - Authenticated owner.
-   * @param description - The rewritten signal text, or undefined to keep it.
+   * @param description - The rewritten intent text, or undefined to keep it.
    * @param source - Optional client-owned source fields, stored unchanged.
    * @returns Whether the rewrite landed, or why it did not.
    */
@@ -303,7 +303,7 @@ export class IntentService {
       return {
         kind: 'rejected',
         detail: result.validationFailures?.[0]?.message
-          ?? 'The signal could not be updated from this description.',
+          ?? 'The intent could not be updated from this description.',
       };
     }
 
@@ -311,11 +311,11 @@ export class IntentService {
   }
 
   /**
-   * List the communities an owned signal is shared in.
+   * List the communities an owned intent is shared in.
    *
    * @param intentId - Full intent UUID.
    * @param userId - Authenticated owner.
-   * @returns The linked network ids, or null when the signal is missing or foreign.
+   * @returns The linked network ids, or null when the intent is missing or foreign.
    */
   async listNetworks(intentId: string, userId: string): Promise<string[] | null> {
     const result = await this.intentNetworkGraph.invoke({
@@ -332,7 +332,7 @@ export class IntentService {
   }
 
   /**
-   * Share an owned signal in one community. The assignment graph enforces
+   * Share an owned intent in one community. The assignment graph enforces
    * ownership and current membership, and is idempotent.
    *
    * @param intentId - Full intent UUID.
@@ -346,7 +346,7 @@ export class IntentService {
   }
 
   /**
-   * Withdraw an owned signal from one community, leaving the signal itself
+   * Withdraw an owned intent from one community, leaving the intent itself
    * intact. Idempotent when the link is already gone.
    *
    * @param intentId - Full intent UUID.
@@ -437,10 +437,10 @@ export class IntentService {
   }
 
   /**
-   * Search the communities an owned signal is shared in for counterparties.
+   * Search the communities an owned intent is shared in for counterparties.
    *
    * The query is the caller's, embedded as written and matched against stored
-   * signal vectors. Nothing is judged and nothing is written: the caller reads
+   * intent vectors. Nothing is judged and nothing is written: the caller reads
    * the ranked counterparties and decides which are worth an opportunity.
    *
    * Retrieval has no similarity floor, so what comes back is the strongest N
@@ -450,8 +450,8 @@ export class IntentService {
    *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
-   * @param input - The query in the caller's own words, how many counterparties to return, and optionally only signals that arrived after `since`.
-   * @returns Ranked counterparties, or why the signal cannot be searched.
+   * @param input - The query in the caller's own words, how many counterparties to return, and optionally only intents that arrived after `since`.
+   * @returns Ranked counterparties, or why the intent cannot be searched.
    */
   async discover(
     intentId: string,
@@ -478,7 +478,7 @@ export class IntentService {
       ...(input.since ? { since: input.since } : {}),
     });
 
-    // One signal shared in several of the searched communities comes back once
+    // One intent shared in several of the searched communities comes back once
     // per community; the strongest hit is the one worth reporting.
     const best = new Map<string, { networkId: string; score: number }>();
     for (const candidate of candidates) {
@@ -515,13 +515,13 @@ export class IntentService {
    * Create one opportunity per counterparty the caller picked.
    *
    * Opening is idempotent on the pair: a counterparty that already shares an
-   * opportunity with this signal reports that one rather than a second.
+   * opportunity with this intent reports that one rather than a second.
    * Counterparties that are no longer seated in the named community are
    * skipped, because a membership can end between the search and this call.
    *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
-   * @param picks - Counterparty signals and the community each pair sits in.
+   * @param picks - Counterparty intents and the community each pair sits in.
    * @returns The opportunities that now exist, or why none could be created.
    */
   async createOpportunities(
@@ -577,13 +577,13 @@ export class IntentService {
   }
 
   /**
-   * Open one opportunity between two signals the caller owns neither of. The
-   * caller holds no seat; the owner of the first signal takes the first turn.
+   * Open one opportunity between two intents the caller owns neither of. The
+   * caller holds no seat; the owner of the first intent takes the first turn.
    * Idempotent on the pair.
    *
    * @param userId - The introducer.
-   * @param networkId - A network the introducer belongs to, where both signals are shared.
-   * @param intentIds - The two signals, the first one's owner speaking first.
+   * @param networkId - A network the introducer belongs to, where both intents are shared.
+   * @param intentIds - The two intents, the first one's owner speaking first.
    * @param context - Why they should meet, in the introducer's words.
    * @returns The opportunity, or why it could not be opened.
    */
@@ -686,7 +686,7 @@ export class IntentService {
     return { success: true };
   }
 
-  /** Run one signal↔community mutation through the assignment graph. */
+  /** Run one intent↔community mutation through the assignment graph. */
   private async runLink(
     intentId: string,
     networkId: string,
@@ -702,7 +702,7 @@ export class IntentService {
 
     const mutation = result.mutationResult;
     if (!mutation?.success) {
-      return { kind: 'refused', detail: mutation?.error ?? 'The signal could not be linked to this network.' };
+      return { kind: 'refused', detail: mutation?.error ?? 'The intent could not be linked to this network.' };
     }
     return { kind: 'ok', message: mutation.message ?? 'Done.' };
   }

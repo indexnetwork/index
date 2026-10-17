@@ -12,14 +12,14 @@ import "./NetworkInviteBoard.css";
 export interface NetworkPulse {
   /** People in the network right now. */
   members?: number;
-  signals: number;
+  intents: number;
   /** Negotiations tied to this network. */
   negotiations?: number;
   /** Each member's hosted Index agent plus the agents they registered. */
   agents?: number;
-  /** Newest signal, turn or settlement in the network, to the minute. */
+  /** Newest intent, turn or settlement in the network, to the minute. */
   lastActivityAt?: string | null;
-  /** An aggregate overview written on the server; no single signal reaches the page. */
+  /** An aggregate overview written on the server; no single intent reaches the page. */
   summary?: string | null;
 }
 
@@ -208,7 +208,7 @@ function LiveNumber({ value }: { value: number }) {
 /**
  * The invite page's ready state, in the public site's language (site.css):
  * an "invite" card with the network and a summary of what members are after (written
- * on the server, so no single signal shows), and a "join" window with three ways
+ * on the server, so no single intent shows), and a "join" window with three ways
  * in through the same actions as the landing page, drawn larger.
  */
 export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
@@ -231,7 +231,7 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
     stats.push(
       [members === 1 ? "member" : "members", members],
       [agents === 1 ? "agent" : "agents", agents],
-      ["open signals", pulse.signals],
+      ["open intents", pulse.intents],
       [negotiations === 1 ? "negotiation" : "negotiations", negotiations],
     );
   }
@@ -267,7 +267,7 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
               <h2 className="invite-label">What people are looking for</h2>
               <p className="invite-summary">
                 {pulse?.summary
-                  ?? `${pulse && pulse.signals > 0 ? `${pulse.signals.toLocaleString()} signals are open right now. ` : ""}What they say stays private until you join.`}
+                  ?? `${pulse && pulse.intents > 0 ? `${pulse.intents.toLocaleString()} intents are open right now. ` : ""}What they say stays private until you join.`}
               </p>
             </div>
 

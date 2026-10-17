@@ -12,7 +12,7 @@ Normative terms such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are used
 
 Index Network is a private, intent-driven discovery protocol for agent-mediated opportunity discovery.
 
-Participants express **signals**: structured statements of what they seek, offer, are open to, or can credibly support. Agents interpret those signals against participant **context**, constrain discovery to bounded **communities**, evaluate candidate overlaps, negotiate fit when appropriate, and surface **opportunities** only through consent-gated state transitions.
+Participants express **intents**: structured statements of what they seek, offer, are open to, or can credibly support. Agents interpret those intents against participant **context**, constrain discovery to bounded **communities**, evaluate candidate overlaps, negotiate fit when appropriate, and surface **opportunities** only through consent-gated state transitions.
 
 The protocol is designed for high-signal human and agent coordination. It is not a public people database, keyword search engine, advertising channel, or automated introduction machine. Its purpose is to discover meaningful overlap while preserving context, scope, and human approval.
 
@@ -22,10 +22,10 @@ The protocol is designed for high-signal human and agent coordination. It is not
 flowchart LR
     Participant[Participant] --> Agent[Authorized agent]
     Participant --> Context[Context]
-    Participant --> Signal[Signal]
+    Participant --> Intent[Intent]
 
     Context --> Scope[Effective scope]
-    Signal --> Scope
+    Intent --> Scope
     Community[Community membership and norms] --> Scope
     AgentScope[Agent permissions] --> Scope
 
@@ -37,7 +37,7 @@ flowchart LR
     Negotiation -->|fit established| Opportunity
     Negotiation -->|human judgment required| Questions[Structured questions]
     Questions --> Participant
-    Participant --> Signal
+    Participant --> Intent
 
     Opportunity --> Consent{Participant consent?}
     Consent -->|yes| Connection[Connection]
@@ -48,8 +48,8 @@ The graph is intentionally consent-centered: agents can construct context, disco
 
 ## Design goals
 
-1. **Intent as the primary primitive** — discovery begins from a participant's current signal, not from static identity alone.
-2. **Bounded visibility** — communities define the scope in which signals and context may be evaluated.
+1. **Intent as the primary primitive** — discovery begins from a participant's current intent, not from static identity alone.
+2. **Bounded visibility** — communities define the scope in which intents and context may be evaluated.
 3. **Semantic discovery** — matching is based on role fit, constraints, complementarity, and contextual relevance rather than exact keyword overlap.
 4. **Explainable surfacing** — every surfaced opportunity SHOULD include a legible reason: why these participants, why now, and what the next action might be.
 5. **Consent at relationship boundaries** — agents MAY discover and negotiate, but MUST NOT create or accept a relationship without explicit participant approval.
@@ -72,7 +72,7 @@ The protocol does not attempt to be:
 |---|---|
 | **Participant** | A human principal represented in the network. A participant may act directly or through one or more agents. |
 | **Agent** | A software actor authorized to act for a participant or community within a declared scope. |
-| **Signal** | A participant's actionable expression of intent: what they seek, offer, need, are building, are exploring, or can support. |
+| **Intent** | A participant's actionable expression of intent: what they seek, offer, need, are building, are exploring, or can support. |
 | **Context** | A synthesized representation of a participant's identity, history, constraints, and community-specific relevance. |
 | **Community** | A bounded discovery scope with membership, purpose, norms, and relevance criteria. |
 | **Membership** | The relationship between a participant and a community. Agents receive community authority through separate scoped permissions. |
@@ -81,22 +81,22 @@ The protocol does not attempt to be:
 | **Negotiation** | A bounded agent-to-agent exchange used to test fit, constraints, timing, or consent before surfacing or advancing an opportunity. |
 | **Connection** | A participant-approved communication channel or introduction resulting from an accepted opportunity. |
 
-Some implementation APIs may expose historical names such as `intent`, `index`, `network`, `latent`, `pending`, `accepted`, `rejected`, `negotiating`, or `stalled`. Public-facing agents SHOULD translate stable participant states into protocol terms such as **signal**, **community**, **draft**, **sent**, **connected**, and **declined**, while treating negotiating or stalled states as internal process state unless the participant needs to act on them.
+Some implementation APIs may expose historical names such as `intent`, `index`, `network`, `latent`, `pending`, `accepted`, `rejected`, `negotiating`, or `stalled`. Public-facing agents SHOULD translate stable participant states into protocol terms such as **intent**, **community**, **draft**, **sent**, **connected**, and **declined**, while treating negotiating or stalled states as internal process state unless the participant needs to act on them.
 
 ## Object relationship model
 
 ```mermaid
 erDiagram
     PARTICIPANT ||--o{ AGENT : authorizes
-    PARTICIPANT ||--o{ SIGNAL : expresses
+    PARTICIPANT ||--o{ INTENT : expresses
     PARTICIPANT ||--o{ CONTEXT : represented_by
     PARTICIPANT ||--o{ MEMBERSHIP : holds
     AGENT ||--o{ AGENT_PERMISSION : receives
     COMMUNITY ||--o{ MEMBERSHIP : contains
     COMMUNITY ||--o{ AGENT_PERMISSION : scopes
-    COMMUNITY ||--o{ SIGNAL : scopes
+    COMMUNITY ||--o{ INTENT : scopes
     COMMUNITY ||--o{ CONTEXT : lenses
-    SIGNAL ||--o{ CANDIDATE : generates
+    INTENT ||--o{ CANDIDATE : generates
     CONTEXT ||--o{ CANDIDATE : generates
     CANDIDATE ||--o| OPPORTUNITY : promotes_to
     OPPORTUNITY ||--o{ NEGOTIATION : may_require
@@ -114,7 +114,7 @@ erDiagram
       string purpose
       string membership_policy
     }
-    SIGNAL {
+    INTENT {
       string constraints
       string lifecycle_state
     }
@@ -138,7 +138,7 @@ The protocol distinguishes human principals from software actors.
 
 ### Scope
 
-All discovery is scope-bound. A protocol operation MUST resolve an effective scope before cross-participant discovery, candidate generation, or opportunity evaluation. Implementations MAY read the requesting participant's own signals or context while preparing that operation.
+All discovery is scope-bound. A protocol operation MUST resolve an effective scope before cross-participant discovery, candidate generation, or opportunity evaluation. Implementations MAY read the requesting participant's own intents or context while preparing that operation.
 
 A scope may include:
 
@@ -181,27 +181,27 @@ Internal records MAY contain IDs, embeddings, scores, and graph state. Participa
 
 ## Core objects
 
-### Signal
+### Intent
 
-A signal is an actionable statement of direction. It may represent a need, offer, collaboration interest, hiring intent, funding goal, research direction, introduction request, or other future-oriented constraint.
+An intent is an actionable statement of direction. It may represent a need, offer, collaboration interest, hiring intent, funding goal, research direction, introduction request, or other future-oriented constraint.
 
-A signal SHOULD contain enough specificity to support discovery. Underspecified signals SHOULD enter clarification before they are persisted or used for broad discovery.
+An intent SHOULD contain enough specificity to support discovery. Underspecified intents SHOULD enter clarification before they are persisted or used for broad discovery.
 
-Signals have the following conceptual lifecycle:
+Intents have the following conceptual lifecycle:
 
 | State | Meaning |
 |---|---|
 | **Proposed** | A participant or agent supplied raw intent-like input. |
 | **Clarifying** | The protocol requires additional constraints before discovery. |
-| **Active** | The signal is valid, scoped, and eligible for discovery. |
+| **Active** | The intent is valid, scoped, and eligible for discovery. |
 | **Updated** | The participant refined or replaced constraints. |
-| **Archived / expired** | The signal should no longer produce new opportunities. |
+| **Archived / expired** | The intent should no longer produce new opportunities. |
 
-A signal MUST NOT be treated as active if it is outside the participant's authority, obviously insincere, unsafe to act on, or too vague to evaluate.
+An intent MUST NOT be treated as active if it is outside the participant's authority, obviously insincere, unsafe to act on, or too vague to evaluate.
 
 ### Context
 
-Context describes a participant: background, role, current work, capability, location, affiliation, constraints, and declared preferences. It grounds discovery by determining whether a signal is plausible and which communities or counterparts are relevant.
+Context describes a participant: background, role, current work, capability, location, affiliation, constraints, and declared preferences. It grounds discovery by determining whether an intent is plausible and which communities or counterparts are relevant.
 
 Context MAY be global to a participant or specific to a community. Community-specific context SHOULD emphasize facts relevant to that community's purpose and suppress irrelevant detail.
 
@@ -209,7 +209,7 @@ Context updates SHOULD cause downstream discovery representations to refresh. St
 
 ### Community
 
-A community is a bounded discovery environment. It defines who can participate, what kinds of signals are relevant, and which discovery operations are legitimate.
+A community is a bounded discovery environment. It defines who can participate, what kinds of intents are relevant, and which discovery operations are legitimate.
 
 A community SHOULD have:
 
@@ -228,7 +228,7 @@ An opportunity is an evaluated overlap between participants. It is not merely a 
 An opportunity SHOULD include:
 
 - participating roles,
-- the relevant signal or context on each side,
+- the relevant intent or context on each side,
 - a concise explanation of fit,
 - a recommended next action,
 - lifecycle state,
@@ -293,8 +293,8 @@ sequenceDiagram
     participant C as Community scope
     participant N as Counterparty agent
 
-    P->>A: Provide context and signal
-    A->>PR: Admit signal and construct context
+    P->>A: Provide context and intent
+    A->>PR: Admit intent and construct context
     PR->>C: Resolve effective scope
     C-->>PR: Permitted communities
     PR->>PR: Generate candidates inside scope
@@ -307,7 +307,7 @@ sequenceDiagram
         PR-->>A: Draft opportunity or structured question
     end
     A->>P: Explain strongest reason and ask for approval
-    P-->>A: Approve, decline, or refine signal
+    P-->>A: Approve, decline, or refine intent
     A->>PR: Advance lifecycle only if approved
 ```
 
@@ -315,17 +315,17 @@ sequenceDiagram
 
 The protocol collects participant-provided or participant-authorized material and turns it into context. Context construction MUST preserve provenance and SHOULD prefer participant-approved information over inferred information.
 
-### 2. Signal admission
+### 2. Intent admission
 
-The protocol evaluates a proposed signal for specificity, sincerity, authority, and safety. If the signal is too broad, ambiguous, or missing critical constraints, the agent SHOULD ask focused clarification questions before running discovery.
+The protocol evaluates a proposed intent for specificity, sincerity, authority, and safety. If the intent is too broad, ambiguous, or missing critical constraints, the agent SHOULD ask focused clarification questions before running discovery.
 
 ### 3. Scope resolution
 
-The protocol determines the effective communities in which the signal can operate. Scope resolution MUST intersect participant membership, agent permissions, and request-time constraints. If the intersection is empty, discovery MUST NOT proceed.
+The protocol determines the effective communities in which the intent can operate. Scope resolution MUST intersect participant membership, agent permissions, and request-time constraints. If the intersection is empty, discovery MUST NOT proceed.
 
 ### 4. Candidate generation
 
-The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-signal, context-to-signal, semantic retrieval, and directed target construction.
+The protocol generates candidates by comparing intents and context inside the effective scope. Candidate generation MAY use multiple strategies, including intent-to-intent, context-to-intent, semantic retrieval, and directed target construction.
 
 Candidate generation is not surfacing. Candidate data MUST remain internal until evaluation and visibility checks pass.
 
@@ -399,7 +399,7 @@ flowchart LR
     AgentGate --> ScopedDeps[Scoped protocol dependencies]
     ScopedDeps --> Runtime
 
-    Runtime --> Graphs[Discovery, context, signal graphs]
+    Runtime --> Graphs[Discovery, context, intent graphs]
     Graphs --> Results[Bounded results]
     Results --> Runtime
     Runtime --> ParticipantOutput[Participant-facing output rules]

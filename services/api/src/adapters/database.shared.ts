@@ -112,12 +112,12 @@ export interface IntentListRow {
   networks: { id: string; title: string }[];
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
-   * attributed to this signal by `detection.triggeredBy` or the owner's
+   * attributed to this intent by `detection.triggeredBy` or the owner's
    * actor intent. Rows the owner already acted on are excluded.
    */
   waitingOpportunityCount: number;
   /**
-   * Unanswered questions the owner's agent has asked on this signal.
+   * Unanswered questions the owner's agent has asked on this intent.
    * A question leaves the count when an answer or an expire names it.
    */
   pendingQuestionCount: number;

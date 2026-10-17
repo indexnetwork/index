@@ -21,7 +21,7 @@ export class OnboardingService {
         profileConfirmedAt,
         currentStep: onboarding.completedAt
           ? onboarding.currentStep ?? 'complete'
-          : 'first_signal',
+          : 'first_intent',
       },
     });
 
@@ -36,7 +36,7 @@ export class OnboardingService {
     if (currentOnboarding.completedAt) {
       return {
         completedAt: currentOnboarding.completedAt,
-        intentId: currentOnboarding.firstSignalIntentId ?? intentId ?? '',
+        intentId: currentOnboarding.firstIntentId ?? intentId ?? '',
       };
     }
 
@@ -55,32 +55,32 @@ export class OnboardingService {
       return Number.isFinite(createdAtMs) && createdAtMs >= profileConfirmedAtMs;
     };
 
-    const firstSignal = intentId
+    const firstIntent = intentId
       ? activeIntents.find((i) => i.id === intentId)
       : activeIntents.find(isEligible);
 
-    if (!firstSignal) {
+    if (!firstIntent) {
       throw new Error(intentId
-        ? 'Confirmed first signal is not active for this user'
+        ? 'Confirmed first intent is not active for this user'
         : 'No eligible active intent after profile confirmation');
     }
 
-    if (!isEligible(firstSignal)) {
-      throw new Error('Selected first signal was created before profile confirmation');
+    if (!isEligible(firstIntent)) {
+      throw new Error('Selected first intent was created before profile confirmation');
     }
 
     const completedAt = new Date().toISOString();
     await userDatabaseAdapter.update(userId, {
       onboarding: {
         ...currentOnboarding,
-        firstSignalIntentId: firstSignal.id,
+        firstIntentId: firstIntent.id,
         currentStep: 'complete',
         completedAt,
       },
     });
 
-    logger.info('Onboarding completed', { userId, intentId: firstSignal.id });
-    return { completedAt, intentId: firstSignal.id };
+    logger.info('Onboarding completed', { userId, intentId: firstIntent.id });
+    return { completedAt, intentId: firstIntent.id };
   }
 }
 

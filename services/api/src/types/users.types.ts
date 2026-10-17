@@ -18,9 +18,9 @@ export interface NotificationPreferences {
 export interface OnboardingState {
   completedAt?: ISODateString | null;
   profileConfirmedAt?: ISODateString;
-  firstSignalIntentId?: UUID;
+  firstIntentId?: UUID;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: UUID | null;
   invitationCode?: string;
 }

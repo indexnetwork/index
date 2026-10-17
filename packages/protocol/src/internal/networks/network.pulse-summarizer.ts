@@ -23,9 +23,9 @@ export type NetworkPulseSummaryOutput = z.infer<typeof NetworkPulseSummaryOutput
 
 export interface NetworkPulseSummaryInput {
   networkTitle: string;
-  /** Recent open signals in the network, newest first, as members wrote them. */
-  signals: string[];
-  /** Recent negotiations: the two signals each pair of agents is weighing. */
+  /** Recent open intents in the network, newest first, as members wrote them. */
+  intents: string[];
+  /** Recent negotiations: the two intents each pair of agents is weighing. */
   negotiations?: Array<{ a: string; b: string }>;
 }
 
@@ -46,13 +46,13 @@ You write the "what people are looking for" blurb on a network's public invite p
 Anyone holding the invite link reads it, including people who are not members.
 
 TASK:
-Read the members' open signals and write a short, clear overview, warm in tone, of what is
-going on inside, so a visitor gets a feel for the room. Group signals into themes, e.g.
+Read the members' open intents and write a short, clear overview, warm in tone, of what is
+going on inside, so a visitor gets a feel for the room. Group intents into themes, e.g.
 "A few people are looking for cofounders and early hires, others want to meet investors who
 get crypto and AI, and at least one person just wants coffee before the conference."
 
 PRIVACY (strict):
-- Describe themes in aggregate. Never quote a signal or reuse its distinctive wording.
+- Describe themes in aggregate. Never quote an intent or reuse its distinctive wording.
 - No names of people, companies, products, projects, schools, or events.
 - No places more specific than a broad region, no dates, numbers, amounts, links, or handles.
 - Use loose quantities ("a few", "some", "several", "others"). Never "one person" for
@@ -66,12 +66,12 @@ STYLE:
   touch of warmth is welcome in one phrase (the range of the room, an unexpected neighbour of
   asks), but no punchlines and nothing at anyone's expense.
 - No emoji, no exclamation marks, no em dashes, no headings or lists.
-- Do not mention signals, agents, Index, or the network's name. Start with the content.
+- Do not mention intents, agents, Index, or the network's name. Start with the content.
 
-If fewer than three signals are suitable after the rules above, return an empty summary.
+If fewer than three intents are suitable after the rules above, return an empty summary.
 
 NEGOTIATIONS:
-You may also get pairs of signals that two members' agents are negotiating over right now.
+You may also get pairs of intents that two members' agents are negotiating over right now.
 In "negotiations", say in one or two sentences, at most 45 words, what the agents are talking
 about at a very high level: the kind of deal, never its details ("a few are working out
 cofounder intros, others are trading notes on a speaking slot"). Same privacy rules, same
@@ -96,19 +96,19 @@ export class NetworkPulseSummarizer {
   }
 
   /**
-   * @param input - The network's title, its recent open signals and negotiating pairs.
+   * @param input - The network's title, its recent open intents and negotiating pairs.
    * @returns Both texts (each null when there is nothing suitable), or null when the call fails.
    */
   @Timed()
   public async invoke(input: NetworkPulseSummaryInput): Promise<NetworkPulseSummary | null> {
     const clean = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, 400);
-    const signals = input.signals.map(clean).filter(Boolean);
+    const intents = input.intents.map(clean).filter(Boolean);
     const pairs = (input.negotiations ?? []).map((p) => ({ a: clean(p.a), b: clean(p.b) })).filter((p) => p.a && p.b);
-    if (signals.length < 3 && pairs.length < 2) return { summary: null, negotiations: null };
+    if (intents.length < 3 && pairs.length < 2) return { summary: null, negotiations: null };
 
     const prompt = [
       `## Network\n${input.networkTitle}`,
-      `## Open signals\n${signals.map((s) => `- ${s}`).join("\n") || "(none)"}`,
+      `## Open intents\n${intents.map((s) => `- ${s}`).join("\n") || "(none)"}`,
       `## Negotiating pairs\n${pairs.map((p) => `- ${p.a}  <->  ${p.b}`).join("\n") || "(none)"}`,
     ].join("\n\n");
     try {

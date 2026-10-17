@@ -15,28 +15,28 @@ const SEARCH_QUERIES = 5;
 const OPEN_LIMIT = 30;
 
 const WAKE_PROMPT = [
-  "You think for your principal about one signal, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
-  "A wake is situational. You are not reviewing the signal: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
+  "You think for your principal about one intent, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
+  "A wake is situational. You are not reviewing the intent: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
   BRIEF_PROMPT,
-  "A signal with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
+  "An intent with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
-  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
+  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the intent, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
 /** The line a morning wake adds. */
 const MORNING =
-  "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+  "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 
 /**
  * The questions still waiting on the principal, mirroring how the host reads
  * the same transcript: an answer or an expiry retires one, a later question
  * does not.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns Each open question's text by id.
  */
 function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
@@ -53,7 +53,7 @@ function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
  * Find the latest direct message that has not received a direct reply.
  * An answer to a question is not a direct message; notes and bookkeeping do not reply.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns The message to answer, or null when none is waiting.
  */
 export function unansweredPrincipalMessage(conversation: ConversationEntry[]): { text: string } | null {
@@ -69,15 +69,15 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
 }
 
 /**
- * Discover along each query and open each signal that does not already share
+ * Discover along each query and open each intent that does not already share
  * a negotiation with this one. A negotiation on some other pair does not
- * count. A person holding several matching signals keeps one seat, at their
+ * count. A person holding several matching intents keeps one seat, at their
  * strongest.
  *
  * @param client - Index for this owner.
- * @param intent - The signal to open from.
+ * @param intent - The intent to open from.
  * @param queries - Each direction to discover separately.
- * @param since - When set, only people whose signal arrived after this ISO time.
+ * @param since - When set, only people whose intent arrived after this ISO time.
  * @param keep - When set, only the people it keeps are opened.
  * @returns How many distinct people were found, how many were picked, and the opportunities opened.
  */
@@ -115,14 +115,14 @@ export async function reach(
 }
 
 /**
- * One wake over one signal: a single reasoning pass that decides what this
+ * One wake over one intent: a single reasoning pass that decides what this
  * event requires, in whatever mix of deciding, speaking and searching that
  * takes — or nothing.
  *
  * Every decision is reported through `onBrief` the moment it lands, so its
  * negotiator can start while the wake is still thinking.
  *
- * @param input - The signal, its conversation, its opportunities, the model, and Index.
+ * @param input - The intent, its conversation, its opportunities, the model, and Index.
  * @returns The actions for the host to persist and run. Empty means stay silent.
  */
 export async function wake(input: WakeInput): Promise<WakeResult> {
@@ -381,7 +381,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "reach_counterparties",
       description:
-        "Discover people in this signal's communities and open an opportunity with each one that does not already have one. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
+        "Discover people in this intent's communities and open an opportunity with each one that does not already have one. A query describes the kind of person this intent needs, in your own words, not the intent restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -416,7 +416,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         await report(found, opened.length);
         if (!picked) {
           return found
-            ? "No one discovered fits this signal well enough to reach, or everyone already has an opportunity."
+            ? "No one discovered fits this intent well enough to reach, or everyone already has an opportunity."
             : "No counterparties matched those queries. Try different ones, or stop.";
         }
         // Each one is briefed and proposed on outside this wake, so discovery is
@@ -439,7 +439,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     prompt:
       (input.reason === "morning"
         ? MORNING
-        : "Something happened on this signal. Work out what it changes, act only there, and stop.") + "\n" +
+        : "Something happened on this intent. Work out what it changes, act only there, and stop.") + "\n" +
       JSON.stringify({
         principal: principalFacts(user),
         conversation,

@@ -28,13 +28,13 @@ export interface NetworkShareResponseRow {
 export interface NetworkShareCounts {
   /** People in the network right now. */
   members: number;
-  /** Live signals from current members. */
-  signals: number;
+  /** Live intents from current members. */
+  intents: number;
   /** Negotiations tied to this network. */
   negotiations: number;
   /** Each member's hosted Index agent plus every agent they registered (Hermes, Codex, Grok Bot...). */
   agents: number;
-  /** Newest signal, turn or settlement here, to the minute; null when nothing has happened. */
+  /** Newest intent, turn or settlement here, to the minute; null when nothing has happened. */
   lastActivityAt: string | null;
 }
 
@@ -1808,11 +1808,11 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Live, public signals tagged to this network whose owner is still a member.
+   * Live, public intents tagged to this network whose owner is still a member.
    * Leaving keeps the tag, so without the member check ex-members kept counting.
    * Incognito and inactive ones never count.
    */
-  private liveSignalWhere(networkId: string) {
+  private liveIntentWhere(networkId: string) {
     return and(
       eq(intentNetworks.networkId, networkId),
       isNull(intents.archivedAt),
@@ -1834,16 +1834,16 @@ export class ChatDatabaseAdapter {
    * load this after the network itself is on screen.
    */
   async getNetworkShareCounts(networkId: string): Promise<NetworkShareCounts> {
-    const liveSignalWhere = this.liveSignalWhere(networkId);
+    const liveIntentWhere = this.liveIntentWhere(networkId);
     const inNetwork = sql`EXISTS (
       SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
       WHERE actor->>'networkId' = ${networkId}
     )`;
     const inNetworkNegotiation = and(inNetwork, eq(opportunities.id, negotiations.opportunityId));
 
-    const [members, [signalRow], [negotiationRow], [agentRow], [lastSignal], [lastTurn]] = await Promise.all([
+    const [members, [intentRow], [negotiationRow], [agentRow], [lastIntent], [lastTurn]] = await Promise.all([
       this.getNetworkMemberCount(networkId),
-      db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+      db.select({ n: count() }).from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveIntentWhere),
       db.select({ n: count() }).from(negotiations)
         .innerJoin(opportunities, inNetworkNegotiation),
       db.select({ n: count() }).from(schema.agents)
@@ -1857,7 +1857,7 @@ export class ChatDatabaseAdapter {
           isNull(schema.agents.deletedAt),
         )),
       db.select({ at: sql<Date | null>`max(${intents.createdAt})` })
-        .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveSignalWhere),
+        .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId)).where(liveIntentWhere),
       db.select({
         turn: sql<Date | null>`max(${negotiationTurns.createdAt})`,
         settled: sql<Date | null>`max(${negotiations.settledAt})`,
@@ -1866,13 +1866,13 @@ export class ChatDatabaseAdapter {
         .leftJoin(negotiationTurns, eq(negotiationTurns.negotiationId, negotiations.id)),
     ]);
 
-    const lastTimes = [lastSignal?.at, lastTurn?.turn, lastTurn?.settled]
+    const lastTimes = [lastIntent?.at, lastTurn?.turn, lastTurn?.settled]
       .filter((t): t is Date => t != null)
       .map((t) => new Date(t).getTime());
 
     return {
       members,
-      signals: Number(signalRow?.n ?? 0),
+      intents: Number(intentRow?.n ?? 0),
       negotiations: Number(negotiationRow?.n ?? 0),
       // The hosted Index agent has no row per person; every member has one.
       agents: members + Number(agentRow?.n ?? 0),
@@ -1880,11 +1880,11 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  /** Recent signal text for the invite summary. Never returned to the page as is. */
-  async getNetworkShareSummarySignals(networkId: string): Promise<string[]> {
+  /** Recent intent text for the invite summary. Never returned to the page as is. */
+  async getNetworkShareSummaryIntents(networkId: string): Promise<string[]> {
     const rows = await db.select({ summary: intents.summary, payload: intents.payload })
       .from(intentNetworks).innerJoin(intents, eq(intents.id, intentNetworks.intentId))
-      .where(this.liveSignalWhere(networkId))
+      .where(this.liveIntentWhere(networkId))
       .orderBy(desc(intents.createdAt))
       .limit(60);
     return rows.map((r) => r.payload || r.summary || '').filter(Boolean);

@@ -142,7 +142,7 @@ export function expiryReason(id: string, name: string) {
   const reasons = [
     "the moment passed. they committed to something else before you replied.",
     "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your signal sharpened, and your edges drifted apart.",
+    "the overlap cooled as your intent sharpened, and your edges drifted apart.",
     "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
   ];
   const s = id || name || "x";
@@ -200,7 +200,7 @@ export function WriteOwn({ open, value, onOpen, onChange, onClose }: {
 }
 
 export const CALIBRATING_LINES = [
-  "structuring your inputs into signals…",
+  "structuring your inputs into intents…",
   "reaching out across the network…",
   "filtering through options…",
   "coming back around",
@@ -319,7 +319,7 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
 
 export { negoResult };
 
-export function SignalAction({ label, active = false, onClick, danger = false }: {
+export function IntentAction({ label, active = false, onClick, danger = false }: {
   label: string; active?: boolean; onClick: () => void; danger?: boolean;
 }) {
   const [hover, setHover] = useState(false);

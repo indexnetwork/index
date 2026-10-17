@@ -114,7 +114,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
         navigate(`/i/${currentLink.intentId}`);
       } catch (err) {
         logger.error('Failed to navigate to intent', { error: err });
-        error('Failed to load signal');
+        error('Failed to load intent');
       }
     }
     closePopover();
@@ -124,7 +124,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
     if (currentLink?.intentId) {
       try {
         await intentsService.archiveIntent(currentLink.intentId);
-        success('Signal archived');
+        success('Intent archived');
         closePopover();
         // Call the onArchive callback to refetch data
         if (onArchive) {
@@ -132,7 +132,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
         }
       } catch (err) {
         logger.error('Failed to archive intent', { error: err });
-        error('Failed to archive signal');
+        error('Failed to archive intent');
       }
     }
   };
@@ -169,14 +169,14 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
         >
           <button
             onClick={handleFocus}
-            title="Focus on this signal"
+            title="Focus on this intent"
             className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <Focus strokeWidth={1.5} className="w-6 h-6 text-gray-900" />
           </button>
           <button
             onClick={handleArchive}
-            title="Archive this signal"
+            title="Archive this intent"
             className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <Archive strokeWidth={1.5} className="w-6 h-6 text-red-500" />

@@ -35,10 +35,10 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 | --- | --- |
 | `me()` | `GET /api/auth/me` → `{ id, name, intro, location, timezone, profileConfirmed }`, memoized |
 | `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]`. `status` is `active`, `paused`, or `archived` |
-| `discover(intentId, query, limit?, since?)` | `POST /api/intents/:id/discover` → counterparties, strongest first. `since` keeps only signals that arrived after it. Writes nothing |
+| `discover(intentId, query, limit?, since?)` | `POST /api/intents/:id/discover` → counterparties, strongest first. `since` keeps only intents that arrived after it. Writes nothing |
 | `createOpportunities(intentId, counterparties)` | `POST /api/intents/:id/opportunities` → `{ opportunityId }[]`. Idempotent on the pair |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
-| `listIntentNegotiations(intentId)` | `GET /api/negotiations?intentId=` → that signal's negotiations, open and settled |
+| `listIntentNegotiations(intentId)` | `GET /api/negotiations?intentId=` → that intent's negotiations, open and settled |
 | `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
 | `submitTurn(id, { action, message })` | `POST /api/opportunities/:id/negotiation/turns` |
 | `acceptOpportunity(id)` | `PATCH /api/opportunities/:id/status` with `accepted` |
@@ -48,11 +48,11 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 | `events(onEvent)` | `GET /api/events` as SSE. Returns a stop handle |
 | `listEvents({ after?, limit? })` | `GET /api/events/log` → `{ events, next }`, oldest first |
 
-`discover` and `createOpportunities` need an active signal the key's owner owns. A counterparty that already shares an opportunity reports that one.
+`discover` and `createOpportunities` need an active intent the key's owner owns. A counterparty that already shares an opportunity reports that one.
 
 `submitTurn` actions are `propose`, `counter`, `accept`, and `decline`. The negotiation's `protocol.availableActions` is what this seat may do. When `INDEX_AGENT_ID` is set, the turn request includes `?agentId=`.
 
-`sendPrincipal` requires an agent id. It publishes `question` and `message` entries onto the owner's conversation for that signal. Asking the owner is covered in the [custom negotiator](/guides/custom-negotiator) guide.
+`sendPrincipal` requires an agent id. It publishes `question` and `message` entries onto the owner's conversation for that intent. Asking the owner is covered in the [custom negotiator](/guides/custom-negotiator) guide.
 
 `acceptOpportunity` and `rejectOpportunity` are the same writes as the MCP tools on [Opportunities](/integrate/rest/opportunities).
 

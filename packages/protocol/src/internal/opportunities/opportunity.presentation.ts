@@ -166,7 +166,7 @@ export interface PresenterInput {
   matchReasoning: string;
   category: string;
   confidence: number;
-  signalsSummary: string;
+  intentsSummary: string;
   networkName: string;
   viewerRole: string;
   opportunityStatus?: string;
@@ -318,7 +318,7 @@ MATCH CONTEXT:
 - Category: ${input.category}
 - Confidence: ${input.confidence}
 - Why we matched: ${input.matchReasoning}
-- Signals: ${input.signalsSummary}
+- Intents: ${input.intentsSummary}
 COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
 
@@ -360,9 +360,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     const negotiationBlock = buildNegotiationPromptBlock(input.negotiationContext);
     // When negotiation context exists, lead with it — these cards exist
     // *because* the negotiation happened. Trailing the block lets weaker
-    // models lean on surface signals and ignore the transcript entirely.
+    // models lean on surface intents and ignore the transcript entirely.
     const negotiationDirective = negotiationBlock
-      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Your personalizedSummary MUST reference at least one specific signal from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. It must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
+      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Your personalizedSummary MUST reference at least one specific intent from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. It must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
       : "";
     const humanContent = `
 ${negotiationBlock}${negotiationDirective}
@@ -376,7 +376,7 @@ MATCH CONTEXT:
 - Category: ${input.category}
 - Confidence: ${input.confidence}
 - Why we matched: ${input.matchReasoning}
-- Signals: ${input.signalsSummary}
+- Intents: ${input.intentsSummary}
 - ${mutualHint}
 COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
@@ -494,16 +494,16 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
 // ──────────────────────────────────────────────────────────────
 
 /**
- * Build the LLM-facing signal summary while excluding pool adjustments. Pool
+ * Build the LLM-facing intent summary while excluding pool adjustments. Pool
  * disposition is rendered deterministically by the card chip; asking the
  * presenter to interpret it could turn a demotion into a positive rationale.
  */
-export function summarizeSignalsForPresenter(
-  signals: Opportunity['interpretation']['signals'],
+export function summarizeIntentsForPresenter(
+  intents: Opportunity['interpretation']['intents'],
 ): string {
-  const safeSignals = signals?.filter((signal) => signal.type !== 'pool_discriminator') ?? [];
-  if (safeSignals.length === 0) return 'Match based on profile and intent alignment.';
-  return safeSignals.map((signal) => `${signal.type}: ${signal.detail ?? signal.type}`).join('; ');
+  const safeIntents = intents?.filter((intent) => intent.type !== 'pool_discriminator') ?? [];
+  if (safeIntents.length === 0) return 'Match based on profile and intent alignment.';
+  return safeIntents.map((intent) => `${intent.type}: ${intent.detail ?? intent.type}`).join('; ');
 }
 
 /**
@@ -591,7 +591,7 @@ export async function gatherPresenterContext(
       typeof interp.confidence === "number"
         ? interp.confidence
         : parseFloat(String(interp.confidence ?? 0)) || 0,
-    signalsSummary: summarizeSignalsForPresenter(interp.signals),
+    intentsSummary: summarizeIntentsForPresenter(interp.intents),
     networkName: networkRecord?.title ?? contextNetworkId ?? "",
     viewerRole: myActor.role ?? "party",
   };

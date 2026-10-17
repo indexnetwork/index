@@ -1,8 +1,8 @@
 /**
  * The two blurbs on a network's public invite page (`/l/:code`): what people
  * are looking for, and what their agents are negotiating about. A model reads
- * the members' recent signals and negotiating pairs and writes aggregate,
- * lightly funny overviews; no single signal ever reaches the page.
+ * the members' recent intents and negotiating pairs and writes aggregate,
+ * lightly funny overviews; no single intent ever reaches the page.
  *
  * The page is public and unauthenticated, and it asks for this only after it
  * has rendered. The model runs at most once per network per
@@ -33,7 +33,7 @@ async function cache() {
   return cacheAdapter;
 }
 
-type Input = { networkTitle: string; signals: string[]; negotiations: Array<{ a: string; b: string }> };
+type Input = { networkTitle: string; intents: string[]; negotiations: Array<{ a: string; b: string }> };
 
 async function compute(key: string, input: Input): Promise<NetworkPulseSummary> {
   summarizer ??= new NetworkPulseSummarizer();
@@ -63,7 +63,7 @@ export async function getNetworkPulseSummary(networkId: string, input: Input): P
   } catch (error) {
     logger.warn('Could not read network summary cache', { error });
   }
-  if (input.signals.length < 3 && input.negotiations.length < 2) return NONE;
+  if (input.intents.length < 3 && input.negotiations.length < 2) return NONE;
 
   let pending = inFlight.get(key);
   if (!pending) {

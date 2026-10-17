@@ -1,5 +1,5 @@
 // A personal agent. `briefIfMissing` gives a new opportunity the standing
-// state a negotiator needs; `wake` is the think pass over one signal;
+// state a negotiator needs; `wake` is the think pass over one intent;
 // `negotiate` acts on one opportunity from its brief alone and can never
 // wake its principal's agent; `summarize` writes one note about the talks
 // once the negotiations this seat opened since the last note have all left

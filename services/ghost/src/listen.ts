@@ -2,7 +2,7 @@ import { createRedisClient } from '@indexnetwork/api/src/adapters/cache.adapter'
 import { log } from '@indexnetwork/api/src/lib/log';
 import { ackUserEvent, readUserEventGroup, scanUserEventStreams, userEventStream, type UserEventRecord } from '@indexnetwork/api/src/lib/user-events';
 
-import { introduceSignal, outreachPass } from './ghost';
+import { introduceIntent, outreachPass } from './ghost';
 
 const logger = log.job.from('ghost.listen');
 const GROUP = 'ghost-introducer';
@@ -30,7 +30,7 @@ function handle(record: UserEventRecord): void {
   try { frame = JSON.parse(record.data); } catch { frame = {}; }
   const intentId = frame.data?.intentId;
   const work = frame.type === 'intent.created' && intentId
-    ? () => introduceSignal(intentId)
+    ? () => introduceIntent(intentId)
     : frame.type === 'opportunity.status'
       ? () => outreachPass()
       : null;

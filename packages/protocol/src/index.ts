@@ -71,7 +71,7 @@ export type { NegotiationDatabase } from './platform/database/negotiation.js';
 
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
-// membership graph, and signal assignment.
+// membership graph, and intent assignment.
 
 export { Networks } from "./capabilities/networks.js";
 export { NetworkPulseSummarizer } from "./internal/networks/network.pulse-summarizer.js";

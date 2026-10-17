@@ -208,7 +208,7 @@ body {
   <div class="nav-item" data-target="auth">Auth</div>
   <div class="nav-item" data-target="conversation">Conversation</div>
   <div class="nav-item" data-target="profile">Profile</div>
-  <div class="nav-item" data-target="signals">Signals</div>
+  <div class="nav-item" data-target="intents">Intents</div>
   <div class="nav-item" data-target="negotiations">Negotiations</div>
   <div class="nav-item" data-target="opportunities">Opportunities</div>
   <div class="nav-item" data-target="networks">Networks</div>
@@ -279,7 +279,7 @@ body {
 <span class="c-gray">│</span> <span class="c-gray">--app-url &lt;url&gt;     override app URL for login</span>                               <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--token &lt;token&gt;     provide bearer token directly</span>                            <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--session &lt;id&gt;      resume a chat session</span>                                    <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="c-gray">--archived          include archived signals</span>                                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--archived          include archived intents</span>                                 <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--status &lt;status&gt;   filter opportunities by status</span>                           <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--limit &lt;n&gt;         limit number of results</span>                                  <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--since &lt;date&gt;      filter by ISO date or duration</span>                           <span class="c-gray">│</span>
@@ -371,10 +371,10 @@ body {
 
 <span class="c-cyan bold">&gt; </span>What opportunities do I have?
   <span class="c-gray">thinking...</span>
-<span class="c-orange">&gt; Fetching your active signals...</span>
+<span class="c-orange">&gt; Fetching your active intents...</span>
 <span class="c-orange">&gt; Searching for relevant connections...</span>
 
-<span class="c-agent">I found </span><span class="bold c-white">3 opportunities</span><span class="c-agent"> based on your active signals:</span>
+<span class="c-agent">I found </span><span class="bold c-white">3 opportunities</span><span class="c-agent"> based on your active intents:</span>
 
 <span class="c-agent">  </span><span class="c-cyan">1.</span><span class="c-agent"> </span><span class="bold c-white">Alex Chen</span><span class="c-agent"> — both of you are exploring </span><span class="italic">decentralized identity</span>
 <span class="c-agent">  </span><span class="c-cyan">2.</span><span class="c-agent"> </span><span class="bold c-white">Maria Santos</span><span class="c-agent"> — she needs a </span><span class="c-cyan">TypeScript</span><span class="c-agent"> engineer for agent infra</span>
@@ -397,7 +397,7 @@ body {
 <span class="c-agent">  </span><span class="c-cyan">*</span><span class="c-agent"> </span><span class="bold c-white">Location:</span><span class="c-agent"> Istanbul, Turkey</span>
 <span class="c-agent">  </span><span class="c-cyan">*</span><span class="c-agent"> </span><span class="bold c-white">Bio:</span><span class="c-agent"> Building autonomous discovery infrastructure</span>
 
-<span class="c-agent">You have </span><span class="bold c-white">12 active signals</span><span class="c-agent"> and </span><span class="bold c-white">4 pending opportunities</span><span class="c-agent">.</span>
+<span class="c-agent">You have </span><span class="bold c-white">12 active intents</span><span class="c-agent"> and </span><span class="bold c-white">4 pending opportunities</span><span class="c-agent">.</span>
 
 <span class="c-gray">Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890</span></div>
     </div>
@@ -419,7 +419,7 @@ body {
   <span class="bold">ID                                    Title                                     Created             </span>
   <span class="c-gray">------------------------------------  ----------------------------------------  --------------------</span>
   <span class="c-gray">a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>  What opportunities do I have?              <span class="c-gray">Mar 29, 2026, 02:15 PM</span>
-  <span class="c-gray">b2c3d4e5-f6a7-8901-bcde-f12345678901</span>  Help me create a signal                   <span class="c-gray">Mar 28, 2026, 10:30 AM</span>
+  <span class="c-gray">b2c3d4e5-f6a7-8901-bcde-f12345678901</span>  Help me create an intent                   <span class="c-gray">Mar 28, 2026, 10:30 AM</span>
   <span class="c-gray">c3d4e5f6-a7b8-9012-cdef-123456789012</span>  (untitled)                                <span class="c-gray">Mar 27, 2026, 04:00 PM</span></div>
     </div>
   </div>
@@ -493,18 +493,18 @@ body {
   </div>
 </div>
 
-<!-- ═══════ SIGNALS ═══════ -->
-<div class="section" id="signals">
-  <div class="section-title"><span class="dot" style="background:var(--magenta)"></span> Signals (Intents) <span class="cmd-label data">intent</span></div>
+<!-- ═══════ INTENTS ═══════ -->
+<div class="section" id="intents">
+  <div class="section-title"><span class="dot" style="background:var(--magenta)"></span> Intents <span class="cmd-label data">intent</span></div>
   <div class="section-desc">Table with short IDs, detail card, create, update, archive, link/unlink/links.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent list</span></div>
       <div class="terminal-body">
-<span class="bold">Signals</span>
+<span class="bold">Intents</span>
 
-  <span class="bold">ID        Signal                                        Status      Source            Created             </span>
+  <span class="bold">ID        Intent                                        Status      Source            Created             </span>
   <span class="c-gray">--------  --------------------------------------------  ----------  ----------------  --------------------</span>
   <span class="c-cyan">f47ac10b</span>  Looking for collaborators on decentralized ident  <span class="c-green">active    </span>  <span class="c-gray">discovery_form  </span>  <span class="c-gray">Mar 28, 2026</span>
   <span class="c-cyan">a23bc45d</span>  Need a TypeScript engineer familiar with LangGra  <span class="c-green">active    </span>  <span class="c-gray">link            </span>  <span class="c-gray">Mar 25, 2026</span>
@@ -516,7 +516,7 @@ body {
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent show &lt;id&gt;   (all fields populated)</span></div>
       <div class="terminal-body">
-  <span class="bold c-cyan">Signal Details</span>
+  <span class="bold c-cyan">Intent Details</span>
   <span class="c-gray">──────────────────────────────────────────────────</span>
   <span class="bold">ID</span>            <span class="c-gray">f47ac10b-58cc-4372-a567-0e02b2c3d479</span>
   <span class="bold">Status</span>        <span class="c-green">active</span>
@@ -546,29 +546,29 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent create "Looking for ML engineers"</span></div>
-      <div class="terminal-body"><span class="c-cyan">Processing signal...</span>
-<span class="c-green bold">+</span> Signal created.</div>
+      <div class="terminal-body"><span class="c-cyan">Processing intent...</span>
+<span class="c-green bold">+</span> Intent created.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent update &lt;id&gt; "new description"</span></div>
-      <div class="terminal-body"><span class="c-cyan">Updating signal...</span>
-<span class="c-green bold">+</span> Signal updated.</div>
+      <div class="terminal-body"><span class="c-cyan">Updating intent...</span>
+<span class="c-green bold">+</span> Intent updated.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent archive &lt;id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal f47ac10b archived.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Intent f47ac10b archived.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent add-to-network &lt;id&gt; &lt;network-id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal added to network.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Intent added to network.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent remove-from-network &lt;id&gt; &lt;network-id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal removed from network.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Intent removed from network.</div>
     </div>
 
     <div class="terminal full-width">
@@ -583,9 +583,9 @@ body {
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent list   (empty)</span></div>
       <div class="terminal-body">
-<span class="bold">Signals</span>
+<span class="bold">Intents</span>
 
-  <span class="c-gray">No signals found.</span></div>
+  <span class="c-gray">No intents found.</span></div>
     </div>
   </div>
 </div>
@@ -1019,7 +1019,7 @@ This domain is for use in illustrative examples in documents...
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">Special block: ```intent_proposal</span></div>
       <div class="terminal-body">
   <span class="c-magenta">+────────────────────────────────────────────────────────+</span>
-  <span class="c-magenta">|</span> <span class="bold c-magenta">Signal Proposal</span>                                        <span class="c-magenta">|</span>
+  <span class="c-magenta">|</span> <span class="bold c-magenta">Intent Proposal</span>                                        <span class="c-magenta">|</span>
   <span class="c-magenta">|</span>                                                        <span class="c-magenta">|</span>
   <span class="c-magenta">|</span>  <span class="c-agent">Looking for distributed systems engineers with</span>       <span class="c-magenta">|</span>
   <span class="c-magenta">|</span>  <span class="c-agent">experience in consensus protocols and peer-to-peer</span>   <span class="c-magenta">|</span>
@@ -1046,11 +1046,11 @@ This domain is for use in illustrative examples in documents...
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">Tool activity → tokens → response_reset → retry flow</span></div>
       <div class="terminal-body"><span class="c-cyan bold">&gt; </span>Find me collaborators for my identity project
   <span class="c-gray">thinking...</span>
-<span class="c-orange">&gt; Fetching your active signals...</span>
+<span class="c-orange">&gt; Fetching your active intents...</span>
 <span class="c-orange">&gt; Checking your networks...</span>
 <span class="c-orange">&gt; Searching for relevant connections...</span>
 
-<span class="c-agent">Based on your signals, I found several potential</span>
+<span class="c-agent">Based on your intents, I found several potential</span>
 
 <span class="c-gray">--- retrying: hallucination detected ---</span>
 
@@ -1081,7 +1081,7 @@ This domain is for use in illustrative examples in documents...
 <span class="c-red"><span class="bold">error</span>: Login cancelled.</span>
 <span class="c-red"><span class="bold">error</span>: No session token received in callback.</span>
 <span class="c-red"><span class="bold">error</span>: Unknown command: foobar</span>
-<span class="c-red"><span class="bold">error</span>: Missing signal ID. Usage: index intent show &lt;id&gt;</span>
+<span class="c-red"><span class="bold">error</span>: Missing intent ID. Usage: index intent show &lt;id&gt;</span>
 <span class="c-red"><span class="bold">error</span>: Usage: index profile update &lt;action&gt; [--details &lt;text&gt;]</span>
 <span class="c-red"><span class="bold">error</span>: Negotiation not found: abc123</span>
 <span class="c-red"><span class="bold">error</span>: `--json` requires an explicit conversation subcommand.</span></div>
@@ -1095,11 +1095,11 @@ This domain is for use in illustrative examples in documents...
 <span class="c-green bold">+</span> Profile regeneration triggered. It may take a moment to complete.
 <span class="c-green bold">+</span> Profile created.
 <span class="c-green bold">+</span> Profile updated.
-<span class="c-green bold">+</span> Signal created.
-<span class="c-green bold">+</span> Signal updated.
-<span class="c-green bold">+</span> Signal f47ac10b archived.
-<span class="c-green bold">+</span> Signal added to network.
-<span class="c-green bold">+</span> Signal removed from network.
+<span class="c-green bold">+</span> Intent created.
+<span class="c-green bold">+</span> Intent updated.
+<span class="c-green bold">+</span> Intent f47ac10b archived.
+<span class="c-green bold">+</span> Intent added to network.
+<span class="c-green bold">+</span> Intent removed from network.
 <span class="c-green bold">+</span> Opportunity accepted.
 <span class="c-green bold">+</span> Opportunity rejected.
 <span class="c-green bold">+</span> Message sent (e5f6a7b8-c9d0-1234-ef01-56789abcdef0)
@@ -1123,8 +1123,8 @@ This domain is for use in illustrative examples in documents...
 <span class="c-cyan">Regenerating profile...</span>
 <span class="c-cyan">Creating profile...</span>
 <span class="c-cyan">Updating profile...</span>
-<span class="c-cyan">Processing signal...</span>
-<span class="c-cyan">Updating signal...</span>
+<span class="c-cyan">Processing intent...</span>
+<span class="c-cyan">Updating intent...</span>
 <span class="c-cyan">Scraping https://example.com...</span>
 <span class="c-cyan">Syncing context...</span>
 <span class="c-cyan">Completing onboarding...</span>
@@ -1150,7 +1150,7 @@ This domain is for use in illustrative examples in documents...
       <div class="terminal-body">
 <span class="bold">Chat Sessions</span>
 
-<span class="bold">Signals</span>
+<span class="bold">Intents</span>
 
 <span class="bold">Negotiations</span>
 

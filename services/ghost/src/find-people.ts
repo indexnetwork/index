@@ -11,12 +11,12 @@ const foundPersonSchema = z.object({
   headline: z.string(),
   email: z.string(),
   socials: z.array(z.string()),
-  signals: z.array(z.string()),
+  intents: z.array(z.string()),
   sources: z.array(z.string()),
   reason: z.string(),
 });
 
-/** A person found on the public web who could serve a signal. */
+/** A person found on the public web who could serve an intent. */
 export type FoundPerson = z.infer<typeof foundPersonSchema>;
 
 const findPeopleSchema = {
@@ -37,11 +37,11 @@ const findPeopleSchema = {
             headline: { type: 'string', description: 'One-line description: role, domain and city' },
             email: { type: 'string', description: 'Email address copied verbatim from a public page you visited' },
             socials: { type: 'array', items: { type: 'string' }, description: 'Public profile URLs you visited for this person: X, LinkedIn, GitHub, or their personal site. Copy each URL verbatim. Empty if you opened none.' },
-            signals: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
+            intents: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is likely working on, looking for or open to, grounded in the sources' },
             sources: { type: 'array', items: { type: 'string' }, description: 'Public URLs the profile is based on, including the page that lists the email' },
-            reason: { type: 'string', description: 'One or two sentences on why this person and the signal\'s owner should meet, citing what the sources show. Written so either of them could read it.' },
+            reason: { type: 'string', description: 'One or two sentences on why this person and the intent\'s owner should meet, citing what the sources show. Written so either of them could read it.' },
           },
-            required: ['name', 'headline', 'email', 'socials', 'signals', 'sources', 'reason'],
+            required: ['name', 'headline', 'email', 'socials', 'intents', 'sources', 'reason'],
         },
       },
     },
@@ -55,9 +55,9 @@ function isRateLimited(error: unknown): boolean {
 }
 
 /**
- * Find real individuals on the public web who could serve a signal.
+ * Find real individuals on the public web who could serve an intent.
  *
- * @param query - The signal, in its owner's words.
+ * @param query - The intent, in its owner's words.
  * @param limit - How many people to return at most.
  * @returns The people found; empty when the response is unusable.
  */
@@ -71,7 +71,7 @@ export async function findPeople(query: string, limit: number): Promise<FoundPer
       const response = await client.responses.create({
         model: 'parallel',
         reasoning: { effort: 'medium' },
-        instructions: `Find exactly ${limit} real people on the public web who would fit the signal below, strongest fit first. Return that many even when the later ones fit less well. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
+        instructions: `Find exactly ${limit} real people on the public web who would fit the intent below, strongest fit first. Return that many even when the later ones fit less well. A person only: never a company, fund, or shared inbox such as info@ or hello@. Only include someone whose own email is publicly listed on a page you visited. Copy the email verbatim; never guess or construct one. For each person, socials are the public profile URLs you opened (X, LinkedIn, GitHub, personal site), copied verbatim. Use only public information.`,
         input: query,
         text: { format: findPeopleSchema },
       }, { timeout: RESEARCH_TIMEOUT_MS });

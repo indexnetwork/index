@@ -276,7 +276,7 @@
 }
 
 .wb-shelf-row,
-.wb-new-signal {
+.wb-new-intent {
   text-align: left;
   border: 1px solid #000;
   background: #fff;
@@ -296,7 +296,7 @@
   background: #fff6e8;
   box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
 }
-.wb-new-signal {
+.wb-new-intent {
   padding: 11px 16px;
   border-width: 2px;
   background: #ff8a00;
@@ -304,7 +304,7 @@
   margin-top: 8px;
   width: 100%;
 }
-.wb-new-signal:active {
+.wb-new-intent:active {
   background: #000;
   color: #ff8a00;
   box-shadow: none;
@@ -607,7 +607,7 @@
     height: 64px;
     padding: 0 14px;
   }
-  .wb-new-signal {
+  .wb-new-intent {
     padding: 13px 16px;
   }
 
