@@ -104,62 +104,6 @@
         "open_world_justification": "Reads one match the owner can already see inside Index."
       }
     },
-    "get_intent_conversation": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Reads the owner's private agent conversation for one intent.",
-        "destructive_justification": "Does not add a note, question, or answer.",
-        "open_world_justification": "Reads a private Index conversation and does not forward it."
-      }
-    },
-    "agent_send_note": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Saves one private note on the owner's agent conversation.",
-        "destructive_justification": "Adds the note and does not delete or overwrite anything.",
-        "open_world_justification": "The note stays in the owner's private Index conversation."
-      }
-    },
-    "agent_send_reply": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Saves one agent reply on the owner's agent conversation.",
-        "destructive_justification": "Adds the reply and does not delete or overwrite anything.",
-        "open_world_justification": "The reply stays in the owner's private Index conversation."
-      }
-    },
-    "agent_send_progress": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Saves one progress update on the owner's agent conversation.",
-        "destructive_justification": "Adds the update and does not delete or overwrite anything.",
-        "open_world_justification": "The update stays in the owner's private Index conversation."
-      }
-    },
-    "agent_ask": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Asks the owner one question on their agent conversation.",
-        "destructive_justification": "Adds a question and does not delete an existing one or accept a match.",
-        "open_world_justification": "The question stays in the owner's private Index conversation."
-      }
-    },
-    "agent_expire_question": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Stops waiting on one pending question.",
-        "destructive_justification": "The question leaves the owner's queue and is no longer asked.",
-        "open_world_justification": "The change stays in the owner's private Index conversation."
-      }
-    },
-    "principal_send_message": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Saves the owner's own words on their agent conversation.",
-        "destructive_justification": "Adds the message and does not delete the question or accept a match.",
-        "open_world_justification": "The message stays in the owner's private Index conversation."
-      }
-    },
     "accept_opportunity": {
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
       "justifications": {
