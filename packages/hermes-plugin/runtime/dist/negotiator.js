@@ -625,8 +625,8 @@ var require_get_vercel_oidc_token = __commonJS((exports, module) => {
     }
     try {
       const [{ getTokenPayload, isExpired }, { refreshToken }] = await Promise.all([
-        await Promise.resolve().then(() => __toESM(require_token_util())),
-        await Promise.resolve().then(() => __toESM(require_token()))
+        await Promise.resolve().then(() => __toESM(require_token_util(), 1)),
+        await Promise.resolve().then(() => __toESM(require_token(), 1))
       ]);
       if (!token || isExpired(getTokenPayload(token), options?.expirationBufferMs)) {
         await refreshToken(options);

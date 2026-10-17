@@ -40,6 +40,6 @@
     "typecheck:runtime": "tsc -p runtime/tsconfig.json"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.71"
+    "@ai-sdk/openai-compatible": "3.0.71"
   }
 }
