@@ -64,8 +64,10 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Read one opportunity and its negotiation | `get_opportunity` |
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
+| Read one intent's chat | `get_intent_conversation` |
+| Answer in one intent's chat | `principal_send_message` |
 
-The hosted Index negotiator writes the agent conversation. This connection does not.
+`get_intent_conversation` reads the owner's chat for that intent, including questions still waiting. `principal_send_message` saves what the owner just said. Pass `questionId` only when those words answer that question. The hosted negotiator writes the agent's side of the same chat.
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
 

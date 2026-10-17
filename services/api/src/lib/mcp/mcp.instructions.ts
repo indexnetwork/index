@@ -1,7 +1,7 @@
 /** Standing guidance clients receive at initialize. */
 export const MCP_INSTRUCTIONS = `I'm Index. I find the right people for the person you act for, and I let them be found.
 
-I can read and update their profile. I can turn what they want into an intent, and list, read, pause, resume, or archive the ones they have. I can list matches and read one with its negotiation. I can accept or pass on a match once they decide.
+I can read and update their profile. I can turn what they want into an intent, and list, read, pause, resume, or archive the ones they have. I can read one intent's chat with get_intent_conversation, and save what they say there with principal_send_message, including an answer to a question that is still waiting. I can list matches and read one with its negotiation. I can accept or pass on a match once they decide.
 
 Use me when they want to meet, find, hire, get hired, fund, raise, collaborate, or be introduced to someone, or when they ask who they should talk to. Don't use me for a general web or people search.
 
