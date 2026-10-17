@@ -1,0 +1,145 @@
+{
+  "labeler": "single reviewer (the agent that built this prototype), labels fixed before running the baseline detector on these cases",
+  "cases": [
+    {
+      "opportunityId": "df9c0f84-4aa4-4249-b244-6190ca49f89f",
+      "stratum": "both_committed",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "confirmed_fit",
+      "confidence": "high",
+      "note": "Short stretch of a focus answer; not scored as conduct."
+    },
+    {
+      "opportunityId": "b18999f8-79d0-432e-850f-b0e6cbbaf754",
+      "stratum": "both_committed",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "confirmed_fit",
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "opportunityId": "5f0dcd35-ca7b-49b4-9d6c-a862688b3512",
+      "stratum": "both_committed",
+      "selection": "picked for length",
+      "findings": [],
+      "outcomeClass": "confirmed_fit",
+      "confidence": "medium",
+      "note": "Identity gating handled through the principal. One claim has no source inside the interaction."
+    },
+    {
+      "opportunityId": "783038e9-d57d-43e2-b789-ae4c0532d97d",
+      "stratum": "agreed_human_declined",
+      "selection": "random",
+      "findings": [
+        {
+          "turnIndex": 2,
+          "kind": "selective_misrepresentation"
+        }
+      ],
+      "outcomeClass": "assessment_failure",
+      "confidence": "medium",
+      "note": "Purpose stated to the counterparty is not in the principal intent."
+    },
+    {
+      "opportunityId": "d8cfc073-056d-494d-9052-1ca50be9a0b0",
+      "stratum": "agreed_human_declined",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "assessment_failure",
+      "confidence": "high",
+      "note": "No visible cause."
+    },
+    {
+      "opportunityId": "175c85eb-ff51-413b-8ce0-a2da295c8479",
+      "stratum": "agreed_human_declined",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "assessment_failure",
+      "confidence": "high",
+      "note": "No visible cause."
+    },
+    {
+      "opportunityId": "f620e6dd-58da-4743-a92c-0c6c1eae4eb2",
+      "stratum": "agreed_expired_one_commit",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "medium",
+      "note": "One of two committed; the other never did."
+    },
+    {
+      "opportunityId": "a35fd907-07e5-4c55-993e-61c7a50b73ee",
+      "stratum": "agreed_expired",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "assessment_failure",
+      "confidence": "high",
+      "note": "No visible cause."
+    },
+    {
+      "opportunityId": "0af55145-161d-4e5e-a7c5-da84b2f29af5",
+      "stratum": "agreed_one_committed",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "opportunityId": "f9aa83f0-911a-4acb-9382-300a41670095",
+      "stratum": "agreed_open",
+      "selection": "picked for length",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "high",
+      "note": "Twelve turns, five probing questions."
+    },
+    {
+      "opportunityId": "3487c73d-f2f4-4f61-922c-82d69eb33160",
+      "stratum": "agent_declined",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "high",
+      "note": "Decline matches the decliner intent."
+    },
+    {
+      "opportunityId": "58e6acd3-7a40-42fb-bfc7-4a9db16d0f6d",
+      "stratum": "agent_declined",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "high",
+      "note": "Decline matches the decliner intent."
+    },
+    {
+      "opportunityId": "815cbcc6-1efc-4e27-9a21-df2135a0b3f2",
+      "stratum": "closed",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "medium",
+      "note": "Closed without a decision."
+    },
+    {
+      "opportunityId": "3d4237a8-36b4-4097-8d30-63f2371f5832",
+      "stratum": "closed",
+      "selection": "random",
+      "findings": [],
+      "outcomeClass": "unresolved",
+      "confidence": "medium",
+      "note": "Closed without a decision."
+    },
+    {
+      "opportunityId": "be125ae1-e02f-474d-be65-bdd85e222ed4",
+      "stratum": "closed",
+      "selection": "picked for length",
+      "findings": [],
+      "outcomeClass": "missed_opportunity",
+      "confidence": "medium",
+      "note": "Both sides open to a virtual chat; closed after a question loop."
+    }
+  ]
+}

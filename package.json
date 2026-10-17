@@ -12,7 +12,8 @@
     "packages/hermes-plugin",
     "packages/agent",
     "packages/agent-tui",
-    "packages/client"
+    "packages/client",
+    "packages/interaction-trace"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
