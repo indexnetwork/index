@@ -212,20 +212,6 @@ function inboxMessage(message: {
   };
 }
 
-const agentActionSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('ask'),
-    scope: z.enum(['intent', 'opportunity']),
-    opportunityId: z.string().trim().min(1).optional(),
-    question: z.string().trim().min(1).max(2000),
-    options: z.array(z.string().trim().min(1).max(300)).min(2).max(4),
-  }).strict(),
-  z.object({ type: z.literal('expire'), questionId: z.string().uuid() }).strict(),
-  z.object({ type: z.literal('note'), text: z.string().trim().min(1).max(8000) }).strict(),
-  z.object({ type: z.literal('reply'), text: z.string().trim().min(1).max(8000) }).strict(),
-  z.object({ type: z.literal('progress'), text: z.string().trim().min(1).max(8000) }).strict(),
-]);
-
 /** Register the curated owner-only Index tool surface on a fresh MCP server. */
 export function registerMcpTools(server: McpServer, principal: McpPrincipal): void {
   server.registerTool(
@@ -657,7 +643,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     name: string,
     intentId: string,
     agentId: string,
-    actions: z.infer<typeof agentActionSchema>[],
+    actions: WakeAction[],
   ) => runTool(name, principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
@@ -710,14 +696,48 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     intentId: z.string().trim().min(1),
     agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
   };
+  const textField = z.string().trim().min(1).max(8000);
+  const registerAgentText = (name: 'agent_send_note' | 'agent_send_reply' | 'agent_send_progress', type: 'note' | 'reply' | 'progress', description: string) => {
+    server.registerTool(
+      name,
+      {
+        description: agentOnly(name) + ' ' + description + LINK_HINT,
+        inputSchema: z.object({ ...agentIds, text: textField }).strict(),
+        annotations: hints(false, false, false, false),
+      },
+      ({ intentId, agentId, text }) => publish(name, intentId, agentId, [{ type, text }]),
+    );
+  };
+  registerAgentText('agent_send_note', 'note', 'Save one private note on the owner’s agent conversation. It stays with the owner and is not sent to the other person.');
+  registerAgentText('agent_send_reply', 'reply', 'Save one reply on the owner’s agent conversation. This is the agent speaking, not the owner’s words, and it is not sent to the other person.');
+  registerAgentText('agent_send_progress', 'progress', 'Save one progress update on the owner’s agent conversation. It stays with the owner and is not sent to the other person.');
+
   server.registerTool(
-    'agent_send_message',
+    'agent_ask',
     {
-      description: agentOnly('agent_send_message') + ' Send actions on the owner’s agent conversation as their agent, in order: note (private), reply, progress, ask (one question; reuse a pending one for the same fact; scope opportunity needs its opportunityId), or expire (a pending question stops waiting). This is not a negotiation turn and not the owner’s message.' + LINK_HINT,
-      inputSchema: z.object({ ...agentIds, actions: z.array(agentActionSchema).min(1).max(5) }).strict(),
+      description: agentOnly('agent_ask') + ' Ask the owner one question on their agent conversation. Reuse a question that is already waiting for the same fact. An opportunity scope needs its opportunityId. This does not accept or pass a match.' + LINK_HINT,
+      inputSchema: z.object({
+        ...agentIds,
+        scope: z.enum(['intent', 'opportunity']),
+        opportunityId: z.string().trim().min(1).optional(),
+        question: z.string().trim().min(1).max(2000),
+        options: z.array(z.string().trim().min(1).max(300)).min(2).max(4),
+      }).strict(),
       annotations: hints(false, false, false, false),
     },
-    ({ intentId, agentId, actions }) => publish('agent_send_message', intentId, agentId, actions),
+    ({ intentId, agentId, scope, opportunityId, question, options }) => publish('agent_ask', intentId, agentId, [{
+      type: 'ask', scope, opportunityId, question, options,
+    }]),
+  );
+
+  server.registerTool(
+    'agent_expire_question',
+    {
+      description: agentOnly('agent_expire_question') + ' Stop waiting on one pending question. The question leaves the owner’s queue. This does not record an answer and does not accept or pass a match.' + LINK_HINT,
+      inputSchema: z.object({ ...agentIds, questionId: z.string().uuid() }).strict(),
+      annotations: hints(false, true, false, false),
+    },
+    ({ intentId, agentId, questionId }) => publish('agent_expire_question', intentId, agentId, [{ type: 'expire', questionId }]),
   );
 
   server.registerTool(
