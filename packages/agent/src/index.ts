@@ -18,6 +18,8 @@ export { closeInitiation, encodeActions, owedWork, readConversation, runMorning,
 export type { NegotiateHook, Runtime } from "./host.ts";
 
 export { createModel } from "./model.ts";
+export { createDecide, decideWith } from "./decide.ts";
+export type { Decide, DecideClientOptions } from "./decide.ts";
 export type { Model, ModelClientOptions } from "./model.ts";
 
 export type {

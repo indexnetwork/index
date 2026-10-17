@@ -440,7 +440,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             unpersisted ??= cause;
           }
         };
-        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
+        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.decide ? { decide: input.decide } : {}), ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
         const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
