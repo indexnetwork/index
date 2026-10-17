@@ -49,8 +49,8 @@ function intentEvent(description: string): EventDefinition {
 
 /**
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
- * copy; the agent reads full records through the tools. `message` is omitted.
- * `principal.input` carries ids only, never the owner's text.
+ * copy. The hosted negotiator reads the agent conversation itself.
+ * `message`, `principal.input` and `question.pending` are omitted.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
   'intent.created': intentEvent('The owner created an intent. Read it with get_intent.'),
@@ -106,38 +106,6 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       turnIndex: Number(data.turnIndex),
       summary: body ?? '',
       url: appLink('o', String(data.opportunityId)),
-    }),
-  },
-  'principal.input': {
-    description: 'The owner wrote in their Index agent conversation. Read get_intent_conversation for this intent. questionId is set when the message answers a question. The owner\'s text is not included.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      intentId: z.string(),
-      questionId: z.string().nullable(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ data = {} }) => ({
-      intentId: String(data.intentId),
-      questionId: typeof data.questionId === 'string' ? data.questionId : null,
-      url: appLink('i', String(data.intentId)),
-    }),
-  },
-  'question.pending': {
-    description: 'The owner\'s Index agent stopped on a question only the owner can answer. Relay it to the owner and link them to the intent.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      intentId: z.string(),
-      questionId: z.string(),
-      opportunityId: z.string().nullable(),
-      question: z.string(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ body, data = {} }) => ({
-      intentId: String(data.intentId),
-      questionId: String(data.questionId),
-      opportunityId: (data.opportunityId as string | null | undefined) ?? null,
-      question: body ?? '',
-      url: appLink('i', String(data.intentId)),
     }),
   },
 };
