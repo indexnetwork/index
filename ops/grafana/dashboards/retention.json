@@ -1,0 +1,338 @@
+{
+ "uid": "index-retention",
+ "title": "Index - Retention",
+ "tags": [
+  "index"
+ ],
+ "timezone": "utc",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "stat",
+   "title": "Weekly active users (last 7d)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "with acts as (\n  select user_id as u, created_at as t from analytics.intents\n  union all select sender_id, created_at from analytics.messages\n  union all select actor_user_id, at from analytics.opportunity_events where type = 'committed'\n) select count(distinct a.u) as value from acts a join analytics.users us on us.id = a.u where a.t > now() - interval '7 days'"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "Total users",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.users where deleted_at is null"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "Accounts deleted in range",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.users where deleted_at is not null and $__timeFilter(deleted_at)"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "Signups in range",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.users where $__timeFilter(created_at)"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "Weekly active users: new vs returning",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 9
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 70,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "with acts as (\n  select user_id as u, created_at as t from analytics.intents\n  union all select sender_id, created_at from analytics.messages\n  union all select actor_user_id, at from analytics.opportunity_events where type = 'committed'\n),\nwk as (select distinct a.u, date_trunc('week', a.t) as w from acts a join analytics.users us on us.id = a.u),\nfst as (select u, min(w) as fw from wk group by u)\nselect w as time, count(*) filter (where w = fw) as new_users, count(*) filter (where w > fw) as returning_users from wk join fst using (u) where $__timeFilter(w) group by w order by w"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "timeseries",
+   "title": "Week-over-week retention (share of last week's actives active again)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "with acts as (\n  select user_id as u, created_at as t from analytics.intents\n  union all select sender_id, created_at from analytics.messages\n  union all select actor_user_id, at from analytics.opportunity_events where type = 'committed'\n),\nwk as (select distinct a.u, date_trunc('week', a.t) as w from acts a join analytics.users us on us.id = a.u),\nfst as (select u, min(w) as fw from wk group by u)\nselect p.w + interval '7 days' as time, count(c.u)::float / count(*) as retention from wk p left join wk c on c.u = p.u and c.w = p.w + interval '7 days' where p.w + interval '7 days' <= date_trunc('week', now()) and $__timeFilter(p.w + interval '7 days') group by 1 order by 1"
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Accounts deleted per week",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 70,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select date_trunc('week', deleted_at) as time, count(*) as deleted from analytics.users where deleted_at is not null and $__timeFilter(deleted_at) group by 1 order by 1"
+    }
+   ]
+  }
+ ],
+ "templating": {
+  "list": []
+ }
+}

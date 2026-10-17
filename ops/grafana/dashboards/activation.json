@@ -1,0 +1,201 @@
+{
+ "uid": "index-activation",
+ "title": "Index - Activation funnel",
+ "tags": [
+  "index"
+ ],
+ "timezone": "utc",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "bargauge",
+   "title": "Funnel: users who signed up in range and reached each step",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": true
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select step, users from (\n  with c as (select id from analytics.users where deleted_at is null and $__timeFilter(created_at)),\n  i as (select distinct user_id as u from analytics.intents),\n  d as (select distinct user_id as u from analytics.intents where first_discovery_succeeded_at is not null),\n  o as (select distinct ou.user_id as u from analytics.opportunity_users ou join analytics.opportunity_events e on e.opportunity_id = ou.opportunity_id and e.type = 'opened'),\n  k as (select distinct actor_user_id as u from analytics.opportunity_events where type = 'committed')\n  select '1 Signed up' as step, count(*) as users from c\n  union all select '2 Created first intent', count(*) from c join i on i.u = c.id\n  union all select '3 First discovery succeeded', count(*) from c join d on d.u = c.id\n  union all select '4 Opportunity opened', count(*) from c join o on o.u = c.id\n  union all select '5 Committed to an opportunity', count(*) from c join k on k.u = c.id\n) f order by step"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Signups per day",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 70,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select $__timeGroupAlias(created_at,'1d'), count(*) as signups from analytics.users where $__timeFilter(created_at) group by 1 order by 1"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Users creating their first intent per day",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 70,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select $__timeGroupAlias(first_at,'1d'), count(*) as first_intents from (select user_id, min(created_at) as first_at from analytics.intents group by 1) f where $__timeFilter(first_at) group by 1 order by 1"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Time from signup to first intent (median hours, by signup week)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 24,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select date_trunc('week', u.created_at) as time, percentile_cont(0.5) within group (order by extract(epoch from (f.first_at - u.created_at))/3600) as median_hours from analytics.users u join (select user_id, min(created_at) as first_at from analytics.intents group by 1) f on f.user_id = u.id where $__timeFilter(u.created_at) group by 1 order by 1"
+    }
+   ]
+  }
+ ],
+ "templating": {
+  "list": []
+ }
+}
