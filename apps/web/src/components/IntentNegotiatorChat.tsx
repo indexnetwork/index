@@ -52,8 +52,8 @@ function questionCard(provenance: Provenance, text: string, live?: PrincipalQues
   };
 }
 
-/** Same classification as the Mac signal inbox: a question stays where it was asked, and its answer sits on that card. */
-function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestion[]): FeedPiece[] {
+/** Same classification as the Mac intent inbox: a question stays where it was asked, and its answer sits on that card. */
+function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestion[]): FeedPiece[] {
   const live = new Map(questions.map((question) => [question.id, question]));
   const answers = new Map<string, string>();
   for (const message of messages) {
@@ -318,7 +318,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     }
   };
 
-  const feed = useMemo(() => signalFeed(messages, questions), [messages, questions]);
+  const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">

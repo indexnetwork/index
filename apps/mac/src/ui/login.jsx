@@ -1,4 +1,4 @@
-// Login, the first surface, before the signals hub. An agent acts on your
+// Login, the first surface, before the intents hub. An agent acts on your
 // behalf, so signing in is really "give your agent an identity to run under".
 
 function SignInButton({ children, primary, onClick, disabled }) {
@@ -242,7 +242,7 @@ function Login({ onSignIn }) {
               marginTop:20, marginBottom:0,
               fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1.5, color:"var(--ink-3)",
             }}>
-              index only acts on what you tell it. you can stop any signal at any
+              index only acts on what you tell it. you can stop any intent at any
               time.
             </p>
           </div>

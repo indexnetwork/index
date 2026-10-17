@@ -124,7 +124,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
         </div>
         <div className="wb-body mac-scroll" style={{ padding: 18, gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
           <p id="create-network-title" style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>
-            a network is a group that shares signals. if you run a community, event, or team, create one here, then invite your members so their signals can find each other.
+            a network is a group that shares intents. if you run a community, event, or team, create one here, then invite your members so their intents can find each other.
           </p>
           <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
             <button type="button" onClick={() => uploadNetworkImage && fileInputRef.current?.click()} disabled={isSubmitting || !uploadNetworkImage} style={{ display: "flex", gap: 12, alignItems: "center", background: "none", border: "none", padding: 0, textAlign: "left" }}>

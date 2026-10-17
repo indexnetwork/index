@@ -63,7 +63,7 @@ type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * expiring it evaporates a match the human was about to approve.
  *
  * The invariant this pins: a `pending` opportunity leaves `pending` only by a
- * human decision (accept/reject) or by its signal being archived — never by
+ * human decision (accept/reject) or by its intent being archived — never by
  * background churn. The intent-archive and removed-member cascades are
  * deliberate human-caused paths and are unaffected.
  */

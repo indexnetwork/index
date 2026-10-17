@@ -45,7 +45,7 @@ The ambient mode doesn't have that constraint. It's running continuously across 
 
 Traditional networking is rationed by time and attention. Scarcity makes decisions for you because you can only introduce yourself to so many people, or go to so many sessions. The constraint does the prioritization.
 
-When agents are surfacing connections continuously, that constraint is gone. Residents will have to choose what they pursue and what they let expire. What five hundred people choose when they can have any connection is a signal about what they actually value. They might not even realize that the priorities they speak out and the ones they inhabit are different, and that's the interesting part.
+When agents are surfacing connections continuously, that constraint is gone. Residents will have to choose what they pursue and what they let expire. What five hundred people choose when they can have any connection is an intent about what they actually value. They might not even realize that the priorities they speak out and the ones they inhabit are different, and that's the interesting part.
 
 **Agent negotiations form their own proto-market**
 

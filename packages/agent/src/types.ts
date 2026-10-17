@@ -113,7 +113,7 @@ export interface BriefInput {
   signal?: AbortSignal;
 }
 
-/** Everything a wake sees: one signal, its conversation, and all of its opportunities. */
+/** Everything a wake sees: one intent, its conversation, and all of its opportunities. */
 export interface WakeInput {
   user: User;
   intent: Intent;

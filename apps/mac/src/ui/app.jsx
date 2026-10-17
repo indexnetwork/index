@@ -172,8 +172,8 @@ function nativeAuthed() {
 // that comes up empty, so the caller can say so instead of opening a blank
 // window.
 // A conversation link (minted by the app's own OS toasts) names a thread
-// rather than a person card. Its provenance carries both the signal the thread
-// belongs to and the opportunity behind it, so the caller can open that signal
+// rather than a person card. Its provenance carries both the intent the thread
+// belongs to and the opportunity behind it, so the caller can open that intent
 // on the chat, and fall back to the conversations list when there is none.
 async function resolveDeepLinkConversation(route, people) {
   if (!nativeAuthed() || !window.IndexApp) return null;
@@ -209,7 +209,7 @@ async function resolveDeepLinkPerson(route, people) {
       // GET /opportunities/:id names the counterpart under otherParties rather
       // than the counterpartUserId/counterpartName the list mapper reads, and
       // the profile needs the user id to fetch their bio. `intentId` is the
-      // viewer's own signal, which is what decides between opening that signal
+      // viewer's own intent, which is what decides between opening that intent
       // and floating a card.
       const other = Array.isArray(row.otherParties) ? row.otherParties[0] : null;
       if (person) person.intentId = row.intentId || null;
@@ -237,7 +237,7 @@ async function resolveDeepLinkPerson(route, people) {
 
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
-  // True until the user creates their first signal, the hub opens empty.
+  // True until the user creates their first intent, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
   // First run, in order: the name confirmed on the card, then what the
@@ -253,7 +253,7 @@ function App() {
   const data = snapshot || {};
   const { PEOPLE = [], POOL = [], FIELD_EVENTS = [], INTENTS = [] } = data;
   // Unread person-to-person threads. The conversations shelf shows this, and
-  // the Dock badge adds it to the signal and network counts.
+  // the Dock badge adds it to the intent and network counts.
   const [chatUnread, setChatUnread] = useState(0);
 
   const refreshNetworks = React.useCallback(async () => {
@@ -284,7 +284,7 @@ function App() {
     } catch (e) { /* keep prior list */ }
   }, []);
 
-  // Re-fetch the signal shelf after pause/archive (or whenever the hub remounts)
+  // Re-fetch the intent shelf after pause/archive (or whenever the hub remounts)
   // so row status matches the backend without a full app reload.
   const refreshIntents = React.useCallback(async () => {
     if (!nativeAuthed() || !window.IndexApp) return;
@@ -325,12 +325,12 @@ function App() {
   // and negotiations (null = none, `tab` applies to settings only,
   // `conversationId` to conversations only). They live up here rather than in
   // the hub because Index ▸ Settings… and the View menu have to work from a
-  // signal too, and they open over whatever is on screen so neither the hub nor
-  // a live signal session is torn down to show them.
+  // intent too, and they open over whatever is on screen so neither the hub nor
+  // a live intent session is torn down to show them.
   const [overlay, setOverlay] = useState(null);
   const closeOverlay = () => setOverlay(null);
-  // Bumped when a question link lands, so the signal's feed scrolls to it even
-  // if that signal was already open and nothing else changed.
+  // Bumped when a question link lands, so the intent's feed scrolls to it even
+  // if that intent was already open and nothing else changed.
   const [focusQuestion, setFocusQuestion] = useState(0);
 
   useEffect(() => {
@@ -376,8 +376,8 @@ function App() {
     const link = pendingLink;
     resolvingRef.current = link;
     (async () => {
-      // A conversation that belongs to a signal on the hub opens on that
-      // signal. Anything else still reads in the conversations list, with the
+      // A conversation that belongs to an intent on the hub opens on that
+      // intent. Anything else still reads in the conversations list, with the
       // thread already open.
       if (link.route === "conversation") {
         const target = await resolveDeepLinkConversation(link, peopleRef.current);
@@ -392,16 +392,16 @@ function App() {
         setPendingLink(null);
         return;
       }
-      // A question names its signal directly: it is answered in that signal's
+      // A question names its intent directly: it is answered in that intent's
       // own conversation with its agent, and nowhere else.
-      if (link.route === "signal") {
+      if (link.route === "intent") {
         const intent = findIntent(link.id);
         resolvingRef.current = null;
         if (intent) {
           pickExistingIntent(intent);
           setFocusQuestion(Date.now());
         } else {
-          setNotice("that signal isn't on your hub.");
+          setNotice("that intent isn't on your hub.");
         }
         setPendingLink(null);
         return;
@@ -410,9 +410,9 @@ function App() {
       // A newer link arrived mid-flight and owns the slot now; let it finish.
       if (resolvingRef.current !== link) return;
       resolvingRef.current = null;
-      // An opportunity is read inside the signal that surfaced it. A profile
-      // link names no signal at all, so it stays a floating card, as does an
-      // opportunity whose signal has left the hub.
+      // An opportunity is read inside the intent that surfaced it. A profile
+      // link names no intent at all, so it stays a floating card, as does an
+      // opportunity whose intent has left the hub.
       const owner = link.route === "card" && person ? findIntent(person.intentId) : null;
       if (owner) {
         openIntentOn(owner, { kind: "profile", personId: person.id, status: person.status });
@@ -427,10 +427,10 @@ function App() {
     })();
   }, [pendingLink, screen]);
 
-  // Dock tile: questions and opportunities waiting on a signal, plus the
+  // Dock tile: questions and opportunities waiting on an intent, plus the
   // shelf counts we can actually read (unread conversations, join requests).
   // The tile is a sum of the in-memory snapshot. That snapshot only reloaded
-  // when the hub mounted or this app archived a signal, so a change made
+  // when the hub mounted or this app archived an intent, so a change made
   // anywhere else sat on the icon until the next relaunch.
   const overlayView = overlay && overlay.view;
   const refreshChatUnread = React.useCallback(() => {
@@ -471,12 +471,12 @@ function App() {
       window.IndexApp.setDockBadge(0);
       return;
     }
-    const signals = (INTENTS || []).reduce((sum, intent) => {
+    const intents = (INTENTS || []).reduce((sum, intent) => {
       if (!intent || intent.status !== "active") return sum;
       return sum + (Number(intent.pending) || 0);
     }, 0);
     const joins = (networks || []).reduce((sum, net) => sum + (Number(net.pendingJoinCount) || 0), 0);
-    window.IndexApp.setDockBadge(signals + joins + chatUnread);
+    window.IndexApp.setDockBadge(intents + joins + chatUnread);
   }, [live, INTENTS, networks, chatUnread]);
 
   // Desktop notification pipeline: runs app-wide while signed in. The native
@@ -516,7 +516,7 @@ function App() {
   }, []);
 
   // The "building" screen doubles as the boot loader: fetch the live snapshot,
-  // then drop into the signals hub. Falls back to demo data when unauthenticated.
+  // then drop into the intents hub. Falls back to demo data when unauthenticated.
   // Two GETs and no artificial floor: the real wait at first run is the lookup
   // after the name card, and padding this one only made the same window appear
   // twice in a few seconds.
@@ -591,20 +591,20 @@ function App() {
     setScreen("login");
   };
 
-  // Bridge: MainView publishes its chats (per active signal) up here so the top
-  // menubar can show a 2-step menu, signals, and the chats within each, and
+  // Bridge: MainView publishes its chats (per active intent) up here so the top
+  // menubar can show a 2-step menu, intents, and the chats within each, and
   // it persists across screens (so it works from the landing screen too).
-  const [chatGroups, setChatGroups] = useState({}); // signalTitle -> [{id,name,unread}]
-  const chatOpenRef = useRef(null);                  // { signal, open } for the active session
-  // What to open inside a signal once it mounts: { kind: "chat" | "profile",
-  // personId, status }. The menubar resumes a signal on a chat; a deep link can
+  const [chatGroups, setChatGroups] = useState({}); // intentTitle -> [{id,name,unread}]
+  const chatOpenRef = useRef(null);                  // { intent, open } for the active session
+  // What to open inside an intent once it mounts: { kind: "chat" | "profile",
+  // personId, status }. The menubar resumes an intent on a chat; a deep link can
   // also land on a profile, and carries the status so the radar opens on the
   // stage that person is actually in.
   const [pendingFocus, setPendingFocus] = useState(null);
-  const registerChats = (signal, list, openFn) => {
-    if (!signal) return;
-    setChatGroups(prev => ({ ...prev, [signal]: list }));
-    chatOpenRef.current = { signal, open: openFn };
+  const registerChats = (intent, list, openFn) => {
+    if (!intent) return;
+    setChatGroups(prev => ({ ...prev, [intent]: list }));
+    chatOpenRef.current = { intent, open: openFn };
   };
 
   // Index ▸ Settings… and the View menu call this. Before the hub there is no
@@ -653,8 +653,8 @@ function App() {
     status: intent.status,
   });
   const pickExistingIntent = (intent) => {
-    // App-level feeds persist across signals; clear them so the previous
-    // signal's questions and radar never flash into the next open.
+    // App-level feeds persist across intents; clear them so the previous
+    // intent's questions and radar never flash into the next open.
     setConversation([]);
     setField([]);
     setPeople([]);
@@ -663,23 +663,23 @@ function App() {
     seedField();
   };
   const findIntent = (id) => (id ? (INTENTS || []).find((i) => i.id === id) || null : null);
-  // Resume a signal and say what to open inside it once the session mounts.
+  // Resume an intent and say what to open inside it once the session mounts.
   const openIntentOn = (intent, focus) => { pickExistingIntent(intent); setPendingFocus(focus); };
   const goNewIntent = () => setScreen("new-intent");
   const finishNewIntent = async (answers, created, intentId) => {
     setConversation([]);
     setField([]);
     setPeople([]);
-    setFreshUser(false);   // they've created a signal, hub is no longer empty
+    setFreshUser(false);   // they've created an intent, hub is no longer empty
 
-    // Open the exact persisted signal as soon as POST /intents returns its ID.
+    // Open the exact persisted intent as soon as POST /intents returns its ID.
     // The shelf refresh is background work, not a second blocking
     // /auth/me + /intents/list bootstrap.
     if (created && intentId) {
       const now = new Date().toISOString();
       const optimistic = {
         id: intentId,
-        title: answers.intent || "new signal",
+        title: answers.intent || "new intent",
         status: "active",
         source: { id:intentId, createdAt:now, updatedAt:now },
       };
@@ -703,14 +703,14 @@ function App() {
     seedField();
   };
 
-  // Open a chat from the menubar. If its signal is the active session, open it
-  // directly; otherwise resume that signal first, then open once main mounts.
-  const openChatFromMenu = (signal, personId) => {
-    if (screen === "main" && chatOpenRef.current && chatOpenRef.current.signal === signal) {
+  // Open a chat from the menubar. If its intent is the active session, open it
+  // directly; otherwise resume that intent first, then open once main mounts.
+  const openChatFromMenu = (intent, personId) => {
+    if (screen === "main" && chatOpenRef.current && chatOpenRef.current.intent === intent) {
       chatOpenRef.current.open(personId);
     } else {
-      const intent = INTENTS.find(i => i.title === signal);
-      if (intent) openIntentOn(intent, { kind: "chat", personId });
+      const target = INTENTS.find(i => i.title === intent);
+      if (target) openIntentOn(target, { kind: "chat", personId });
     }
   };
 
@@ -742,7 +742,7 @@ function App() {
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
         {/* First run, in three screens: confirm the name, look the person up
             behind the loader, then review what came back. The review is what
-            PATCHes profile + confirm-profile; the first signal after it POSTs
+            PATCHes profile + confirm-profile; the first intent after it POSTs
             onboarding/complete. */}
         {screen === "name"        && <AskName
                                        initialName={(me && me.name) || ""}
@@ -774,7 +774,7 @@ function App() {
           />
         )}
         {/* These lay over the desktop instead of replacing the screen, so
-            leaving one drops you back into the same hub or signal. */}
+            leaving one drops you back into the same hub or intent. */}
         {overlay && (
           <div className="mac-desktop" style={{ position:"fixed", inset:0, zIndex:850 }}>
             {overlay.view === "settings" && <Settings initialTab={overlay.tab} onClose={closeOverlay}/>}
@@ -782,8 +782,8 @@ function App() {
               <Networks
                 initialCreate={overlay.tab === "create"}
                 onClose={closeOverlay}
-                onNewSignal={() => { closeOverlay(); goNewIntent(); }}
-                onOpenSignal={(sig) => {
+                onNewIntent={() => { closeOverlay(); goNewIntent(); }}
+                onOpenIntent={(sig) => {
                   const intent = (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
                   closeOverlay();
                   if (intent) pickExistingIntent(intent);
@@ -792,7 +792,7 @@ function App() {
             )}
             {overlay.view === "conversations" && (
               <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}
-                onNewSignal={() => { closeOverlay(); goNewIntent(); }}
+                onNewIntent={() => { closeOverlay(); goNewIntent(); }}
                 onOpenProfile={(id) => setPendingLink({ route: "profile", id })}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
@@ -820,16 +820,16 @@ function App() {
   );
 }
 
-function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
+function MacMenubar({ screen, intents = [], chatGroups = {}, onOpenChat }) {
   const [clock, setClock] = useState(macClock());
   const [chatsOpen, setChatsOpen] = useState(false);
-  const [expanded, setExpanded] = useState(null); // which signal is expanded
+  const [expanded, setExpanded] = useState(null); // which intent is expanded
   useEffect(() => {
     const t = setInterval(() => setClock(macClock()), 30000);
     return () => clearInterval(t);
   }, []);
   const groupUnread = (title) => (chatGroups[title] || []).reduce((a, c) => a + (c.unread || 0), 0);
-  const totalUnread = signals.reduce((a, s) => a + groupUnread(s.title), 0);
+  const totalUnread = intents.reduce((a, s) => a + groupUnread(s.title), 0);
   const rowHover = (on) => (e) => {
     e.currentTarget.style.background = on ? "#000" : "#fff";
     e.currentTarget.style.color = on ? "#FF8A00" : "#000";
@@ -840,7 +840,7 @@ function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
 
       <span className="right">
         <span className="m subtle">
-          { screen === "intents"    ? "your signals"
+          { screen === "intents"    ? "your intents"
           : screen === "new-intent" ? "calibrating"
           : "" }
         </span>

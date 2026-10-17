@@ -38,16 +38,16 @@ export interface HostedSessionIO {
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
 export class HostedSession {
-  /** Signals with a wake in flight, and those that asked for one while it ran. */
+  /** Intents with a wake in flight, and those that asked for one while it ran. */
   private readonly waking = new Set<string>();
   private readonly again = new Set<string>();
-  /** Opportunities with a negotiator in flight, by the signal they stand on. */
+  /** Opportunities with a negotiator in flight, by the intent they stand on. */
   private readonly working = new Map<string, string>();
-  /** Failed wakes retried so far, by signal. */
+  /** Failed wakes retried so far, by intent. */
   private readonly retries = new Map<string, number>();
-  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
+  /** Stalls no wake has read yet, by intent: the only ones worth waking for. */
   private readonly unread = new Map<string, string>();
-  /** Signals whose initiation check is running, and those that asked for one while it ran. */
+  /** Intents whose initiation check is running, and those that asked for one while it ran. */
   private readonly closing = new Set<string>();
   private readonly resettle = new Set<string>();
 
@@ -66,25 +66,25 @@ export class HostedSession {
   }
 
   /**
-   * One wake over one signal, coalescing a request that arrives while one is
+   * One wake over one intent, coalescing a request that arrives while one is
    * running into a single follow-up. The follow-up runs only after a wake that
    * did not throw. A failure belongs to {@link retry}.
    *
-   * @param userId - The signal's owner.
-   * @param intentId - The signal to think about.
+   * @param userId - The intent's owner.
+   * @param intentId - The intent to think about.
    */
   async wake(userId: string, intentId: string): Promise<void> {
     if (!this.io.running()) return;
-    // Claimed before the first await: two frames for one signal must not both
+    // Claimed before the first await: two frames for one intent must not both
     // become a wake.
     if (this.waking.has(intentId)) {
       this.again.add(intentId);
       return;
     }
     this.waking.add(intentId);
-    // This wake reads every stall standing on the signal, so none of them is a
+    // This wake reads every stall standing on the intent, so none of them is a
     // reason to wake again.
-    for (const [opportunityId, signal] of this.unread) if (signal === intentId) this.unread.delete(opportunityId);
+    for (const [opportunityId, intent] of this.unread) if (intent === intentId) this.unread.delete(opportunityId);
 
     let failed = false;
     try {
@@ -110,8 +110,8 @@ export class HostedSession {
    * again a few times, further apart each time, then waits for the next event
    * or restart.
    *
-   * @param userId - The signal's owner.
-   * @param intentId - The signal whose wake failed.
+   * @param userId - The intent's owner.
+   * @param intentId - The intent whose wake failed.
    */
   private retry(userId: string, intentId: string): void {
     const attempt = (this.retries.get(intentId) ?? 0) + 1;
@@ -134,7 +134,7 @@ export class HostedSession {
    * stop is what releases it.
    *
    * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
+   * @param intentId - The intent this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    */
   async negotiate(userId: string, intentId: string, opportunityId: string): Promise<void> {
@@ -158,7 +158,7 @@ export class HostedSession {
    * unless this check threw — that follow-up would retry the failure with no delay.
    *
    * @param userId - The seat owner.
-   * @param intentId - The signal.
+   * @param intentId - The intent.
    */
   async settle(userId: string, intentId: string): Promise<void> {
     if (!this.io.running()) return;
@@ -191,7 +191,7 @@ export class HostedSession {
 
   /**
    * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
+   * @param intentId - The intent this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    * @param outcome - Set once the negotiator itself starts, including when it throws.
    */

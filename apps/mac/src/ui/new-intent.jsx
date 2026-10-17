@@ -104,7 +104,7 @@ function NewIntent({ onDone, onBack }) {
       setStage("summary");
       // A 4xx usually says what to change; anything else is ours, and the
       // raw text stays in the console.
-      console.warn("[new signal] create failed", _e);
+      console.warn("[new intent] create failed", _e);
       const status = _e && _e.status;
       const said = String((_e && _e.message) || "").trim().replace(/\.?$/, ".");
       const reason = status >= 400 && status < 500 && said !== "." ? said : "try again.";
@@ -112,7 +112,7 @@ function NewIntent({ onDone, onBack }) {
     }
   };
 
-  // Once the follow-up answers are in, the next thing is the signal itself,
+  // Once the follow-up answers are in, the next thing is the intent itself,
   // so that wait goes straight to the calibrating card.
   if (calibrating || (thinking && recoveryUsed)) return <Calibrating/>;
 
@@ -177,8 +177,8 @@ function NewIntent({ onDone, onBack }) {
                 </div>
               ) : stage === "summary" ? (
                 <div className="fade-up" style={{ display:"grid", gap:12 }}>
-                  <AgentBubble>Here's your signal.</AgentBubble>
-                  <SignalSummaryCard
+                  <AgentBubble>Here's your intent.</AgentBubble>
+                  <IntentSummaryCard
                     description={finalDescription}
                     onChange={setFinalDescription}
                     note={feedback}
@@ -354,7 +354,7 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
             )}
           </div>
         ))}
-        <Btn primary onClick={handleSubmit}>create signal</Btn>
+        <Btn primary onClick={handleSubmit}>create intent</Btn>
       </div>
     </div>
   );
@@ -445,12 +445,12 @@ function PastTurn({ step, answer }) {
   );
 }
 
-function SignalSummaryCard({ description, onChange, note, canCreate, onCreate, onRecheck }) {
+function IntentSummaryCard({ description, onChange, note, canCreate, onCreate, onRecheck }) {
   return (
     <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
       <div style={{ borderLeft:"2px solid #000", paddingLeft:14, display:"grid", gap:8 }}>
         <textarea
-          aria-label="Signal description"
+          aria-label="Intent description"
           value={description}
           onChange={(event) => onChange(event.target.value)}
           maxLength={65_536}
@@ -470,9 +470,9 @@ function SignalSummaryCard({ description, onChange, note, canCreate, onCreate, o
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         {canCreate ? (
-          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this signal</Btn>
+          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this intent</Btn>
         ) : (
-          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check signal</Btn>
+          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check intent</Btn>
         )}
       </div>
     </div>
@@ -528,7 +528,7 @@ function FieldGlyph() {
 
 function Calibrating() {
   const lines = [
-    "structuring your inputs into signals…",
+    "structuring your inputs into intents…",
     "reaching out across the network…",
     "filtering through options…",
     "coming back around",

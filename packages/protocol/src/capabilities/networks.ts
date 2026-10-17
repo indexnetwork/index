@@ -9,7 +9,7 @@
  *   network.state        that graph's channel state
  *   membership.graph     the roster graph — add, list, remove members
  *   membership.state     that graph's channel state
- *   indexer.graph        signal↔community assignment, direct or model-evaluated
+ *   indexer.graph        intent↔community assignment, direct or model-evaluated
  *   indexer.state        that graph's channel state
  *   network.recommender  ranking public communities during onboarding
  *
@@ -76,10 +76,10 @@ export class Networks {
     return new NetworkMembershipGraphFactory(this.database("createMembershipGraph")).createGraph();
   }
 
-  // ── Signal assignment ───────────────────────────────────────────────────────
+  // ── Intent assignment ───────────────────────────────────────────────────────
 
   /**
-   * Build the signal↔community assignment graph — link a signal to a community
+   * Build the intent↔community assignment graph — link an intent to a community
    * and unlink it.
    *
    * @throws If the instance was constructed without a `database`.

@@ -98,7 +98,7 @@ export interface MorningOwed {
   talked: number;
   /** Agreed by both agents and still waiting on the owner. `fresh` arrived since `since`. */
   waiting: { opportunityId: string; userId: string; name: string; context: string | null; fresh: boolean }[];
-  /** The agent's latest summary per signal since `since`. */
+  /** The agent's latest summary per intent since `since`. */
   notes: { text: string; intentId: string }[];
   questions: { text: string; intentId: string }[];
 }
@@ -156,7 +156,7 @@ export async function owedForEmail(userId: string, since: Date): Promise<Morning
   return { talked, waiting: [...waiting], notes: [...notes], questions: [...questions] };
 }
 
-/** @returns Signals that belong to a network. */
+/** @returns Intents that belong to a network. */
 export async function networkedIntentIds(userId: string): Promise<Set<string>> {
   const rows = await db.select({ id: schema.intentNetworks.intentId })
     .from(schema.intentNetworks)

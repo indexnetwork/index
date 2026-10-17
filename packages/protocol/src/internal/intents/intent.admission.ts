@@ -5,7 +5,7 @@ const MAX_PERMISSIBLE_ENTROPY = 0.75;
 const MIN_CLEAR_INTENT_SCORE = 40;
 // Match the whole request so qualified job searches use the verifier's verdict.
 const GENERIC_JOB_PHRASE = /^(?:(?:i(?:['’]m|\s+am)?\s+)?(?:want|need|seek(?:ing)?|looking\s+for)\s+)?(?:a|any|some)\s+job[.!?]*$/i;
-const DEFAULT_SPECIFICITY_WARNING = "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
+const DEFAULT_SPECIFICITY_WARNING = "This intent is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
 
 /** The admission policy shared by preparation and explicit updates. */
 export function admissionFailure(

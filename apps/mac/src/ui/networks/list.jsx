@@ -1,4 +1,4 @@
-function Networks({ onClose, onOpenSignal, onNewSignal, initialCreate = false }) {
+function Networks({ onClose, onOpenIntent, onNewIntent, initialCreate = false }) {
   // Live-only: the mirror holds the signed-in user's networks (set by
   // applyLoaded). Ensure it is an array so the local unshift below still
   // persists a just-created network to the other screens.
@@ -145,7 +145,7 @@ function Networks({ onClose, onOpenSignal, onNewSignal, initialCreate = false })
       invitationCode: null,
       role: "owner",
       joined: true,
-      signals: [],
+      intents: [],
     };
     if (client) {
       try {
@@ -284,8 +284,8 @@ function Networks({ onClose, onOpenSignal, onNewSignal, initialCreate = false })
         onLeave={leaveNetwork}
         onUpdated={updateOpenNet}
         onDeleted={deleteNetwork}
-        onOpenSignal={onOpenSignal}
-        onNewSignal={onNewSignal}
+        onOpenIntent={onOpenIntent}
+        onNewIntent={onNewIntent}
       />
     );
   }

@@ -20,17 +20,17 @@ export interface RunnerOptions {
 }
 
 export interface Runner {
-  /** Wake one signal now, for whatever reason the host has. */
+  /** Wake one intent now, for whatever reason the host has. */
   wake: (intentId: string) => void;
-  /** The morning wake for one signal. The host calls these one after another. */
+  /** The morning wake for one intent. The host calls these one after another. */
   morning: (intentId: string) => Promise<void>;
   /** Abort in-flight runs and the event stream. There is no restart. */
   stop: () => void;
 }
 
 /**
- * Work every active signal this owner has. A wake happens because something
- * changed on the signal, and once each local morning when the host asks.
+ * Work every active intent this owner has. A wake happens because something
+ * changed on the intent, and once each local morning when the host asks.
  *
  * A counterpart's turn is the passive trigger: it briefs that one opportunity
  * if it needs briefing and takes its turn. No sibling is decided. When the
@@ -38,7 +38,7 @@ export interface Runner {
  * opening turn, one summary goes to the principal and one wake decides them.
  *
  * @param options - Index, the model, and where to report.
- * @returns A handle that wakes a signal on demand and stops everything.
+ * @returns A handle that wakes an intent on demand and stops everything.
  */
 export function startRunner(options: RunnerOptions): Runner {
   const { client, model, now = () => new Date(), log = () => {}, onError = () => {}, negotiate } = options;
@@ -46,13 +46,13 @@ export function startRunner(options: RunnerOptions): Runner {
   const intents = new Map<string, Intent>();
   const waking = new Set<string>();
   const again = new Set<string>();
-  /** Opportunities with a negotiator in flight, by signal. */
+  /** Opportunities with a negotiator in flight, by intent. */
   const working = new Map<string, string>();
-  /** Failed wakes retried so far, by signal. */
+  /** Failed wakes retried so far, by intent. */
   const retries = new Map<string, number>();
-  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
+  /** Stalls no wake has read yet, by intent: the only ones worth waking for. */
   const unread = new Map<string, string>();
-  /** Signals whose initiation check is running, and those that asked for one while it ran. */
+  /** Intents whose initiation check is running, and those that asked for one while it ran. */
   const closing = new Set<string>();
   const resettle = new Set<string>();
   let stopped = false;
@@ -60,10 +60,10 @@ export function startRunner(options: RunnerOptions): Runner {
   const runtime = () => ({ model, now, signal: abort.signal, log, ...(negotiate ? { negotiate } : {}) });
 
   /**
-   * Wake one signal, coalescing a request that arrives while one is running
+   * Wake one intent, coalescing a request that arrives while one is running
    * into a single follow-up.
    *
-   * @param intentId - The signal to think about.
+   * @param intentId - The intent to think about.
    */
   function startWake(intentId: string): void {
     const intent = intents.get(intentId);
@@ -74,9 +74,9 @@ export function startRunner(options: RunnerOptions): Runner {
     }
     waking.add(intentId);
     void (async () => {
-      // This wake reads every stall standing on the signal, so none of them is
+      // This wake reads every stall standing on the intent, so none of them is
       // a reason to wake again.
-      for (const [opportunityId, signal] of unread) if (signal === intentId) unread.delete(opportunityId);
+      for (const [opportunityId, intent] of unread) if (intent === intentId) unread.delete(opportunityId);
       log(`wake ${intent.statement}`);
       const started = Date.now();
       // Each opportunity opens the moment its own decision is published, so
@@ -98,7 +98,7 @@ export function startRunner(options: RunnerOptions): Runner {
    * again a few times, further apart each time, then waits for the next event
    * or restart.
    *
-   * @param intentId - The signal whose wake failed.
+   * @param intentId - The intent whose wake failed.
    */
   function retry(intentId: string): void {
     const attempt = (retries.get(intentId) ?? 0) + 1;
@@ -112,10 +112,10 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * Take up whatever one signal still owes, as Index records it: the wake a
+   * Take up whatever one intent still owes, as Index records it: the wake a
    * stall is waiting on, and the turns nothing is holding.
    *
-   * @param intentId - The signal.
+   * @param intentId - The intent.
    */
   async function recover(intentId: string): Promise<void> {
     const intent = intents.get(intentId);
@@ -129,7 +129,7 @@ export function startRunner(options: RunnerOptions): Runner {
    * Work one negotiation. A stall stands on the conversation and is recorded
    * here; waking on it is {@link finish}'s call, not this run's.
    *
-   * @param intent - The signal this negotiation belongs to.
+   * @param intent - The intent this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    */
   async function takeTurn(intent: Intent, opportunityId: string): Promise<void> {
@@ -153,7 +153,7 @@ export function startRunner(options: RunnerOptions): Runner {
    * on its opening turn, a stall waits here. When none are, one summary is
    * written and one wake decides the whole set.
    *
-   * @param intentId - The signal that negotiator belonged to.
+   * @param intentId - The intent that negotiator belonged to.
    * @param opportunityId - The negotiation it worked.
    */
   function finish(intentId: string, opportunityId: string): void {
@@ -165,7 +165,7 @@ export function startRunner(options: RunnerOptions): Runner {
    * Read the initiation and wake once it has finished. A check that arrives
    * while one is running becomes a single follow-up.
    *
-   * @param intentId - The signal.
+   * @param intentId - The intent.
    */
   async function settle(intentId: string): Promise<void> {
     if (stopped) return;
@@ -190,10 +190,10 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * One morning wake. Same tools as an event wake. The signal id stays here,
+   * One morning wake. Same tools as an event wake. The intent id stays here,
    * so a person it opens takes the negotiator this runner already starts.
    *
-   * @param intentId - The signal.
+   * @param intentId - The intent.
    */
   async function morning(intentId: string): Promise<void> {
     if (stopped) return;
@@ -220,7 +220,7 @@ export function startRunner(options: RunnerOptions): Runner {
    * just moved it. A stall still standing on the conversation holds it inside
    * {@link runNegotiate}, so no runtime state can release it early.
    *
-   * @param intentId - The signal this negotiation belongs to.
+   * @param intentId - The intent this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    */
   function startNegotiate(intentId: string, opportunityId: string): void {
@@ -231,7 +231,7 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * Recover every signal with an open negotiation: whatever was opened, moved,
+   * Recover every intent with an open negotiation: whatever was opened, moved,
    * stalled or answered while this process was gone, or was in flight when it
    * died.
    */
@@ -240,21 +240,21 @@ export function startRunner(options: RunnerOptions): Runner {
     for (const intentId of new Set(open.map((negotiation) => negotiation.intentId))) await recover(intentId);
   }
 
-  // Signals already running when this process started are adopted, not woken:
+  // Intents already running when this process started are adopted, not woken:
   // their being there is not something that happened.
   let adopted = false;
 
   async function refresh(): Promise<void> {
     const rows = await client.listIntents();
     const active = new Set<string>();
-    log(`read ${rows.length} signals, ${rows.filter((row) => row.status === "active").length} active`);
+    log(`read ${rows.length} intents, ${rows.filter((row) => row.status === "active").length} active`);
     for (const row of rows) {
       if (row.status !== "active") continue;
       active.add(row.id);
       const known = intents.has(row.id);
       intents.set(row.id, { id: row.id, statement: row.statement });
       if (!known) {
-        log(`signal ${row.id}: ${row.statement}`);
+        log(`intent ${row.id}: ${row.statement}`);
         if (adopted) startWake(row.id);
       }
     }
@@ -262,7 +262,7 @@ export function startRunner(options: RunnerOptions): Runner {
     for (const id of [...intents.keys()]) {
       if (!active.has(id)) {
         intents.delete(id);
-        log(`dropped signal ${id}`);
+        log(`dropped intent ${id}`);
       }
     }
   }
@@ -280,7 +280,7 @@ export function startRunner(options: RunnerOptions): Runner {
         startWake(event.data.intentId);
         break;
       // The stream is trustworthy from here on, so this is the one moment to
-      // recover what happened while it was not. Signals are read first: a
+      // recover what happened while it was not. Intents are read first: a
       // negotiation on one this process has never heard of cannot be started.
       case "connected":
         log(`event ${event.type}`);

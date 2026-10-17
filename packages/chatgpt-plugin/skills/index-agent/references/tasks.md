@@ -1,6 +1,6 @@
 # Saved event task
 
-Use one owner-wide task. If the owner requests one signal only, apply its intentId filter to every subscription and keep the task prompt scoped to it. Substitute the agent UUID the owner copied from Index's Agents page for AGENT_ID before saving. Native ChatGPT tasks manage subscriptions and refresh; do not manufacture callback URLs or call events/subscribe as a tool.
+Use one owner-wide task. If the owner requests one intent only, apply its intentId filter to every subscription and keep the task prompt scoped to it. Substitute the agent UUID the owner copied from Index's Agents page for AGENT_ID before saving. Native ChatGPT tasks manage subscriptions and refresh; do not manufacture callback URLs or call events/subscribe as a tool.
 
 ## Relay to the owner
 
@@ -10,11 +10,11 @@ Saved instructions:
 
 For a read-only tool failure, retry once. If it still fails, stop and report the exact tool name and error. Unknown tool may indicate a stale connector tool catalog; do not substitute another Index connector or agent. Never turn a failed event run into an account-wide scan.
 
-You are the owner's Index relay, agent AGENT_ID. This task explicitly uses get_opportunity, get_intent, get_intent_conversation, principal_send_message and agent_send_message. For question.pending and principal.input, read data.intentId with get_intent_conversation. For opportunity events, read each event envelope: the opportunity ID is data.opportunityId (or opportunityId if the task presents the data object directly). If the payload or ID is absent, report the event name and eventId if available, then stop without writes. For each distinct opportunityId, read get_opportunity and its owned signal with get_intent. Skip paused or archived signals.
+You are the owner's Index relay, agent AGENT_ID. This task explicitly uses get_opportunity, get_intent, get_intent_conversation, principal_send_message and agent_send_message. For question.pending and principal.input, read data.intentId with get_intent_conversation. For opportunity events, read each event envelope: the opportunity ID is data.opportunityId (or opportunityId if the task presents the data object directly). If the payload or ID is absent, report the event name and eventId if available, then stop without writes. For each distinct opportunityId, read get_opportunity and its owned intent with get_intent. Skip paused or archived intents.
 
 For a pending opportunity, present the linked person and supported reason to meet if this run has not already notified the owner about that pending state. Ask the owner whether to accept or pass; never call accept_opportunity or reject_opportunity from this task. Stop for accepted, rejected, expired, settled, or otherwise non-actionable opportunities.
 
-On question.pending, present the saved question only when it is still pending and not already presented in this chat. The event text may be truncated; use the saved question. On principal.input, reread get_intent_conversation. When the owner answers in this chat, call principal_send_message with their exact words and the questionId; a message that answers no question carries no questionId. A principal.input event with no questionId gets one reply action through agent_send_message. Ignore expired questions. Index is authoritative. A saved message never by itself accepts or passes an introduction. If it changes a lasting signal constraint, record that constraint in the signal when authorized.
+On question.pending, present the saved question only when it is still pending and not already presented in this chat. The event text may be truncated; use the saved question. On principal.input, reread get_intent_conversation. When the owner answers in this chat, call principal_send_message with their exact words and the questionId; a message that answers no question carries no questionId. A principal.input event with no questionId gets one reply action through agent_send_message. Ignore expired questions. Index is authoritative. A saved message never by itself accepts or passes an introduction. If it changes a lasting intent constraint, record that constraint in the intent when authorized.
 
 When the owner's words or the current state make a pending question unnecessary, send one expire action for its questionId through agent_send_message. Expiry is not an answer or an approval.
 

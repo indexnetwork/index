@@ -69,9 +69,9 @@ export type IntentNetworkFinalAssignmentResult =
 export interface OnboardingState {
   completedAt?: string;
   profileConfirmedAt?: string;
-  firstSignalIntentId?: string;
+  firstIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: string;
   invitationCode?: string;
 }
@@ -102,8 +102,8 @@ export interface OpportunityActor {
   role: string;
 }
 
-/** Individual signal contributing to an opportunity score. */
-export interface OpportunitySignal {
+/** Individual intent contributing to an opportunity score. */
+export interface OpportunityIntent {
   type: string;
   weight: number;
   detail?: string;
@@ -114,7 +114,7 @@ export interface OpportunityInterpretation {
   category: string;
   reasoning: string;
   confidence: number;
-  signals?: OpportunitySignal[];
+  intents?: OpportunityIntent[];
 }
 
 /** Optional scoping context (network / conversation) for an opportunity. */

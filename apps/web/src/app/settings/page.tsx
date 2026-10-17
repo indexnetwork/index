@@ -155,7 +155,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
       });
 
       if (firstRun) {
-        // Same order as the Mac app: save, confirm, then the first signal.
+        // Same order as the Mac app: save, confirm, then the first intent.
         await onboardingService.confirmProfile();
         await refetchUser();
         firstRun.onDone();
@@ -309,7 +309,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                 <div style={{ marginTop: 10, padding: "11px 12px", border: "1px solid var(--ink-warn)", background: "#FFF3F3", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div>
                     <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink-warn)" }}>delete account</div>
-                    <div style={{ marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>index stops immediately and every signal closes. connections you&apos;ve already made stay with the other person.</div>
+                    <div style={{ marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>index stops immediately and every intent closes. connections you&apos;ve already made stay with the other person.</div>
                   </div>
                   <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "6px 15px", border: "1px solid var(--ink-warn)", background: "var(--ink-warn)", color: "#fff", cursor: "pointer" }}>delete</button>
                 </div>
@@ -343,7 +343,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
                     <span>
                       <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an opportunity surfaces</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent found someone who meets your signals and wants you to review.</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent found someone who meets your intents and wants you to review.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.opportunity !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, opportunity: e.target.checked })); mark(); }} />
                   </label>

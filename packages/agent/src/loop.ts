@@ -1,4 +1,4 @@
-import { generateText, isStepCount, jsonSchema, tool as defineTool, type JSONSchema7, type ToolSet } from "ai";
+import { generateText, isStepCount, jsonSchema, tool as defineTool, ToolChoiceViolationError, type JSONSchema7, type ToolSet } from "ai";
 
 import type { Model } from "./model.ts";
 import type { Tool } from "./tool.ts";
@@ -11,6 +11,8 @@ const STEP_TIMEOUT = 120_000;
 
 export interface RunInput {
   model: Model;
+  /** What this run is for, e.g. `wake` or `negotiate`. OpenRouter traces carry it, so spend reads per operation. */
+  operation: string;
   /** Who this run speaks as. */
   identity: { id: string; name: string };
   intent: Intent;
@@ -69,18 +71,27 @@ export async function run(input: RunInput): Promise<void> {
     },
   })]));
 
-  await generateText({
-    model: input.model,
-    instructions: systemPrompt(input),
-    prompt: input.prompt,
-    tools,
-    stopWhen: isStepCount(input.maxSteps),
-    prepareStep: ({ stepNumber }) => (stepNumber === 0 && input.requireTool ? { toolChoice: "required" } : undefined),
-    // Tools share the run's state: a note must land before the question after it.
-    toolCallConcurrency: 1,
-    maxOutputTokens: MAX_TOKENS,
-    maxRetries: 0,
-    timeout: { stepMs: STEP_TIMEOUT },
-    ...(input.signal ? { abortSignal: input.signal } : {}),
-  });
+  try {
+    await generateText({
+      model: input.model,
+      instructions: systemPrompt(input),
+      prompt: input.prompt,
+      tools,
+      stopWhen: isStepCount(input.maxSteps),
+      prepareStep: ({ stepNumber }) => (stepNumber === 0 && input.requireTool ? { toolChoice: "required" } : undefined),
+      // Tools share the run's state: a note must land before the question after it.
+      toolCallConcurrency: 1,
+      maxOutputTokens: MAX_TOKENS,
+      // Other providers ignore this. OpenRouter groups one intent's runs and names each one.
+      providerOptions: {
+        openrouter: { user: input.identity.id, session_id: input.intent.id, trace: { trace_name: "agent", generation_name: input.operation } },
+      },
+      maxRetries: 0,
+      timeout: { stepMs: STEP_TIMEOUT },
+      ...(input.signal ? { abortSignal: input.signal } : {}),
+    });
+  } catch (error) {
+    // A model that skips the required tool ends the run like a text answer; callers judge what it recorded.
+    if (!ToolChoiceViolationError.isInstance(error)) throw error;
+  }
 }

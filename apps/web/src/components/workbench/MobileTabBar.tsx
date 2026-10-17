@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router";
 import UserAvatar from "@/components/UserAvatar";
 import InviteNetworksModal from "@/components/modals/InviteNetworksModal";
 import { QCount } from "@/components/workbench/Workbench";
-import { AgentGlyph, ChatGlyph, SignalGlyph } from "@/components/workbench/nav-glyphs";
+import { AgentGlyph, ChatGlyph, IntentGlyph } from "@/components/workbench/nav-glyphs";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
@@ -15,7 +15,7 @@ export function isTabRoot(pathname: string): boolean {
   return pathname === "/" || pathname === "/chat" || pathname === "/agents";
 }
 
-type TabId = "signals" | "chats" | "agents" | "you";
+type TabId = "intents" | "chats" | "agents" | "you";
 
 function Tab({ label, icon, active, badge, onClick }: {
   label: string;
@@ -56,7 +56,7 @@ export default function MobileTabBar() {
     0,
   );
 
-  const active: TabId | null = pathname === "/" ? "signals" : pathname === "/chat" ? "chats" : pathname === "/agents" ? "agents" : null;
+  const active: TabId | null = pathname === "/" ? "intents" : pathname === "/chat" ? "chats" : pathname === "/agents" ? "agents" : null;
 
   // Route changes close the sheet, including the ones it starts.
   useEffect(() => { setSheetOpen(false); }, [pathname]);
@@ -64,7 +64,7 @@ export default function MobileTabBar() {
   return (
     <>
       <nav className="wb-tabbar" aria-label="primary">
-        <Tab label="signals" icon={<SignalGlyph />} active={active === "signals"} onClick={() => navigate("/")} />
+        <Tab label="intents" icon={<IntentGlyph />} active={active === "intents"} onClick={() => navigate("/")} />
         <Tab label="chats" icon={<ChatGlyph size={19} />} active={active === "chats"} badge={unread} onClick={() => navigate("/chat")} />
         <Tab label="agents" icon={<AgentGlyph size={22} />} active={active === "agents"} onClick={() => navigate("/agents")} />
         <Tab

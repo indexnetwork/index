@@ -36,9 +36,9 @@ interface EventDefinition {
   toPayload(frame: EventFrame): Record<string, unknown>;
 }
 
-const intentFilter = z.string().optional().describe('Only events for this signal (UUID).');
+const intentFilter = z.string().optional().describe('Only events for this intent (UUID).');
 
-function signalEvent(description: string): EventDefinition {
+function intentEvent(description: string): EventDefinition {
   return {
     description,
     args: z.object({ intentId: intentFilter }).strict(),
@@ -53,8 +53,8 @@ function signalEvent(description: string): EventDefinition {
  * `principal.input` carries ids only, never the owner's text.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
-  'intent.created': signalEvent('The owner created a signal. Read it with get_intent.'),
-  'intent.updated': signalEvent('The owner changed a signal\'s goal or constraints. Read it with get_intent.'),
+  'intent.created': intentEvent('The owner created an intent. Read it with get_intent.'),
+  'intent.updated': intentEvent('The owner changed an intent\'s goal or constraints. Read it with get_intent.'),
   'opportunity.new': {
     description: 'Index has a new opportunity (a possible match) waiting on the owner. Read it with get_opportunity, then accept or pass only after asking the owner.',
     args: z.object({ intentId: intentFilter }).strict(),
@@ -109,7 +109,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'principal.input': {
-    description: 'The owner wrote in their Index agent conversation. Read get_intent_conversation for this signal. questionId is set when the message answers a question. The owner\'s text is not included.',
+    description: 'The owner wrote in their Index agent conversation. Read get_intent_conversation for this intent. questionId is set when the message answers a question. The owner\'s text is not included.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       intentId: z.string(),
@@ -123,7 +123,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'question.pending': {
-    description: 'The owner\'s Index agent stopped on a question only the owner can answer. Relay it to the owner and link them to the signal.',
+    description: 'The owner\'s Index agent stopped on a question only the owner can answer. Relay it to the owner and link them to the intent.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       intentId: z.string(),

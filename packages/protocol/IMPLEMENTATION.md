@@ -150,9 +150,9 @@ module classes (see [Intents](#intents) and [Networks](#networks) below).
 
 ## On-demand discovery
 
-Discovery is not a protocol workflow and does not run when a signal is written.
+Discovery is not a protocol workflow and does not run when an intent is written.
 The host exposes it as a search: the owner's agent sends a query, the host
-embeds it and retrieves candidate signals from the communities that signal is
+embeds it and retrieves candidate intents from the communities that intent is
 shared in, and the agent picks which counterparties are worth an opportunity.
 Nothing is generated ahead of the query and nothing is cached.
 
@@ -169,7 +169,7 @@ do nothing. `scoreIntent` remains independent metadata work.
 
 ## Intents
 
-Signals are the protocol's base unit, and the whole capability ships as one
+Intents are the protocol's base unit, and the whole capability ships as one
 class. `Intents` covers the lifecycle graph, semantic verification, and payload
 clarification.
 
@@ -189,14 +189,14 @@ first use, so an unused method costs nothing.
 
 | Method | Purpose |
 |---|---|
-| `createGraph()` | Prepare and create exactly one new signal; explicitly read, update, archive, or transition existing signals. Requires `database` |
+| `createGraph()` | Prepare and create exactly one new intent; explicitly read, update, archive, or transition existing intents. Requires `database` |
 | `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
 | `prepare({ payload, answers? })` | Fold recovery answers into the draft, then return `ready` with metadata or `needs_revision` with admission feedback and a dynamic recovery form; model failures throw for retry |
 | `scoreIntent(content, profileContext?)` | Measure saved text without admission filters; a negative verdict still returns metadata |
 | `Intents.normalizeDescription(description)` | Normalize an explicit update description; creation preserves text verbatim |
 
 Creation with `inputContent` prepares the description once and persists that exact
-text in a new record, even if a similar signal exists. Guided hosts call `prepare`
+text in a new record, even if a similar intent exists. Guided hosts call `prepare`
 until it returns `ready`, then issue their own authenticated preparation receipt
 bound to the owner and admitted draft. After authenticating the receipt, pass
 `preparation: { metadata }` to `createGraph().invoke()` alongside the final
@@ -214,7 +214,7 @@ membership remain the host's responsibility.
 ## Networks
 
 Communities ship the same way: one class covering the community lifecycle graph,
-the membership graph, and signal↔community assignment.
+the membership graph, and intent↔community assignment.
 
 ```typescript
 import { Networks } from "@indexnetwork/protocol";
@@ -231,9 +231,9 @@ construction never fails.
 |---|---|
 | `createGraph()` | Compile the community lifecycle graph — create, read, update, delete. Requires `database` |
 | `createMembershipGraph()` | Compile the roster graph — add, list, remove members. Requires `database` |
-| `createAssignmentGraph()` | Compile signal↔community assignment — link and unlink. Requires `database` |
+| `createAssignmentGraph()` | Compile intent↔community assignment — link and unlink. Requires `database` |
 
-Assignment applies no scoring policy: a link exists because the signal's owner
+Assignment applies no scoring policy: a link exists because the intent's owner
 asked for it, so the row is written at score 1 with `mode: manual_override`.
 
 ## The REST API and the CLI

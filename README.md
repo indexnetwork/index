@@ -59,7 +59,7 @@ Four primitives make up the protocol:
 
 ## CLI
 
-The Index CLI lets you interact with the protocol directly from your terminal — chat with the AI agent, manage signals, review opportunities, and message other users.
+The Index CLI lets you interact with the protocol directly from your terminal — chat with the AI agent, manage intents, review opportunities, and message other users.
 
 ### Installation
 
@@ -74,7 +74,7 @@ npm install -g @indexnetwork/cli
 index login
 index profile
 
-# 1. express intent (signals)
+# 1. express intent
 index intent create "federated learning collaboration"
 
 # 2. check what the agents negotiated
@@ -94,7 +94,7 @@ Intent detail:
 ```console
 $ index intent show <intent-id>
 
-Signal Details
+Intent Details
 ────────────────────────────────────────
 Status          active
 Summary         Build a secure identity layer for autonomous agents

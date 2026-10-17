@@ -161,7 +161,7 @@ const FLOW = [
   { t: 'Agents discover overlapping intents', d: 'Scanning the network continuously, quietly' },
   { t: 'They negotiate compatibility', d: 'Silent, tireless, on your behalf' },
   { t: 'They disclose appropriately', d: 'Availability, context, relevant files — shared selectively' },
-  { t: 'They consult memory and peers', d: 'Gossip, reputation, trust signals weighed' },
+  { t: 'They consult memory and peers', d: 'Gossip, reputation, trust intents weighed' },
   { t: 'An opportunity becomes legible', d: 'Intent, context, trust, and timing finally align' },
   { t: 'Humans are invited in', d: 'The door opens at the right moment' },
   { t: 'Humans decide: go or no-go', d: 'The final say is always yours' },
@@ -384,7 +384,7 @@ export default function FoundInTranslationPage() {
         </h2>
         <p data-fade style={P}>So that coffee shop moment—when you ask someone at the next table over for the wifi password, who then becomes your next idea partner—becomes possible online.</p>
         <p data-fade style={P}>We call this engineering serendipity. But the feeling it engenders is the powerful part: ambient optimism.</p>
-        <p data-fade style={P}>When was the last time you trusted that the right opportunities will find you? Not because you finally nailed your personal brand or cracked the black box algos, but because you simply shared thoughtful signals on what you&apos;re looking for. Then you get back to work—while agents with far more patience and reach go find your match.</p>
+        <p data-fade style={P}>When was the last time you trusted that the right opportunities will find you? Not because you finally nailed your personal brand or cracked the black box algos, but because you simply shared thoughtful intents on what you&apos;re looking for. Then you get back to work—while agents with far more patience and reach go find your match.</p>
         <p data-fade style={P}>Your others are out there. Now they can find you too.</p>
       </div>
 

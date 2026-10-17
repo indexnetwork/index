@@ -20,7 +20,7 @@ let emailing = false;
 
 /**
  * Build an owner's morning email. The people shown carry the line their radar
- * card shows, falling back to their signal when the card cannot be presented.
+ * card shows, falling back to their intent when the card cannot be presented.
  *
  * @returns Null when there is nothing to send.
  */
@@ -108,7 +108,7 @@ async function acquireMorningLock(): Promise<(() => Promise<void>) | null> {
  * local 08:00. Each owner keeps one stable minute. A morning that has already
  * passed waits until the next day, and only one process claims the day.
  *
- * @param options - Where one signal's morning runs, given the owner's previous morning.
+ * @param options - Where one intent's morning runs, given the owner's previous morning.
  * @returns A stop handle for shutdown.
  */
 export function startMorningBrief(options: {
@@ -132,7 +132,7 @@ export function startMorningBrief(options: {
         try {
           await options.wake(owner.id, { id: item.id, statement: item.statement }, claim.previous);
         } catch (error) {
-          logger.error(describeFailure('Morning signal failed', error), {
+          logger.error(describeFailure('Morning intent failed', error), {
             userId: owner.id,
             intentId: item.id,
             error: error instanceof Error ? error.message : String(error),

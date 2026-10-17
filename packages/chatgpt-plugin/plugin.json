@@ -20,11 +20,11 @@
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words, from a hire to an investor and beyond. Index keeps it as a signal, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
+        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words, from a hire to an investor and beyond. Index keeps it as an intent, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
         "developerName": "Index Network",
         "category": "Communication",
         "capabilities": [
-          "Manage signals",
+          "Manage intents",
           "Review matches"
         ],
         "websiteURL": "https://index.network",
@@ -55,16 +55,16 @@
               "expected_behavior": "Returns the saved intro, or says the intro is empty."
             },
             {
-              "description": "List the owner's signals",
-              "prompt": "List my Index signals.",
+              "description": "List the owner's intents",
+              "prompt": "List my Index intents.",
               "tools_triggered": "list_intents",
-              "expected_behavior": "Lists this account's signals with a status and a link, or says there are none."
+              "expected_behavior": "Lists this account's intents with a status and a link, or says there are none."
             },
             {
-              "description": "Count the owner's signals",
-              "prompt": "How many signals do I have on Index?",
+              "description": "Count the owner's intents",
+              "prompt": "How many intents do I have on Index?",
               "tools_triggered": "list_intents",
-              "expected_behavior": "Gives the number of signals on this account."
+              "expected_behavior": "Gives the number of intents on this account."
             },
             {
               "description": "List the owner's matches",
@@ -80,11 +80,11 @@
             },
             {
               "description": "Other users' private data is not accessible",
-              "prompt": "Show me the private signals of other Index users."
+              "prompt": "Show me the private intents of other Index users."
             },
             {
               "description": "Changing other users' data is not supported",
-              "prompt": "Delete another Index user's signals."
+              "prompt": "Delete another Index user's intents."
             }
           ]
         },
@@ -92,7 +92,7 @@
         "demo_recording_url": "https://calm-gravatar.space.fast/demo.mp4"
       },
       "publication": {
-        "release_notes": "Manage your Index signals and review matches from ChatGPT."
+        "release_notes": "Manage your Index intents and review matches from ChatGPT."
       }
     }
   }

@@ -82,9 +82,9 @@
   // line work on transparent, so they vanish on a light surface: style.css
   // carries a light and a dark treatment and picks between them off the
   // `data-scheme` attribute this resolves onto the dashboard root. Hosts
-  // signal the scheme differently — the desktop app stamps data-hermes-mode
+  // intent the scheme differently — the desktop app stamps data-hermes-mode
   // and .dark on <html>, the web dashboard only swaps palette variables — so
-  // try the explicit signals first and fall back to the measured luminance of
+  // try the explicit intents first and fall back to the measured luminance of
   // the surface we actually paint on.
   let COLOR_SWATCH = null;
   function readColor(color) {
@@ -1457,7 +1457,7 @@
 
   function IntentRow(props) {
     const intent = props.intent;
-    // The row carries its own signal instead of a status tag: a dot and a meta
+    // The row carries its own intent instead of a status tag: a dot and a meta
     // line that say whether anything is waiting on this intent.
     const matches = intentMatchCount(intent);
     const className = "index-dashboard__intent-row"
@@ -1466,7 +1466,7 @@
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
       React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
-        React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled signal"),
+        React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
         // What is waiting rides the count tag; the meta line only says paused.
         intent.status === "paused"
           ? React.createElement("div", { className: "index-dashboard__intent-meta" },
@@ -1568,7 +1568,7 @@
           "find your others",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
-          "start a signal by talking to your agent. it negotiates it with the other agents and makes an intro when both sides are interested.",
+          "start an intent by talking to your agent. it negotiates it with the other agents and makes an intro when both sides are interested.",
         ),
       ),
     );
@@ -1689,12 +1689,12 @@
     const errState = React.useState(null);
     const err = errState[0];
     const setErr = errState[1];
-    const signalsState = React.useState([]);
-    const signals = signalsState[0];
-    const setSignals = signalsState[1];
-    const signalsLoadingState = React.useState(false);
-    const signalsLoading = signalsLoadingState[0];
-    const setSignalsLoading = signalsLoadingState[1];
+    const intentsState = React.useState([]);
+    const intents = intentsState[0];
+    const setIntents = intentsState[1];
+    const intentsLoadingState = React.useState(false);
+    const intentsLoading = intentsLoadingState[0];
+    const setIntentsLoading = intentsLoadingState[1];
     const membersState = React.useState([]);
     const members = membersState[0];
     const setMembers = membersState[1];
@@ -1702,9 +1702,9 @@
     const membersLoading = membersLoadingState[0];
     const setMembersLoading = membersLoadingState[1];
     // A failed read is its own state, never an empty list.
-    const signalsErrorState = React.useState(false);
-    const signalsError = signalsErrorState[0];
-    const setSignalsError = signalsErrorState[1];
+    const intentsErrorState = React.useState(false);
+    const intentsError = intentsErrorState[0];
+    const setIntentsError = intentsErrorState[1];
     const membersErrorState = React.useState(false);
     const membersError = membersErrorState[0];
     const setMembersError = membersErrorState[1];
@@ -1770,21 +1770,21 @@
     React.useEffect(function () {
       if (!local.id) return;
       let cancelled = false;
-      setSignalsLoading(true);
-      setSignalsError(false);
+      setIntentsLoading(true);
+      setIntentsError(false);
       fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
         .then(function (payload) {
           if (cancelled) return;
-          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
-          setSignals(Array.isArray(payload.intents) ? payload.intents : []);
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load intents.");
+          setIntents(Array.isArray(payload.intents) ? payload.intents : []);
         })
         .catch(function (e) {
           if (cancelled) return;
-          console.warn("[index] network signals read failed", e);
-          setSignals([]);
-          setSignalsError(true);
+          console.warn("[index] network intents read failed", e);
+          setIntents([]);
+          setIntentsError(true);
         })
-        .finally(function () { if (!cancelled) setSignalsLoading(false); });
+        .finally(function () { if (!cancelled) setIntentsLoading(false); });
       return function () { cancelled = true; };
     }, [local.id, reloadKey]);
 
@@ -2367,22 +2367,22 @@
 
     const overviewBody = React.createElement("div", { className: "index-dashboard__net-overview" },
       React.createElement("div", { className: "index-dashboard__net-overview-head" },
-        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
+        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Intents"),
         React.createElement("span", { className: "index-dashboard__net-overview-count" },
-          signalsLoading || signalsError ? "" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+          intentsLoading || intentsError ? "" : (String(intents.length) + (intents.length === 1 ? " intent" : " intents"))),
       ),
-      signalsLoading
-        ? React.createElement(EmptyState, { tone: "loading", message: "loading signals\u2026" })
-        : signalsError
-        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your signals in this network.", action: { label: "try again", onClick: retryReads } })
-        : (signals.length
-          ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
-            signals.map(function (sig) {
-              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled signal";
+      intentsLoading
+        ? React.createElement(EmptyState, { tone: "loading", message: "loading intents\u2026" })
+        : intentsError
+        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your intents in this network.", action: { label: "try again", onClick: retryReads } })
+        : (intents.length
+          ? React.createElement("div", { className: "index-dashboard__net-intent-list" },
+            intents.map(function (sig) {
+              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled intent";
               return React.createElement("button", {
                 key: sig.id,
                 type: "button",
-                className: "index-dashboard__net-signal-row",
+                className: "index-dashboard__net-intent-row",
                 onClick: function () {
                   if (props.onSelectIntent) props.onSelectIntent(sig.id);
                   if (props.onClose) props.onClose();
@@ -2391,9 +2391,9 @@
             }),
           )
           : React.createElement(EmptyState, {
-            message: "you haven't shared any signals in this network yet.",
-            action: props.onStartSignal
-              ? { label: "start a signal", onClick: function () { if (props.onClose) props.onClose(); props.onStartSignal(); } }
+            message: "you haven't shared any intents in this network yet.",
+            action: props.onStartIntent
+              ? { label: "start an intent", onClick: function () { if (props.onClose) props.onClose(); props.onStartIntent(); } }
               : null,
           })),
     );
@@ -2701,15 +2701,15 @@
     );
   }
 
-  function NewSignalModal(props) {
+  function NewIntentModal(props) {
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__signal-modal", onClick: function (e) { e.stopPropagation(); } },
+      React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__intent-modal", onClick: function (e) { e.stopPropagation(); } },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "New signal"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "New intent"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
-        React.createElement("div", { className: "index-dashboard__signal-modal-body" },
-          React.createElement(NewSignal, { onDone: props.onDone }),
+        React.createElement("div", { className: "index-dashboard__intent-modal-body" },
+          React.createElement(NewIntent, { onDone: props.onDone }),
         ),
       ),
     );
@@ -2992,14 +2992,14 @@
           onLeft: onRemoved,
           onOpenUser: props.onOpenUser,
           onSelectIntent: props.onSelectIntent,
-          onStartSignal: props.onStartSignal,
+          onStartIntent: props.onStartIntent,
         })
         : null,
     );
   }
 
-  const NEW_SIGNAL_PROMPT = "what are you looking for right now?";
-  const NEW_SIGNAL_EXAMPLES = [
+  const NEW_INTENT_PROMPT = "what are you looking for right now?";
+  const NEW_INTENT_EXAMPLES = [
     "traveling soon, want to meet cool people in ai",
     "building something, want honest feedback on it",
     "just launched, want cool people to try it",
@@ -3008,9 +3008,9 @@
     "hiring soon, want to meet great people early",
     "have an idea, want someone to build it with",
   ];
-  const SIGNAL_MAX = 65536;
-  const SIGNAL_CALIBRATING = [
-    "structuring your inputs into signals…",
+  const INTENT_MAX = 65536;
+  const INTENT_CALIBRATING = [
+    "structuring your inputs into intents…",
     "reaching out across the network…",
     "filtering through options…",
     "coming back around",
@@ -3022,10 +3022,10 @@
   }
 
   /**
-   * New signal, the mac app's flow: opening → prepare → recovery (once) →
-   * create. The summary only returns when a create fails, to edit and retry. `onDone(intentId, description)` fires once the signal exists.
+   * New intent, the mac app's flow: opening → prepare → recovery (once) →
+   * create. The summary only returns when a create fails, to edit and retry. `onDone(intentId, description)` fires once the intent exists.
    */
-  function NewSignal(props) {
+  function NewIntent(props) {
     const stageState = React.useState("opening");
     const stage = stageState[0];
     const setStage = stageState[1];
@@ -3110,7 +3110,7 @@
     }
 
     function create(text) {
-      if (creating || !text.trim() || text.length > SIGNAL_MAX) return;
+      if (creating || !text.trim() || text.length > INTENT_MAX) return;
       const description = text;
       setCreating(true);
       post("/intents", { description: description, preparationReceipt: receiptRef.current })
@@ -3125,10 +3125,10 @@
         });
     }
 
-    // Once the follow-up answers are in, the next thing is the signal itself,
+    // Once the follow-up answers are in, the next thing is the intent itself,
     // so that wait goes straight to the creating card.
     if (creating || (thinking && recoveryUsedRef.current)) {
-      return React.createElement(SettingUpScreen, { lines: SIGNAL_CALIBRATING });
+      return React.createElement(SettingUpScreen, { lines: INTENT_CALIBRATING });
     }
 
     const stepIdx = stage === "opening" ? 1 : 2;
@@ -3142,13 +3142,13 @@
         React.createElement("div", null, React.createElement(Button, { type: "button", onClick: function () { runPrepare(); } }, "try again")));
     } else if (stage === "summary") {
       current = React.createElement(AgentLine, { speaker: agent },
-        React.createElement("p", { className: "index-dashboard__signal-new-strong" }, "Here's your signal."),
-        React.createElement("div", { className: "index-dashboard__signal-new-summary" },
+        React.createElement("p", { className: "index-dashboard__intent-new-strong" }, "Here's your intent."),
+        React.createElement("div", { className: "index-dashboard__intent-new-summary" },
           React.createElement("textarea", {
             className: "index-dashboard__textarea",
-            "aria-label": "Signal description",
+            "aria-label": "Intent description",
             value: description,
-            maxLength: SIGNAL_MAX,
+            maxLength: INTENT_MAX,
             rows: 6,
             onChange: function (e) {
               // An edited draft is no longer the one the receipt admitted.
@@ -3156,26 +3156,26 @@
               setDescription(e.target.value);
             },
           }),
-          feedback ? React.createElement("p", { className: "index-dashboard__signal-new-note" }, feedback) : null,
+          feedback ? React.createElement("p", { className: "index-dashboard__intent-new-note" }, feedback) : null,
         ),
         React.createElement("div", null,
           receiptRef.current
-            ? React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: function () { create(description); } }, "create this signal")
-            : React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: recheck }, "check signal")));
+            ? React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: function () { create(description); } }, "create this intent")
+            : React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: recheck }, "check intent")));
     } else if (stage === "recovery") {
-      current = React.createElement(SignalRecovery, { fields: recoveryFields, feedback: feedback, onSubmit: runPrepare });
+      current = React.createElement(IntentRecovery, { fields: recoveryFields, feedback: feedback, onSubmit: runPrepare });
     } else {
       current = React.createElement(AgentLine, { speaker: agent },
-        React.createElement("p", { className: "index-dashboard__signal-new-strong" }, NEW_SIGNAL_PROMPT),
+        React.createElement("p", { className: "index-dashboard__intent-new-strong" }, NEW_INTENT_PROMPT),
         React.createElement("form", {
-          className: "index-dashboard__signal-new-compose",
+          className: "index-dashboard__intent-new-compose",
           onSubmit: function (e) { e.preventDefault(); submitOpening(); },
         },
           React.createElement("textarea", {
-            className: "index-dashboard__signal-new-input",
+            className: "index-dashboard__intent-new-input",
             autoFocus: true,
             value: draft,
-            maxLength: SIGNAL_MAX,
+            maxLength: INTENT_MAX,
             rows: 3,
             placeholder: "type what you're thinking about or tinkering on…",
             "aria-label": "What you're looking for",
@@ -3184,10 +3184,10 @@
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitOpening(); }
             },
           }),
-          React.createElement("div", { className: "index-dashboard__signal-new-compose-foot" },
+          React.createElement("div", { className: "index-dashboard__intent-new-compose-foot" },
             React.createElement(Button, { type: "submit", size: "sm", disabled: !draft.trim() }, "send →"))),
         React.createElement("div", { className: "index-dashboard__agent-q-options" },
-          NEW_SIGNAL_EXAMPLES.map(function (example) {
+          NEW_INTENT_EXAMPLES.map(function (example) {
             return React.createElement(Button, { key: example, type: "button", outlined: true, onClick: function () { submitOpening(example); } }, example);
           })));
     }
@@ -3198,42 +3198,42 @@
       stepIdx >= 2 ? "sharpening the edges…" : null,
     ].filter(Boolean);
 
-    return React.createElement("div", { className: "index-dashboard__signal-new" },
-      React.createElement("section", { className: "index-dashboard__signal-new-main" },
-        React.createElement("div", { className: "index-dashboard__signal-new-steps" },
+    return React.createElement("div", { className: "index-dashboard__intent-new" },
+      React.createElement("section", { className: "index-dashboard__intent-new-main" },
+        React.createElement("div", { className: "index-dashboard__intent-new-steps" },
           React.createElement("span", null, "step " + stepIdx + " of 2"),
-          React.createElement("div", { className: "index-dashboard__signal-new-bars" },
+          React.createElement("div", { className: "index-dashboard__intent-new-bars" },
             [0, 1].map(function (i) {
               const state = i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "current" : "todo";
-              return React.createElement("span", { key: i, className: "index-dashboard__signal-new-bar index-dashboard__signal-new-bar--" + state });
+              return React.createElement("span", { key: i, className: "index-dashboard__intent-new-bar index-dashboard__intent-new-bar--" + state });
             }))),
-        React.createElement("div", { className: "index-dashboard__signal-new-thread" },
+        React.createElement("div", { className: "index-dashboard__intent-new-thread" },
           answer
             ? React.createElement(React.Fragment, null,
-              React.createElement(AgentLine, { speaker: agent }, React.createElement("p", null, NEW_SIGNAL_PROMPT)),
+              React.createElement(AgentLine, { speaker: agent }, React.createElement("p", null, NEW_INTENT_PROMPT)),
               React.createElement("div", { className: "index-dashboard__agent-mine" },
                 React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" }, answer)))
             : null,
           current)),
-      React.createElement("aside", { className: "index-dashboard__signal-new-field" },
-        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "warming up"),
+      React.createElement("aside", { className: "index-dashboard__intent-new-field" },
+        React.createElement("p", { className: "index-dashboard__intent-new-field-title" }, "warming up"),
         previewLines.map(function (line, i) {
           return React.createElement("p", {
             key: i,
-            className: "index-dashboard__signal-new-field-line" + (i === previewLines.length - 1 ? " index-dashboard__signal-new-field-line--last" : ""),
+            className: "index-dashboard__intent-new-field-line" + (i === previewLines.length - 1 ? " index-dashboard__intent-new-field-line--last" : ""),
           }, React.createElement("span", { "aria-hidden": "true" }, "·"), line);
         }),
         answer
-          ? React.createElement("div", { className: "index-dashboard__signal-new-orbit", "aria-hidden": "true" },
-            React.createElement("span", { className: "index-dashboard__signal-new-core" }),
+          ? React.createElement("div", { className: "index-dashboard__intent-new-orbit", "aria-hidden": "true" },
+            React.createElement("span", { className: "index-dashboard__intent-new-core" }),
             [36, 56, 78].map(function (r, i) {
-              return React.createElement("span", { key: r, className: "index-dashboard__signal-new-ring", style: { width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r, animationDuration: (22 + i * 8) + "s" } });
+              return React.createElement("span", { key: r, className: "index-dashboard__intent-new-ring", style: { width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r, animationDuration: (22 + i * 8) + "s" } });
             }))
           : null));
   }
 
   /** The one recovery form prepare may ask for: text, single and multi fields. */
-  function SignalRecovery(props) {
+  function IntentRecovery(props) {
     const valuesState = React.useState({});
     const values = valuesState[0];
     const setValues = valuesState[1];
@@ -3269,13 +3269,13 @@
       props.onSubmit(answers);
     }
     return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" } },
-      React.createElement("p", { className: "index-dashboard__signal-new-strong" }, props.feedback || "help me understand what you're looking for."),
+      React.createElement("p", { className: "index-dashboard__intent-new-strong" }, props.feedback || "help me understand what you're looking for."),
       props.fields.map(function (field) {
         const chosen = Array.isArray(values[field.id]) ? values[field.id] : [];
         const ownKey = field.id + ":own";
         const own = values[ownKey] || "";
-        return React.createElement("div", { key: field.id, className: "index-dashboard__signal-new-field-q" },
-          React.createElement("p", { className: "index-dashboard__signal-new-strong" }, field.label),
+        return React.createElement("div", { key: field.id, className: "index-dashboard__intent-new-field-q" },
+          React.createElement("p", { className: "index-dashboard__intent-new-strong" }, field.label),
           field.kind === "text"
             ? React.createElement("textarea", {
               className: "index-dashboard__textarea",
@@ -3309,18 +3309,18 @@
                   onClick: function () { set(writing, setWriting, field.id, true); },
                 }, "write your own")));
       }),
-      React.createElement("div", null, React.createElement(Button, { type: "button", onClick: submit }, "create signal")));
+      React.createElement("div", null, React.createElement(Button, { type: "button", onClick: submit }, "create intent")));
   }
 
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
     return React.createElement("div", { className: "index-dashboard__intent-list" },
       props.error && intents.length === 0
-        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your signals.", action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null })
+        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your intents.", action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null })
         : intents.length === 0
         ? React.createElement(EmptyState, {
-          message: "no signals yet. start one and your agent goes looking.",
-          action: props.onStartSignal ? { label: "start a signal", onClick: props.onStartSignal } : null,
+          message: "no intents yet. start one and your agent goes looking.",
+          action: props.onStartIntent ? { label: "start an intent", onClick: props.onStartIntent } : null,
         })
         : intents.map(function (intent) {
           return React.createElement(IntentRow, { key: intent.id, intent: intent, selected: props.selectedId === intent.id, onSelect: props.onSelect });
@@ -3329,12 +3329,12 @@
   }
 
   /**
-   * The head of the signal pane: what the signal asks for, the controls that
-   * hold or end it, and what its agent is doing — the mac app's signal window
+   * The head of the intent pane: what the intent asks for, the controls that
+   * hold or end it, and what its agent is doing — the mac app's intent window
    * header (apps/mac/src/ui/mainview/conversation.jsx).
    */
-  function SignalHead(props) {
-    return React.createElement("div", { className: "index-dashboard__signal-head" },
+  function IntentHead(props) {
+    return React.createElement("div", { className: "index-dashboard__intent-head" },
       React.createElement("div", { className: "index-dashboard__detail-title-row" },
         React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
         props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
@@ -3898,7 +3898,7 @@
   /**
    * This intent's H2A conversation with the owner's personal agent.
    *
-   * Lives in the signal pane, next to the radar. Transcript, questions still
+   * Lives in the intent pane, next to the radar. Transcript, questions still
    * waiting, and a composer for messaging the negotiator. Answers picked across
    * several questions are sent as one write.
    */
@@ -3965,7 +3965,7 @@
       return function () { aliveRef.current = false; clearInterval(timer); };
     }, [intentId]);
 
-    // The same stream the messages panel reads already carries this signal's
+    // The same stream the messages panel reads already carries this intent's
     // H2A: an agent message arrives as `message` tagged with the intent, a new
     // question as `question.pending`. The poll above stays as the backstop for
     // frames missed while disconnected, and is the only path in the desktop
@@ -4257,7 +4257,7 @@
       const timer = setTimeout(function () { setArmed(false); }, 4000);
       return function () { clearTimeout(timer); };
     }, [armed]);
-    // Discovery gives up per signal, and only while nothing has landed.
+    // Discovery gives up per intent, and only while nothing has landed.
     const expiredState = React.useState(false);
     const discoveryExpired = expiredState[0];
     const setDiscoveryExpired = expiredState[1];
@@ -4267,8 +4267,8 @@
     React.useEffect(function () {
       setDiscoveryExpired(false);
     }, [intent && intent.id]);
-    // The window runs from when the signal was made, when the row says so,
-    // so reopening an old signal does not restart "looking for your people".
+    // The window runs from when the intent was made, when the row says so,
+    // so reopening an old intent does not restart "looking for your people".
     const createdMs = intent && intent.createdAt ? Date.parse(intent.createdAt) : NaN;
     React.useEffect(function () {
       if (shownCount > 0) return undefined;
@@ -4281,7 +4281,7 @@
     }, [intent && intent.id, shownCount, createdMs]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
-        React.createElement(EmptyState, { message: "pick a signal to see its radar." }),
+        React.createElement(EmptyState, { message: "pick an intent to see its radar." }),
       );
     }
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
@@ -4296,10 +4296,10 @@
     const radarLoading = !!props.radarLoading;
     const radarFailed = !!intent.radarError && !allOpps.length;
     // Nothing on the radar and not yet given up: the agents are still out.
-    // A paused signal is not looking, so it never shows the search.
+    // A paused intent is not looking, so it never shows the search.
     const discovering = shownCount === 0 && !discoveryExpired && !paused && !radarFailed;
-    const signalHead = React.createElement(SignalHead, {
-      title: intent.title || "Untitled signal",
+    const intentHead = React.createElement(IntentHead, {
+      title: intent.title || "Untitled intent",
       paused: paused,
       actions: (function () {
         const archiving = props.archivingId === intent.id;
@@ -4331,13 +4331,13 @@
       props.onBack && !props.backInHeader
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back")
         : null,
-      // signal | radar, the two windows the mac app puts side by side.
+      // intent | radar, the two windows the mac app puts side by side.
       React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(Panel, { title: "signal" },
-          signalHead,
+        React.createElement(Panel, { title: "intent" },
+          intentHead,
           React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
         ),
-        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this signal." },
+        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           radarFailed
@@ -4347,7 +4347,7 @@
             : radarLoading && !allOpps.length
             ? React.createElement(EmptyState, { tone: "loading", message: "loading radar\u2026" })
             : paused && shownCount === 0
-            ? React.createElement(EmptyState, { message: "this signal is paused, so your agent isn't looking right now." })
+            ? React.createElement(EmptyState, { message: "this intent is paused, so your agent isn't looking right now." })
             : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
@@ -4521,7 +4521,7 @@
           ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
           : null,
         React.createElement("p", { className: "index-dashboard__login-foot" },
-          "index only acts on what you tell it. you can stop any signal at any time."),
+          "index only acts on what you tell it. you can stop any intent at any time."),
       ),
     );
   }
@@ -4706,7 +4706,7 @@
           [optionRow(
             "hosted",
             "Index Negotiator",
-            "Hosted by Index. Runs for your active signals.",
+            "Hosted by Index. Runs for your active intents.",
             !selected,
             function () { select(null); },
           )].concat(options.map(function (agent) {
@@ -5122,10 +5122,10 @@
         React.createElement(ProfileField, { label: "Notifications" },
           React.createElement("div", { className: "index-dashboard__profile-checks" },
           [
-            ["opportunity", "an opportunity surfaces", "your agent found someone who meets your signals and wants you to review."],
+            ["opportunity", "an opportunity surfaces", "your agent found someone who meets your intents and wants you to review."],
             ["accepted", "an intro is accepted", "both of you said yes, and the chat opens on both sides."],
             ["messages", "a message arrives", "a connection wrote to you."],
-            ["morningBrief", "daily brief", "off until you turn it on. At 08:00 your agent wakes once per active networked signal."],
+            ["morningBrief", "daily brief", "off until you turn it on. At 08:00 your agent wakes once per active networked intent."],
           ].map(function (row) {
             const key = row[0];
             return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
@@ -5656,7 +5656,7 @@
               : (convs.length === 0
                 ? React.createElement(EmptyState, {
                   message: "no conversations yet. a chat opens when you and someone both accept an intro.",
-                  action: props.onStartSignal ? { label: "start a signal", onClick: props.onStartSignal } : null,
+                  action: props.onStartIntent ? { label: "start an intent", onClick: props.onStartIntent } : null,
                 })
                 : (filteredConvs.length === 0
                   ? React.createElement(EmptyState, { message: "no matches." })
@@ -5816,9 +5816,9 @@
     const createOpenState = useState(false);
     const createOpen = createOpenState[0];
     const setCreateOpen = createOpenState[1];
-    const newSignalState = useState(false);
-    const newSignalOpen = newSignalState[0];
-    const setNewSignalOpen = newSignalState[1];
+    const newIntentState = useState(false);
+    const newIntentOpen = newIntentState[0];
+    const setNewIntentOpen = newIntentState[1];
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
@@ -5842,7 +5842,7 @@
     const messagesTarget = messagesTargetState[0];
     const setMessagesTarget = messagesTargetState[1];
     // Bumped by a question notification, so the card scrolls into view even
-    // when its signal was already the selected one.
+    // when its intent was already the selected one.
     const focusQuestionState = useState(0);
     const focusQuestion = focusQuestionState[0];
     const setFocusQuestion = focusQuestionState[1];
@@ -6136,7 +6136,7 @@
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Signal status could not be updated.");
+            throw new Error((payload && payload.error) || "Intent status could not be updated.");
           }
           load();
         })
@@ -6159,7 +6159,7 @@
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Signal could not be archived.");
+            throw new Error((payload && payload.error) || "Intent could not be archived.");
           }
           goBack();
           load();
@@ -6353,11 +6353,11 @@
     }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
     // A notification tap or an Index link re-enters this page with its target
-    // on the URL. An opportunity is read inside the signal that surfaced it:
+    // on the URL. An opportunity is read inside the intent that surfaced it:
     // that intent is selected first, and the profile opens on top. A
     // conversation opens as a panel over whatever was already selected. Only
     // a question changes the selection on its own, because it is answered in
-    // its own signal and nowhere else.
+    // its own intent and nowhere else.
     useEffect(function () {
       if (auth !== "authed") return undefined;
       function applyFocus() {
@@ -6425,7 +6425,7 @@
       writeHash(null);
     }
 
-    // Escape closes the topmost modal, else leaves a signal for the list.
+    // Escape closes the topmost modal, else leaves an intent for the list.
     // On window, so dialogs listening on document handle it first.
     const goBackRef = useRef(null);
     goBackRef.current = selectedId ? goBack : null;
@@ -6455,10 +6455,10 @@
       )
       : null;
 
-    // Open the new signal at once: put its row in the list the detail page
+    // Open the new intent at once: put its row in the list the detail page
     // reads from, then let the reload bring the server's version.
-    function finishNewSignal(intentId, description) {
-      setNewSignalOpen(false);
+    function finishNewIntent(intentId, description) {
+      setNewIntentOpen(false);
       if (!intentId) { load(); return; }
       setSummary(function (prev) {
         if (!prev) return prev;
@@ -6479,7 +6479,7 @@
         // leaf does too rather than always drawing in black.
         : React.createElement(IntentPitch, null);
     const intentsError = !!(summary && summary.errors && summary.errors.intents);
-    function startSignal() { setNewSignalOpen(true); }
+    function startIntent() { setNewIntentOpen(true); }
     function retryRadar() { if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current); }
     const intentsView = selectedIntent
       ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, onRetryRadar: retryRadar, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
@@ -6488,22 +6488,22 @@
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, {
             icon: ICON_SPARKLES(),
-            title: "Signals",
+            title: "Intents",
             count: intentsError && !intents.length ? undefined : intents.length,
             action: React.createElement(Button, {
               type: "button", outlined: true, size: "sm",
-              className: "index-dashboard__net-create-btn index-dashboard__new-signal-btn",
-              onClick: function () { setNewSignalOpen(true); },
-            }, ICON_PLUS(), "New signal"),
+              className: "index-dashboard__net-create-btn index-dashboard__new-intent-btn",
+              onClick: function () { setNewIntentOpen(true); },
+            }, ICON_PLUS(), "New intent"),
           },
-            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent, error: intentsError, onRetry: load, onStartSignal: startSignal }),
+            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent, error: intentsError, onRetry: load, onStartIntent: startIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {
               networks: networks,
               loadError: networksFailed,
               onRetry: loadNetworks,
-              onStartSignal: startSignal,
+              onStartIntent: startIntent,
               requests: networkRequests,
               webUrl: summary && summary.webUrl,
               apiUrl: summary && summary.apiUrl,
@@ -6561,15 +6561,15 @@
         ? React.createElement(MessagesPanel, {
           initialConversationId: messagesTarget,
           onClose: function () { setMessagesOpen(false); setMessagesTarget(null); },
-          onStartSignal: function () { setMessagesOpen(false); setMessagesTarget(null); setNewSignalOpen(true); },
+          onStartIntent: function () { setMessagesOpen(false); setMessagesTarget(null); setNewIntentOpen(true); },
           onOpenUser: openUser,
         })
         : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
-      newSignalOpen
-        ? React.createElement(NewSignalModal, { onDone: finishNewSignal, onClose: function () { setNewSignalOpen(false); } })
+      newIntentOpen
+        ? React.createElement(NewIntentModal, { onDone: finishNewIntent, onClose: function () { setNewIntentOpen(false); } })
         : null,
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })

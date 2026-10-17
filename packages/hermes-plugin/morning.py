@@ -136,7 +136,7 @@ def _active(intent: dict) -> bool:
 
 
 def run() -> None:
-    """Morning-wake each active signal that belongs to a community. Prints nothing."""
+    """Morning-wake each active intent that belongs to a community. Prints nothing."""
     try:
         state = json.loads((_home() / STATE_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):

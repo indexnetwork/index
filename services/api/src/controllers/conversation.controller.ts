@@ -178,7 +178,7 @@ export class ConversationController {
    * Accepts `agent`, a full UUID, or a short ID prefix.
    *
    * An agent-bound API key writing into its owner's agent DM speaks as the
-   * agent, and must say which signal it is speaking about; every other
+   * agent, and must say which intent it is speaking about; every other
    * credential speaks as the authenticated user. A session token therefore
    * cannot post as the agent.
    *
