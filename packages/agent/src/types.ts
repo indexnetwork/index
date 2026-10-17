@@ -1,5 +1,6 @@
 import type { Index } from "@indexnetwork/client";
 
+import type { Decide } from "./decide.ts";
 import type { Model } from "./model.ts";
 
 export interface User {
@@ -109,6 +110,8 @@ export interface BriefInput {
   principalConversation: ConversationEntry[];
   opportunity: Opportunity;
   model: Model;
+  /** When set, screening asks it instead of running a full briefing. */
+  decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
 }
@@ -120,6 +123,8 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
+  /** When set, discovery screens candidates with it instead of a full briefing. */
+  decide?: Decide;
   /** Index for this owner, for the two operations the model triggers mid-loop. */
   client: Index;
   now?: () => Date;

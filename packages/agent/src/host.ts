@@ -1,6 +1,7 @@
 import type { ConversationMessage, Index, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
 import { briefIfMissing, screens } from "./brief.ts";
+import type { Decide } from "./decide.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
@@ -19,6 +20,8 @@ export type NegotiateHook = (
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
   model: Model;
+  /** When set, discovery screens candidates with it instead of a full briefing. */
+  decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
   log?: (line: string) => void;
@@ -385,7 +388,7 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
  * @returns The wake's actions.
  */
 export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning" }): Promise<WakeResult> {
-  const { model, now, signal, log = () => {}, onNegotiate, reason } = runtime;
+  const { model, decide, now, signal, log = () => {}, onNegotiate, reason } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -430,6 +433,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
     principalConversation,
     opportunities,
     model,
+    ...(decide ? { decide } : {}),
     client,
     now,
     signal,
@@ -503,7 +507,7 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
 
   const queries = since ? savedQueries(conversation) : [];
   const screen = queries.length
-    ? { user: await client.me(), intent, principalConversation: conversation, model: rest.model, ...(rest.now ? { now: rest.now } : {}), ...(rest.signal ? { signal: rest.signal } : {}) }
+    ? { user: await client.me(), intent, principalConversation: conversation, model: rest.model, ...(rest.decide ? { decide: rest.decide } : {}), ...(rest.now ? { now: rest.now } : {}), ...(rest.signal ? { signal: rest.signal } : {}) }
     : null;
   const { found, opened } = screen
     ? await reach(client, intent, queries, since, (candidate) => screens(screen, candidate))

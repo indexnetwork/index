@@ -36891,6 +36891,24 @@ ${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
   return recorded;
 }
 async function screens(input2, candidate) {
+  const choice = await input2.decide?.({
+    state: {
+      principal: principalFacts(input2.user),
+      intent: input2.intent.statement,
+      said: principalOnly(input2.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text),
+      candidate: { statement: candidate.statement, bio: candidate.bio, location: candidate.location }
+    },
+    question: "Should this principal be introduced to this candidate? Reach only if the candidate meets every requirement of the intent and wants what the principal offers; skip a clear mismatch.",
+    options: {
+      reach: "Nothing the candidate states contradicts the intent. What they leave unsaid is unknown, so a conversation can ask.",
+      skip: "The candidate contradicts a requirement of the intent, or wants something it rules out."
+    },
+    ...input2.signal ? { signal: input2.signal } : {}
+  }).catch(() => {
+    return;
+  });
+  if (choice)
+    return choice === "reach";
   const actions = await briefIfMissing({
     ...input2,
     opportunity: {
@@ -37399,7 +37417,7 @@ async function wake(input2) {
             unpersisted ??= cause;
           }
         };
-        const screen = { user, intent, principalConversation: input2.principalConversation, model: input2.model, ...input2.now ? { now: input2.now } : {}, ...input2.signal ? { signal: input2.signal } : {} };
+        const screen = { user, intent, principalConversation: input2.principalConversation, model: input2.model, ...input2.decide ? { decide: input2.decide } : {}, ...input2.now ? { now: input2.now } : {}, ...input2.signal ? { signal: input2.signal } : {} };
         const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
@@ -37738,7 +37756,7 @@ function counterpartsOf(details) {
   ]));
 }
 async function runWake(client, intent, runtime) {
-  const { model, now: now2, signal, log = () => {}, onNegotiate, reason } = runtime;
+  const { model, decide, now: now2, signal, log = () => {}, onNegotiate, reason } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -37772,6 +37790,7 @@ async function runWake(client, intent, runtime) {
     principalConversation,
     opportunities,
     model,
+    ...decide ? { decide } : {},
     client,
     now: now2,
     signal,
