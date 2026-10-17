@@ -40,15 +40,12 @@ export function AddYourAgent({
   onlyIfMissing = false,
   onRegister,
   registerForm,
-  handOnly = false,
 }: {
   linkToPage?: boolean;
   onlyIfMissing?: boolean;
   onRegister?: () => void;
   /** The name form, shown in place of the register row. */
   registerForm?: ReactNode;
-  /** Just the register row, under a roster that already has agents. */
-  handOnly?: boolean;
 }) {
   const missing = useMissingOwnAgent(onlyIfMissing);
   const [copied, setCopied] = useState<"mcp" | "cli" | null>(null);
@@ -73,8 +70,6 @@ export function AddYourAgent({
       action={<button type="button" className="wb-btn small" onClick={onRegister}>register</button>}
     />
   ));
-
-  if (handOnly) return <>{byHand}</>;
 
   return (
     <div style={{ display: "grid", gap: 8, width: "100%", textAlign: "left" }}>

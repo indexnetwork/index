@@ -378,7 +378,6 @@ export default function AgentsPage() {
               <div style={{ marginTop: 16 }}>
                 <AddYourAgent
                   linkToPage={false}
-                  handOnly={personalAgents.length > 0}
                   onRegister={() => setRegisterOpen(true)}
                   registerForm={registerOpen ? (
                     <div style={{ display: "grid", gap: 10, padding: "10px 12px", border: "1px solid #000", background: "#fff" }}>
