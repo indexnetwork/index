@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "index-network",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -43,48 +43,48 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Read the owner's profile",
-              "prompt": "Show my Index profile.",
+              "description": "See your profile",
+              "prompt": "What's on my Index profile?",
               "tools_triggered": "get_my_profile",
-              "expected_behavior": "Returns this account's name and a link to the profile."
+              "expected_behavior": "Shows your name and a link to the profile."
             },
             {
-              "description": "Read the profile intro",
-              "prompt": "What does my Index profile say about me?",
-              "tools_triggered": "get_my_profile",
-              "expected_behavior": "Returns the saved intro, or says the intro is empty."
-            },
-            {
-              "description": "List the owner's intents",
-              "prompt": "List my Index intents.",
+              "description": "See what you're looking for",
+              "prompt": "What am I looking for on Index?",
               "tools_triggered": "list_intents",
-              "expected_behavior": "Lists this account's intents with a status and a link, or says there are none."
+              "expected_behavior": "Lists your intents, or says you don't have any."
             },
             {
-              "description": "Count the owner's intents",
-              "prompt": "How many intents do I have on Index?",
-              "tools_triggered": "list_intents",
-              "expected_behavior": "Gives the number of intents on this account."
+              "description": "Open one intent",
+              "prompt": "Open one of my Index intents.",
+              "tools_triggered": "list_intents, get_intent",
+              "expected_behavior": "Opens one intent and gives its link."
             },
             {
-              "description": "List the owner's matches",
-              "prompt": "List my Index matches.",
+              "description": "See who to meet",
+              "prompt": "Who should I meet on Index?",
               "tools_triggered": "list_opportunities",
-              "expected_behavior": "Lists this account's matches with who they are with, or says there are none."
+              "expected_behavior": "Lists the people matched with you, or says there are none."
+            },
+            {
+              "description": "Open one match",
+              "prompt": "Tell me about one of my Index matches.",
+              "tools_triggered": "list_opportunities, get_opportunity",
+              "expected_behavior": "Says who the match is with and links to it, or says there are none."
             }
           ],
           "negative": [
             {
               "description": "Messaging people directly is not supported",
-              "prompt": "Send a message on Index to everyone in my network."
+              "prompt": "Text everyone in my Index network."
             },
             {
               "description": "Other users' private data is not accessible",
-              "prompt": "Show me the private intents of other Index users."
+              "prompt": "Show me other people's private intents on Index."
             },
             {
               "description": "Changing other users' data is not supported",
-              "prompt": "Delete another Index user's intents."
+              "prompt": "Delete someone else's Index intents."
             }
           ]
         },

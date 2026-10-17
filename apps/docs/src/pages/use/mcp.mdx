@@ -65,15 +65,19 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
 
-The same connection carries three tools for an intent's agent conversation.
-`agent_send_message` begins "Agent tool", and a model calls it only when its
-task instructions name it.
+The same connection carries tools for an intent's agent conversation. Each
+agent write begins "Agent tool", and a model calls it only when its task
+instructions name that tool.
 
 | I want to… | Tool |
 | --- | --- |
 | Read an intent's agent conversation | `get_intent_conversation` |
 | Record what the owner wrote | `principal_send_message` |
-| Write as the owner's agent | `agent_send_message` |
+| Save a private note as the agent | `agent_send_note` |
+| Save an agent reply | `agent_send_reply` |
+| Save a progress update | `agent_send_progress` |
+| Ask the owner one question | `agent_ask` |
+| Stop waiting on a question | `agent_expire_question` |
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
 
@@ -108,8 +112,11 @@ remains `accept_opportunity` or `reject_opportunity`.
 `principal_send_message` takes `intentId` and `messages`, each `text` with an
 optional `questionId`. Pass a `questionId` only when the words answer that
 question. The batch is written together. Copy the owner's words and never
-invent one. `agent_send_message` takes `intentId`, `agentId` (the selected
-negotiator), and `actions`: `note`, `reply`, `progress`, `ask`, or `expire`.
+invent one. `agent_send_note`, `agent_send_reply`, and `agent_send_progress`
+each take `intentId`, `agentId` (the selected negotiator), and `text`.
+`agent_ask` takes those plus `scope`, `question`, and `options`, and
+`opportunityId` when the scope is an opportunity. `agent_expire_question`
+takes `intentId`, `agentId`, and `questionId`.
 
 ## For the agent
 
