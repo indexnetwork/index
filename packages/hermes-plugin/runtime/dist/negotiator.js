@@ -625,8 +625,8 @@ var require_get_vercel_oidc_token = __commonJS((exports, module) => {
     }
     try {
       const [{ getTokenPayload, isExpired }, { refreshToken }] = await Promise.all([
-        await Promise.resolve().then(() => __toESM(require_token_util(), 1)),
-        await Promise.resolve().then(() => __toESM(require_token(), 1))
+        await Promise.resolve().then(() => __toESM(require_token_util())),
+        await Promise.resolve().then(() => __toESM(require_token()))
       ]);
       if (!token || isExpired(getTokenPayload(token), options?.expirationBufferMs)) {
         await refreshToken(options);
@@ -36759,19 +36759,24 @@ async function run(input2) {
       return typeof output2 === "string" ? output2 : JSON.stringify(output2 ?? null);
     }
   })]));
-  await generateText({
-    model: input2.model,
-    instructions: systemPrompt(input2),
-    prompt: input2.prompt,
-    tools,
-    stopWhen: isStepCount(input2.maxSteps),
-    prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
-    toolCallConcurrency: 1,
-    maxOutputTokens: MAX_TOKENS,
-    maxRetries: 0,
-    timeout: { stepMs: STEP_TIMEOUT },
-    ...input2.signal ? { abortSignal: input2.signal } : {}
-  });
+  try {
+    await generateText({
+      model: input2.model,
+      instructions: systemPrompt(input2),
+      prompt: input2.prompt,
+      tools,
+      stopWhen: isStepCount(input2.maxSteps),
+      prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
+      toolCallConcurrency: 1,
+      maxOutputTokens: MAX_TOKENS,
+      maxRetries: 0,
+      timeout: { stepMs: STEP_TIMEOUT },
+      ...input2.signal ? { abortSignal: input2.signal } : {}
+    });
+  } catch (error62) {
+    if (!ToolChoiceViolationError.isInstance(error62))
+      throw error62;
+  }
 }
 
 // ../agent/src/tool.ts
