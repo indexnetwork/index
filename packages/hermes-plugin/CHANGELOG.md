@@ -4,6 +4,8 @@
 ## Unreleased
 
 ### Changed
+- The bridge serves OpenAI chat completions at `/v1/chat/completions` instead of `/complete`, and the negotiator reaches it through the AI SDK's OpenAI-compatible provider.
+- The agent inbox reads briefs, decisions, progress and stalls from each entry's `record`, not from a `Brief: ` style prefix. Resolutions are hidden with stalls.
 - The negotiator runs in any Hermes server, not only the gateway: `hermes gateway run`, Desktop's `hermes serve` backend, or `hermes dashboard`. Before, it waited 60 seconds for a gateway runner, so Desktop alone never started it. A lock file in the Hermes home keeps it to one process. The plugin no longer reads the gateway's private runner reference to decide this.
 - Negotiator turns are written to the Hermes session list through the shared session database, so they show in the sidebar under any Hermes server. Before, they were written only through the gateway's private session store, so under Desktop alone they never appeared.
 - Negotiator completions use the gateway's main model client. They no longer go through the auxiliary client.

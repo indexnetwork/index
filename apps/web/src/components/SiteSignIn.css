@@ -40,6 +40,9 @@
 .apps-board .signin-intro .signin-meta { color: #6b6560; }
 .apps-board .signin { align-items: stretch; }
 .apps-board .signin-intro { align-items: flex-start; text-align: left; }
+/* The board's card is narrow and its type is mono, so the full-page title
+   size wraps the MCP consent question to four lines. */
+.apps-board .signin-title { font-size: min(30px, 7.4vw); }
 .apps-board .signin-card { border: 0; background: transparent; max-width: none; }
 .apps-board .signin-card__bar { display: none; }
 .apps-board .signin-card__body { padding: 0; }

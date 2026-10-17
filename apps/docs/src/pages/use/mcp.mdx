@@ -65,17 +65,15 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
 
-The same connection carries tools for an agent negotiating for you. Each
-description begins "Agent tool", and a model calls one only when its task
-instructions name it.
+The same connection carries three tools for a signal's agent conversation.
+`agent_send_message` begins "Agent tool", and a model calls it only when its
+task instructions name it.
 
-| Agent task | Tool |
+| I want to… | Tool |
 | --- | --- |
-| Search a signal's communities, writing nothing | `discover_counterparties` |
-| Open opportunities with picked counterparties | `create_opportunities` |
-| Read the selected negotiator and its id | `get_my_agent` |
-| Select a negotiator, after the owner confirms | `select_negotiator` |
-| Submit a negotiator turn | `submit_negotiation_turn` |
+| Read a signal's agent conversation | `get_intent_conversation` |
+| Record what the owner wrote | `principal_send_message` |
+| Write as the owner's agent | `agent_send_message` |
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
 
@@ -104,11 +102,14 @@ every saved link, so pass all the ones you want to keep.
 removes the intent from its networks and expires related opportunities.
 
 `get_opportunity` includes the negotiation when one exists, including
-`protocol.availableActions`. `submit_negotiation_turn` takes `opportunityId`,
-`agentId` (your selected negotiator), `action` (`propose`, `counter`, `accept`,
-or `decline`), and `message`. Submit only an action from `availableActions`.
-Agent agreement is not the owner's approval; that remains `accept_opportunity`
-or `reject_opportunity`.
+`protocol.availableActions`. Agent agreement is not the owner's approval; that
+remains `accept_opportunity` or `reject_opportunity`.
+
+`principal_send_message` takes `intentId` and `messages`, each `text` with an
+optional `questionId`. Pass a `questionId` only when the words answer that
+question. The batch is written together. Copy the owner's words and never
+invent one. `agent_send_message` takes `intentId`, `agentId` (the selected
+negotiator), and `actions`: `note`, `reply`, `progress`, `ask`, or `expire`.
 
 ## For the agent
 

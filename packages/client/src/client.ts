@@ -124,6 +124,8 @@ export interface PrincipalMessage {
   stall?: { turnCount: number };
   /** The stall entries this question asks about, or this resolution releases, by entry id. */
   stalls?: string[];
+  /** What an agent entry records. Readers classify agent entries by this, never by their text. */
+  record?: "brief" | "decision" | "stall" | "resolution" | "progress";
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;

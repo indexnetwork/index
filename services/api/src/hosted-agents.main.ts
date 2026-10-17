@@ -3,7 +3,7 @@ import './bootstrap';
 
 import * as Sentry from '@sentry/bun';
 
-import { ModelClient } from '@indexnetwork/agent';
+import { createModel } from '@indexnetwork/agent';
 
 import { HostedAgent } from './lib/agent/hosted.agent';
 import { startMorningBrief } from './lib/agent/morning.job';
@@ -13,7 +13,7 @@ import { McpEventDispatcher } from './lib/mcp/mcp-events.dispatcher';
 const logger = log.agent.from('hosted-agents.main');
 
 // The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
+const hostedAgent = new HostedAgent(createModel({ apiKey: process.env.OPENROUTER_API_KEY! }));
 void hostedAgent.start();
 const morningDisabled = process.env.DISABLE_MORNING_BRIEF === 'true';
 const morning = morningDisabled

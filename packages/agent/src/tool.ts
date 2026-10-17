@@ -1,5 +1,3 @@
-import type { ToolDefinition } from "./model.ts";
-
 /**
  * One capability a run may call. `parameters` is JSON Schema, handed to the
  * model verbatim, so it is the only thing telling the model how to call this.
@@ -20,12 +18,4 @@ export interface Tool<I = Record<string, unknown>> {
  */
 export function tool<I>(definition: Tool<I>): Tool<never> {
   return definition;
-}
-
-/** @param tool - One tool. @returns Its declaration for the model. */
-export function toolDefinition(tool: Tool<never>): ToolDefinition {
-  return {
-    type: "function",
-    function: { name: tool.name, description: tool.description, parameters: tool.parameters },
-  };
 }

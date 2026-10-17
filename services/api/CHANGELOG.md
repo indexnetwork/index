@@ -14,6 +14,8 @@ section before promoting to `main`).
 - Counterparty discovery returns only signals whose owners verified their email.
 
 ### Changed
+- **MCP conversation tools are renamed by who writes.** `get_agent_conversation` is `get_intent_conversation`, `publish_agent_action` is `agent_send_message`, and `answer_agent_questions` is `principal_send_message`. `principal_send_message` takes `messages`, each `text` with an optional `questionId`; a message without one is saved as a plain owner message. The batch is still written together, then `principal.input` is published.
+- **BREAKING: MCP no longer carries the negotiator tools.** `discover_counterparties`, `create_opportunities`, `get_my_agent`, `select_negotiator` and `submit_negotiation_turn` are removed. The REST routes, the CLI and the hosted agent are unchanged, and the ChatGPT and Grok plugins relay introductions and questions only.
 - Accepting a match publishes `opportunity.status` even when it was already pending.
 - Users, network members and opportunity peers carry `emailVerified` in place of `isGhost`.
 - The hosted agent passes `emailVerified` on its principal; a principal who has not verified is spoken of in the third person, only from their signal, and their negotiator never stalls.
@@ -25,10 +27,6 @@ section before promoting to `main`).
   negotiation. The text is kept in `metadata.introducer`, out of the match
   reasoning presenters read. The introducer holds no seat; the owner of the
   first intent takes the first turn.
-- **MCP `submit_negotiation_turn`.** Submits one negotiator turn (`propose`,
-  `counter`, `accept`, or `decline`) for the authenticated owner. The caller
-  passes `agentId` for their selected external negotiator. Refusals match the
-  REST turn errors, including a changed executor.
 - **MCP Events for ChatGPT.** `/mcp` advertises `capabilities.events` and
   serves `events/list`, `events/subscribe`, and `events/unsubscribe` for
   `opportunity.new`, `opportunity.status`, `negotiation.turn`, and

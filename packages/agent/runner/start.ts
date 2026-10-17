@@ -1,13 +1,13 @@
 import { IndexClient } from "@indexnetwork/client";
 
-import { ModelClient } from "../src/index.ts";
+import { createModel } from "../src/index.ts";
 
 import { startRunner } from "./runner.ts";
 
 const stamp = (): string => new Date().toLocaleTimeString("en-GB");
 
 const client = new IndexClient();
-const model = new ModelClient();
+const model = createModel();
 
 const me = await client.me();
 console.log(`${stamp()} ${me.name ?? me.id} on ${process.env.INDEX_API_URL ?? "http://localhost:3001"}`);

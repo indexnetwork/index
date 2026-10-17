@@ -1,6 +1,13 @@
-import type { Model, ModelMessage, ToolCall } from "./model.ts";
-import { toolDefinition, type Tool } from "./tool.ts";
+import { generateText, isStepCount, jsonSchema, tool as defineTool, type JSONSchema7, type ToolSet } from "ai";
+
+import type { Model } from "./model.ts";
+import type { Tool } from "./tool.ts";
 import type { Intent } from "./types.ts";
+
+/** One tool call fits. Reasoning bills as output, up to 65,536 tokens otherwise. */
+const MAX_TOKENS = 2048;
+/** Long enough for a slow model, short enough to notice a hang. */
+const STEP_TIMEOUT = 120_000;
 
 export interface RunInput {
   model: Model;
@@ -53,49 +60,27 @@ function systemPrompt(input: RunInput): string {
  * @throws When the model call fails or the run is cancelled.
  */
 export async function run(input: RunInput): Promise<void> {
-  const tools = new Map(input.tools.map((entry) => [entry.name, entry]));
-  const definitions = input.tools.map(toolDefinition);
-  const messages: ModelMessage[] = [
-    { role: "system", content: systemPrompt(input) },
-    { role: "user", content: input.prompt },
-  ];
+  const tools: ToolSet = Object.fromEntries(input.tools.map((entry) => [entry.name, defineTool({
+    description: entry.description,
+    inputSchema: jsonSchema(entry.parameters as JSONSchema7),
+    execute: async (argument: unknown) => {
+      const output = await entry.run(argument as never);
+      return typeof output === "string" ? output : JSON.stringify(output ?? null);
+    },
+  })]));
 
-  for (let step = 0; step < input.maxSteps; step++) {
-    const assistant = await input.model.complete(
-      messages,
-      definitions,
-      input.signal,
-      step === 0 && input.requireTool ? "required" : undefined,
-    );
-    messages.push(assistant);
-
-    const calls = assistant.tool_calls ?? [];
-    if (!calls.length) return;
-
-    for (const call of calls) {
-      messages.push({ role: "tool", tool_call_id: call.id, content: await result(call, tools) });
-    }
-  }
-}
-
-/** @param call - One tool call. @param tools - Tools by name. @returns What the model is told came back. */
-async function result(call: ToolCall, tools: Map<string, Tool<never>>): Promise<string> {
-  const tool = tools.get(call.function.name);
-  if (!tool) {
-    return `No tool named "${call.function.name}". Available: ${[...tools.keys()].join(", ") || "none"}.`;
-  }
-
-  let argument: unknown;
-  try {
-    argument = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-  } catch {
-    return `Arguments for "${call.function.name}" were not valid JSON: ${call.function.arguments}`;
-  }
-
-  try {
-    const output = await tool.run(argument as never);
-    return typeof output === "string" ? output : JSON.stringify(output ?? null);
-  } catch (cause) {
-    return `Error: ${cause instanceof Error ? cause.message : String(cause)}`;
-  }
+  await generateText({
+    model: input.model,
+    instructions: systemPrompt(input),
+    prompt: input.prompt,
+    tools,
+    stopWhen: isStepCount(input.maxSteps),
+    prepareStep: ({ stepNumber }) => (stepNumber === 0 && input.requireTool ? { toolChoice: "required" } : undefined),
+    // Tools share the run's state: a note must land before the question after it.
+    toolCallConcurrency: 1,
+    maxOutputTokens: MAX_TOKENS,
+    maxRetries: 0,
+    timeout: { stepMs: STEP_TIMEOUT },
+    ...(input.signal ? { abortSignal: input.signal } : {}),
+  });
 }

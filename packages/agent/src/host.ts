@@ -28,12 +28,7 @@ export interface Runtime {
   negotiate?: NegotiateHook;
 }
 
-const BRIEF = "Brief: ";
-const DECISION = "Decision: ";
-const STALL = "Stall: ";
-const RESOLVED = "Resolved: ";
 const TO_ASK = "\n\nTo ask: ";
-const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
 /** An opening turn still running after this is no longer held. The rest of the initiation can finish. */
 const OPENING_MS = 60_000;
@@ -66,8 +61,9 @@ function textOf(message: ConversationMessage): string {
 /**
  * Read the agent DM as a run's conversation.
  *
- * Briefs, decisions and stalls live here as prefixed agent messages tagged with
- * their opportunity: that is the whole store, and the principal can read it too.
+ * Briefs, decisions and stalls live here as agent messages marked by `record`
+ * and tagged with their opportunity: that is the whole store, and the principal
+ * can read it too.
  *
  * @param messages - The agent DM slice for one signal, oldest first.
  * @returns The conversation as a run takes it.
@@ -81,24 +77,14 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     const stalls = principal?.stalls?.length ? { stalls: principal.stalls } : {};
 
     if (principal?.reply) return { kind: "reply", text };
-    if (message.role === "agent" && text.startsWith(BRIEF)) {
-      return { kind: "brief", text: text.slice(BRIEF.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
-    }
-    if (message.role === "agent" && text.startsWith(DECISION)) {
-      return { kind: "decision", text: text.slice(DECISION.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
-    }
-    if (message.role === "agent" && text.startsWith(STALL)) {
-      return {
-        kind: "stall", id: message.id, text: text.slice(STALL.length),
-        ...(principal?.stall ? { turnCount: principal.stall.turnCount } : {}),
-        ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}),
-      };
-    }
-    if (message.role === "agent" && text.startsWith(RESOLVED)) {
-      return { kind: "resolution", text: text.slice(RESOLVED.length), ...stalls, ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
-    }
-    if (message.role === "agent" && text.startsWith(PROGRESS)) {
-      return { kind: "progress", text: text.slice(PROGRESS.length) };
+    const record = principal?.record;
+    if (record) {
+      const tags = { ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
+      if (record === "progress") return { kind: record, text };
+      if (record === "stall") {
+        return { kind: record, id: message.id, text, ...(principal?.stall ? { turnCount: principal.stall.turnCount } : {}), ...tags };
+      }
+      return { kind: record, text, ...(record === "resolution" ? stalls : {}), ...tags };
     }
 
     const kind = principal?.kind ?? (message.role === "user" ? "user" : "message");
@@ -321,10 +307,10 @@ export function encodeActions(actions: WakeAction[], context: Omit<PublishContex
     const match = "opportunityId" in action && action.opportunityId ? counterparts.get(action.opportunityId) : undefined;
     switch (action.type) {
       case "brief":
-        entries.push(entry("message", `${BRIEF}${action.brief}`, match ? [match] : []));
+        entries.push({ ...entry("message", action.brief, match ? [match] : []), record: "brief" });
         break;
       case "decision":
-        entries.push(entry("message", `${DECISION}${action.decision}`, match ? [match] : []));
+        entries.push({ ...entry("message", action.decision, match ? [match] : []), record: "decision" });
         break;
       case "note":
         entries.push(entry("message", action.text));
@@ -333,10 +319,10 @@ export function encodeActions(actions: WakeAction[], context: Omit<PublishContex
         entries.push({ ...entry("message", action.text), reply: true });
         break;
       case "progress":
-        entries.push(entry("message", `${PROGRESS}${action.text}`));
+        entries.push({ ...entry("message", action.text), record: "progress" });
         break;
       case "resolve":
-        entries.push({ ...entry("message", `${RESOLVED}${action.reason}`, match ? [match] : []), stalls: [action.stallId] });
+        entries.push({ ...entry("message", action.reason, match ? [match] : []), record: "resolution", stalls: [action.stallId] });
         break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);
@@ -731,7 +717,8 @@ export async function runNegotiate(
     ? `${result.stall.reason}${TO_ASK}${result.stall.suggestedAsk}`
     : result.stall.reason;
   await client.sendPrincipal(intent.id, [{
-    ...entry("message", `${STALL}${text}`, [context.counterparts.get(opportunityId)!]),
+    ...entry("message", text, [context.counterparts.get(opportunityId)!]),
+    record: "stall",
     stall: { turnCount: detail.turnCount },
   }]);
   return result;
