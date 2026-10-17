@@ -1,12 +1,16 @@
+import { readConversation } from '@indexnetwork/agent';
+import type { ConversationMessage } from '@indexnetwork/client';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
+import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../../services/conversation.service';
 import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
 import { negotiationService } from '../../services/negotiation.service';
 import { networkService } from '../../services/network.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
+import { RuntimeConflictError } from '../agent/runtime-errors';
 import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
@@ -169,6 +173,39 @@ function runTool(
   operation: () => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
   return operation().catch((error) => captureMcpToolFailure(error, name, principal));
+}
+
+const conversationService = new ConversationService();
+
+/** Same failures the agent conversation HTTP routes return. */
+function agentConversationFailure(error: unknown): CallToolResult | null {
+  if (error instanceof AgentConversationError) {
+    return mcpError(error.status === 404 ? 'not_found' : 'agent_conversation_error', error.message);
+  }
+  if (error instanceof RuntimeConflictError) {
+    return mcpError('executor_changed', 'The selected negotiation executor changed; stop this work');
+  }
+  return null;
+}
+
+function inboxMessage(message: {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  role: 'user' | 'agent';
+  parts: unknown;
+  createdAt: Date;
+  metadata: unknown;
+}): ConversationMessage {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    role: message.role,
+    parts: message.parts,
+    createdAt: message.createdAt.toISOString(),
+    metadata: message.metadata ?? undefined,
+  };
 }
 
 /** Register the curated owner-only Index tool surface on a fresh MCP server. */
@@ -563,6 +600,77 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         },
         negotiation,
       }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+    }),
+  );
+
+  server.registerTool(
+    'get_intent_conversation',
+    {
+      description: 'Read one owned intent’s chat: the agent’s notes, progress, and questions, and what the owner has already said. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      inputSchema: intentIdSchema,
+      annotations: hints(true, false, false, true),
+    },
+    ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      try {
+        const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
+        if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
+        const [stored, agent] = await Promise.all([
+          conversationService.getMessages(conversation.id, { intentId: resolved.id, userId: principal.userId }),
+          conversationService.agentState(principal.userId, resolved.id),
+        ]);
+        const { url, link } = await linkedIntent(resolved.id, principal.userId);
+        return mcpSuccess({
+          intentId: resolved.id,
+          conversation: readConversation(stored.map(inboxMessage)),
+          questions: agent.questions,
+          url,
+        }, link);
+      } catch (error) {
+        const mapped = agentConversationFailure(error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    }),
+  );
+
+  server.registerTool(
+    'principal_send_message',
+    {
+      description: 'Save what the owner just said in one intent’s chat, the same way the Index app does. Copy their words; never infer or invent a message. Pass a questionId only when those words answer that waiting question. A message without one is saved as a plain message, and so is one naming a question that is no longer waiting. Saving a message is not approval to accept or pass a match.' + LINK_HINT,
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1),
+        messages: z.array(z.object({
+          text: z.string().trim().min(1).max(8000),
+          questionId: z.string().uuid().optional(),
+        }).strict()).min(1).max(20),
+      }).strict(),
+      annotations: hints(false, false, false, false),
+    },
+    ({ intentId, messages }) => runTool('principal_send_message', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
+      if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
+      try {
+        const persisted = await conversationService.answerQuestions({
+          userId: principal.userId, intentId: resolved.id, conversationId: conversation.id, answers: messages,
+        });
+        const { url, link } = await linkedIntent(resolved.id, principal.userId);
+        return mcpSuccess({
+          intentId: resolved.id,
+          messages: persisted.map((message) => {
+            const principalMessage = (message.metadata as { principalMessage?: { kind?: string; questionId?: string } } | null)?.principalMessage;
+            return { id: message.id, kind: principalMessage?.kind ?? 'user', questionId: principalMessage?.questionId ?? null };
+          }),
+          url,
+        }, link);
+      } catch (error) {
+        const mapped = agentConversationFailure(error);
+        if (mapped) return mapped;
+        throw error;
+      }
     }),
   );
 

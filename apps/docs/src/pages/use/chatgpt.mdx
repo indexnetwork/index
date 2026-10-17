@@ -51,6 +51,9 @@ Index is connected as an MCP server. When an `opportunity.new` event arrives,
 read it with `get_opportunity` and tell the person who it is with and why.
 Accept or pass only after they say so. When a `negotiation.turn` event arrives,
 read it with `get_opportunity` and tell them their negotiator owes a turn, or
-that the turn limit paused it. The hosted negotiator asks them and writes the
-agent conversation.
+that the turn limit paused it. When they ask what an intent's chat says, read
+it with `get_intent_conversation`. When they answer, call
+`principal_send_message` with their exact words, and pass `questionId` only
+when those words answer that question. The hosted negotiator writes the
+agent's side of that chat.
 :::

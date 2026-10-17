@@ -96,6 +96,22 @@
         "open_world_justification": "Reads matches inside the owner's Index account only."
       }
     },
+    "get_intent_conversation": {
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
+      "justifications": {
+        "read_only_justification": "Reads the signed-in owner's chat for one intent they own, including questions still waiting.",
+        "destructive_justification": "Does not send, delete, or overwrite a message.",
+        "open_world_justification": "Reads a private chat inside the owner's Index account and does not contact the other person."
+      }
+    },
+    "principal_send_message": {
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
+      "justifications": {
+        "read_only_justification": "Saves the words the owner just wrote in one intent's chat.",
+        "destructive_justification": "Appends that message. It does not delete, overwrite, accept, or pass anything.",
+        "open_world_justification": "The message stays in the owner's private Index chat and is not sent to the other person."
+      }
+    },
     "get_opportunity": {
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
