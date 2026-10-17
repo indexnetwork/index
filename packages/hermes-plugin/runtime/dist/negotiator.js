@@ -36759,19 +36759,24 @@ async function run(input2) {
       return typeof output2 === "string" ? output2 : JSON.stringify(output2 ?? null);
     }
   })]));
-  await generateText({
-    model: input2.model,
-    instructions: systemPrompt(input2),
-    prompt: input2.prompt,
-    tools,
-    stopWhen: isStepCount(input2.maxSteps),
-    prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
-    toolCallConcurrency: 1,
-    maxOutputTokens: MAX_TOKENS,
-    maxRetries: 0,
-    timeout: { stepMs: STEP_TIMEOUT },
-    ...input2.signal ? { abortSignal: input2.signal } : {}
-  });
+  try {
+    await generateText({
+      model: input2.model,
+      instructions: systemPrompt(input2),
+      prompt: input2.prompt,
+      tools,
+      stopWhen: isStepCount(input2.maxSteps),
+      prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
+      toolCallConcurrency: 1,
+      maxOutputTokens: MAX_TOKENS,
+      maxRetries: 0,
+      timeout: { stepMs: STEP_TIMEOUT },
+      ...input2.signal ? { abortSignal: input2.signal } : {}
+    });
+  } catch (error62) {
+    if (!ToolChoiceViolationError.isInstance(error62))
+      throw error62;
+  }
 }
 
 // ../agent/src/tool.ts
