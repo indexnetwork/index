@@ -7,6 +7,8 @@
 - Briefs, decisions, stalls, resolutions and progress carry a `record` tag and no longer start with `Brief: `, `Decision: `, `Stall: `, `Resolved: ` or `Progress: `. Readers classify by `record` only; entries written before it are not read.
 
 ### Added
+- `createModel({ headers })` sends headers on every request, for OpenRouter spend attribution.
+- Every run sends OpenRouter `user` (the principal), `session_id` (the intent) and a `trace` and `metadata` (`service: "agent"`, `operation`) named by its operation: `wake`, `wake.morning`, `wake.stalls`, `wake.reply`, `brief`, `screen`, `negotiate` or `summary`. `briefIfMissing` takes an optional operation name. Other providers ignore these fields.
 - A host can pass a `negotiate` hook. It runs before the built-in negotiator and can return its own turn or stall, or call `next()` to use the built-in one.
 
 ### Fixed

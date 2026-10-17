@@ -11,6 +11,8 @@ const STEP_TIMEOUT = 120_000;
 
 export interface RunInput {
   model: Model;
+  /** What this run is for, e.g. `wake` or `negotiate`. OpenRouter traces carry it, so spend reads per operation. */
+  operation: string;
   /** Who this run speaks as. */
   identity: { id: string; name: string };
   intent: Intent;
@@ -80,6 +82,15 @@ export async function run(input: RunInput): Promise<void> {
       // Tools share the run's state: a note must land before the question after it.
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,
+      // Other providers ignore this. OpenRouter groups one intent's runs and names each one.
+      providerOptions: {
+        openrouter: {
+          user: input.identity.id,
+          session_id: input.intent.id,
+          trace: { trace_name: "agent", generation_name: input.operation },
+          metadata: { service: "agent", operation: input.operation },
+        },
+      },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT },
       ...(input.signal ? { abortSignal: input.signal } : {}),

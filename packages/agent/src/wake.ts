@@ -430,6 +430,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input.model,
+    operation: input.reason === "morning" ? "wake.morning" : "wake",
     identity,
     intent,
     maxSteps: WAKE_STEPS,
@@ -455,6 +456,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     const due = new Set(owed());
     await run({
       model: input.model,
+      operation: "wake.stalls",
       identity,
       intent,
       maxSteps: 4,
@@ -478,6 +480,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
     await run({
       model: input.model,
+      operation: "wake.reply",
       identity,
       intent,
       maxSteps: 2,

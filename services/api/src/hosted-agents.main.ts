@@ -12,8 +12,11 @@ import { McpEventDispatcher } from './lib/mcp/mcp-events.dispatcher';
 
 const logger = log.agent.from('hosted-agents.main');
 
+// Attributes this process's OpenRouter spend apart from the API's protocol agents.
+const headers = { 'HTTP-Referer': 'https://index.network/hosted-agent', 'X-Title': 'Index Hosted Agent' };
+
 // The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(createModel({ apiKey: process.env.OPENROUTER_API_KEY! }));
+const hostedAgent = new HostedAgent(createModel({ apiKey: process.env.OPENROUTER_API_KEY!, headers }));
 void hostedAgent.start();
 const morningDisabled = process.env.DISABLE_MORNING_BRIEF === 'true';
 const morning = morningDisabled

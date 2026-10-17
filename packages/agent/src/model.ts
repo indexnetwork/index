@@ -18,12 +18,14 @@ export interface ModelClientOptions {
   apiKey?: string;
   /** One to three ordered OpenRouter models. Replaces the defaults. */
   models?: readonly string[];
+  /** Sent on every request, e.g. `HTTP-Referer` and `X-Title` so OpenRouter attributes spend to this caller. */
+  headers?: Record<string, string>;
 }
 
 /**
  * An OpenRouter model with tool calling.
  *
- * @param options - Credential and model list. Env fills the key.
+ * @param options - Credential, model list and headers. Env fills the key.
  * @returns The model every run takes.
  * @throws When no API key is available or the model list is unusable.
  */
@@ -34,5 +36,5 @@ export function createModel(options: ModelClientOptions = {}): Model {
   if (!models.length || models.length > 3 || models.some((model) => !model.trim())) {
     throw new Error("Provide one to three nonempty OpenRouter model IDs.");
   }
-  return createOpenRouter({ apiKey }).chat(models[0]!, { models, reasoning: REASONING, provider: { require_parameters: true } });
+  return createOpenRouter({ apiKey, ...(options.headers ? { headers: options.headers } : {}) }).chat(models[0]!, { models, reasoning: REASONING, provider: { require_parameters: true } });
 }

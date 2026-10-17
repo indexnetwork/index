@@ -78,6 +78,7 @@ export async function summarize(input: SummaryInput): Promise<string | undefined
 
   await run({
     model: input.model,
+    operation: "summary",
     identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
     intent,
     instructions: SUMMARY_PROMPT,

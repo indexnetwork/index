@@ -134,12 +134,19 @@ function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfi
     configuration: {
       baseURL: config?.baseURL ?? OPENROUTER_BASE_URL,
       apiKey,
+      // Attributes protocol spend on OpenRouter apart from the hosted agent's.
+      defaultHeaders: { "HTTP-Referer": "https://index.network/protocol", "X-Title": "Index Protocol" },
     },
     temperature: cfg.temperature,
     maxTokens: cfg.maxTokens,
     timeout,
     maxRetries,
-    ...(cfg.reasoning && { modelKwargs: { reasoning: cfg.reasoning } }),
+    // `trace` and `metadata` name each call by its agent, so OpenRouter reads spend per agent.
+    modelKwargs: {
+      trace: { trace_name: "protocol", generation_name: agent },
+      metadata: { service: "protocol", operation: agent },
+      ...(cfg.reasoning && { reasoning: cfg.reasoning }),
+    },
   });
 }
 
