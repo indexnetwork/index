@@ -99,6 +99,13 @@
       "when": 1792199657564,
       "tag": "0013_tag_agent_records",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792310746290,
+      "tag": "0014_email_events",
+      "breakpoints": true
     }
   ]
 }

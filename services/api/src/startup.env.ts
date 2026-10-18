@@ -85,6 +85,7 @@ const envSchema = z.object({
 
   // 6. Email (Resend)
   RESEND_API_KEY: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
   EMAIL_PRODUCTION_MODE: optionalBoolean,
   TESTING_EMAIL_ADDRESS: z.union([z.literal(''), z.string().email()]).optional(),
 
@@ -166,6 +167,7 @@ function collectEnvWarnings(): string[] {
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
   warnMissing('S3_REGION', 'set the S3 region, often "auto" for Railway buckets.');
   warnMissing('RESEND_API_KEY', 'emails will be skipped, including invite and notification email flows.');
+  warnMissing('RESEND_WEBHOOK_SECRET', 'the daily send, open and click counts will stay empty until the Resend webhook is configured.');
   warnMissing('SENTRY_DSN', 'backend errors and traces will not be reported to Sentry.');
   warnMissing('UNSTRUCTURED_API_URL', 'document parsing for some uploaded file types is disabled.');
   warnMissing('PARALLELS_API_KEY', 'web crawling/profile extraction for links is disabled.');

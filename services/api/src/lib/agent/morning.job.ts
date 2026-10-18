@@ -49,7 +49,7 @@ async function sendMorningEmails(logger: ReturnType<typeof log.agent.from>): Pro
       if (claim.off) continue;
       try {
         const email = await composeMorningEmail(claim.id, claim.name, claim.since);
-        if (email) await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', ...email });
+        if (email) await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', kind: 'morning_brief', ...email });
       } catch (error) {
         logger.error(describeFailure('Morning email failed', error), {
           userId: claim.id,

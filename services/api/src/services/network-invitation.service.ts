@@ -69,6 +69,7 @@ class NetworkInvitationService {
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        kind: 'network_invitation',
       })) as { skipped?: boolean; reason?: string };
       if (result.skipped) {
         logger.info('Email send skipped', {

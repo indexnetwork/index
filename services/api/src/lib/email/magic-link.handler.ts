@@ -20,6 +20,7 @@ export async function sendMagicLinkEmail(email: string, url: string): Promise<vo
   await executeSendEmail({
     to: email,
     subject: 'Sign in to Index Network',
+    kind: 'magic_link',
     html,
     text,
   });

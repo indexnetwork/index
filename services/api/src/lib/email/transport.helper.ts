@@ -3,6 +3,16 @@ import { Resend } from 'resend';
 import { log } from '../log';
 
 const logger = log.lib.from("email/transport.helper");
+
+/** Which flow sent the email. Sent as a Resend tag, so each event carries it back through the webhook. */
+export type EmailKind =
+  | 'magic_link'
+  | 'message'
+  | 'morning_brief'
+  | 'network_invitation'
+  | 'network_request_staff'
+  | 'network_request_decision';
+
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const executeSendEmail = async (options: {
@@ -12,6 +22,7 @@ export const executeSendEmail = async (options: {
   text: string;
   headers?: Record<string, string>;
   from?: string;
+  kind?: EmailKind;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
@@ -75,6 +86,7 @@ ${options.html}
       html: options.html,
       text: options.text,
       headers: options.headers,
+      tags: options.kind ? [{ name: 'kind', value: options.kind }] : undefined,
     });
 
     if (result.error) {

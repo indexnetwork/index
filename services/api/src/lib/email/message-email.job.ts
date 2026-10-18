@@ -108,7 +108,7 @@ async function sendDue(member: string): Promise<void> {
     url: `${APP_URL}/u/${encodeURIComponent(latest.senderId ?? '')}/chat`,
     settingsUrl: `${APP_URL}/settings?tab=notifications`,
   });
-  await executeSendEmail({ to: due.email, from: fromHeader(senderName), ...email });
+  await executeSendEmail({ to: due.email, from: fromHeader(senderName), kind: 'message', ...email });
 }
 
 let started = false;
