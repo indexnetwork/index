@@ -169,6 +169,8 @@ function AnswerChip({ label, onClick }) {
 function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, onNegotiation, hasChat = false, unreadCount = 0, compact = false }) {
   const openProfile = (e) => { e.stopPropagation(); onProfile && onProfile(person.id); };
   const [hover, setHover] = useState(false);
+  const { peerChats, openConversation } = useIndexEnv();
+  const existingChatId = !person.notOnIndex && person.userId && peerChats[person.userId];
   const accepted = person.status === "accepted";
   const readyStage = person.status === "ready";   // opportunity to accept
   const isPassed = person.status === "passed" || person.status === "rejected";
@@ -254,6 +256,12 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
               style={{ fontFamily:"var(--mac-mono)", fontSize:10, padding:"3px 12px" }}
             >{person.notOnIndex ? "invite" : hasChat ? "open chat ›" : "send message"}</button>
           </React.Fragment>
+        ) : readyStage && existingChatId ? (
+          <button
+            className="amiga-gadget primary"
+            onClick={(e) => { e.stopPropagation(); openConversation(existingChatId); }}
+            style={{ fontFamily:"var(--mac-mono)", fontSize:10, padding:"2px 12px" }}
+          >open chat ›</button>
         ) : readyStage ? (
           <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             <button

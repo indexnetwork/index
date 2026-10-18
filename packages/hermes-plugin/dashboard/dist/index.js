@@ -1323,8 +1323,17 @@
     const resolved = waitingOnThem ? "Waiting for them" : OPP_RESOLVED_LABEL[status];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
     const bucket = bucketForStatus(status, opportunity.viewerCommitted);
+    const existingChatId = props.peerChats && opportunity.counterpartUserId && props.peerChats[opportunity.counterpartUserId];
     let actionButtons = null;
-    if (props.onAccept && bucketForStatus(status, opportunity.viewerCommitted) === "pending") {
+    if (existingChatId && props.onOpenConversation && bucket === "pending") {
+      actionButtons = [
+        React.createElement(Button, {
+          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
+          onClick: function () { props.onOpenConversation(existingChatId); },
+        }, "open chat",
+          React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A")),
+      ];
+    } else if (props.onAccept && bucketForStatus(status, opportunity.viewerCommitted) === "pending") {
       actionButtons = [
         React.createElement(Button, {
           key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
@@ -1448,6 +1457,8 @@
           onAccept: props.onAccept,
           onSkip: props.onSkip,
           onStartChat: props.onStartChat,
+          peerChats: props.peerChats,
+          onOpenConversation: props.onOpenConversation,
           actingId: props.actingId,
           webUrl: props.webUrl,
         });
@@ -4348,7 +4359,7 @@
             ? React.createElement(EmptyState, { tone: "loading", message: "loading radar\u2026" })
             : paused && shownCount === 0
             ? React.createElement(EmptyState, { message: "this intent is paused, so your agent isn't looking right now." })
-            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, peerChats: props.peerChats, onOpenConversation: props.onOpenConversation, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -5852,6 +5863,9 @@
     const unreadState = useState(false);
     const hasUnread = unreadState[0];
     const setHasUnread = unreadState[1];
+    const peerChatsState = useState({});   // counterpartUserId -> conversationId
+    const peerChats = peerChatsState[0];
+    const setPeerChats = peerChatsState[1];
     const inlineHdr = !!DESKTOP_ENV;
     // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
     // (browser sign-in) or "authed" (load the dashboard).
@@ -5999,6 +6013,9 @@
             return !!c.lastMessageAt && c.lastMessageAt > (readMap[c.id] || "");
           });
           setHasUnread(unread);
+          const peers = {};
+          convs.forEach(function (c) { if (c.counterpartUserId) peers[c.counterpartUserId] = c.id; });
+          setPeerChats(peers);
         })
         .catch(function () { /* noop */ });
     }
@@ -6482,7 +6499,7 @@
     function startIntent() { setNewIntentOpen(true); }
     function retryRadar() { if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current); }
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, onRetryRadar: retryRadar, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, onRetryRadar: retryRadar, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, peerChats: peerChats, onOpenConversation: openMessagesRef.current, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         inlineHdr ? null : React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },

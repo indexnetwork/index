@@ -511,6 +511,7 @@ function IntentDetail() {
             waitingOnThem={waitingOnThem}
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
             onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
+            onOpenChat={() => navigate(`/u/${item.userId || peer?.userId}/chat`)}
             onProfile={() => { setPane("profile"); setOpenPersonId(item.opportunityId); }}
             onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId, { notOnIndex: peer?.emailVerified === false }); }}
             onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
