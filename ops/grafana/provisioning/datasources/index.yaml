@@ -16,19 +16,3 @@ datasources:
       maxIdleConns: 2
     secureJsonData:
       password: $INDEX_PG_PASSWORD
-  - name: Index Trace
-    uid: index-trace
-    type: grafana-postgresql-datasource
-    access: proxy
-    url: ep-raspy-moon-ahpfjlvl.c-3.us-east-1.aws.neon.tech:5432
-    user: grafana_trace_ro
-    isDefault: false
-    editable: false
-    jsonData:
-      database: protocol
-      sslmode: require
-      postgresVersion: 1700
-      maxOpenConns: 3
-      maxIdleConns: 1
-    secureJsonData:
-      password: $TRACE_PG_PASSWORD

@@ -6,9 +6,3 @@ providers:
     allowUiUpdates: false
     options:
       path: /var/lib/grafana-dashboards
-  - name: index-trace
-    folder: Index Trace
-    type: file
-    allowUiUpdates: false
-    options:
-      path: /var/lib/grafana-dashboards-trace

@@ -7,12 +7,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 out="${1:?usage: build-bundle.sh <output dir>}"
 rm -rf "$out"
 root="$out/root"
-mkdir -p "$root/etc/grafana/provisioning/datasources" "$root/etc/grafana/provisioning/dashboards" "$root/var/lib/grafana-dashboards" "$root/var/lib/grafana-dashboards-trace" "$out/chunks"
+mkdir -p "$root/etc/grafana/provisioning/datasources" "$root/etc/grafana/provisioning/dashboards" "$root/var/lib/grafana-dashboards" "$out/chunks"
 
 cp "$here"/provisioning/datasources/*.yaml "$root/etc/grafana/provisioning/datasources/"
 cp "$here"/provisioning/dashboards/*.yaml "$root/etc/grafana/provisioning/dashboards/"
 cp "$here"/dashboards/*.json "$root/var/lib/grafana-dashboards/"
-bun "$here/gen-trace-dashboards.ts" "$root/var/lib/grafana-dashboards-trace"
 
 tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$root" . | gzip -n -9 > "$out/bundle.tgz"
 base64 -w0 "$out/bundle.tgz" > "$out/bundle.b64"
