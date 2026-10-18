@@ -23,6 +23,8 @@ function useIndexEnv() {
     refreshIntents: () => {},
     patchIntentStatus: () => {},
     chatUnread: 0,
+    peerChats: {},
+    openConversation: () => {},
   };
 }
 
@@ -255,6 +257,7 @@ function App() {
   // Unread person-to-person threads. The conversations shelf shows this, and
   // the Dock badge adds it to the intent and network counts.
   const [chatUnread, setChatUnread] = useState(0);
+  const [peerChats, setPeerChats] = useState({});   // userId -> conversationId
 
   const refreshNetworks = React.useCallback(async () => {
     if (!nativeAuthed() || !window.IndexApp) return;
@@ -436,6 +439,7 @@ function App() {
   const refreshChatUnread = React.useCallback(() => {
     if (!live || !window.IndexApp || !window.IndexApp.getClient) {
       setChatUnread(0);
+      setPeerChats({});
       return;
     }
     const client = window.IndexApp.getClient();
@@ -443,12 +447,15 @@ function App() {
     client.conversations.list()
       .then((res) => {
         const rows = window.IndexApp.normalizeList(res, "conversations");
+        const peers = {};
         const n = rows.reduce((sum, c) => {
           const people = ((c && c.participants) || []).filter((p) => p && p.participantType === "user");
           if (people.length !== 2 || (c.participants || []).length !== 2) return sum;
+          people.forEach((p) => { peers[p.participantId] = c.id; });
           return sum + (Number(c.unreadCount) || 0);
         }, 0);
         setChatUnread(n);
+        setPeerChats(peers);
       })
       .catch(() => {});
   }, [live]);
@@ -725,7 +732,8 @@ function App() {
   };
 
   return (
-    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus, chatUnread }}>
+    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus, chatUnread, peerChats,
+      openConversation: (id) => setOverlay({ view: "conversations", conversationId: id }) }}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",

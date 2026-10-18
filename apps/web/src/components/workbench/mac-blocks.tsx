@@ -31,6 +31,7 @@ export function MatchCard({
   waitingOnThem,
   hasChat,
   onOpen,
+  onOpenChat,
   onProfile,
   onAccept,
   onPass,
@@ -49,6 +50,7 @@ export function MatchCard({
   waitingOnThem?: boolean;
   hasChat: boolean;
   onOpen: () => void;
+  onOpenChat: () => void;
   onProfile: () => void;
   onAccept: () => void;
   onPass: () => void;
@@ -100,6 +102,8 @@ export function MatchCard({
               {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
             </button>
           </>
+        ) : ready && hasChat ? (
+          <button type="button" className="wb-btn primary small" onClick={onOpenChat}>open chat ›</button>
         ) : ready ? (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>

@@ -14,6 +14,7 @@ import { RuntimeConflictError } from '../agent/runtime-errors';
 import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
+import { MCP_ONBOARDING } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
@@ -173,7 +174,16 @@ function runTool(
   principal: McpPrincipal,
   operation: () => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
-  return operation().catch((error) => captureMcpToolFailure(error, name, principal));
+  return operation()
+    .catch((error) => captureMcpToolFailure(error, name, principal))
+    .then((result) => (principal.onboarding ? withOnboarding(result) : result));
+}
+
+/** Many hosts never show the model the initialize instructions, but every host shows it tool results. */
+function withOnboarding(result: CallToolResult): CallToolResult {
+  const [first, ...rest] = result.content;
+  if (first?.type !== 'text') return result;
+  return { ...result, content: [{ ...first, text: `${first.text}\n\n${MCP_ONBOARDING}` }, ...rest] };
 }
 
 const conversationService = new ConversationService();

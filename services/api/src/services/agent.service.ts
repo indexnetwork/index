@@ -1,4 +1,4 @@
-import { agentDatabaseAdapter, type AgentRegistryStore, type AgentRow } from '../adapters/agent.database.adapter';
+import { agentDatabaseAdapter, type AgentRegistryStore, type AgentRow, type McpClientRow } from '../adapters/agent.database.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
 
@@ -91,6 +91,19 @@ export class AgentService {
 
   async listForUser(userId: string): Promise<AgentRow[]> {
     return this.db.listAgentsForUser(userId);
+  }
+
+  /** MCP clients connected to the user's Index over OAuth. */
+  async listMcpClients(userId: string): Promise<McpClientRow[]> {
+    return this.db.listMcpClientsForUser(userId);
+  }
+
+  /**
+   * Disconnect one MCP client from the user's Index.
+   * @throws When the user has no grant for that client.
+   */
+  async revokeMcpClient(userId: string, clientId: string): Promise<void> {
+    if (!await this.db.revokeMcpClient(userId, clientId)) throw new Error('Connection not found');
   }
 
   async update(

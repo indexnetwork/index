@@ -6,7 +6,7 @@ import { Stage, Window } from '@/components/workbench/Workbench';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import type { Agent } from '@/services/agents';
+import type { Agent, AgentConnection } from '@/services/agents';
 import { AddYourAgent } from "@/components/AddYourAgent";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { log } from "@/lib/logger";
@@ -54,6 +54,13 @@ function RemoveButton({ onRemove, disabled }: { onRemove: () => void; disabled?:
         cursor: disabled ? "default" : "pointer",
       }}>{armed ? "confirm" : "remove"}</button>
   );
+}
+
+function activeDay(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "unknown"
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function BandHead({ label, first, action }: { label: string; first?: boolean; action?: ReactNode }) {
@@ -181,6 +188,7 @@ export default function AgentsPage() {
   const { success, error } = useNotifications();
 
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [connections, setConnections] = useState<AgentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -216,6 +224,10 @@ export default function AgentsPage() {
           setLoading(false);
         }
       });
+    // A failed read only hides the MCP rows; the roster still loads.
+    agentsService.listConnections()
+      .then((result) => { if (!cancelled) setConnections(result); })
+      .catch((err) => { logger.error('Failed to load agent connections', { error: err }); });
     return () => { cancelled = true; };
   }, [agentsService, isAuthenticated, reloadKey]);
 
@@ -230,6 +242,16 @@ export default function AgentsPage() {
 
   async function refreshAgents() {
     setAgents(await agentsService.list());
+  }
+
+  async function handleRevokeConnection(connection: AgentConnection) {
+    try {
+      await agentsService.revokeConnection(connection.clientId);
+      setConnections((current) => current.filter((item) => item.clientId !== connection.clientId));
+      success(`${connection.name || 'agent'} disconnected`);
+    } catch (err) {
+      error('Failed to disconnect agent', err instanceof Error ? err.message : undefined);
+    }
   }
 
   async function handleCreateAgent() {
@@ -347,10 +369,10 @@ export default function AgentsPage() {
                 everything that can act for you, from any device.
               </p>
               <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
-                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0} />
+                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0 && connections.length === 0} />
                 {personalAgents.map((agent, i) => {
                   const open = expanded === agent.id;
-                  const last = i === personalAgents.length - 1;
+                  const last = i === personalAgents.length - 1 && connections.length === 0;
                   return (
                     <div key={agent.id}>
                       <RosterRow
@@ -374,6 +396,16 @@ export default function AgentsPage() {
                     </div>
                   );
                 })}
+                {connections.map((connection, i) => (
+                  <RosterRow
+                    key={connection.clientId}
+                    name={connection.name || "mcp agent"}
+                    detail={`connected over mcp · active ${activeDay(connection.lastActiveAt)}`}
+                    id=""
+                    last={i === connections.length - 1}
+                    aside={<RemoveButton onRemove={() => void handleRevokeConnection(connection)} />}
+                  />
+                ))}
               </div>
               <div style={{ marginTop: 16 }}>
                 <AddYourAgent

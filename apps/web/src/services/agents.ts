@@ -14,6 +14,15 @@ export interface Agent {
   updatedAt: string;
 }
 
+/** An MCP agent (Grok, Claude, Cursor...) signed in to the user's Index. */
+export interface AgentConnection {
+  clientId: string;
+  name: string | null;
+  icon: string | null;
+  connectedAt: string;
+  lastActiveAt: string;
+}
+
 export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   list: async (): Promise<Agent[]> => {
     const response = await api.get<{ agents?: Agent[] } | Agent[]>('/agents');
@@ -44,5 +53,14 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   delete: async (agentId: string): Promise<void> => {
     await api.delete<void>(`/agents/${agentId}`);
+  },
+
+  listConnections: async (): Promise<AgentConnection[]> => {
+    const response = await api.get<{ connections?: AgentConnection[] }>('/agents/connections');
+    return Array.isArray(response.connections) ? response.connections : [];
+  },
+
+  revokeConnection: async (clientId: string): Promise<void> => {
+    await api.delete<void>(`/agents/connections/${encodeURIComponent(clientId)}`);
   },
 });
