@@ -1,12 +1,12 @@
 import type { Index } from "@indexnetwork/client";
 
 import type { Intent, Model, NegotiateHook } from "../src/index.ts";
-import { closeInitiation, owedWork, runNegotiate, runWake } from "../src/host.ts";
+import { closeInitiation, encodeActions, owedWork, runNegotiate, runWake } from "../src/host.ts";
 
 /** How many times a failed wake is retried before it waits for the next event or restart. */
 const WAKE_RETRIES = 3;
 /** The first retry's delay; each later one waits that much longer again. */
-const WAKE_RETRY_MS = 30_000;
+const WAKE_RETRY_MS = 10_000;
 
 export interface RunnerOptions {
   client: Index;
@@ -46,6 +46,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const intents = new Map<string, Intent>();
   const waking = new Set<string>();
   const again = new Set<string>();
+  /** What the principal wrote while a wake ran, by intent, until a step of it reads it. */
+  const inbox = new Map<string, string[]>();
   /** Opportunities with a negotiator in flight, by intent. */
   const working = new Map<string, string>();
   /** Failed wakes retried so far, by intent. */
@@ -64,12 +66,14 @@ export function startRunner(options: RunnerOptions): Runner {
    * into a single follow-up.
    *
    * @param intentId - The intent to think about.
+   * @param text - A direct message that caused this wake. While a wake runs it is handed to that wake instead of waiting for another.
    */
-  function startWake(intentId: string): void {
+  function startWake(intentId: string, text?: string): void {
     const intent = intents.get(intentId);
     if (stopped || !intent) return;
     if (waking.has(intentId)) {
-      again.add(intentId);
+      if (text) inbox.set(intentId, [...inbox.get(intentId) ?? [], text]);
+      else again.add(intentId);
       return;
     }
     waking.add(intentId);
@@ -81,7 +85,11 @@ export function startRunner(options: RunnerOptions): Runner {
       const started = Date.now();
       // Each opportunity opens the moment its own decision is published, so
       // the first turns go out while the wake is still thinking.
-      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId) });
+      await runWake(client, intent, {
+        ...runtime(),
+        steer: () => inbox.get(intentId)?.splice(0) ?? [],
+        onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId),
+      });
       retries.delete(intentId);
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
     })().catch((error: unknown) => {
@@ -89,6 +97,9 @@ export function startRunner(options: RunnerOptions): Runner {
       onError(error);
     }).finally(() => {
       waking.delete(intentId);
+      // A message no step read, because the wake was already done with its last one, gets a wake of its own.
+      if (inbox.get(intentId)?.length) again.add(intentId);
+      inbox.delete(intentId);
       if (again.delete(intentId)) startWake(intentId);
     });
   }
@@ -102,13 +113,17 @@ export function startRunner(options: RunnerOptions): Runner {
    */
   function retry(intentId: string): void {
     const attempt = (retries.get(intentId) ?? 0) + 1;
+    const tell = (text: string) => { void client.sendPrincipal(intentId, encodeActions([{ type: "progress", text }], { counterparts: new Map() })).catch(onError); };
     if (stopped || attempt > WAKE_RETRIES) {
       retries.delete(intentId);
+      if (!stopped) tell("Couldn't finish. I'll try again on your next message.");
       return;
     }
+    const delay = WAKE_RETRY_MS * attempt;
     retries.set(intentId, attempt);
     log(`wake retry ${attempt} on ${intentId}`);
-    setTimeout(() => startWake(intentId), WAKE_RETRY_MS * attempt).unref?.();
+    tell(`Something went wrong, retrying in ${delay / 1000}s.`);
+    setTimeout(() => startWake(intentId), delay).unref?.();
   }
 
   /**
@@ -277,7 +292,7 @@ export function startRunner(options: RunnerOptions): Runner {
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
         log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId);
+        startWake(event.data.intentId, event.data.questionId ? undefined : event.data.text);
         break;
       // The stream is trustworthy from here on, so this is the one moment to
       // recover what happened while it was not. Intents are read first: a

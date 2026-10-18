@@ -34,7 +34,7 @@ function IntentAction({ label, active = false, onClick, danger = false }) {
 }
 
 function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
-                            agentMessages = null, agentQuestions = [], onSendAgent, onSendAnswers,
+                            agentMessages = null, agentHosted = false, agentQuestions = [], onSendAgent, onSendAnswers,
                             focusQuestion = 0, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   const [draft, setDraft] = useState("");
@@ -44,6 +44,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   const inbox = agentMessages != null;
   const questions = inbox ? (agentQuestions || []) : [];
   const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
+  // The agent owes an answer to the last thing you said; queued ones sit behind the first.
+  const waiting = agentHosted && inboxFeed.length > 0 && inboxFeed[inboxFeed.length - 1].kind === "user";
+  let firstWaiting = inboxFeed.length;
+  while (waiting && firstWaiting > 0 && inboxFeed[firstWaiting - 1].kind === "user") firstWaiting--;
   const firstOpenId = inboxFeed.find((item) => item.kind === "open-question")?.id;
   const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
   // Archiving takes the intent off the hub and there's no way back to it from
@@ -228,8 +232,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
               }}>ask about your matches, share a preference, or tell your agent what to look for.</div>
-            ) : inboxFeed.map((it) => {
-              if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
+            ) : inboxFeed.map((it, index) => {
+              if (it.kind === "user") return <UserLine key={it.id} queued={waiting && index > firstWaiting}>{it.text}</UserLine>;
               if (it.kind === "discovery") return (
                 <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items} loading={it.loading}/>
               );
@@ -245,6 +249,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
               return <AgentNote key={it.id} item={it}/>;
             })}
+            {waiting && <ProgressLine text="thinking…"/>}
           </div>
         ) : (
         <div style={{
@@ -1237,9 +1242,10 @@ function AgentLine({ children, pending, highlight, collective }) {
 // conversation reads like a chat: your words land at the bottom, distinct
 // from the questions coming in on the left. Your text goes through the same
 // markdown as the agent's, so a list you typed reads as a list.
-function UserLine({ children }) {
+function UserLine({ children, queued = false }) {
   return (
     <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
+      {queued && <span style={{ alignSelf:"flex-end", marginRight:8, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>queued</span>}
       <div style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",

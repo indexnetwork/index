@@ -250,6 +250,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // messages. Same poll the web app runs.
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentQuestions, setAgentQuestions] = useState([]);
+  // Only a hosted agent answers here; an external one never will.
+  const [agentHosted, setAgentHosted] = useState(false);
+  // Messages shown before the server has them. `seen` is how many identical ones it already had.
+  const [pending, setPending] = useState([]);
   const refreshInbox = React.useCallback(() => {
     if (!live || !client || !intentId) return Promise.resolve();
     const forIntent = intentId;
@@ -258,6 +262,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         if (intentIdRef.current !== forIntent) return;
         const questions = (res && res.agent && res.agent.questions) || [];
         setAgentQuestions(questions);
+        setAgentHosted(Boolean(res && res.agent && res.agent.status === "hosted"));
         const carded = {};
         questions.forEach((q) => { if (q && q.id) carded[q.id] = true; });
         setAgentMessages(window.IndexApp.normalizeList(res, "messages").map((m) => {
@@ -295,6 +300,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   useEffect(() => {
     setAgentMessages([]);
     setAgentQuestions([]);
+    setPending([]);
     if (!live || !client) return;
     refreshInbox();
     const t = setInterval(refreshInbox, 5000);
@@ -325,11 +331,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   const sendAgentMessage = (text, onDone) => {
     if (!client || !intentId || !text) return;
-    client.conversations.sendMessage("agent", {
+    const id = `pending-${Date.now()}`;
+    const seen = agentMessages.filter((m) => m.kind === "user" && m.text === text).length;
+    setPending((prev) => [...prev, { id, kind: "user", text, seen }]);
+    const sent = client.conversations.sendMessage("agent", {
       parts: [{ kind: "text", text }],
       metadata: { intentId },
-    }).then(() => refreshInbox()).finally(() => onDone && onDone());
+    }).catch(() => {});
+    sent.then(() => onDone && onDone());
+    sent.then(() => refreshInbox()).then(() => setPending((prev) => prev.filter((m) => m.id !== id)));
   };
+  const shownAgentMessages = [...agentMessages, ...pending.filter((p) =>
+    agentMessages.filter((m) => m.kind === "user" && m.text === p.text).length <= p.seen)];
 
   const sendAgentAnswers = (answers, onDone) => {
     if (!client || !intentId || !answers.length) return;
@@ -667,7 +680,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             conversation={conversation}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
-            agentMessages={live ? agentMessages : null}
+            agentMessages={live ? shownAgentMessages : null}
+            agentHosted={agentHosted}
             agentQuestions={live ? agentQuestions : []}
             onSendAgent={live ? sendAgentMessage : null}
             onSendAnswers={live ? sendAgentAnswers : null}

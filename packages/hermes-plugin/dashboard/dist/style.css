@@ -4016,6 +4016,14 @@
   max-width: 85%;
 }
 
+.index-dashboard__agent-queued {
+  align-self: flex-end;
+  margin-right: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  opacity: 0.6;
+}
+
 /* Your own words wear ink, not the success green the messages panel uses: in
    this thread green means a match, not a sender. Black bubble, white text, in
    either scheme — a dark page gets a lighter edge so the bubble still has a

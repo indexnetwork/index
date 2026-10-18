@@ -625,8 +625,8 @@ var require_get_vercel_oidc_token = __commonJS((exports, module) => {
     }
     try {
       const [{ getTokenPayload, isExpired }, { refreshToken }] = await Promise.all([
-        await Promise.resolve().then(() => __toESM(require_token_util(), 1)),
-        await Promise.resolve().then(() => __toESM(require_token(), 1))
+        await Promise.resolve().then(() => __toESM(require_token_util())),
+        await Promise.resolve().then(() => __toESM(require_token()))
       ]);
       if (!token || isExpired(getTokenPayload(token), options?.expirationBufferMs)) {
         await refreshToken(options);
@@ -36766,7 +36766,13 @@ async function run(input2) {
       prompt: input2.prompt,
       tools,
       stopWhen: isStepCount(input2.maxSteps),
-      prepareStep: ({ stepNumber }) => stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : undefined,
+      prepareStep: async ({ stepNumber, messages }) => {
+        const texts = await input2.steer?.() ?? [];
+        return {
+          ...stepNumber === 0 && input2.requireTool ? { toolChoice: "required" } : {},
+          ...texts.length ? { messages: [...messages, ...texts.map((text2) => ({ role: "user", content: `Your principal just wrote: ${text2}` }))] } : {}
+        };
+      },
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,
       providerOptions: {
@@ -37165,7 +37171,8 @@ async function wake(input2) {
   const { user, intent, opportunities, client } = input2;
   const actions = [];
   const conversation = principalOnly(input2.principalConversation);
-  const unansweredMessage = unansweredPrincipalMessage(input2.principalConversation);
+  let unansweredMessage = unansweredPrincipalMessage(input2.principalConversation);
+  let replied = false;
   const open2 = openQuestions(input2.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   const asking = new Set;
@@ -37278,12 +37285,18 @@ async function wake(input2) {
         properties: { text: { type: "string", minLength: 1 } },
         required: ["text"]
       },
-      run: ({ text: text2 }) => {
+      run: async ({ text: text2 }) => {
         if (!unansweredMessage)
           throw new Error("No unanswered direct message from your principal to reply to.");
-        if (actions.some((action) => action.type === "reply")) {
+        if (replied) {
           throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
         }
+        try {
+          await input2.onReply?.(text2);
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
+        replied = true;
         actions.push({ type: "reply", text: text2 });
         return "Reply recorded.";
       }
@@ -37428,6 +37441,17 @@ async function wake(input2) {
       }
     })
   ];
+  const steer = async () => {
+    const texts = input2.steer?.() ?? [];
+    if (!texts.length)
+      return texts;
+    unansweredMessage = { text: texts[texts.length - 1] };
+    replied = false;
+    try {
+      await input2.onProgress?.("Read your new message.");
+    } catch {}
+    return texts;
+  };
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input2.model,
@@ -37435,6 +37459,7 @@ async function wake(input2) {
     identity,
     intent,
     maxSteps: WAKE_STEPS,
+    steer,
     ...input2.now ? { now: input2.now } : {},
     ...input2.signal ? { signal: input2.signal } : {},
     instructions: input2.reason === "morning" ? `${WAKE_PROMPT}
@@ -37461,6 +37486,7 @@ ${MORNING}` : WAKE_PROMPT,
       identity,
       intent,
       maxSteps: 4,
+      steer,
       ...input2.now ? { now: input2.now } : {},
       ...input2.signal ? { signal: input2.signal } : {},
       instructions: [
@@ -37480,7 +37506,7 @@ ${MORNING}` : WAKE_PROMPT,
   }
   if (unpersisted)
     throw unpersisted;
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     await run({
       model: input2.model,
       operation: "wake.reply",
@@ -37499,7 +37525,7 @@ ${MORNING}` : WAKE_PROMPT,
       tools: tools.filter((entry) => entry.name === "reply_principal")
     });
   }
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     throw new Error("No reply to principal's direct message.");
   }
   const unresolved = owed();
@@ -37756,7 +37782,7 @@ function counterpartsOf(details) {
   ]));
 }
 async function runWake(client, intent, runtime) {
-  const { model, decide, now: now2, signal, log = () => {}, onNegotiate, reason } = runtime;
+  const { model, decide, now: now2, signal, log = () => {}, onNegotiate, reason, steer } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -37807,11 +37833,13 @@ async function runWake(client, intent, runtime) {
         onNegotiate?.(opportunityId);
     },
     onProgress: (text2) => publishActions(client, intent.id, [{ type: "progress", text: text2 }], context),
+    onReply: (text2) => publishActions(client, intent.id, [{ type: "reply", text: text2 }], context),
+    ...steer ? { steer } : {},
     ...reason ? { reason } : {}
   });
   if (!result.actions.length)
     log("  silent");
-  await publishActions(client, intent.id, result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"), context);
+  await publishActions(client, intent.id, result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress" && action.type !== "reply"), context);
   if (result.unresolved.length)
     log(`  stalls left owed on ${result.unresolved.join(", ")}`);
   return result;
@@ -37969,13 +37997,14 @@ async function owedWork(client, intent) {
 
 // ../agent/runner/runner.ts
 var WAKE_RETRIES = 3;
-var WAKE_RETRY_MS = 30000;
+var WAKE_RETRY_MS = 1e4;
 function startRunner(options) {
   const { client, model, now: now2 = () => new Date, log = () => {}, onError = () => {}, negotiate: negotiate2 } = options;
   const abort = new AbortController;
   const intents = new Map;
   const waking = new Set;
   const again = new Set;
+  const inbox = new Map;
   const working = new Map;
   const retries = new Map;
   const unread = new Map;
@@ -37983,12 +38012,15 @@ function startRunner(options) {
   const resettle = new Set;
   let stopped = false;
   const runtime = () => ({ model, now: now2, signal: abort.signal, log, ...negotiate2 ? { negotiate: negotiate2 } : {} });
-  function startWake(intentId) {
+  function startWake(intentId, text2) {
     const intent = intents.get(intentId);
     if (stopped || !intent)
       return;
     if (waking.has(intentId)) {
-      again.add(intentId);
+      if (text2)
+        inbox.set(intentId, [...inbox.get(intentId) ?? [], text2]);
+      else
+        again.add(intentId);
       return;
     }
     waking.add(intentId);
@@ -37998,7 +38030,11 @@ function startRunner(options) {
           unread.delete(opportunityId);
       log(`wake ${intent.statement}`);
       const started = Date.now();
-      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId) });
+      await runWake(client, intent, {
+        ...runtime(),
+        steer: () => inbox.get(intentId)?.splice(0) ?? [],
+        onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId)
+      });
       retries.delete(intentId);
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
     })().catch((error62) => {
@@ -38006,19 +38042,29 @@ function startRunner(options) {
       onError(error62);
     }).finally(() => {
       waking.delete(intentId);
+      if (inbox.get(intentId)?.length)
+        again.add(intentId);
+      inbox.delete(intentId);
       if (again.delete(intentId))
         startWake(intentId);
     });
   }
   function retry(intentId) {
     const attempt = (retries.get(intentId) ?? 0) + 1;
+    const tell = (text2) => {
+      client.sendPrincipal(intentId, encodeActions([{ type: "progress", text: text2 }], { counterparts: new Map })).catch(onError);
+    };
     if (stopped || attempt > WAKE_RETRIES) {
       retries.delete(intentId);
+      if (!stopped)
+        tell("Couldn't finish. I'll try again on your next message.");
       return;
     }
+    const delay2 = WAKE_RETRY_MS * attempt;
     retries.set(intentId, attempt);
     log(`wake retry ${attempt} on ${intentId}`);
-    setTimeout(() => startWake(intentId), WAKE_RETRY_MS * attempt).unref?.();
+    tell(`Something went wrong, retrying in ${delay2 / 1000}s.`);
+    setTimeout(() => startWake(intentId), delay2).unref?.();
   }
   async function recover(intentId) {
     const intent = intents.get(intentId);
@@ -38141,7 +38187,7 @@ function startRunner(options) {
         break;
       case "principal.input":
         log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId);
+        startWake(event.data.intentId, event.data.questionId ? undefined : event.data.text);
         break;
       case "connected":
         log(`event ${event.type}`);

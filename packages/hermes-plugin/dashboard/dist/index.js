@@ -3936,6 +3936,10 @@
     const sendingState = useState(false);
     const sending = sendingState[0];
     const setSending = sendingState[1];
+    // Messages shown before the transcript has them. `seen` is how many identical ones it already had.
+    const pendingState = useState([]);
+    const pending = pendingState[0];
+    const setPending = pendingState[1];
     // "loading" until the first read lands, "error" if it failed with nothing
     // shown yet, then "ready". A later failed poll keeps the last transcript.
     const readStateState = useState("loading");
@@ -4015,14 +4019,19 @@
       if (!text || sending) return;
       setDraft("");
       setSending(true);
+      const pendingId = "pending-" + Date.now();
+      const seen = messages.filter(function (m) { return m.role === "user" && extractContent(m.parts).text === text; }).length;
+      setPending(function (prev) { return prev.concat([{ id: pendingId, text: text, seen: seen }]); });
       fetchPluginJSON(API + "/agent/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intentId: intentId, text: text }),
       })
         .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
-        .then(read)
-        .then(function () { if (aliveRef.current) setSending(false); });
+        .then(function () { if (aliveRef.current) setSending(false); return read(); })
+        .then(function () {
+          if (aliveRef.current) setPending(function (prev) { return prev.filter(function (m) { return m.id !== pendingId; }); });
+        });
     }
 
     function sendAnswers() {
@@ -4151,7 +4160,7 @@
         continue;
       }
       if (raw.role === "user") {
-        entries.push({ id: raw.id, kind: "user", text: content.text });
+        entries.push({ id: raw.id, kind: "user", text: content.text, at: raw.createdAt ? Date.parse(raw.createdAt) : Date.now() });
         continue;
       }
       // What the agent writes down as it works carries its `record`. Stalls and
@@ -4168,10 +4177,23 @@
       });
     }
 
+    pending.forEach(function (p) {
+      const have = entries.filter(function (e) { return e.kind === "user" && e.text === p.text; }).length;
+      if (have <= p.seen) entries.push({ id: p.id, kind: "user", text: p.text, at: Date.now() });
+    });
+    // The agent owes an answer to the last thing said. A hosted one always will;
+    // your own runtime may be off, so it only counts for a couple of minutes.
+    const last = entries[entries.length - 1];
+    const waiting = !!last && last.kind === "user"
+      && ((agent && agent.status === "hosted") || Date.now() - last.at < 120000);
+    const queued = {};
+    for (let i = entries.length - 1; waiting && i > 0 && entries[i].kind === "user" && entries[i - 1].kind === "user"; i--) queued[entries[i].id] = true;
+
     const bubbles = buildDiscoveryFeed(entries).map(function (entry) {
       if (entry.kind === "card") return questionCard(entry.question);
       if (entry.kind === "user") {
         return React.createElement("div", { key: entry.id, className: "index-dashboard__agent-mine" },
+          queued[entry.id] ? React.createElement("span", { className: "index-dashboard__agent-queued" }, "queued") : null,
           React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
             React.createElement(Markdown, { text: entry.text }),
           ),
@@ -4190,7 +4212,7 @@
 
     const feed = bubbles.concat(questions.filter(function (question) {
       return !placed[question.id];
-    }).map(questionCard));
+    }).map(questionCard)).concat(waiting ? [React.createElement(ProgressLine, { key: "thinking", text: "thinking…" })] : []);
     const threadBody = feed.length
       ? feed
       : readState === "loading"
