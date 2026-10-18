@@ -15,7 +15,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { Timed } from "../shared/observability/performance.js";
 import { createStructuredModel } from "../shared/agent/model.config.js";
-import type { Opportunity } from "../../platform/database.js";
+import type { Opportunity, PriorOpportunity } from "../../platform/database.js";
 import type { CompositeDatabase } from "../../platform/database.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
 
@@ -118,6 +118,8 @@ export interface CardPresenterInput extends PresenterInput {
    * transcript and outcome ground the LLM's explanation.
    */
   negotiationContext?: NegotiationContext;
+  /** An earlier opportunity with the same person: already connected, or the viewer already said yes. */
+  priorOpportunity?: Pick<PriorOpportunity, "status" | "at" | "topic">;
 }
 
 /** LLM-generated fields for card presentation (buttons are hardcoded by callers, not LLM-generated). */
@@ -364,8 +366,15 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     const negotiationDirective = negotiationBlock
       ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Your personalizedSummary MUST reference at least one specific intent from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. It must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
       : "";
+    const prior = input.priorOpportunity;
+    const priorDate = prior ? new Date(prior.at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "";
+    const priorBlock = prior
+      ? `\nEARLIER CONTACT: ${prior.status === "accepted"
+        ? `The viewer and the other party already connected on ${priorDate}${prior.topic ? `, about: ${prior.topic}` : ""}. Say so plainly, then say what is new here.`
+        : `The viewer already said yes to the other party on ${priorDate}${prior.topic ? `, about: ${prior.topic}` : ""}, and they have not answered. They are not connected yet, so do not say they are. Say the viewer already said yes, then what is new here.`} Never use the words intro, intent or opportunity.\n`
+      : "";
     const humanContent = `
-${negotiationBlock}${negotiationDirective}
+${negotiationBlock}${negotiationDirective}${priorBlock}
 VIEWER (the person seeing this opportunity):
 ${input.viewerContext}
 

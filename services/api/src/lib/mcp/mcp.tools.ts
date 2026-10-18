@@ -73,8 +73,9 @@ function opportunityState(status: string): string {
   return OPPORTUNITY_STATE[status] ?? status;
 }
 
-function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string): string {
-  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}`;
+function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string, prior?: { status: string } | null): string {
+  const earlier = prior?.status === 'accepted' ? ' — already connected' : prior ? ' — you already said yes earlier' : '';
+  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}${earlier}`;
 }
 
 async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
@@ -552,23 +553,31 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         limit: limit + offset,
       });
       if ('error' in result) return mcpError('opportunities_unavailable', result.error);
-      const opportunities = result.opportunities.slice(offset, offset + limit).map((opportunity) => ({
-        id: opportunity.opportunityId,
-        url: appLink('o', opportunity.opportunityId),
-        acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
-        declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
-        status: opportunity.status,
-        negotiating: opportunity.status === 'negotiating',
-        createdAt: opportunity.createdAt,
-        updatedAt: opportunity.updatedAt,
-        peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
-        viewerRole: opportunity.viewerRole,
-        headline: opportunity.headline,
-        summary: opportunity.mainText,
-        cta: opportunity.cta,
-      }));
+      const opportunities = result.opportunities.slice(offset, offset + limit).map((opportunity) => {
+        // With a chat already open, link to it: the /o/ link would say yes for the owner.
+        const chatUrl = opportunity.peerChat ? `${appLink('u', opportunity.peer.userId)}/chat` : null;
+        return {
+          id: opportunity.opportunityId,
+          url: chatUrl ?? appLink('o', opportunity.opportunityId),
+          ...(chatUrl ? {} : {
+            acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
+            declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
+          }),
+          priorOpportunity: opportunity.priorOpportunity ?? null,
+          peerChat: opportunity.peerChat && chatUrl ? { ...opportunity.peerChat, url: chatUrl } : null,
+          status: opportunity.status,
+          negotiating: opportunity.status === 'negotiating',
+          createdAt: opportunity.createdAt,
+          updatedAt: opportunity.updatedAt,
+          peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
+          viewerRole: opportunity.viewerRole,
+          headline: opportunity.headline,
+          summary: opportunity.mainText,
+          cta: opportunity.cta,
+        };
+      });
       const lines = opportunities.map((opportunity) =>
-        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status)}`);
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity)}`);
       return mcpSuccess({
         opportunities,
         pagination: {

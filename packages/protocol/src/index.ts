@@ -36,6 +36,8 @@ export type {
   Opportunity,
   OpportunityActor,
   OpportunityStatus,
+  PriorOpportunity,
+  PeerChat,
   AssignmentNetworkMembership,
   IntentNetworkFinalAssignmentResult,
   CreateOpportunityData,
