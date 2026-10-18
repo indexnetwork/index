@@ -110,7 +110,7 @@ export interface BriefInput {
   principalConversation: ConversationEntry[];
   opportunity: Opportunity;
   model: Model;
-  /** When set, screening asks it instead of running a full briefing. */
+  /** When set, screening asks it. Without it, everyone is reached. */
   decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
@@ -123,7 +123,7 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
-  /** When set, discovery screens candidates with it instead of a full briefing. */
+  /** When set, discovery screens candidates with it. Without it, everyone is reached. */
   decide?: Decide;
   /** Index for this owner, for the two operations the model triggers mid-loop. */
   client: Index;
