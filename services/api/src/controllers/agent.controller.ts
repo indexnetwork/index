@@ -45,7 +45,7 @@ function parseErrorMessage(err: unknown): string {
 function errorStatus(err: unknown, fallback = 400): number {
   if (err instanceof RuntimeDomainError) return err.status;
   const message = parseErrorMessage(err);
-  if (message === 'Agent not found') {
+  if (message === 'Agent not found' || message === 'Connection not found') {
     return 404;
   }
 
@@ -115,6 +115,30 @@ export class AgentController {
       return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
+    }
+  }
+
+  /** MCP agents (Grok, Claude, Cursor...) signed in to the user's Index. */
+  @Get('/connections')
+  @UseGuards(SessionOnlyGuard)
+  async listConnections(_req: Request, user: AuthenticatedUser) {
+    const connections = await this.agents.listMcpClients(user.id);
+    return Response.json({ connections });
+  }
+
+  @Delete('/connections/:clientId')
+  @UseGuards(SessionOnlyGuard)
+  async revokeConnection(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const clientId = params?.clientId;
+    if (!clientId) {
+      return jsonError('Client ID is required', 400);
+    }
+
+    try {
+      await this.agents.revokeMcpClient(user.id, clientId);
+      return new Response(null, { status: 204 });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
     }
   }
 
