@@ -528,7 +528,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -611,6 +611,69 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         },
         negotiation,
       }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+    }),
+  );
+
+  const negotiationView = <T extends Awaited<ReturnType<typeof negotiationService.list>>[number]>(view: T) => ({
+    ...view,
+    url: appLink('o', view.opportunityId),
+    yourTurn: view.awaitingUserId === principal.userId,
+    counterparty: { ...view.counterparty, url: appLink('u', view.counterparty.userId) },
+  });
+
+  const negotiationLine = (view: ReturnType<typeof negotiationView>): string => {
+    const status = view.outcome ?? (view.yourTurn ? 'your agent\'s turn' : 'their turn');
+    return `${mdLink(view.counterparty.name || 'Someone', view.url)} — ${status} — ${view.turnCount} turns`;
+  };
+
+  server.registerTool(
+    'list_negotiations',
+    {
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT,
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1).optional(),
+        state: z.enum(['open', 'settled']).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+        offset: z.number().int().min(0).max(10_000).optional(),
+      }).strict(),
+      annotations: hints('List negotiations', true, false, false, true),
+    },
+    (input) => runTool('list_negotiations', principal, async () => {
+      const limit = input.limit ?? 50;
+      const offset = input.offset ?? 0;
+      let resolvedIntentId: string | undefined;
+      if (input.intentId) {
+        const resolved = await resolveIntent(input.intentId, principal);
+        if ('error' in resolved) return resolved.error;
+        resolvedIntentId = resolved.id;
+      }
+      const all = await negotiationService.list(principal.userId, {
+        intentId: resolvedIntentId,
+        ...(input.state === 'open' ? { open: true } : {}),
+      });
+      const filtered = input.state === 'settled' ? all.filter((view) => view.settledAt !== null) : all;
+      const negotiations = filtered.slice(offset, offset + limit).map(negotiationView);
+      return mcpSuccess({
+        negotiations,
+        pagination: { limit, offset, count: negotiations.length },
+      }, negotiations.length ? ['Negotiations:', ...negotiations.map((view) => `- ${negotiationLine(view)}`)].join('\n') : 'No negotiations.');
+    }),
+  );
+
+  server.registerTool(
+    'get_negotiation',
+    {
+      description: 'Get one negotiation by its opportunity UUID or supported short ID prefix, with every turn the agents took. This is for the owner to read.' + LINK_HINT,
+      inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
+      annotations: hints('Get negotiation', true, false, false, true),
+    },
+    ({ opportunityId }) => runTool('get_negotiation', principal, async () => {
+      const resolved = await resolveOpportunity(opportunityId, principal);
+      if ('error' in resolved) return resolved.error;
+      const negotiation = await negotiationService.read(resolved.id, principal.userId);
+      if (!negotiation) return mcpError('negotiation_not_found', 'Negotiation not found.');
+      const view = negotiationView(negotiation);
+      return mcpSuccess({ negotiation: view }, negotiationLine(view));
     }),
   );
 
