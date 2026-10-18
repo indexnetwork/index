@@ -116,6 +116,24 @@ export class IntentController {
   }
 
   /**
+   * Suggest first intents from the owner's profile.
+   *
+   * @param _req - Unused; the profile is read server-side.
+   * @param user - Authenticated owner.
+   * @returns `{ suggestions }`: two "looking_for" then one "offering", or an empty list.
+   */
+  @Post('/suggestions')
+  @UseGuards(AuthGuard)
+  async suggestions(_req: Request, user: AuthenticatedUser) {
+    try {
+      return Response.json({ suggestions: await intentService.suggest(user.id) });
+    } catch (error) {
+      logger.error('Intent suggestions failed', { userId: user.id, error });
+      return Response.json({ suggestions: [] });
+    }
+  }
+
+  /**
    * Create one intent and share it in the networks the owner chose.
    *
    * @param req - Request with body `{ description: string; networkIds?: string[]; preparationReceipt?: string }`

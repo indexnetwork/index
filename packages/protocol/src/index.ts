@@ -96,6 +96,8 @@ export type {
   IntentSemanticMetadata,
   PreparedIntent,
 } from "./capabilities/intents.js";
+export { IntentSuggester } from "./internal/intents/intent.suggester.js";
+export type { IntentSuggestion, IntentSuggestionInput } from "./internal/intents/intent.suggester.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 

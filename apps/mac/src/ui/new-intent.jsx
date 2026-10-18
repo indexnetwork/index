@@ -17,12 +17,19 @@ const INTENT_STEP = {
   ],
 };
 
-function NewIntent({ onDone, onBack }) {
+const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like.";
+const MORE_PROMPT = "i'm on it. anything else you're looking for?";
+
+function NewIntent({ onDone, onBack, onHome, suggest = false }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
 
   const [turns, setTurns] = useState([]);
-  const [stage, setStage] = useState("opening");
+  // Onboarding opens on the agent's picks; read once so the flow keeps its three steps.
+  const [onboarding] = useState(() => !!(suggest && client));
+  const [chosenStage, setStage] = useState(onboarding ? "picks" : "opening");
+  const [created, setCreated] = useState([]);
+  const [picksNote, setPicksNote] = useState("");
   const [draft, setDraft] = useState("");
   const [feedback, setFeedback] = useState("");
   const [recoveryFields, setRecoveryFields] = useState([]);
@@ -37,7 +44,42 @@ function NewIntent({ onDone, onBack }) {
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const stepIdx = stage === "opening" ? 1 : 2;
+  // Onboarding only: the agent's drafts from the profile.
+  const [suggestions, setSuggestions] = useState(onboarding ? "loading" : []);
+  useEffect(() => {
+    if (!onboarding) return;
+    client.intents.suggestions()
+      .then((res) => (res && res.suggestions) || [])
+      .catch(() => [])
+      .then((list) => { if (!cancelledRef.current) setSuggestions(list); });
+  }, []);
+  // Nothing to suggest: onboarding goes straight to writing one.
+  const stage = chosenStage === "picks" && suggestions !== "loading" && !suggestions.length ? "opening" : chosenStage;
+
+  const steps = onboarding ? ["picks", "opening"] : ["opening"];
+  const stepIdx = steps.includes(stage) ? steps.indexOf(stage) + 1 : steps.length + 1;
+  const stepCount = steps.length + 1;
+  const openingPrompt = created.length ? MORE_PROMPT : INTENT_STEP.prompt;
+
+  // Each pick is created as it stands; the server prepares it and refuses one that isn't ready.
+  const createPicks = async (picked) => {
+    setCalibrating(true);
+    const results = await Promise.allSettled(picked.map((p) => client.intents.create({ description: p.text })));
+    if (cancelledRef.current) return;
+    const saved = picked
+      .map((p, i) => (results[i].status === "fulfilled" ? { text: p.text, id: results[i].value.intentId } : null))
+      .filter(Boolean);
+    // The first intent after the profile review finishes onboarding.
+    if (saved[0] && window.IndexApp && window.IndexApp.completeOnboarding) {
+      void window.IndexApp.completeOnboarding(saved[0].id).catch(() => {});
+    }
+    const failed = picked.length - saved.length;
+    setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
+    setCreated(saved);
+    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((p) => `· ${p.text}`).join("\n") }]);
+    setStage("opening");
+    setCalibrating(false);
+  };
 
   useEffect(() => {
     setDraft("");
@@ -80,7 +122,7 @@ function NewIntent({ onDone, onBack }) {
   const submitOpening = (value) => {
     const answer = String(value ?? draft).trim();
     if (!answer) return;
-    setTurns([{ id: "intent", prompt: INTENT_STEP.prompt, answer }]);
+    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer }]);
     payloadRef.current = answer;
     if (!client) { setCalibrating(true); onDone({ intent: answer }, false, null); return; }
     void runPrepare();
@@ -96,7 +138,9 @@ function NewIntent({ onDone, onBack }) {
     try {
       const created = await client.intents.create({ description, preparationReceipt: preparationReceiptRef.current });
       if (cancelledRef.current) return;
-      onDone({ intent: description }, true, created.intentId);
+      // Onboarding ends on the hub, where the new intents' updates come in.
+      if (onboarding && onHome) onHome(created.intentId);
+      else onDone({ intent: description }, true, created.intentId);
     } catch (_e) {
       if (cancelledRef.current) return;
       preparationReceiptRef.current = "";
@@ -142,9 +186,9 @@ function NewIntent({ onDone, onBack }) {
               <span style={{
                 fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
                 letterSpacing:"0.05em", flex:"0 0 auto",
-              }}>step {stepIdx} of 2</span>
+              }}>step {stepIdx} of {stepCount}</span>
               <div style={{ flex:1, display:"flex", gap:3 }}>
-                {Array.from({ length: 2 }).map((_, i) => (
+                {Array.from({ length: stepCount }).map((_, i) => (
                   <div key={i} style={{
                     flex:1, height:8, border:"1px solid #000",
                     background: i < stepIdx - 1 ? "#000" : i === stepIdx - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
@@ -193,10 +237,19 @@ function NewIntent({ onDone, onBack }) {
                   feedback={feedback}
                   onSubmit={submitRecovery}
                 />
+              ) : stage === "picks" ? (
+                <PicksView
+                  suggestions={suggestions}
+                  onCreate={(picked) => void createPicks(picked)}
+                  onSkip={() => setStage("opening")}
+                />
               ) : (
                 <div className="fade-up" style={{ display:"grid", gap:10 }}>
-                  <AgentBubble label={<TurnLabel/>}>{INTENT_STEP.prompt}</AgentBubble>
+                  <AgentBubble label={<TurnLabel/>}>{openingPrompt}</AgentBubble>
                   <div style={{ marginLeft:42, display:"grid", gap:10 }}>
+                    {picksNote && (
+                      <div style={{ fontFamily:"var(--mac-sans)", fontSize:12.5, fontStyle:"italic", color:"var(--ink-2)" }}>{picksNote}</div>
+                    )}
                     {/* One composer box: the send button lives inside it, on a
                         footer strip under the text, rather than as a second box
                         standing beside it. */}
@@ -226,6 +279,12 @@ function NewIntent({ onDone, onBack }) {
                         <OptionChip key={ex} label={ex} onClick={() => submitOpening(ex)}/>
                       ))}
                     </div>
+                    {created.length > 0 && (
+                      // After the picks: leave without writing another.
+                      <div style={{ marginTop:6 }}>
+                        <Btn onClick={() => (onHome ? onHome(created[0].id) : onDone({ intent: created[0].text }, true, created[0].id))}>that's all for now →</Btn>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -234,10 +293,56 @@ function NewIntent({ onDone, onBack }) {
         </MacWindow>
 
         <MacWindow title="warming up">
-          <NewIntentFieldPreview turns={turns} stepIdx={stepIdx}/>
+          <NewIntentFieldPreview turns={turns} refining={stepIdx === stepCount}/>
         </MacWindow>
       </div>
     </div>
+  );
+}
+
+// Onboarding step one: the agent's drafts from the profile, any number picked.
+function PicksView({ suggestions, onCreate, onSkip }) {
+  const [picked, setPicked] = useState([]);
+  if (suggestions === "loading") {
+    return (
+      <div className="fade-up">
+        <AgentBubble muted label={<TurnLabel/>}>reading what i found about you… <WorkingDots/></AgentBubble>
+      </div>
+    );
+  }
+  const toggle = (i) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
+  return (
+    <div className="fade-up" style={{ display:"grid", gap:10 }}>
+      <AgentBubble label={<TurnLabel/>}>{PICKS_PROMPT}</AgentBubble>
+      <div style={{ marginLeft:42, display:"grid", gap:8, justifyItems:"start" }}>
+        {suggestions.map((s, i) => (
+          <SuggestionChip key={s.text} suggestion={s} selected={picked.includes(i)} onClick={() => toggle(i)}/>
+        ))}
+        <div style={{ display:"flex", alignItems:"center", gap:16, marginTop:8 }}>
+          <Btn primary disabled={!picked.length} onClick={() => onCreate([...picked].sort().map((i) => suggestions[i]))}>
+            {picked.length > 1 ? `create these ${picked.length}` : "create this"} →
+          </Btn>
+          <button type="button" onClick={onSkip} style={{
+            fontFamily:"var(--mac-mono)", fontSize:11, padding:0, border:"none",
+            background:"transparent", color:"var(--ink-3)", textDecoration:"underline", cursor:"pointer",
+          }}>none of these, i'll write my own</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuggestionChip({ suggestion, selected, onClick }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected}
+      style={{
+        display:"inline-flex", alignItems:"baseline", gap:10, minHeight:36, maxWidth:620,
+        padding:"8px 14px", cursor:"pointer", textAlign:"left",
+        background: selected ? "#111" : "#fff", color: selected ? "#fff" : "#111", border:"1px solid #000",
+      }}>
+      <span style={{ flex:"0 0 auto", fontFamily:"var(--mac-mono)", fontSize:12 }}>{selected ? "[x]" : "[ ]"}</span>
+      <span style={{ fontFamily:"var(--mac-sans)", fontSize:13.5 }}>{suggestion.text}</span>
+    </button>
   );
 }
 
@@ -430,7 +535,7 @@ function UserBubble({ children }) {
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
         fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
-        wordBreak:"break-word",
+        wordBreak:"break-word", whiteSpace:"pre-line",
       }}>{children}</div>
     </div>
   );
@@ -479,11 +584,12 @@ function IntentSummaryCard({ description, onChange, note, canCreate, onCreate, o
   );
 }
 
-function NewIntentFieldPreview({ turns, stepIdx }) {
+function NewIntentFieldPreview({ turns, refining }) {
+  const latest = turns[turns.length - 1];
   const lines = [
     "getting a read on what you need…",
-    turns[0] ? `you're after: "${truncate(turns[0].answer, 40)}"` : null,
-    stepIdx >= 2 ? "sharpening the edges…" : null,
+    latest ? `you're after: "${truncate(latest.answer.replace(/^· /, ""), 40)}"` : null,
+    refining ? "sharpening the edges…" : null,
   ].filter(Boolean);
 
   return (

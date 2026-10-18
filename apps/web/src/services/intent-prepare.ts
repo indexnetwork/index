@@ -5,6 +5,12 @@ import { apiClient } from "@/lib/api";
 
 export type { PrepareAnswer, RecoveryField };
 
+/** A first intent the agent drafted from the profile. */
+export interface IntentSuggestion {
+  kind: "looking_for" | "offering";
+  text: string;
+}
+
 /** The API host replaces admitted metadata with authenticated preparation. */
 export type PrepareResult =
   | (Extract<ProtocolPrepareResult, { status: "ready" }> & { preparationReceipt: string })
@@ -15,7 +21,11 @@ export const intentService = {
   prepare: (payload: string, answers: PrepareAnswer[] = []) =>
     apiClient.post<PrepareResult>("/intents/prepare", { payload, answers }),
 
-  /** Save the final text using server-authorized preparation. */
-  create: (description: string, preparationReceipt: string) =>
-    apiClient.post<{ intentId: string }>("/intents", { description, preparationReceipt }),
+  /** Two things to look for and one to offer, drafted from the profile; empty when there are none. */
+  suggestions: () =>
+    apiClient.post<{ suggestions: IntentSuggestion[] }>("/intents/suggestions", {}),
+
+  /** Save the final text using server-authorized preparation; without a receipt the server prepares it and refuses a draft that isn't ready. */
+  create: (description: string, preparationReceipt?: string) =>
+    apiClient.post<{ intentId: string }>("/intents", preparationReceipt ? { description, preparationReceipt } : { description }),
 };
