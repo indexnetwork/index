@@ -4080,9 +4080,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       return typeof answer === "string" && answer.trim();
     });
 
+    // Follow new content to the bottom, but not a question closing: answering
+    // one shrinks the list and should leave the view where it is.
+    const seenRef = useRef({ messages: 0, questions: 0 });
     useEffect(function () {
+      const seen = seenRef.current;
+      const closed = messages.length === seen.messages && questions.length < seen.questions;
+      seenRef.current = { messages: messages.length, questions: questions.length };
       const node = threadRef.current;
-      if (node) node.scrollTop = node.scrollHeight;
+      if (node && !closed) node.scrollTop = node.scrollHeight;
     }, [messages.length, questions.length]);
 
     useEffect(function () {
@@ -4134,14 +4140,29 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         .catch(function () {
           // Put the answers back so they can be sent again.
           if (!aliveRef.current) return;
+          setPending(function (prev) { return prev.filter(function (m) { return shown.indexOf(m) < 0; }); });
           setSelections(previous.selections);
           setWriting(previous.writing);
         })
-        .then(function () { if (aliveRef.current) setSending(false); return read(); })
-        .then(function () {
-          if (aliveRef.current) setPending(function (prev) { return prev.filter(function (m) { return shown.indexOf(m) < 0; }); });
-        });
+        .then(function () { if (aliveRef.current) setSending(false); return read(); });
     }
+
+    // A sent answer stays shown until a read holds it or no longer lists its
+    // question, so a read dropped as stale can't reopen the question.
+    useEffect(function () {
+      const listed = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+      setPending(function (prev) {
+        const rest = prev.filter(function (p) {
+          if (!p.questionId) return true;
+          const answered = messages.some(function (m) {
+            const meta = m.metadata && m.metadata.principalMessage;
+            return meta && meta.kind === "answer" && meta.questionId === p.questionId;
+          });
+          return !answered && listed.some(function (q) { return q.id === p.questionId; });
+        });
+        return rest.length === prev.length ? prev : rest;
+      });
+    }, [messages, agent]);
 
     function choose(questionId, text) {
       setSelections(function (current) {

@@ -360,11 +360,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     inboxGen.current++;
     setPendingAnswers((prev) => [...prev, ...answers]);
     if (onDone) onDone();
-    // If the write fails, the read after it brings the questions back open.
-    client.conversations.sendAnswers(intentId, answers).catch(() => {})
-      .then(() => refreshInbox())
-      .then(() => setPendingAnswers((prev) => prev.filter((a) => !answers.includes(a))));
+    // They stay until a read shows them (below), so a read that gets dropped as stale can't reopen the question.
+    // If the write fails they go at once, and the read brings the questions back open.
+    client.conversations.sendAnswers(intentId, answers)
+      .catch(() => setPendingAnswers((prev) => prev.filter((a) => !answers.includes(a))))
+      .then(() => refreshInbox());
   };
+  // An answer is settled once a read holds it, or no longer lists its question.
+  useEffect(() => {
+    setPendingAnswers((prev) => {
+      const rest = prev.filter((a) => !agentMessages.some((m) => m.kind === "answer-history" && m.questionId === a.questionId)
+        && agentQuestions.some((q) => q.id === a.questionId));
+      return rest.length === prev.length ? prev : rest;
+    });
+  }, [agentMessages, agentQuestions]);
 
   // The four states an opportunity can be in for you, in the order they happen:
   // it needs you, agents are still talking, you took it, it closed.

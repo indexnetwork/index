@@ -291,8 +291,6 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, questions.length]);
-
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
@@ -342,6 +340,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   };
 
   const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
+  // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
   // Only a hosted agent answers here; an external one never will, so nothing waits on it.
   const hosted = agent?.status === "hosted";
   const waiting = hosted && messages.at(-1)?.role === "user";
