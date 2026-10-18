@@ -69,13 +69,15 @@ const OPPORTUNITY_STATE: Record<string, string> = {
   expired: 'expired',
 };
 
-function opportunityState(status: string): string {
+/** Accepting is a single yes that opens the chat, so a pending row the viewer accepted is an open chat. */
+function opportunityState(status: string, viewerCommitted?: boolean): string {
+  if (status === 'pending' && viewerCommitted) return 'chat open';
   return OPPORTUNITY_STATE[status] ?? status;
 }
 
-function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string, prior?: { status: string } | null): string {
+function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string, prior?: { status: string } | null, viewerCommitted?: boolean): string {
   const earlier = prior?.status === 'accepted' ? ' — already connected' : prior ? ' — you already said yes earlier' : '';
-  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}${earlier}`;
+  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status, viewerCommitted)}${earlier}`;
 }
 
 async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
@@ -566,6 +568,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           priorOpportunity: opportunity.priorOpportunity ?? null,
           peerChat: opportunity.peerChat && chatUrl ? { ...opportunity.peerChat, url: chatUrl } : null,
           status: opportunity.status,
+          viewerCommitted: opportunity.viewerCommitted === true,
           negotiating: opportunity.status === 'negotiating',
           createdAt: opportunity.createdAt,
           updatedAt: opportunity.updatedAt,
@@ -577,7 +580,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         };
       });
       const lines = opportunities.map((opportunity) =>
-        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity)}`);
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity, opportunity.viewerCommitted)}`);
       return mcpSuccess({
         opportunities,
         pagination: {
@@ -619,7 +622,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           otherParties,
         },
         negotiation,
-      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}`);
     }),
   );
 
@@ -769,7 +772,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       name,
       {
         description: (accepted
-          ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned intent.'
+          ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned intent. Accepting is a single yes: it opens a direct chat with the other person immediately and never waits for them to accept.'
           : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned intent. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
         inputSchema: opportunityActionSchema,
         annotations: hints(accepted ? 'Accept opportunity' : 'Pass on opportunity', false, true, false, false),
@@ -783,12 +786,18 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           if ('error' in resolvedIntent) return resolvedIntent.error;
           resolvedIntentId = resolvedIntent.id;
         }
-        const result = await opportunityService.updateOpportunityStatus(
-          resolvedOpportunity.id,
-          accepted ? 'accepted' : 'rejected',
-          principal.userId,
-          { intentId: resolvedIntentId },
-        );
+        const scope = { intentId: resolvedIntentId };
+        // Like the web app: accepting opens the chat. Someone not on Index has nobody to chat with, so only the accept is recorded.
+        const current = accepted ? await opportunityService.getOpportunityWithPresentation(resolvedOpportunity.id, principal.userId) : null;
+        const notOnIndex = !!current && !('error' in current) && current.peer.emailVerified === false;
+        const result = accepted && !notOnIndex
+          ? await opportunityService.startChat(resolvedOpportunity.id, principal.userId, scope)
+          : await opportunityService.updateOpportunityStatus(
+            resolvedOpportunity.id,
+            accepted ? 'accepted' : 'rejected',
+            principal.userId,
+            scope,
+          );
         if ('error' in result) {
           const code = result.status === 404
             ? 'opportunity_not_found'
@@ -799,16 +808,20 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
                 : 'opportunity_update_failed';
           return mcpError(code, result.error);
         }
-        const url = appLink('o', result.opportunity.opportunityId);
         const peer = { ...result.opportunity.peer, url: appLink('u', result.opportunity.peer.userId) };
+        const chatOpen = accepted && 'conversationId' in result && !!result.conversationId;
+        const url = chatOpen ? `${peer.url}/chat` : appLink('o', result.opportunity.opportunityId);
         const opportunity = { ...result.opportunity, id: result.opportunity.opportunityId, url, peer };
         return mcpSuccess({
           ...result,
           opportunity,
-          message: accepted
-            ? 'Opportunity accepted.'
-            : 'Opportunity passed; its associated negotiation may have been closed.',
-        }, `${opportunityLine(peer.name, peer.url, opportunity.headline, opportunity.status)} — ${accepted ? 'accepted' : 'passed'}`);
+          chatUrl: chatOpen ? url : null,
+          message: chatOpen
+            ? `Accepted. The chat with ${peer.name} is open now; they don't need to accept first, and you can message them right away.`
+            : accepted
+              ? 'Opportunity accepted.'
+              : 'Opportunity passed; its associated negotiation may have been closed.',
+        }, `${opportunityLine(peer.name, url, opportunity.headline, opportunity.status, null, chatOpen)} — ${accepted ? 'accepted' : 'passed'}`);
       }),
     );
   };
