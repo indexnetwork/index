@@ -44,7 +44,7 @@ const LEASE_SECONDS = 60;
 const QUESTION_HEADLINE = 'Question from your agent';
 const QUESTION_BODY_MAX_CHARS = 140;
 
-function toPrincipalMessage(message: Message): PrincipalMessage {
+export function toPrincipalMessage(message: Message): PrincipalMessage {
   const metadata = message.metadata as { principalMessage?: Omit<PrincipalMessage, 'id' | 'createdAt' | 'text'> } | null;
   const stored = metadata?.principalMessage;
   return {

@@ -689,27 +689,31 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read one owned intent’s chat: the agent’s notes, progress, and questions, and what the owner has already said. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
-      inputSchema: intentIdSchema,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
-      const resolved = await resolveIntent(intentId, principal);
-      if ('error' in resolved) return resolved.error;
+      let intents: { id: string; label: string }[];
+      if (intentId) {
+        const resolved = await resolveIntent(intentId, principal);
+        if ('error' in resolved) return resolved.error;
+        const intent = await intentService.getById(resolved.id, principal.userId);
+        intents = [{ id: resolved.id, label: intentLabel(intent?.summary ?? intent?.payload) }];
+      } else {
+        const { intents: listed } = await intentService.listIntents(principal.userId, { limit: 100 });
+        intents = listed.map((intent) => ({ id: intent.id, label: intentLabel(intent.summary ?? intent.payload) }));
+      }
       try {
-        const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
-        if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
-        const [stored, agent] = await Promise.all([
-          conversationService.getMessages(conversation.id, { intentId: resolved.id, userId: principal.userId }),
-          conversationService.agentState(principal.userId, resolved.id),
-        ]);
-        const { url, link } = await linkedIntent(resolved.id, principal.userId);
-        return mcpSuccess({
-          intentId: resolved.id,
-          conversation: readConversation(stored.map(inboxMessage)),
-          questions: agent.questions,
-          url,
-        }, link);
+        const read = await conversationService.intentConversations(principal.userId, intents.map((intent) => intent.id));
+        const conversations = read.map((entry) => ({
+          intentId: entry.intentId,
+          conversation: readConversation(entry.messages.map(inboxMessage)),
+          questions: entry.questions,
+          url: appLink('i', entry.intentId),
+        }));
+        const lines = conversations.map((entry, index) => `- ${mdLink(intents[index]!.label, entry.url)}`);
+        return mcpSuccess({ conversations }, lines.length ? lines.join('\n') : 'No intents.');
       } catch (error) {
         const mapped = agentConversationFailure(error);
         if (mapped) return mapped;

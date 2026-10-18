@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent, type PrincipalMessage, type PrincipalQuestion } from '../adapters/agent-session.database.adapter';
+import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent, toPrincipalMessage, type PrincipalMessage, type PrincipalQuestion } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
@@ -295,6 +295,25 @@ export class ConversationService {
     const external = await this.registry.getSelectedNegotiator(userId) !== null;
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
     return { status: external ? 'external' : 'hosted', questions: unanswered(messages) };
+  }
+
+  /**
+   * Read several intents' chats from the agent DM in one pass.
+   *
+   * @param userId - Authenticated owner.
+   * @param intentIds - Intents the caller already resolved as owned.
+   * @returns Each intent's visible messages and its questions still waiting, in the given order.
+   */
+  async intentConversations(userId: string, intentIds: readonly string[]) {
+    const dm = await this.db.getOrCreateAgentDm(userId);
+    const [visible, all] = await Promise.all([this.db.getMessages(dm.id, { userId }), this.db.getMessages(dm.id)]);
+    const of = <T extends { metadata: unknown }>(rows: T[], intentId: string) =>
+      rows.filter((row) => (row.metadata as { intentId?: string } | null)?.intentId === intentId);
+    return intentIds.map((intentId) => ({
+      intentId,
+      messages: of(visible, intentId),
+      questions: unanswered(of(all, intentId).map(toPrincipalMessage)),
+    }));
   }
 
   /**
