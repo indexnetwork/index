@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { morningBriefTemplate, type MorningBriefParams } from './morning-brief.template';
 
+process.env.BETTER_AUTH_SECRET ??= 'test-secret';
+
 function brief(questions: MorningBriefParams['questions']) {
   return morningBriefTemplate({
     viewerId: 'owner',
