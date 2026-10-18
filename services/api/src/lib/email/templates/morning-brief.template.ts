@@ -9,7 +9,11 @@ export interface MorningBriefParams {
   /** Waiting on the owner, but with someone they are already connected to. Listed apart; never sent for on their own. */
   connected?: { userId: string; name: string; context: string | null; hasChat: boolean; noReply: boolean }[];
   notes: { text: string; intentId: string | null }[];
-  questions: { text: string; intentId: string | null }[];
+  /**
+   * Open questions, oldest first. `counterpartyId` is the other person when the
+   * question is about one; `scope` is `intent` or `match` when the agent recorded it.
+   */
+  questions: { text: string; intentId: string | null; counterpartyId?: string | null; scope?: string | null }[];
   appUrl: string;
 }
 
@@ -24,6 +28,13 @@ export const MAX_WAITING = 4;
 const MAX_NOTES = 2;
 const MAX_QUESTIONS = 3;
 
+/** Same person and scope is one question. Without a person, only identical wording collapses. */
+function briefQuestionKey(question: { text: string; counterpartyId?: string | null; scope?: string | null }): string {
+  const person = question.counterpartyId?.trim().toLowerCase();
+  if (person) return `person\0${person}\0${(question.scope ?? '').trim().toLowerCase()}`;
+  return `text\0${question.text.trim().replace(/\s+/g, ' ').toLowerCase()}`;
+}
+
 const clip = (value: string, length: number) => (value.length > length ? `${value.slice(0, length - 1).trimEnd()}…` : value);
 const firstSentences = (value: string, count: number) => value.split(/\n+|(?<=[.!?])\s+/)
   .map((sentence) => sentence.trim())
@@ -33,7 +44,9 @@ const firstSentences = (value: string, count: number) => value.split(/\n+|(?<=[.
 /**
  * The daily brief, written by the owner's agent. Sent only when someone new is
  * waiting on the owner, or the agent asked something still open. Each person
- * appears once. Accept and pass are signed links that act without signing in.
+ * appears once. Each question appears once per counterpart and scope, so the
+ * same ask repeated across intents does not fill the three slots. Accept and
+ * pass are signed links that act without signing in.
  *
  * @returns Null when there is nothing to send.
  */
@@ -59,7 +72,13 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
   const intent = (intentId: string | null) => (intentId ? appLink('i', intentId) : p.appUrl);
   const notes = p.notes.map((note) => ({ text: firstSentences(note.text, 2), url: intent(note.intentId) }))
     .filter((note) => note.text).slice(0, MAX_NOTES);
-  const questions = p.questions.slice(0, MAX_QUESTIONS).map((q) => ({ ...q, url: intent(q.intentId) }));
+  const seenQuestions = new Set<string>();
+  const questions = p.questions.filter((question) => {
+    const key = briefQuestionKey(question);
+    if (seenQuestions.has(key)) return false;
+    seenQuestions.add(key);
+    return true;
+  }).slice(0, MAX_QUESTIONS).map((q) => ({ ...q, url: intent(q.intentId) }));
 
   const subject = everyone.length
     ? everyone.length === 1 ? `${everyone[0].name} wants to meet you` : `${everyone.length} people want to meet you`
