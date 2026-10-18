@@ -25,7 +25,7 @@ Backing up: What if we could lift the burden of looking? What if the right peopl
 
 **That’s where Index comes in. A shift from performance to presence, where builders, thinkers, and organizers don’t need to broadcast themselves to be found.**
 
-Instead of asking you to pitch yourself in yet another format, it presents simple questions: **What are you excited about or struggling with right now? What would be helpful to talk through with others?** You can answer with a full idea, a vague direction, or just a weird but honest signal.
+Instead of asking you to pitch yourself in yet another format, it presents simple questions: **What are you excited about or struggling with right now? What would be helpful to talk through with others?** You can answer with a full idea, a vague direction, or just a weird but honest intent.
 
 Something like:
 

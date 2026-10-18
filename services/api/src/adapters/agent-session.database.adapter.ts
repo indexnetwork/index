@@ -69,11 +69,11 @@ export class AgentSessionLeaseConflict extends Error {
  * Announce a question the owner has to answer before their agent can continue.
  *
  * The frame names the intent rather than the H2A conversation: the question
- * lives in that signal's agent conversation, and every surface reaches it by
+ * lives in that intent's agent conversation, and every surface reaches it by
  * intent id.
  *
  * @param userId - The principal who owes the answer.
- * @param intentId - Signal whose personal agent is suspended.
+ * @param intentId - Intent whose personal agent is suspended.
  * @param question - The question as the agent recorded it.
  */
 export async function publishPendingQuestionEvent(
@@ -128,8 +128,8 @@ export class AgentSessionDatabaseAdapter {
 
   /**
    * @param userId - Owning principal.
-   * @param intentId - Signal whose agent-DM entries to read.
-   * @returns The agent DM and its H2A transcript for that signal.
+   * @param intentId - Intent whose agent-DM entries to read.
+   * @returns The agent DM and its H2A transcript for that intent.
    */
   static async readTranscript(userId: string, intentId: string) {
     const conversation = await new ConversationDatabaseAdapter().getOrCreateAgentDm(userId);
@@ -145,7 +145,7 @@ export class AgentSessionDatabaseAdapter {
    * still the selected negotiator. The hosted seat names no agent id and is
    * refused the same way once an external negotiator holds the seat.
    *
-   * @param input - Owner, signal, the selected agent when one is speaking, and question/message entries.
+   * @param input - Owner, intent, the selected agent when one is speaking, and question/message entries.
    * @returns The inserted conversation messages.
    * @throws RuntimeConflictError when a named agent is no longer the selected negotiator, or an unnamed caller writes while one is selected.
    */
@@ -188,7 +188,7 @@ export class AgentSessionDatabaseAdapter {
 
   /**
    * Persist an owner answer or direct message on the agent DM.
-   * @param input - Owner, signal, canonical DM, text, and the displayed question when answering.
+   * @param input - Owner, intent, canonical DM, text, and the displayed question when answering.
    * @returns The inserted conversation message.
    */
   static async writeOwnerInput(input: {
@@ -212,7 +212,7 @@ export class AgentSessionDatabaseAdapter {
    * transcript that already holds all of them, instead of deciding on the first
    * and discarding the rest.
    *
-   * @param input - Owner, signal, canonical DM, and each answer with the question it names.
+   * @param input - Owner, intent, canonical DM, and each answer with the question it names.
    * @returns The inserted messages, in the order given.
    */
   static async writeOwnerAnswers(input: {

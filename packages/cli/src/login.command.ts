@@ -81,7 +81,7 @@ function closeServer(server: CallbackServer): Promise<void> {
  * @param apiUrl - The protocol server base URL.
  * @param appUrl - The frontend app URL (serves the /cli-auth page).
  * @param store - The credential store instance.
- * @param options - Optional signal and timeout configuration.
+ * @param options - Optional intent and timeout configuration.
  * @returns A handle with the auth URL and a promise for the result.
  */
 export async function handleLogin(

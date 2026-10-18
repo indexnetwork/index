@@ -17,7 +17,7 @@ export interface AssignmentResult {
  * Intent Index Graph State.
  * Handles CRUD for the intent_networks junction table (linking intents to networks).
  *
- * ## Signal assignment policy
+ * ## Intent assignment policy
  *
  * There is none: a link exists because its owner asked for it, so the assign
  * node writes the row at score 1 with mode `manual_override`. No LLM call.

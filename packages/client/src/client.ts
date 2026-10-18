@@ -64,7 +64,7 @@ export interface NegotiationDetail extends Negotiation {
 
 export type IntentStatus = "active" | "paused" | "archived";
 
-/** One of the owner's signals, as an agent working it needs to see it. */
+/** One of the owner's intents, as an agent working it needs to see it. */
 export interface IntentSummary {
   id: string;
   statement: string;
@@ -217,29 +217,29 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
 export interface Index {
   /** @returns The owner this instance acts for. */
   me(): Promise<Me>;
-  /** @param limit - How many signals to read. @returns The owner's signals. */
+  /** @param limit - How many intents to read. @returns The owner's intents. */
   listIntents(limit?: number): Promise<IntentSummary[]>;
   /**
-   * @param intentId - The signal to search from.
+   * @param intentId - The intent to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return, 1..30.
-   * @param since - When set, only signals created or shared into a community after this ISO time.
+   * @param since - When set, only intents created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
    */
   discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]>;
   /**
-   * @param intentId - The signal the opportunities belong to.
-   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @param intentId - The intent the opportunities belong to.
+   * @param counterparties - Counterparty intents and the community each pair sits in.
    * @returns The opportunities that now exist.
    */
   createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]>;
   /** @returns Open negotiations for this seat. */
   listNegotiations(): Promise<Negotiation[]>;
   /**
-   * Negotiations on one signal, open and settled.
+   * Negotiations on one intent, open and settled.
    *
-   * @param intentId - The signal.
-   * @returns That signal's negotiations, newest first.
+   * @param intentId - The intent.
+   * @returns That intent's negotiations, newest first.
    */
   listIntentNegotiations(intentId: string): Promise<Negotiation[]>;
   /** @param id - Opportunity id. @returns The negotiation as this seat sees it. */
@@ -270,8 +270,8 @@ export interface Index {
    */
   rejectOpportunity(id: string): Promise<{ opportunityId: string; status: "rejected" }>;
   /**
-   * @param intentId - Signal whose principal conversation to read.
-   * @returns The agent DM slice for that signal.
+   * @param intentId - Intent whose principal conversation to read.
+   * @returns The agent DM slice for that intent.
    */
   principalInbox(intentId: string): Promise<{
     conversationId: string;
@@ -279,7 +279,7 @@ export interface Index {
     agent?: PersonalAgentState;
   }>;
   /**
-   * @param intentId - Signal.
+   * @param intentId - Intent.
    * @param entries - `question` and `message` entries.
    */
   sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void>;
@@ -388,8 +388,8 @@ export class IndexClient implements Index {
   }
 
   /**
-   * @param limit - How many signals to read. Defaults to 100.
-   * @returns The owner's signals. `archived` is derived from `archivedAt`, which is how removal is recorded.
+   * @param limit - How many intents to read. Defaults to 100.
+   * @returns The owner's intents. `archived` is derived from `archivedAt`, which is how removal is recorded.
    */
   async listIntents(limit = 100): Promise<IntentSummary[]> {
     const { intents } = await this.request<{
@@ -403,15 +403,15 @@ export class IndexClient implements Index {
   }
 
   /**
-   * Search one signal's communities for counterparties.
+   * Search one intent's communities for counterparties.
    *
    * Nothing is written: the caller reads these and decides which are worth an
    * opportunity.
    *
-   * @param intentId - The signal to search from.
+   * @param intentId - The intent to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return, 1..30. Index decides when omitted.
-   * @param since - When set, only signals created or shared into a community after this ISO time.
+   * @param since - When set, only intents created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
    */
   async discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]> {
@@ -424,11 +424,11 @@ export class IndexClient implements Index {
 
   /**
    * Create one opportunity per picked counterparty. Idempotent on the pair: a
-   * counterparty already sharing an opportunity with this signal reports that
+   * counterparty already sharing an opportunity with this intent reports that
    * one rather than a second.
    *
-   * @param intentId - The signal the opportunities belong to.
-   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @param intentId - The intent the opportunities belong to.
+   * @param counterparties - Counterparty intents and the community each pair sits in.
    * @returns The opportunities that now exist.
    */
   async createOpportunities(
@@ -449,7 +449,7 @@ export class IndexClient implements Index {
     return negotiations;
   }
 
-  /** @param intentId - The signal. @returns That signal's negotiations, open and settled. */
+  /** @param intentId - The intent. @returns That intent's negotiations, open and settled. */
   async listIntentNegotiations(intentId: string): Promise<Negotiation[]> {
     const { negotiations } = await this.request<{ negotiations: Negotiation[] }>(
       "GET", `/negotiations?intentId=${encodeURIComponent(intentId)}`,
@@ -484,10 +484,10 @@ export class IndexClient implements Index {
   }
 
   /**
-   * Introduce two signals the caller owns neither of. The caller holds no seat.
+   * Introduce two intents the caller owns neither of. The caller holds no seat.
    * Idempotent on the pair.
    *
-   * @param input - The network both signals are shared in, the two signals, and why they should meet.
+   * @param input - The network both intents are shared in, the two intents, and why they should meet.
    * @returns The opportunity, new or already open.
    */
   async createOpportunity(input: {
@@ -511,8 +511,8 @@ export class IndexClient implements Index {
   }
 
   /**
-   * @param intentId - Signal whose principal conversation to read.
-   * @returns The agent DM slice for that signal.
+   * @param intentId - Intent whose principal conversation to read.
+   * @returns The agent DM slice for that intent.
    */
   async principalInbox(intentId: string): Promise<{
     conversationId: string;
@@ -524,7 +524,7 @@ export class IndexClient implements Index {
 
   /**
    * Publish agent-authored questions and messages onto the principal conversation.
-   * @param intentId - Signal.
+   * @param intentId - Intent.
    * @param entries - `question` and `message` entries. The API drops the rest.
    * @throws When this instance has no agent id.
    */

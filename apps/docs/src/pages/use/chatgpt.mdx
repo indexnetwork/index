@@ -33,15 +33,12 @@ ChatGPT reads the full record with the tools.
 
 | Event | When | Filters |
 | --- | --- | --- |
-| `intent.created` | You created a signal | `intentId` |
-| `intent.updated` | You changed a signal's goal or constraints | `intentId` |
+| `intent.created` | You created an intent | `intentId` |
+| `intent.updated` | You changed an intent's goal or constraints | `intentId` |
 | `opportunity.new` | An opportunity is waiting on you | `intentId` |
 | `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
-| `negotiation.turn` | Your negotiator owes the next turn, or the turn limit paused it | `intentId` |
-| `question.pending` | Your agent stopped on a question only you can answer | `intentId` |
-
 - **Delivery** is a signed webhook ([Standard Webhooks](https://www.standardwebhooks.com/)) to the callback ChatGPT registers. Index first sends a challenge to the callback, and nothing else reaches it until the challenge is echoed.
-- **Payloads** carry ids, a link, and Index-written text (the opportunity headline, the negotiation summary, or the question). They never include messages you wrote.
+- **Payloads** carry ids, a link, and Index-written text (the opportunity headline). They never include messages you wrote.
 - **History is not replayed.** A subscription sees events from the moment it is created.
 - **Subscriptions last up to 7 days.** ChatGPT renews them before `refreshBefore`.
 
@@ -50,10 +47,10 @@ ChatGPT reads the full record with the tools.
 :::prompt
 Index is connected as an MCP server. When an `opportunity.new` event arrives,
 read it with `get_opportunity` and tell the person who it is with and why.
-Accept or pass only after they say so. When a `negotiation.turn` event arrives,
-read it with `get_opportunity` and tell them their negotiator owes a turn, or
-that the turn limit paused it. A task that negotiates for them names its own
-tools; never call a tool whose description begins "Agent tool" from this chat.
-When a `question.pending` event arrives,
-ask them the question and send them the link to the signal.
+Accept or pass only after they say so. When they ask what the agents are
+saying, read `list_negotiations` and `get_negotiation`. When they ask what an intent's chat says, read
+it with `get_intent_conversation`. When they answer, call
+`principal_send_message` with their exact words, and pass `questionId` only
+when those words answer that question. The hosted negotiator writes the
+agent's side of that chat.
 :::

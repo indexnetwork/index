@@ -151,12 +151,12 @@ export class ApiClient {
   }
 
   /**
-   * Create one signal. With no network ids it is shared in every network the
+   * Create one intent. With no network ids it is shared in every network the
    * caller belongs to.
    *
-   * @param description - The signal text.
+   * @param description - The intent text.
    * @param networkIds - Networks to share it in; omit for all memberships.
-   * @returns The created signal id and the networks it was linked to.
+   * @returns The created intent id and the networks it was linked to.
    * @throws Error on auth failure, a refused description, or network error.
    */
   async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
@@ -175,13 +175,13 @@ export class ApiClient {
     return await res.json() as IntentPreparation;
   }
 
-  /** Pause or resume without archiving the signal. */
+  /** Pause or resume without archiving the intent. */
   async updateIntentStatus(id: string, status: "active" | "paused"): Promise<void> {
     await this.patch(`/api/intents/${encodeURIComponent(id)}/status`, { status });
   }
 
   /**
-   * Rewrite a signal's description, its source fields, or both.
+   * Rewrite an intent's description, its source fields, or both.
    *
    * @param intentId - Full UUID or short prefix.
    * @param description - The rewritten text, or undefined to keep it.
@@ -197,7 +197,7 @@ export class ApiClient {
   }
 
   /**
-   * Archive a signal, removing it from discovery.
+   * Archive an intent, removing it from discovery.
    *
    * @param intentId - Full UUID or short prefix.
    * @throws Error on auth failure, not found, or network error.
@@ -207,7 +207,7 @@ export class ApiClient {
   }
 
   /**
-   * List the networks a signal is shared in.
+   * List the networks an intent is shared in.
    *
    * @param intentId - Full UUID or short prefix.
    * @returns The linked network UUIDs.
@@ -220,7 +220,7 @@ export class ApiClient {
   }
 
   /**
-   * Share a signal in one network.
+   * Share an intent in one network.
    *
    * @param intentId - Full UUID or short prefix.
    * @param networkId - The network UUID.
@@ -231,7 +231,7 @@ export class ApiClient {
   }
 
   /**
-   * Withdraw a signal from one network, leaving the signal itself intact.
+   * Withdraw an intent from one network, leaving the intent itself intact.
    *
    * @param intentId - Full UUID or short prefix.
    * @param networkId - The network UUID.

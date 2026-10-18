@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createIndexApiClient } from "../../../apps/mac/api/client.mjs";
 import { mapIntents, mapPeopleFromRadarItems } from "../../../apps/mac/api/mappers.mjs";
 
-export interface Signal { id: string; title: string; status: string; pending: number }
+export interface Intent { id: string; title: string; status: string; pending: number }
 export interface Person { id: string; name: string; status: string; blurb: string; detail: string; score: number | null }
 export interface Question { id: string; question: string; options?: string[]; scope?: string; matches?: { counterparty?: { name?: string } }[] }
 export interface Message { id: string; role: string; parts: { text?: string }[]; metadata?: { principalMessage?: { kind?: string; questionId?: string; options?: string[]; scope?: string; matches?: Question["matches"] } } }
@@ -31,7 +31,7 @@ export async function connectOwner() {
     name: me.name || me.id,
     userId: me.id,
     apiUrl: origin,
-    async signals(): Promise<Signal[]> {
+    async intents(): Promise<Intent[]> {
       const result = await client.intents.list({ page: 1, limit: 100 }) as { intents?: Record<string, unknown>[] };
       return mapIntents(result.intents || []).filter((row) => row.status !== "archived")
         .map((row) => ({ id: row.id, title: row.title, status: row.status, pending: row.pending }));
@@ -54,7 +54,7 @@ export async function connectOwner() {
       parts: [{ kind: "text", text }], metadata: { intentId },
     }),
     sendAnswer: (intentId: string, questionId: string, text: string) => client.conversations.sendAnswers(intentId, [{ questionId, text }]),
-    setSignalStatus: (intentId: string, status: "active" | "paused") => client.intents.updateStatus(intentId, status),
+    setIntentStatus: (intentId: string, status: "active" | "paused") => client.intents.updateStatus(intentId, status),
     setOpportunityStatus: (intentId: string, opportunityId: string, status: "accepted" | "rejected") =>
       client.opportunities.updateStatusForIntent(opportunityId, status, intentId),
     events(onEvent: (event: Event) => void): () => void {

@@ -237,7 +237,7 @@ function Frame({ children, dim }) {
 // these tick what it is allowed to do. Nightly indexing has no field yet.
 const AGENT_OPTIONS = [
   { key:"indexing", title:"nightly indexing",
-    blurb:"turns what this agent learned today into signals, overnight. off means discovery only knows what you've told it." },
+    blurb:"turns what this agent learned today into intents, overnight. off means discovery only knows what you've told it." },
 ];
 
 function RosterRow({ name, badge, detail, id, aside, last, onClick, expanded, onToggle }) {

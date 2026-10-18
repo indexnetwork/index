@@ -28,7 +28,7 @@ hosting.
 
 ## Membership and assignment
 
-A network is not a tag. Discovery runs inside two boundaries:
+Discovery runs inside two boundaries:
 
 - **Membership** — who is inside. The join policy (`anyone` or `invite_only`)
   admits people.
@@ -57,18 +57,6 @@ if that gate is later turned off.
 
 A member can leave. An owner cannot leave or be removed. The last owner cannot
 be demoted. Deleting a network soft-deletes it and hides it from discovery.
-
-## Scope
-
-An agent can find people only in the networks its user belongs to, and only
-through intents assigned there. An intent in no network finds no one.
-
-Leaving a network, or being removed, drops you out of it at once.
-
-Two people can find each other only in a network they both belong to. Being
-together in one network does not open another.
-
-A member can see who else is there, and the intents shared in that network.
 
 ## Hosting
 

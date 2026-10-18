@@ -81,7 +81,7 @@ export class IntentPreparer {
     if (answers.length > 0) {
       const model = createStructuredModel("intentClarifier", payloadSchema, { name: "intent_draft" });
       const result = await invokeWithAbortSignal(model, [
-        new SystemMessage("Fold every supplied answer into the signal in the person's own voice. Preserve all existing details unless an answer explicitly changes them. Every claim must trace to the draft or answers; never invent constraints or facts to make a signal pass validation. Return the complete draft, concise and concrete."),
+        new SystemMessage("Fold every supplied answer into the intent in the person's own voice. Preserve all existing details unless an answer explicitly changes them. Every claim must trace to the draft or answers; never invent constraints or facts to make an intent pass validation. Return the complete draft, concise and concrete."),
         new HumanMessage(JSON.stringify({ payload, answers })),
       ]);
       payload = payloadSchema.parse(result).payload;
@@ -92,7 +92,7 @@ export class IntentPreparer {
 
     const model = createStructuredModel("intentClarifier", recoverySchema, { name: "intent_recovery" });
     const result = await invokeWithAbortSignal(model, [
-      new SystemMessage("Build one recovery form that helps the person concretize their signal. Return 2-6 fields. Each field needs a draft-specific label, a kind (single, multi, or text), and for single/multi 2-5 concrete options anchored to the draft. Text fields need a placeholder. Never re-ask what the draft or answers already settle. Options must be matchable and specific. Do not expose scores, classifications, JSON, or internal vocabulary."),
+      new SystemMessage("Build one recovery form that helps the person concretize their intent. Return 2-6 fields. Each field needs a draft-specific label, a kind (single, multi, or text), and for single/multi 2-5 concrete options anchored to the draft. Text fields need a placeholder. Never re-ask what the draft or answers already settle. Options must be matchable and specific. Do not expose scores, classifications, JSON, or internal vocabulary."),
       new HumanMessage(JSON.stringify({
         payload,
         answers,

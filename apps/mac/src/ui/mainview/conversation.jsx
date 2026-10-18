@@ -1,5 +1,5 @@
 /* =================== LEFT, CONVERSATION =================== */
-// Small control for managing the running signal (pause / stop).
+// Small control for managing the running intent (pause / stop).
 // `danger` carries the app's destructive treatment (--ink-warn, same as the
 // delete-account gadget in settings): warn-red outline at rest so archiving
 // never looks like the pause next to it, a red wash on hover, and a solid red
@@ -10,7 +10,7 @@
 const FEED_BOTTOM_SPACER = 28;
 const FEED_BOTTOM_PIN = FEED_BOTTOM_SPACER + 20;
 
-function SignalAction({ label, active = false, onClick, danger = false }) {
+function IntentAction({ label, active = false, onClick, danger = false }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
   const edge = danger ? "var(--ink-warn)" : "#000";
@@ -34,7 +34,7 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
 }
 
 function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
-                            agentMessages = null, agentQuestions = [], onSendAgent, onSendAnswers,
+                            agentMessages = null, agentHosted = false, agentQuestions = [], onSendAgent, onSendAnswers,
                             focusQuestion = 0, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   const [draft, setDraft] = useState("");
@@ -44,9 +44,15 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   const inbox = agentMessages != null;
   const questions = inbox ? (agentQuestions || []) : [];
   const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
+  // The agent owes an answer to the last thing you said; queued ones sit behind the first.
+  // An answer is something you said too, so it leaves the agent owing a reply the same way.
+  const lastSaid = inbox && agentMessages.length ? agentMessages[agentMessages.length - 1].kind : "";
+  const waiting = agentHosted && (lastSaid === "user" || lastSaid === "answer-history");
+  let firstWaiting = inboxFeed.length;
+  while (waiting && firstWaiting > 0 && inboxFeed[firstWaiting - 1].kind === "user") firstWaiting--;
   const firstOpenId = inboxFeed.find((item) => item.kind === "open-question")?.id;
   const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
-  // Archiving takes the signal off the hub and there's no way back to it from
+  // Archiving takes the intent off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
   // disarms itself after a few seconds if you meant to click something else.
   const [armed, setArmed] = useState(false);
@@ -67,7 +73,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
       .catch(() => {})
       .then(() => setArchiving(false));
   };
-  // A notification tap lands on the signal, not on the question inside it, so
+  // A notification tap lands on the intent, not on the question inside it, so
   // the card brings itself into view. Keyed on the tap rather than the question
   // so tapping again re-focuses one that is already open.
   const agentQuestionRef = useRef(null);
@@ -145,7 +151,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
       gridTemplateColumns:"minmax(0, 1fr)",
       flex:1, minHeight:0, minWidth:0, position:"relative",
     }}>
-      {/* fixed signal header, the signal you're tracking, plus the controls
+      {/* fixed intent header, the intent you're tracking, plus the controls
           to pause or stop the agent working on it */}
       <div style={{
         padding:"12px 18px 12px",
@@ -154,11 +160,11 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         background:"#fff",
       }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-          {/* Capped at three lines. A long signal used to grow this header
+          {/* Capped at three lines. A long intent used to grow this header
               without limit, and opening the third window narrowed the column
               enough that the title pushed the status line straight through the
               header's bottom rule. It clips to an ellipsis instead, and the
-              whole signal is one hover away.
+              whole intent is one hover away.
 
               maxHeight repeats the cap the line-clamp already implies, because
               the clamp alone does not reliably constrain the box's layout
@@ -168,7 +174,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               three lines is 3.6em, and this is what actually holds the header
               open. Keep the two in step if either changes. */}
           <h2
-            title={profile.intent || "your signal"}
+            title={profile.intent || "your intent"}
             style={{
               margin:0, fontFamily:"var(--amiga-title)", fontWeight:500,
               fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2,
@@ -176,14 +182,14 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               display:"-webkit-box", WebkitBoxOrient:"vertical", WebkitLineClamp:3,
               maxHeight:"3.6em",
               overflow:"hidden",
-            }}>{profile.intent || "your signal"}</h2>
+            }}>{profile.intent || "your intent"}</h2>
           <div style={{ display:"flex", gap:6, flex:"0 0 auto" }}>
-            <SignalAction
+            <IntentAction
               label={paused ? "▶ resume" : "❚❚ pause"}
               active={paused}
               onClick={() => onTogglePause && onTogglePause()}
             />
-            <SignalAction
+            <IntentAction
               danger
               label={archiving ? "archiving…" : armed ? "archive · confirm" : "archive"}
               active={armed || archiving}
@@ -191,7 +197,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             />
           </div>
         </div>
-        {/* Just what the signal is doing. The questions are right below in the
+        {/* Just what the intent is doing. The questions are right below in the
             feed, each one asking for itself, so a count of them up here was
             saying the same thing twice. */}
         <div style={{
@@ -205,8 +211,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               minWidth:0, flex:"0 1 auto",
               color: paused ? "var(--ink-3)" : "#000",
             }}>
-            {/* The same LiveDot the shelf puts on a running signal, rather than
-                a green pill only this header drew: one signal, two screens, one
+            {/* The same LiveDot the shelf puts on a running intent, rather than
+                a green pill only this header drew: one intent, two screens, one
                 mark for "working". Paused shows no dot, matching the shelf,
                 where the mark is what says it is running. */}
             {!paused && <LiveDot size={6}/>}
@@ -228,8 +234,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
               }}>ask about your matches, share a preference, or tell your agent what to look for.</div>
-            ) : inboxFeed.map((it) => {
-              if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
+            ) : inboxFeed.map((it, index) => {
+              if (it.kind === "user") return <UserLine key={it.id} queued={waiting && index > firstWaiting}>{it.text}</UserLine>;
               if (it.kind === "discovery") return (
                 <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items} loading={it.loading}/>
               );
@@ -245,6 +251,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
               return <AgentNote key={it.id} item={it}/>;
             })}
+            {waiting && <ProgressLine text="thinking…"/>}
           </div>
         ) : (
         <div style={{
@@ -1044,7 +1051,7 @@ function CollectiveQuestionCard({ question, people, onRespond }) {
   );
 }
 
-/* Your own agent, held on this signal until you answer.
+/* Your own agent, held on this intent until you answer.
 
    Unlike the cards around it this one is live: the question, its suggested
    answers, and the matches it is asked about all come from the agent's
@@ -1059,7 +1066,7 @@ function AgentQuestionCard({ question, onAnswer }) {
     <QuestionCard
       icon={<AgentAvatar size={18} title="your agent"/>}
       source="from your agent"
-      tag={about || (question.scope === "match" ? "about a match" : "about this signal")}
+      tag={about || (question.scope === "match" ? "about a match" : "about this intent")}
       question={question.question}
       chips={Array.isArray(question.options) ? question.options : []}
       onChip={(c) => onAnswer && onAnswer(c)}
@@ -1237,9 +1244,10 @@ function AgentLine({ children, pending, highlight, collective }) {
 // conversation reads like a chat: your words land at the bottom, distinct
 // from the questions coming in on the left. Your text goes through the same
 // markdown as the agent's, so a list you typed reads as a list.
-function UserLine({ children }) {
+function UserLine({ children, queued = false }) {
   return (
     <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
+      {queued && <span style={{ alignSelf:"flex-end", marginRight:8, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>queued</span>}
       <div style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",

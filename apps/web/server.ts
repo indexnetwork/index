@@ -40,7 +40,7 @@ function appleAppSiteAssociation(): string {
             {
               "/": "/i/new",
               exclude: true,
-              comment: "Signal composer is web-only.",
+              comment: "Intent composer is web-only.",
             },
             {
               "/": "/i/*/?*",

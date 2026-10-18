@@ -102,7 +102,7 @@
 .pm-mac-label span { flex: 1; height: 1.5px; background: var(--pm-ink); }
 .pm-mac-list { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding-right: 18px; }
 .pm-mac-scroll { position: absolute; top: 0; right: 0; width: 8px; height: 30%; background: var(--pm-orange); border: 1px solid var(--pm-ink); box-sizing: border-box; }
-.pm-mac-signal {
+.pm-mac-intent {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -111,7 +111,7 @@
   border: 1.5px solid var(--pm-ink);
   box-shadow: 2px 2px 0 #C9C9C9;
 }
-.pm-mac-signal-t { font-size: 16px; }
+.pm-mac-intent-t { font-size: 16px; }
 .pm-mac-live { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #555; }
 .pm-mac-live span { width: 7px; height: 7px; box-sizing: border-box; border: 1.5px solid #B9773A; background: #F3C99C; }
 .pm-mac-count { min-width: 26px; padding: 2px 6px; box-sizing: border-box; text-align: center; background: var(--pm-orange); border: 1.5px solid var(--pm-ink); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; }
@@ -144,7 +144,7 @@
   font-family: 'Public Sans', system-ui, sans-serif;
 }
 .pm-her-label { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .16em; color: var(--pm-muted); }
-.pm-her-signal { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pm-her-intent { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .pm-her-head { display: flex; gap: 18px; align-items: center; }
 .pm-her-h { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 21px; line-height: 1.35; font-weight: 700; }
 .pm-her-tools { display: flex; flex: 0 0 auto; border: 1px solid var(--pm-line); }

@@ -1,5 +1,5 @@
 /**
- * Index's own personal agent: the seat that works a signal whose owner has
+ * Index's own personal agent: the seat that works an intent whose owner has
  * bound no external negotiator.
  *
  * A wake happens because something changed, and once each local morning.
@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, owedWork, runMorning, runNegotiate, runWake, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
@@ -30,7 +30,7 @@ const WAKE_BLOCK_MS = 2000;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string };
+  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -46,12 +46,13 @@ export class HostedAgent {
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
 
-  constructor(private readonly model: Model) {
+  constructor(private readonly model: Model, private readonly decide?: Decide) {
     this.session = new HostedSession({
       running: () => this.running,
       holdsSeat: (userId) => this.holdsSeat(userId),
       activeIntent: (userId, intentId) => this.activeIntent(userId, intentId),
-      runWake: (userId, intent) => this.invokeWake(userId, intent),
+      runWake: (userId, intent, steer) => this.invokeWake(userId, intent, steer),
+      notify: (userId, intentId, text) => new HostedIndex(userId).sendPrincipal(intentId, encodeActions([{ type: 'progress', text }], { counterparts: new Map() })),
       closeInitiation: (userId, intent) => closeInitiation(new HostedIndex(userId), intent, this.runtime()),
       runNegotiate: (userId, intent, opportunityId) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime()),
       getNegotiation: async (userId, opportunityId) => {
@@ -77,7 +78,7 @@ export class HostedAgent {
   }
 
   /**
-   * One signal's morning. The signal id stays here, so a person it opens takes
+   * One intent's morning. The intent id stays here, so a person it opens takes
    * the same negotiator an event wake starts.
    *
    * @param since - The owner's previous morning; people who arrived after it are reached without the model.
@@ -172,7 +173,7 @@ export class HostedAgent {
    * Route one frame the way the reference runner routes it: a counterpart's
    * turn moves one opportunity and reaches the principal only if that
    * negotiator stalls, because it is not something they have to think about.
-   * Their own input, a new signal, and a resumed one are.
+   * Their own input, a new intent, and a resumed one are.
    *
    * @param record - One entry from an owner's stream.
    */
@@ -188,13 +189,14 @@ export class HostedAgent {
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
-        if (intentId) this.session.run(this.session.wake(userId, intentId));
+        // A plain message reaches a wake already running, which reads it before its next step.
+        if (intentId) this.session.run(this.session.wake(userId, intentId, frame.data?.questionId ? undefined : frame.data?.text));
         break;
       case 'intent.created':
         if (intentId) this.session.run(this.session.wake(userId, intentId));
         break;
       case 'intent.lifecycle':
-        // A resumed signal is worth a think pass; pausing and removing are not.
+        // A resumed intent is worth a think pass; pausing and removing are not.
         if (intentId && status === 'active') this.session.run(this.session.wake(userId, intentId));
         break;
       default:
@@ -208,9 +210,9 @@ export class HostedAgent {
   }
 
   /**
-   * @param userId - The signal's owner.
-   * @param intentId - The signal a frame named.
-   * @returns The signal as a run reads it, or null when it cannot be worked now.
+   * @param userId - The intent's owner.
+   * @param intentId - The intent a frame named.
+   * @returns The intent as a run reads it, or null when it cannot be worked now.
    */
   private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
     const intent = await intentService.getById(intentId, userId);
@@ -218,10 +220,11 @@ export class HostedAgent {
     return { id: intent.id, statement: intent.payload };
   }
 
-  /** @returns What every run needs beyond Index: the model, cancellation, and somewhere to report. */
+  /** @returns What every run needs beyond Index: the model, the decision model, cancellation, and somewhere to report. */
   private runtime() {
     return {
       model: this.model,
+      ...(this.decide ? { decide: this.decide } : {}),
       signal: this.abort.signal,
       log: (line: string) => { logger.verbose(line.trim()); },
     };
@@ -231,16 +234,17 @@ export class HostedAgent {
    * One event wake. Each opportunity opens the moment its own decision is
    * published, so the first turns go out while the wake is still thinking.
    */
-  private async invokeWake(userId: string, intent: Intent): Promise<void> {
+  private async invokeWake(userId: string, intent: Intent, steer: () => string[]): Promise<void> {
     await runWake(new HostedIndex(userId), intent, {
       ...this.runtime(),
+      steer,
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
   }
 
   /**
    * Take up whatever one owner is still owed, as Index records it: the wake a
-   * stall is waiting on, and the turns nothing is holding, on every signal with
+   * stall is waiting on, and the turns nothing is holding, on every intent with
    * an open negotiation.
    *
    * @param userId - The owner.

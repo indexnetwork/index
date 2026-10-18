@@ -25,8 +25,8 @@ const openOpportunitySchema = z.object({
 
 const OPEN_REFUSALS = {
   not_member: { status: 403, error: 'You are not a member of this network' },
-  not_seated: { status: 409, error: 'Both signals must be active and shared in this network' },
-  own_intent: { status: 403, error: 'An introducer owns neither signal, and the two owners must differ' },
+  not_seated: { status: 409, error: 'Both intents must be active and shared in this network' },
+  own_intent: { status: 403, error: 'An introducer owns neither intent, and the two owners must differ' },
 } as const;
 
 /** How each refusal to take a turn reads on the wire. */
@@ -38,7 +38,7 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   counter_is_first: { status: 400, error: 'counter needs a turn to answer; use propose' },
   accept_without_offer: { status: 400, error: 'accept needs a standing propose from the other seat; answer a counter by proposing again' },
   propose_over_offer: { status: 400, error: 'a proposal from the other seat is already standing; counter, accept or decline it' },
-  signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
+  intent_inactive: { status: 409, error: 'An intent in this negotiation is paused or removed' },
   turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
@@ -81,7 +81,7 @@ export class OpportunityController {
   }
 
   /**
-   * POST /opportunities — open an opportunity between two signals the caller
+   * POST /opportunities — open an opportunity between two intents the caller
    * owns neither of. The caller holds no seat.
    */
   @Post('')

@@ -105,16 +105,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   are unchanged; underneath, each answer is folded back into the payload by
   `POST /intents/clarify` and the gate calls `POST /intents`. A clarification
   that cannot be reached shows a retry that resumes the round with your answers
-  intact. `services/intake.ts` becomes `services/signals.ts`.
+  intact. `services/intake.ts` becomes `services/intents.ts`.
 
 ### Removed
-- **The "where should this go?" step.** Signals go out everywhere for now, so
+- **The "where should this go?" step.** Intents go out everywhere for now, so
   the community list and its selection are gone from the flow and create no
   longer sends `networkIds`.
-- **The guided intake funnel.** `FastSignalIntake`, `GuidedSignalIntake`,
-  `WherePicker` and the `fastSignalIntake` feature flag are gone (the flow now
+- **The guided intake funnel.** `FastIntentIntake`, `GuidedIntentIntake`,
+  `WherePicker` and the `fastIntentIntake` feature flag are gone (the flow now
   lives in the `/i/new` page itself), along with the proposal confirmation step
-  — signals are created directly now.
+  — intents are created directly now.
 - `'personal'` from the `Agent.type` union, which is now `'external' | 'system'`.
   The API no longer has a personal agent type; the "Personal Agents" section on
   `/agents` already listed `external` rows.
@@ -141,7 +141,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `PersonalAgentTimeline`, `IntentCycleInspector`,
   `IntentNegotiationInspector`, `AgentHandlingOpportunity`, the `chat/*`
   message components, the `AIChat*` contexts, and the connected-agents and
-  negotiator-memory services. The signal page is a single column: signal CRUD
+  negotiator-memory services. The intent page is a single column: intent CRUD
   plus Radar. The `agent-handling` radar bucket is gone and buckets are purely
   status-based. `/agents` and `/agents/:id` stay.
 
@@ -166,8 +166,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   ran ahead of `vite build`. The atlas was a generated architecture diagram of
   `packages/protocol`; it is no longer maintained, and the build no longer
   depends on regenerating it.
-- **Breaking (web 0.54.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Retired `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
-- **Breaking (web 0.53.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Legacy `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
+- **Breaking (web 0.54.0):** remove the `intentAgent` feature flag. Intent is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "intent"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Retired `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
+- **Breaking (web 0.53.0):** remove the `intentAgent` feature flag. Intent is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "intent"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Legacy `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
 - **Breaking (web 0.52.0):** delete the `/hermes-authorize` and `/index-app-authorize` PKCE consent pages; the dedicated `idxh_`/`idxo_` credential layer was removed from the API. Hermes uses an ordinary agent API key and the Mac app signs in through `/cli-auth`.
 - Remove the cli-auth v1 contract: the `session_token` callback field, `buildLegacyCliCallbackUrl`, and the version-less request shape are gone; `/cli-auth` accepts only the state-bound v2 request (`callback`, `version=2`, `state`).
 - Remove the "Automatic Member Enrichment" policy section from network Access
@@ -179,20 +179,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Make the intent workspace Personal Agent and Radar columns equal width (50/50) on desktop (lg+), replacing the previous 40/60 split (IND-503).
 - On viewports below lg, keep Radar as the primary content and move the Personal Agent (or questions-fallback) column into an off-canvas sheet that slides in from the right (IND-503). A mobile-only trigger button carries the same pending-question count badge (`intent-question-count`); the sheet stays mounted across open/close and breakpoint changes so the negotiator chat's live stream and question state are never remounted. While open on mobile the sheet is a true modal dialog (`role="dialog"` + `aria-modal`, Radix `FocusScope` focus containment, inert background, Escape/outside-press dismiss via Radix `DismissableLayer`, focus return to the trigger on every close path); at lg+ it exposes no dialog semantics — just a labelled `region`. Breakpoint-driven semantics use a small `matchMedia` switch (`useSyncExternalStore`) for accessibility only; layout remains pure Tailwind.
-- Complete the interactive web product-language cutover from user-visible “intents” to “signals,” including creation, Discover, signal workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).
+- Complete the interactive web product-language cutover to “intents,” including creation, Discover, intent workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).
 
 ### Fixed
 
 - Show the owner-only outreach-gate card, instead of the generic unexplained "declined" banner, on a screened_out negotiation whose only turn is the client's own pre-contact consult. An `ask_user` turn is a private consult, not contact with the counterparty, so the transcript page now excludes it (`contactTurns()`) when deciding whether contact was made and whether the gate card should replace the empty transcript state.
 - Render canonical user-context chat tool calls with the same human-friendly profile labels as historical traces (web 0.51.1).
 - Keep the existing route-rendering smoke harness aligned with current web context contracts so its 21 covered route components mount under production-shaped empty states.
-- Make the existing QuestionsContext poll an invalidation-only signal for intent workspaces (IND-507): authoritative lifecycle filtering removes stale negotiation IDs from the stable revision and triggers one passive exact-intent pending+answered refetch without visit-time pool mining or a second poller. Exact answered exchanges remain once after continuation/reload; stale responses are ignored and cards replace/dedupe by durable question ID. Unproven anchors and all unanchored answered/pending cards trail deterministically, while the one mounted `IntentNegotiatorChat` and existing mobile FocusScope/inert/focus-restoration and desktop labelled-region layout remain unchanged.
+- Make the existing QuestionsContext poll an invalidation-only intent for intent workspaces (IND-507): authoritative lifecycle filtering removes stale negotiation IDs from the stable revision and triggers one passive exact-intent pending+answered refetch without visit-time pool mining or a second poller. Exact answered exchanges remain once after continuation/reload; stale responses are ignored and cards replace/dedupe by durable question ID. Unproven anchors and all unanchored answered/pending cards trail deterministically, while the one mounted `IntentNegotiatorChat` and existing mobile FocusScope/inert/focus-restoration and desktop labelled-region layout remain unchanged.
 
 - Restore the initially closed Personal Agent/Questions column on desktop intent workspaces by limiting drawer-only hidden, non-interactive, and translated state styles to mobile viewports (IND-505).
 - Conversation-list rows with no messages no longer render a visually empty subtitle: they now show a muted, italic one-line `No messages yet` placeholder, truncated like a real excerpt and distinct from real last-message styling. No raw evaluator reasoning, match reasons, or fabricated text is ever rendered (IND-504).
 - Place intent-page Personal Agent questions in the conversation timeline: server-validated anchored questions follow their triggering assistant message, while unanchored pending and answered exchanges stay at the current end in deterministic timestamp/id order instead of a permanent pre-chat block.
 - Persist Reporter Agent opening briefings across reloads for 24 hours by default, hydrate the server-resolved session without replaying the hidden kickoff, and make **New conversation** atomically create and bind one fresh briefing while aborting and quarantining stale streams (IND-484).
-- Separate guided-signal session reset from kickoff across a committed React render so `/i/new` and flag-on onboarding cannot send through a stale session or scope closure (IND-450).
+- Separate guided-intent session reset from kickoff across a committed React render so `/i/new` and flag-on onboarding cannot send through a stale session or scope closure (IND-450).
 - Allow the reporter surface (`/agent`) to send messages after its briefing session is established; the route-mismatch guard now exempts the URL-less reporter session while preserving stale-session protection on `/d/:id` (IND-488).
 - Hide the generic chat session title bar ("Untitled chat", back/rename/share controls) on read-only surfaces like the `/agent` reporter, which renders its own header (IND-476). Test config now resolves the reporter kickoff marker from protocol source so web tests no longer depend on a built `packages/protocol/dist`.
 - Clarified the intent workspace live banner as background matching status rather than negotiation activity, and added a context divider for restored negotiator history that may be stale (IND-483).
@@ -208,17 +208,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Publish the dependency-free Protocol Atlas at the direct development URL
   `/protocol-atlas/`, with deterministic build-time source validation and a
   server-enforced hostname boundary that keeps production hosts at 404 (web 0.50.0).
-- Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): profile review and confirmation first, followed by the same extracted live guided-signal renderer used by `/i/new`. Automatic enrichment no longer depends on an onboarding public-lookup consent step. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created signal, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
-- Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-and-conversation-scoped hydration before rendering or confirmation, exact narrow-signal replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed, partial, or failed-hydration retry handling (IND-493).
-- Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.
+- Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): profile review and confirmation first, followed by the same extracted live guided-intent renderer used by `/i/new`. Automatic enrichment no longer depends on an onboarding public-lookup consent step. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created intent, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
+- Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-and-conversation-scoped hydration before rendering or confirmation, exact narrow-intent replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed, partial, or failed-hydration retry handling (IND-493).
+- Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched intents and pending questions, and suggested asks route through the reporter persona.
 - Add unread indicators to conversation rows and a thread-count badge to the Chats navigation entry, with mark-read wiring for open threads (IND-475).
-- Add viewer-scoped `via:` signal chips, client-rendered match-seeded openers, and optional inbox provenance subtitles for human match threads (IND-475).
-- Polished the signal-first Discover home (IND-473): header totals show listed signals and waiting opportunities, fresh signals display a WARMING state while discovery runs, and the list includes network scope, clamped titles, and the conversational new-signal CTA.
+- Add viewer-scoped `via:` intent chips, client-rendered match-seeded openers, and optional inbox provenance subtitles for human match threads (IND-475).
+- Polished the intent-first Discover home (IND-473): header totals show listed intents and waiting opportunities, fresh intents display a WARMING state while discovery runs, and the list includes network scope, clamped titles, and the conversational new-intent CTA.
 
 
-- Persisted the signal workspace's answered question log across visits, with server-backed answers, optimistic deduplication, and clearer pending-question copy (IND-472).
+- Persisted the intent workspace's answered question log across visits, with server-backed answers, optimistic deduplication, and clearer pending-question copy (IND-472).
 
-- Added the default-off Signal Agent main-web cutover (IND-449): every main-web continuation uses the dedicated Signal transport, legacy orchestrator history stays readable with all mutation controls disabled, and successful intent proposal confirmation navigates to the exact returned signal ID with truthful async undo behavior. Confirmations have per-proposal ownership and are bound to their originating route, in-memory session, and navigation generation, so concurrent cards in one chat complete independently while stale success or failure reports a safe non-actionable notification without mutating or navigating the newer chat. Request-local stream/load ownership prevents stale responses from overwriting newer chats, and typed policy refusals remain actionable in both home and loaded-chat states. CLI browser auth now uses an explicit state-bound v2 contract and a project-JWT-authenticated, fixed-shape CLI credential endpoint, while a temporary fail-closed v1 bridge mints separately tagged API keys for already-released clients without redirecting browser JWT compatibility back to the orchestrator.
+- Added the default-off Intent Agent main-web cutover (IND-449): every main-web continuation uses the dedicated Intent transport, legacy orchestrator history stays readable with all mutation controls disabled, and successful intent proposal confirmation navigates to the exact returned intent ID with truthful async undo behavior. Confirmations have per-proposal ownership and are bound to their originating route, in-memory session, and navigation generation, so concurrent cards in one chat complete independently while stale success or failure reports a safe non-actionable notification without mutating or navigating the newer chat. Request-local stream/load ownership prevents stale responses from overwriting newer chats, and typed policy refusals remain actionable in both home and loaded-chat states. CLI browser auth now uses an explicit state-bound v2 contract and a project-JWT-authenticated, fixed-shape CLI credential endpoint, while a temporary fail-closed v1 bridge mints separately tagged API keys for already-released clients without redirecting browser JWT compatibility back to the orchestrator.
 
 - Added a neutral, informational empty state to the intent-page Questions surfaces (IND-439 visibility-audit slice): both the fallback Questions panel and the Personal Agent chat zero-state now explain "No open questions right now — your agent asks when new matches need a decision" instead of leaving an unexplained gap. No warning colors or deprioritization cues.
 

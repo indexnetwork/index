@@ -69,9 +69,9 @@ export type IntentNetworkFinalAssignmentResult =
 export interface OnboardingState {
   completedAt?: string;
   profileConfirmedAt?: string;
-  firstSignalIntentId?: string;
+  firstIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: string;
   invitationCode?: string;
 }
@@ -102,8 +102,8 @@ export interface OpportunityActor {
   role: string;
 }
 
-/** Individual signal contributing to an opportunity score. */
-export interface OpportunitySignal {
+/** Individual intent contributing to an opportunity score. */
+export interface OpportunityIntent {
   type: string;
   weight: number;
   detail?: string;
@@ -114,7 +114,7 @@ export interface OpportunityInterpretation {
   category: string;
   reasoning: string;
   confidence: number;
-  signals?: OpportunitySignal[];
+  intents?: OpportunityIntent[];
 }
 
 /** Optional scoping context (network / conversation) for an opportunity. */
@@ -444,6 +444,25 @@ export interface UpdateNetworkSettingsData {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
+
+/**
+ * The strongest other opportunity between the viewer and one peer: an accepted
+ * one, else a pending one the viewer committed to. `topic` is what its
+ * negotiation settled on, truncated; never a transcript.
+ */
+export interface PriorOpportunity {
+  opportunityId: string;
+  status: 'accepted' | 'pending';
+  /** When it became accepted, or when the viewer said yes (ISO). */
+  at: string;
+  topic?: string;
+}
+
+/** The direct-message chat between the viewer and one peer. Never carries message text. */
+export interface PeerChat {
+  conversationId: string;
+  lastMessage?: { fromUserId: string; at: string };
+}
 
 /**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.

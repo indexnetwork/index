@@ -409,7 +409,7 @@ def _count(value: Any) -> int:
 
 
 def _attention_count(intent: dict[str, Any]) -> int:
-    """Active signals only: unanswered questions plus opportunities awaiting the user."""
+    """Active intents only: unanswered questions plus opportunities awaiting the user."""
     if intent.get("archivedAt"):
         return 0
     if _text(intent.get("status"), "active").lower() not in ("", "active"):
@@ -678,7 +678,7 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         _text(intent.get("description"))
         or _text(intent.get("payload"))
         or _text(intent.get("summary"))
-        or "Untitled signal"
+        or "Untitled intent"
     )
     lifecycle = _text(intent.get("status"), "active").lower()
     return {
@@ -688,7 +688,7 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         "status": "paused" if lifecycle == "paused" else "live",
         "pendingCount": _attention_count(intent),
         # Lets the radar time its "looking for your people" window from when the
-        # signal was made rather than from each time the page opens it.
+        # intent was made rather than from each time the page opens it.
         "createdAt": _text(intent.get("createdAt")) or None,
     }
 
@@ -770,7 +770,7 @@ def _build_dashboard(
         if existing is None:
             existing = {
                 "id": intent_id,
-                "title": title or "Untitled signal",
+                "title": title or "Untitled intent",
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
@@ -779,7 +779,7 @@ def _build_dashboard(
             }
             intents[intent_id] = existing
             order.append(intent_id)
-        elif title and existing["title"] == "Untitled signal":
+        elif title and existing["title"] == "Untitled intent":
             existing["title"] = title
         return existing
 
@@ -794,7 +794,7 @@ def _build_dashboard(
             _text(intent.get("description"))
             or _text(intent.get("payload"))
             or _text(intent.get("summary"))
-            or "Untitled signal"
+            or "Untitled intent"
         )
         obj = ensure(intent_id, title)
         obj["lifecycleStatus"] = _text(intent.get("status"), "active").lower()
@@ -877,7 +877,7 @@ def _build_dashboard(
         intent["networks"] = intent["networks"][:4]
         # Row status mirrors the mac app's real-data behavior: its mapper
         # (apps/mac/api/mappers.mjs) hardcodes matches/pipeline to zero, so the
-        # "matched"/"negotiating" branches of signalStatus never fire outside
+        # "matched"/"negotiating" branches of intentStatus never fire outside
         # demo data — real rows are only ever paused or live.
         intent["status"] = "paused" if intent["lifecycleStatus"] == "paused" else "live"
         totals["intents"] += 1
@@ -887,7 +887,7 @@ def _build_dashboard(
             totals["statusCounts"][bucket] += value
         ordered_intents.append(intent)
 
-    # Mac-app shelf order: active signals first, paused sink to the bottom
+    # Mac-app shelf order: active intents first, paused sink to the bottom
     # (stable, so server order is kept within each group).
     ordered_intents.sort(key=lambda item: item["lifecycleStatus"] == "paused")
 
@@ -1866,7 +1866,7 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 
 @full_router.post("/intents/prepare")
 def prepare_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Prepare a draft signal via REST `POST /intents/prepare`.
+    """Prepare a draft intent via REST `POST /intents/prepare`.
 
     @returns `{ status: "ready", payload, preparationReceipt }` or
              `{ status, payload, feedback, recovery }` when the draft needs answers.
@@ -1881,14 +1881,14 @@ def prepare_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str
 
 @full_router.post("/intents")
 def create_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Create a prepared signal via REST `POST /intents`.
+    """Create a prepared intent via REST `POST /intents`.
 
     @returns `{ success: True, intentId }` or the API's error payload.
     """
     body = body if isinstance(body, dict) else {}
     description = body.get("description") if isinstance(body.get("description"), str) else ""
     if not description.strip():
-        return {"success": False, "error": "A signal description is required."}
+        return {"success": False, "error": "An intent description is required."}
     request: dict[str, Any] = {"description": description}
     receipt = _text(body.get("preparationReceipt"))
     if receipt:
@@ -2073,7 +2073,7 @@ def list_conversations() -> dict[str, Any]:
     # pickup heartbeat, since the REST bridge buffers SSE). Pickup is gone,
     # and so is negotiation_wake.py itself (#1494 round-3, Option A) --
     # external-agent negotiation dispatch is offline, so there is no
-    # server-side signal left to tick or wake on at all.
+    # server-side intent left to tick or wake on at all.
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
@@ -2142,7 +2142,7 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
 
     A notification names the opportunity; the panel it opens is that person's
     profile, so the tap needs this one hop. `intentId` is the viewer's own
-    signal, so the profile can open on that signal instead of whatever was
+    intent, so the profile can open on that intent instead of whatever was
     already selected.
     """
     opportunity_id = _text(opportunity_id)
@@ -2231,7 +2231,7 @@ def user_negotiations(user_id: str) -> dict[str, Any]:
 
 @full_router.get("/agent/conversation")
 def agent_conversation(intentId: str = "") -> dict[str, Any]:
-    """Return this signal's H2A transcript and the questions still waiting on the owner."""
+    """Return this intent's H2A transcript and the questions still waiting on the owner."""
     intent_id = _text(intentId)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
@@ -2255,7 +2255,7 @@ def agent_conversation(intentId: str = "") -> dict[str, Any]:
 
 @full_router.post("/agent/message")
 def agent_message(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Send the owner's own words to this signal's personal agent."""
+    """Send the owner's own words to this intent's personal agent."""
     intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
     text = _text(body.get("text")) if isinstance(body, dict) else ""
     if not intent_id or not text:

@@ -4,7 +4,7 @@
  *
  * Usage (from the repository root):
  *   bun run ghost init <owner-email>   Create the network; prints the id for GHOST_NETWORK_ID
- *   bun run ghost seed                 Research and open ghost counterparties for member signals
+ *   bun run ghost seed                 Research and open ghost counterparties for member intents
  *   bun run ghost outreach             Email ghosts whose match a member accepted
  *   bun run ghost opt-out <email>      Remove a ghost who replied "stop"
  */

@@ -2,7 +2,7 @@ import type { ConversationSummary } from '@/services/conversation';
 
 /**
  * Returns whether a conversation belongs in the human-to-human Messages list.
- * Participant topology is the only signal: two users and no agent.
+ * Participant topology is the only intent: two users and no agent.
  */
 export function isVisibleH2HConversation(
   conversation: Pick<ConversationSummary, 'participants'>,

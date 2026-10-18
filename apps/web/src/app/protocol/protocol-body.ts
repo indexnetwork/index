@@ -28,7 +28,7 @@ index opportunity accept &lt;opportunity-id&gt;</code></pre>
     <h4>Intent detail</h4>
     <pre class="cli-code"><code><span class="cli-cmd">$ index intent show &lt;intent-id&gt;</span>
 
-<span class="cli-title">Signal Details</span>
+<span class="cli-title">Intent Details</span>
 <span class="cli-dim">────────────────────────────────────────</span>
 Status          <span class="cli-green">active</span>
 Summary         Build a secure identity layer for autonomous agents

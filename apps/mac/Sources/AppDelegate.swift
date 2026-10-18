@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
     /// higher than that: the radar column keeps a 600px floor so its funnel
-    /// strip stays on one line (mainview.jsx), and the signal column needs
+    /// strip stays on one line (mainview.jsx), and the intent column needs
     /// breathing room beside it.
     static let minContentSize = NSSize(width: 1080, height: 640)
 

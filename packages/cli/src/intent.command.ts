@@ -24,7 +24,7 @@ Usage:
 
 --source-type and --source-id are optional strings Index stores and returns
 unchanged, so a client can map its own records (such as an inferred ambient
-intent) to the published signal. Pass an empty value to clear one on update.
+intent) to the published intent. Pass an empty value to clear one on update.
 `;
 
 /** Map an optional CLI flag to a source field: absent stays undefined, empty clears. */

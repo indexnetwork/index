@@ -13,14 +13,14 @@ function MetaBit({ glyph, children }) {
   );
 }
 
-function formatSignalDate(iso) {
+function formatIntentDate(iso) {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   } catch (e) { return ""; }
 }
 
-function Signal({ sig, netName, onRemove, onOpen }) {
+function Intent({ sig, netName, onRemove, onOpen }) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -43,10 +43,10 @@ function Signal({ sig, netName, onRemove, onOpen }) {
 
       {onRemove && (
         <span
-          title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
+          title={`stop sharing this intent with ${netName}. it keeps running elsewhere`}
           style={{ flex:"0 0 auto" }}
           onClick={(e) => e.stopPropagation()}>
-          <SignalAction label="− remove" onClick={() => onRemove(sig)}/>
+          <IntentAction label="− remove" onClick={() => onRemove(sig)}/>
         </span>
       )}
     </div>
@@ -356,12 +356,12 @@ function networkIsOwner(net) {
 // `initialTab` is the tab the window opens on. The list opens a network on its
 // overview; creation opens it on access, where the invitation link is, with
 // `flash` set to the line confirming the network now exists.
-function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onDeleted, onOpenSignal, onNewSignal }) {
+function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onDeleted, onOpenIntent, onNewIntent }) {
   const [local, setLocal] = useState(net);
-  const [signals, setSignals] = useState(net.signals || []);
-  const [signalsLoading, setSignalsLoading] = useState(false);
-  const [signalsFailed, setSignalsFailed] = useState(false);
-  const [signalsTry, setSignalsTry] = useState(0);
+  const [intents, setIntents] = useState(net.intents || []);
+  const [intentsLoading, setIntentsLoading] = useState(false);
+  const [intentsFailed, setIntentsFailed] = useState(false);
+  const [intentsTry, setIntentsTry] = useState(0);
   const [undo, setUndo] = useState(null);
   const isOwner = networkIsOwner(local);
   const [tab, setTab] = useState(initialTab || "overview");
@@ -408,26 +408,26 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     const c = window.IndexApp.getClient();
     if (!c) return;
     let cancelled = false;
-    setSignalsLoading(true);
-    setSignalsFailed(false);
+    setIntentsLoading(true);
+    setIntentsFailed(false);
     c.networks.overview(local.id)
       .then((res) => {
         if (cancelled) return;
         const intents = (res && res.intents) || [];
-        setSignals(intents.map(i => ({
+        setIntents(intents.map(i => ({
           id: i.id,
           text: (i.summary && String(i.summary).trim()) || i.payload || "",
-          date: formatSignalDate(i.createdAt),
+          date: formatIntentDate(i.createdAt),
           source: i,
         })));
       })
       .catch((err) => {
-        console.warn("[network] signals failed", err);
-        if (!cancelled) setSignalsFailed(true);
+        console.warn("[network] intents failed", err);
+        if (!cancelled) setIntentsFailed(true);
       })
-      .finally(() => { if (!cancelled) setSignalsLoading(false); });
+      .finally(() => { if (!cancelled) setIntentsLoading(false); });
     return () => { cancelled = true; };
-  }, [live, local.id, signalsTry]);
+  }, [live, local.id, intentsTry]);
 
   // `live`, not `client`: getClient() hands back a new object every render, so
   // depending on it would re-run this on every render.
@@ -459,16 +459,16 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
   }, [members.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const remove = (sig) => {
-    const at = signals.findIndex(s => s.id === sig.id);
-    setSignals(signals.filter(s => s.id !== sig.id));
+    const at = intents.findIndex(s => s.id === sig.id);
+    setIntents(intents.filter(s => s.id !== sig.id));
     setUndo({ sig, at });
   };
 
   const putBack = () => {
     if (!undo) return;
-    const next = [...signals];
+    const next = [...intents];
     next.splice(undo.at, 0, undo.sig);
-    setSignals(next);
+    setIntents(next);
     setUndo(null);
   };
 
@@ -1006,11 +1006,11 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                   display:"flex", alignItems:"baseline", justifyContent:"space-between",
                   gap:12, marginBottom:12,
                 }}>
-                  <RuleLabel>Your Signals</RuleLabel>
+                  <RuleLabel>Your Intents</RuleLabel>
                   <span style={{
                     flex:"0 0 auto",
                     fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-                  }}>{signalsLoading ? "…" : `${signals.length} signal${signals.length === 1 ? "" : "s"}`}</span>
+                  }}>{intentsLoading ? "…" : `${intents.length} intent${intents.length === 1 ? "" : "s"}`}</span>
                 </div>
 
                 {undo && (
@@ -1022,7 +1022,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                     <span style={{
                       fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
                     }}>
-                      removed from {local.name}. the signal is still running everywhere else.
+                      removed from {local.name}. the intent is still running everywhere else.
                     </span>
                     <button
                       onClick={putBack}
@@ -1036,24 +1036,24 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                 )}
 
                 <div style={{ display:"grid", gap:10 }}>
-                  {signals.map(s => (
-                    <Signal
+                  {intents.map(s => (
+                    <Intent
                       key={s.id}
                       sig={s}
                       netName={local.name}
                       onRemove={remove}
-                      onOpen={onOpenSignal ? () => onOpenSignal(s) : undefined}
+                      onOpen={onOpenIntent ? () => onOpenIntent(s) : undefined}
                     />
                   ))}
                 </div>
 
-                {!signals.length && (
-                  signalsLoading ? <EmptyState tone="loading" message="loading signals…" framed={false} align="left"/>
-                  : signalsFailed ? <EmptyState tone="error" message="couldn't load signals." align="left"
-                      onRetry={() => setSignalsTry(n => n + 1)}/>
+                {!intents.length && (
+                  intentsLoading ? <EmptyState tone="loading" message="loading intents…" framed={false} align="left"/>
+                  : intentsFailed ? <EmptyState tone="error" message="couldn't load intents." align="left"
+                      onRetry={() => setIntentsTry(n => n + 1)}/>
                   : <EmptyState align="left"
-                      message="you haven't shared any signals in this network yet."
-                      action={onNewSignal ? { label:"start a signal", onClick:onNewSignal } : null}/>
+                      message="you haven't shared any intents in this network yet."
+                      action={onNewIntent ? { label:"start an intent", onClick:onNewIntent } : null}/>
                 )}
               </>
             )}

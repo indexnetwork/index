@@ -36,9 +36,9 @@ interface EventDefinition {
   toPayload(frame: EventFrame): Record<string, unknown>;
 }
 
-const intentFilter = z.string().optional().describe('Only events for this signal (UUID).');
+const intentFilter = z.string().optional().describe('Only events for this intent (UUID).');
 
-function signalEvent(description: string): EventDefinition {
+function intentEvent(description: string): EventDefinition {
   return {
     description,
     args: z.object({ intentId: intentFilter }).strict(),
@@ -49,12 +49,14 @@ function signalEvent(description: string): EventDefinition {
 
 /**
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
- * copy; the agent reads full records through the tools. `message` is omitted.
- * `principal.input` carries ids only, never the owner's text.
+ * copy. The owner reads an intent's chat with get_intent_conversation and
+ * answers with principal_send_message. The hosted negotiator writes the
+ * agent's side. `message`, `principal.input`, `question.pending` and the
+ * negotiation events are omitted; read negotiations with list_negotiations.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
-  'intent.created': signalEvent('The owner created a signal. Read it with get_intent.'),
-  'intent.updated': signalEvent('The owner changed a signal\'s goal or constraints. Read it with get_intent.'),
+  'intent.created': intentEvent('The owner created an intent. Read it with get_intent.'),
+  'intent.updated': intentEvent('The owner changed an intent\'s goal or constraints. Read it with get_intent.'),
   'opportunity.new': {
     description: 'Index has a new opportunity (a possible match) waiting on the owner. Read it with get_opportunity, then accept or pass only after asking the owner.',
     args: z.object({ intentId: intentFilter }).strict(),
@@ -88,56 +90,6 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       intentId: (data.intentId as string | null | undefined) ?? null,
       status: String(data.status),
       url: appLink('o', String(data.opportunityId)),
-    }),
-  },
-  'negotiation.turn': {
-    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity. The turn message is not included.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      opportunityId: z.string(),
-      intentId: z.string().nullable(),
-      turnIndex: z.number(),
-      summary: z.string(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ body, data = {} }) => ({
-      opportunityId: String(data.opportunityId),
-      intentId: (data.intentId as string | null | undefined) ?? null,
-      turnIndex: Number(data.turnIndex),
-      summary: body ?? '',
-      url: appLink('o', String(data.opportunityId)),
-    }),
-  },
-  'principal.input': {
-    description: 'The owner wrote in their Index agent conversation. Read get_agent_conversation for this signal. questionId is set when the message answers a question. The owner\'s text is not included.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      intentId: z.string(),
-      questionId: z.string().nullable(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ data = {} }) => ({
-      intentId: String(data.intentId),
-      questionId: typeof data.questionId === 'string' ? data.questionId : null,
-      url: appLink('i', String(data.intentId)),
-    }),
-  },
-  'question.pending': {
-    description: 'The owner\'s Index agent stopped on a question only the owner can answer. Relay it to the owner and link them to the signal.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      intentId: z.string(),
-      questionId: z.string(),
-      opportunityId: z.string().nullable(),
-      question: z.string(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ body, data = {} }) => ({
-      intentId: String(data.intentId),
-      questionId: String(data.questionId),
-      opportunityId: (data.opportunityId as string | null | undefined) ?? null,
-      question: body ?? '',
-      url: appLink('i', String(data.intentId)),
     }),
   },
 };

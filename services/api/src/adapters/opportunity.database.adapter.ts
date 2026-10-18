@@ -5,6 +5,14 @@ import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { exactLivePoolWhere } from './poolquery.shared';
 
+/** Aligned with the protocol's `PriorOpportunity`; adapters do not import the protocol. */
+interface PriorOpportunity {
+  opportunityId: string;
+  status: 'accepted' | 'pending';
+  at: string;
+  topic?: string;
+}
+
 async function attachCommittedActorIds(rows: OpportunityRow[]): Promise<OpportunityRow[]> {
   const commits = await committedActorIdsByOpportunity(rows.map((row) => row.id));
   return rows.map((row) => ({ ...row, committedActorIds: commits.get(row.id) ?? [] }));
@@ -63,7 +71,7 @@ type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * expiring it evaporates a match the human was about to approve.
  *
  * The invariant this pins: a `pending` opportunity leaves `pending` only by a
- * human decision (accept/reject) or by its signal being archived — never by
+ * human decision (accept/reject) or by its intent being archived — never by
  * background churn. The intent-archive and removed-member cascades are
  * deliberate human-caused paths and are unaffected.
  */
@@ -951,6 +959,50 @@ export class OpportunityDatabaseAdapter {
       .where(and(...conditions))
       .orderBy(desc(opportunities.updatedAt));
     return rows.map(toOpportunityRow);
+  }
+
+  async findPriorOpportunities(
+    viewerId: string,
+    peerIds: string[],
+    excludeOpportunityIds: string[] = [],
+  ): Promise<Map<string, PriorOpportunity>> {
+    const prior = new Map<string, PriorOpportunity>();
+    if (peerIds.length === 0) return prior;
+    const list = (ids: string[]) => sql.join(ids.map((id) => sql`${id}`), sql`, `);
+    // Accepted wins; else a pending row the viewer said yes to. The topic is the
+    // last standing proposal of that negotiation, truncated.
+    const rows = await db.execute<{ peerId: string; opportunityId: string; status: 'accepted' | 'pending'; at: Date | string; topic: string | null }>(sql`
+      SELECT DISTINCT ON (peer->>'userId')
+        peer->>'userId' AS "peerId",
+        o.id AS "opportunityId",
+        o.status::text AS status,
+        coalesce(c.at, o.updated_at) AS at,
+        (SELECT left(t.message, 200) FROM negotiations n
+          JOIN negotiation_turns t ON t.negotiation_id = n.id
+          WHERE n.opportunity_id = o.id AND t.action = 'propose'
+          ORDER BY t.turn_index DESC LIMIT 1) AS topic
+      FROM opportunities o
+      CROSS JOIN LATERAL jsonb_array_elements(o.actors) peer
+      CROSS JOIN LATERAL (
+        SELECT max(e.at) AS at FROM opportunity_events e
+        WHERE e.opportunity_id = o.id AND e.type = 'committed'
+          AND (o.status = 'accepted' OR e.actor_user_id = ${viewerId})
+      ) c
+      WHERE o.actors @> ${JSON.stringify([{ userId: viewerId }])}::jsonb
+        AND peer->>'userId' = ANY(ARRAY[${list(peerIds)}]::text[])
+        AND o.id <> ALL(ARRAY[${list(excludeOpportunityIds)}]::text[])
+        AND (o.status = 'accepted' OR (o.status = 'pending' AND c.at IS NOT NULL))
+      ORDER BY peer->>'userId', (o.status = 'accepted') DESC, coalesce(c.at, o.updated_at) DESC
+    `);
+    for (const row of rows) {
+      prior.set(row.peerId, {
+        opportunityId: row.opportunityId,
+        status: row.status,
+        at: new Date(row.at).toISOString(),
+        ...(row.topic ? { topic: row.topic } : {}),
+      });
+    }
+    return prior;
   }
 
   /**

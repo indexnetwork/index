@@ -1,6 +1,7 @@
 import type { ConversationMessage, Index, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
 import { briefIfMissing, screens } from "./brief.ts";
+import type { Decide } from "./decide.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
@@ -19,11 +20,15 @@ export type NegotiateHook = (
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
   model: Model;
+  /** When set, discovery screens candidates with it instead of a full briefing. */
+  decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
   onNegotiate?: (opportunityId: string) => void;
+  /** Messages the principal wrote while a wake ran, read before its next step. */
+  steer?: () => string[];
   /** When set, decides the turn instead of the built-in negotiator, unless it calls `next`. */
   negotiate?: NegotiateHook;
 }
@@ -65,7 +70,7 @@ function textOf(message: ConversationMessage): string {
  * and tagged with their opportunity: that is the whole store, and the principal
  * can read it too.
  *
- * @param messages - The agent DM slice for one signal, oldest first.
+ * @param messages - The agent DM slice for one intent, oldest first.
  * @returns The conversation as a run takes it.
  */
 export function readConversation(messages: ConversationMessage[]): ConversationEntry[] {
@@ -151,7 +156,7 @@ export interface Carried {
  * the conversation's — see {@link standing}. A stall written without its turn
  * count predates obligations and is not one.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns The standing brief, decision, stall and answer per opportunity.
  */
 export function latestBriefs(conversation: ConversationEntry[]): Map<string, Carried> {
@@ -247,11 +252,11 @@ export function standing(carried: Carried | undefined, negotiation: Negotiation)
 }
 
 /**
- * Every question this signal has ever asked, by id, so a retirement can name
+ * Every question this intent has ever asked, by id, so a retirement can name
  * the question it withdrew. Whether one is still open is the wake's judgement,
  * not the host's.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns Each question's text by id.
  */
 function questionsAsked(conversation: ConversationEntry[]): Map<string, string> {
@@ -352,7 +357,7 @@ export function encodeActions(actions: WakeAction[], context: Omit<PublishContex
  * Write what a run decided onto the owner's agent DM.
  *
  * @param client - Index for this owner.
- * @param intentId - The signal these entries belong to.
+ * @param intentId - The intent these entries belong to.
  * @param actions - What the run produced.
  * @param context - Counterpart tags, open questions, and where to report.
  */
@@ -368,7 +373,7 @@ export async function publishActions(
   if (entries.length) await client.sendPrincipal(intentId, entries);
 }
 
-/** @param details - Every negotiation on this signal. @returns The match tag per opportunity. */
+/** @param details - Every negotiation on this intent. @returns The match tag per opportunity. */
 function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReference> {
   return new Map(details.map((detail) => [
     detail.opportunityId,
@@ -377,15 +382,15 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
 }
 
 /**
- * One wake over one signal: read Index, think, publish what the wake produced.
+ * One wake over one intent: read Index, think, publish what the wake produced.
  *
  * @param client - Index for this owner.
- * @param intent - The signal to wake over.
+ * @param intent - The intent to wake over.
  * @param runtime - Model, clock, cancellation, and where to open negotiations.
  * @returns The wake's actions.
  */
 export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning" }): Promise<WakeResult> {
-  const { model, now, signal, log = () => {}, onNegotiate, reason } = runtime;
+  const { model, decide, now, signal, log = () => {}, onNegotiate, reason, steer } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -430,6 +435,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
     principalConversation,
     opportunities,
     model,
+    ...(decide ? { decide } : {}),
     client,
     now,
     signal,
@@ -450,6 +456,8 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
       for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
     onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
+    onReply: (text) => publishActions(client, intent.id, [{ type: "reply", text }], context),
+    ...(steer ? { steer } : {}),
     ...(reason ? { reason } : {}),
   });
 
@@ -457,16 +465,18 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
   await publishActions(
     client,
     intent.id,
-    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"),
+    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress" && action.type !== "reply"),
     context,
   );
-  // What the wake did is kept; what it left owed fails it, so the host retries.
-  if (result.unresolved.length) throw new Error(`Wake left stalls unresolved on ${result.unresolved.join(", ")}.`);
+  // What the wake did is kept. What it still owes stands on the conversation for
+  // the next event or restart: rerunning the whole wake for it costs more than
+  // it settles, so only a failed run is retried.
+  if (result.unresolved.length) log(`  stalls left owed on ${result.unresolved.join(", ")}`);
 
   return result;
 }
 
-/** @param conversation - The signal's conversation. @returns The queries of its newest discovery, or none. */
+/** @param conversation - The intent's conversation. @returns The queries of its newest discovery, or none. */
 function savedQueries(conversation: ConversationEntry[]): string[] {
   for (const entry of [...conversation].reverse()) {
     if (entry.kind !== "progress") continue;
@@ -481,13 +491,13 @@ function savedQueries(conversation: ConversationEntry[]): string[] {
 }
 
 /**
- * One signal's morning. People who arrived since the last morning are reached
- * along the signal's saved queries without the model. The model wakes only
+ * One intent's morning. People who arrived since the last morning are reached
+ * along the intent's saved queries without the model. The model wakes only
  * when the principal is owed something: a direct message waiting, or a stall
- * still owed. A signal with nothing open stays quiet.
+ * still owed. An intent with nothing open stays quiet.
  *
  * @param client - Index for this owner.
- * @param intent - The signal.
+ * @param intent - The intent.
  * @param runtime - Model, clock, cancellation, where to open negotiations, and the last morning, if any.
  * @returns The wake's actions, or null when the model was not needed.
  */
@@ -501,7 +511,7 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
 
   const queries = since ? savedQueries(conversation) : [];
   const screen = queries.length
-    ? { user: await client.me(), intent, principalConversation: conversation, model: rest.model, ...(rest.now ? { now: rest.now } : {}), ...(rest.signal ? { signal: rest.signal } : {}) }
+    ? { user: await client.me(), intent, principalConversation: conversation, model: rest.model, ...(rest.decide ? { decide: rest.decide } : {}), ...(rest.now ? { now: rest.now } : {}), ...(rest.signal ? { signal: rest.signal } : {}) }
     : null;
   const { found, opened } = screen
     ? await reach(client, intent, queries, since, (candidate) => screens(screen, candidate))
@@ -537,7 +547,7 @@ function principalOf(message: ConversationMessage): { summary?: boolean; kind?: 
 }
 
 /**
- * @param messages - The signal's agent DM, oldest first.
+ * @param messages - The intent's agent DM, oldest first.
  * @returns When the last negotiation summary was written, or null when there has not been one.
  */
 function lastSummaryAt(messages: ConversationMessage[]): Date | null {
@@ -551,7 +561,7 @@ function lastSummaryAt(messages: ConversationMessage[]): Date | null {
 }
 
 /**
- * @param messages - The signal's agent DM.
+ * @param messages - The intent's agent DM.
  * @returns Opportunities with a stall still in the transcript.
  */
 function stalledOpportunities(messages: ConversationMessage[]): Set<string> {
@@ -563,7 +573,7 @@ function stalledOpportunities(messages: ConversationMessage[]): Set<string> {
 }
 
 /**
- * @param negotiation - One negotiation on this signal.
+ * @param negotiation - One negotiation on this intent.
  * @param userId - The seat owner.
  * @returns Whether this seat opened it: the first turn is theirs, or nobody has spoken and it is their turn.
  */
@@ -594,7 +604,7 @@ function stillOpening(negotiation: Negotiation, userId: string, stalled: Set<str
  * sees the whole initiation.
  *
  * @param client - Index for this owner.
- * @param intent - The signal.
+ * @param intent - The intent.
  * @param runtime - Model, clock, and cancellation.
  * @returns `pending` while an opening turn is still running, `idle` when there is nothing to close, `done` when the summary note was sent.
  */
@@ -646,17 +656,17 @@ export async function closeInitiation(client: Index, intent: Intent, runtime: Ru
  *
  * An opportunity with no standing brief and decision gets them here first:
  * that is a one-opportunity run, not a wake, so a counterpart opening or
- * moving a negotiation never pulls the whole signal into a think pass.
+ * moving a negotiation never pulls the whole intent into a think pass.
  *
  * @param client - Index for this owner.
  * @param opportunityId - The negotiation to work.
- * @param intent - The signal it belongs to.
+ * @param intent - The intent it belongs to.
  * A stall still standing holds the negotiator here, whatever woke it: its
  * fact is still missing, so running it would only stall again.
  *
  * @param client - Index for this owner.
  * @param opportunityId - The negotiation to work.
- * @param intent - The signal it belongs to.
+ * @param intent - The intent it belongs to.
  * @param runtime - Model, clock, and cancellation.
  * @returns The submitted turn, the stall it wrote, or why this run took none.
  */
@@ -672,7 +682,7 @@ export async function runNegotiate(
     client.getNegotiation(opportunityId),
     client.principalInbox(intent.id),
   ]);
-  if (detail.intentId !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another signal.` } };
+  if (detail.intentId !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
   if (detail.awaitingUserId !== user.id) return { stall: { reason: "It is not this seat's turn." } };
 
   const principalConversation = readConversation(inbox.messages);
@@ -725,14 +735,14 @@ export async function runNegotiate(
 }
 
 /**
- * What one signal still owes, read from Index alone, so a restarted host or a
+ * What one intent still owes, read from Index alone, so a restarted host or a
  * failed wake loses nothing: a wake when a stall has no question yet or its
  * answer has not been decided on, and every negotiation whose turn is this
  * seat's with nothing holding it. A turn is fenced by its expected count, so
  * running one that another run already took cannot take it twice.
  *
  * @param client - Index for this owner.
- * @param intent - The signal.
+ * @param intent - The intent.
  * @returns Whether to wake, and the negotiations to run.
  */
 export async function owedWork(client: Index, intent: Intent): Promise<{ wake: boolean; negotiate: string[] }> {

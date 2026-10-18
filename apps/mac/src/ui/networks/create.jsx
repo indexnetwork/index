@@ -70,9 +70,9 @@ function CreateNetwork({ onCancel, onCreate }) {
             <div style={{
               marginTop:12,
               fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-            }}>a network is a group that shares signals. if you run a community,
+            }}>a network is a group that shares intents. if you run a community,
               event, or team, create one here, then invite your members so their
-              signals can find each other.</div>
+              intents can find each other.</div>
           </div>
 
           <div className="mac-scroll" style={{
@@ -295,8 +295,8 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                   {/* what it is, then the caveat, on their own lines: one
                       four-line paragraph in a banner is a wall */}
                   <p style={{ margin:0 }}>a network is a group that shares
-                    signals. if you run a community, event, or team, request one
-                    here and invite your members so their signals can find each
+                    intents. if you run a community, event, or team, request one
+                    here and invite your members so their intents can find each
                     other.</p>
                   <p style={{ margin:"7px 0 0" }}>network creation is still
                     early, so this gets reviewed before it goes live.</p>

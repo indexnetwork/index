@@ -4,7 +4,7 @@ import type { NegotiationOpening, NegotiationOpeningDecision } from '../../proto
  * Database operations for the opportunity lifecycle.
  */
 
-import type { CreateIntentCounterpartyData, CreateOpportunityData, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
+import type { CreateIntentCounterpartyData, CreateOpportunityData, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus, PriorOpportunity } from './entities.js';
 
 /** Opportunity persistence operations. */
 export interface DatabaseOpportunityQueries {
@@ -205,6 +205,21 @@ export interface DatabaseOpportunityQueries {
       excludeStatuses?: OpportunityStatus[];
     }
   ): Promise<Opportunity[]>;
+
+  /**
+   * For each peer, the strongest other opportunity with the viewer: an accepted
+   * one, else a pending one the viewer committed to. Peers with none are absent.
+   *
+   * @param viewerId - The viewing user
+   * @param peerIds - Counterpart user IDs
+   * @param excludeOpportunityIds - Opportunities being rendered, so one is never its own prior
+   * @returns Map of peer user ID to their prior opportunity
+   */
+  findPriorOpportunities(
+    viewerId: string,
+    peerIds: string[],
+    excludeOpportunityIds?: string[],
+  ): Promise<Map<string, PriorOpportunity>>;
 
   /**
    * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that

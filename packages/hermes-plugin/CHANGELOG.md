@@ -4,6 +4,8 @@
 ## Unreleased
 
 ### Changed
+- Answering your agent's questions shows at once: the answers appear as your replies with a thinking line, and the questions close without waiting for the server. A read that finishes after a newer one is ignored, so an answered question no longer flickers open again, and a failed send puts your answers back.
+- A message you send to your agent shows at once with a thinking line, and a message sent while it works is read before its next step. The reply is written as soon as it is ready, and a failed wake retries after 10s, 20s and 30s with a line in the conversation.
 - The bridge serves OpenAI chat completions at `/v1/chat/completions` instead of `/complete`, and the negotiator reaches it through the AI SDK's OpenAI-compatible provider.
 - The agent inbox reads briefs, decisions, progress and stalls from each entry's `record`, not from a `Brief: ` style prefix. Resolutions are hidden with stalls.
 - The negotiator runs in any Hermes server, not only the gateway: `hermes gateway run`, Desktop's `hermes serve` backend, or `hermes dashboard`. Before, it waited 60 seconds for a gateway runner, so Desktop alone never started it. A lock file in the Hermes home keeps it to one process. The plugin no longer reads the gateway's private runner reference to decide this.
@@ -16,14 +18,14 @@
 - `index-negotiator.json` is written with mode 0600.
 
 ### Added
-- Escape closes the topmost modal, or leaves a signal for the list. In a field with text it only leaves the field.
+- Escape closes the topmost modal, or leaves an intent for the list. In a field with text it only leaves the field.
 - With `plugins.entries.index-network.settings.custom_negotiator: true`, `$HERMES_HOME/index/negotiator.ts`, when present, runs before the built-in negotiator on each turn. It can take the turn, stall, or call `next()` to use the built-in negotiator. The setting is off by default, so a file written by a Hermes file tool does not run on its own. With the setting off or no file, negotiation is unchanged. The process reads both when it starts.
 - `hermes index login` signs this device in from a terminal. On a headless host, paste the address the browser lands on. `hermes index status` and `hermes index logout` go with it.
 - With no session, the plugin calls Index with `INDEX_API_KEY` (`x-api-key`). Registering an agent and choosing the negotiator still need a session.
 - `index_create_intent` and `index_list_opportunities` descriptions say when to
   reach for them: meeting, finding, hiring, funding, collaborating with, or
   being introduced to people, and asking who to meet.
-- Tool payloads get `appUrl` on signals (`/i/<intentId>`) and people
+- Tool payloads get `appUrl` on intents (`/i/<intentId>`) and people
   (`/u/<userId>`) as well as opportunities. Objects carrying both `userId` and
   `intentId` are left alone.
 - Clicking an `https://index.network` (or `dev.index.network`) `/u/<id>`,
@@ -31,15 +33,15 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
-- Dark mode: your agent's turns in the negotiation transcript are an ink bubble, not a white block, and the signal and radar panes sit on their own raised surface.
+- Dark mode: your agent's turns in the negotiation transcript are an ink bubble, not a white block, and the intent and radar panes sit on their own raised surface.
 - Radar cards put the name and summary beside a larger avatar, as the Mac and web apps do. Closed rows show "not a fit" or "missed" as plain text, like "in progress".
 - The Bun negotiator no longer inherits the gateway environment. It keeps `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, and `TZ`, plus names listed in `INDEX_NEGOTIATOR_ENV_PASSTHROUGH`. `INDEX_SESSION_TOKEN` stays in the gateway. `BUN_OPTIONS=--no-env-file` stops Bun from loading `.env` files (Bun 1.3.3 or newer). `INDEX_BUN` selects the Bun executable.
 - Brief and negotiate runs require a tool call on their first step. The bridge forwards `tool_choice` so a prose reply cannot drop the brief or the turn.
 - Opportunity status frames no longer wake the bundled negotiator.
 - A failed profile load no longer crashes Discover. The panel rendered
   `form.avatar` while `form` was still null, and the page error boundary
-  replaced the signal.
-- A `hermes://open/index-network?intent=` link opens that signal when Discover
+  replaced the intent.
+- A `hermes://open/index-network?intent=` link opens that intent when Discover
   loads or the hash changes. The plugin does not wrap `history.pushState`.
   Navigations this plugin makes on Desktop still dispatch a location event.
 - `plugin.yaml` reports the package version (was stuck at 0.43.0).
@@ -62,7 +64,7 @@
   `INDEX_SESSION_TOKEN`; it authenticates with the API key.
 - The bundled negotiator keeps a stall until its own question is answered, it
   is resolved explicitly, or the negotiation is declined, stopped, or moves on.
-  An unrelated message no longer releases every stall on the signal. On
+  An unrelated message no longer releases every stall on the intent. On
   reconnect it recovers outstanding stall questions, answers and owed turns,
   and it retries a failed wake up to three times.
 
@@ -80,7 +82,7 @@
   selected agent and its status, and choosing another agent in the dialog
   makes that agent the negotiator.
 - On desktop, home puts the pitch on the left of that header and the
-  negotiator, messages, and profile on the right. A signal puts Back on the
+  negotiator, messages, and profile on the right. An intent puts Back on the
   left and the same controls on the right.
 - Hermes stays pending, in orange, while it is the selected negotiator and
   the process is not running yet. It turns running once the process is up.
@@ -107,9 +109,9 @@
 ## 0.46.0
 
 ### Changed
-- **The H2A inbox is live, and behaves like a chat.** The signal's agent
+- **The H2A inbox is live, and behaves like a chat.** The intent's agent
   transcript now subscribes to the same realtime stream the messages panel
-  reads and re-reads on any frame naming that signal, with the 5s poll kept as
+  reads and re-reads on any frame naming that intent, with the 5s poll kept as
   the backstop for frames missed while disconnected — and as the only path in
   the desktop host, whose REST bridge cannot stream. Question options, the
   write-your-own box, and the send button are never disabled: answers send
@@ -128,16 +130,16 @@
   `stalled`, which the API rejects, so Discover painted an empty radar.
 
 ### Changed
-- Discover's signal page matches the Mac split: signal | radar, all matches
-  visible by default, pause/archive on the signal header. The H2A transcript
-  and composer stay on the signal pane as an inbox — writing is not gated on
+- Discover's intent page matches the Mac split: intent | radar, all matches
+  visible by default, pause/archive on the intent header. The H2A transcript
+  and composer stay on the intent pane as an inbox — writing is not gated on
   a selected negotiator.
 
 ## 0.45.0
 
 ### Added
-- **H2A chat on Discover's signal detail.** The signal panel now shows the
-  owner's whole conversation with their personal agent for that signal: the
+- **H2A chat on Discover's intent detail.** The intent panel now shows the
+  owner's whole conversation with their personal agent for that intent: the
   transcript, every question still waiting (with its options, a write-your-own
   answer, and the matches it is about), and a composer for messaging the agent
   directly. Answers picked across several questions are sent as one write, so
@@ -167,7 +169,7 @@
 ### Added
 - **Desktop sidecar Start/Stop.** The Discover header (next to auto-refresh)
   starts or stops this machine's negotiator. Start still wakes every open
-  signal waiting on the owner.
+  intent waiting on the owner.
 
 ### Changed
 - The negotiator Bun process is a child of the Hermes gateway: it starts with
@@ -194,9 +196,9 @@
 - **Hermes is the speaker, not the bound-conversation negotiator.** The
   previous path — `index_configure_personal_agent`, `index_focus_intent`, a
   sqlite bind row, reply-address routing, `auxiliary_client.call_llm` /
-  `/complete`, and one announced Hermes session per signal — is gone. The
+  `/complete`, and one announced Hermes session per intent — is gone. The
   sidecar still runs `@indexnetwork/agent`. Hermes now speaks through
-  Index-platform sessions: one think session per signal (`{intentId}:think`)
+  Index-platform sessions: one think session per intent (`{intentId}:think`)
   and one speaker session per match (`{opportunityId}`). Owner text is
   accepted only on the think session. Hosted Index still uses `Agent.run`.
 
@@ -209,11 +211,11 @@
 
 ### Added
 - Each submitted turn is written into a Hermes session on the Index platform,
-  one chat per signal, so the session list shows Hermes's Index copy without a
+  one chat per intent, so the session list shows Hermes's Index copy without a
   bound owner conversation.
 
 ### Fixed
-- Background wakes no longer treat every signal as foreign. `GET /intents/:id`
+- Background wakes no longer treat every intent as foreign. `GET /intents/:id`
   is already owner-scoped and does not return `userId`, so the sidecar's
   ownership check always failed and no turn ever started.
 - Opening Discover while a session tile covers the workspace. The tab is
@@ -253,13 +255,13 @@
   owner's conversation and this machine. **Bun is now required** to run the
   personal agent.
 - Owner input is handed to the negotiator and reported consumed, so Hermes no
-  longer reasons about a message that belongs to a focused signal, and can no
+  longer reasons about a message that belongs to a focused intent, and can no
   longer answer on the owner's behalf. A refused or undeliverable message falls
   through to ordinary Hermes conversation instead of being swallowed.
 - Negotiation state moved out of `principal.sqlite3`, which now holds only which
   account and agent this machine negotiates for. The inbox, H2A transcript,
   questions, and match progress are the agent package's own checkpoints, one JSON
-  file per signal under `$HERMES_HOME/index-network/negotiator/`. **Existing
+  file per intent under `$HERMES_HOME/index-network/negotiator/`. **Existing
   in-flight negotiation state does not migrate**; matches are re-read from Index
   and reconsidered from scratch.
 - Questions from this negotiator are delivered only to the bound Hermes
@@ -273,7 +275,7 @@
   negotiator no longer reaches Index through Hermes tools.
 - Hooks `pre_tool_call`, `transform_llm_output`, and `post_llm_call`, and the
   `personal-agent` plugin skill. The event platform no longer opens a Hermes chat
-  per signal, so there is no session to scope, filter, or render output for.
+  per intent, so there is no session to scope, filter, or render output for.
 
 ## 0.40.0
 
@@ -319,8 +321,8 @@
 - Native personal-agent negotiation using Hermes's configured model, tools, and
   skills. Work is woken by the owner's Index event stream: the plugin registers an
   `index` gateway platform that follows `GET /events` and opens one bounded run,
-  in a chat of its own, for the signal a frame names. Frames arriving together for
-  one signal collapse into a single run, and every reconnection reconciles against
+  in a chat of its own, for the intent a frame names. Frames arriving together for
+  one intent collapse into a single run, and every reconnection reconciles against
   `GET /negotiations`, so a frame missed while the gateway was down costs nothing.
 - A durable private inbox with stable questions, scoped native owner replies,
   context revisions, and one submission attempt per match in each native run.
@@ -336,7 +338,7 @@
 ## 0.37.0
 
 - Call the Index REST API directly over HTTPS instead of shelling out to
-  `index tool call`. Every plugin function maps to a resource: signals through
+  `index tool call`. Every plugin function maps to a resource: intents through
   `/intents` (plus `/intents/:id/networks` for community links), communities
   through `/networks` with a `/network-requests` fallback when creation is
   staff-gated, opportunities through `/opportunities`, profile research through

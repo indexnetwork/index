@@ -44,8 +44,8 @@ async function publicAvatar(email: string): Promise<string | null> {
   }
 }
 
-/** Ghost counterparties each member signal is introduced to. */
-const GHOSTS_PER_SIGNAL = 3;
+/** Ghost counterparties each member intent is introduced to. */
+const GHOSTS_PER_INTENT = 3;
 const GHOST_RIDER_EMAIL = 'ghost-rider@index.network';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** A shared inbox is a firm, not a person. */
@@ -73,14 +73,14 @@ export async function createGhostNetwork(ownerEmail: string): Promise<string> {
   if (!owner) throw new Error(`No user with email ${ownerEmail}`);
   const network = await networkService.createNetwork(owner.id, {
     title: 'Ghost',
-    prompt: 'People found on the public web who are not on Index yet. Join to have your signals matched with them.',
+    prompt: 'People found on the public web who are not on Index yet. Join to have your intents matched with them.',
     joinPolicy: 'anyone',
   });
   return network.id;
 }
 
 /**
- * The account that introduces every ghost match. It owns no signals, so it
+ * The account that introduces every ghost match. It owns no intents, so it
  * can introduce any pair in the Ghost network.
  *
  * @param networkId - The Ghost network.
@@ -96,8 +96,8 @@ async function ghostRider(networkId: string): Promise<string> {
 
 /**
  * Seat someone found on the web as an unclaimed member: an unverified user in
- * the Ghost network with signals inferred from public sources. Their morning
- * wake is off and nothing announces their signals, so they only ever negotiate.
+ * the Ghost network with intents inferred from public sources. Their morning
+ * wake is off and nothing announces their intents, so they only ever negotiate.
  *
  * @param networkId - The Ghost network.
  * @param person - Who research found.
@@ -105,8 +105,8 @@ async function ghostRider(networkId: string): Promise<string> {
  */
 async function upsertGhost(networkId: string, person: FoundPerson): Promise<string | null> {
   const email = person.email?.trim().toLowerCase();
-  const signals = person.signals.map((signal) => signal.trim()).filter(Boolean);
-  if (!email || !EMAIL_REGEX.test(email) || SHARED_INBOX.test(email) || !signals.length) return null;
+  const intents = person.intents.map((intent) => intent.trim()).filter(Boolean);
+  if (!email || !EMAIL_REGEX.test(email) || SHARED_INBOX.test(email) || !intents.length) return null;
 
   // Soft-deleted rows count: someone who opted out is never seated again.
   const [existing] = await db.select({
@@ -116,7 +116,7 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
   }).from(schema.users).where(eq(schema.users.email, email)).limit(1);
   if (existing) return !existing.emailVerified && !existing.deletedAt ? existing.id : null;
 
-  const [embeddings, avatar] = await Promise.all([embedder.generate(signals) as Promise<number[][]>, publicAvatar(email)]);
+  const [embeddings, avatar] = await Promise.all([embedder.generate(intents) as Promise<number[][]>, publicAvatar(email)]);
   return db.transaction(async (tx) => {
     const [user] = await tx.insert(schema.users)
       .values({ email, name: person.name, intro: person.headline, avatar, emailVerified: false })
@@ -131,15 +131,15 @@ async function upsertGhost(networkId: string, person: FoundPerson): Promise<stri
     await tx.insert(schema.networkMembers).values({ networkId, userId: user.id, permissions: ['member'] });
     await tx.insert(schema.userNotificationSettings).values({ userId: user.id, preferences: { morningBrief: false } });
     const rows = await tx.insert(schema.intents)
-      .values(signals.map((payload, i) => ({ payload, userId: user.id, embedding: embeddings[i] })))
+      .values(intents.map((payload, i) => ({ payload, userId: user.id, embedding: embeddings[i] })))
       .returning({ id: schema.intents.id });
     await tx.insert(schema.intentNetworks).values(rows.map((row) => ({ intentId: row.id, networkId })));
     return user.id;
   });
 }
 
-/** Active Ghost-network signals owned by a verified member, with how many ghosts each already has. */
-function memberSignals(networkId: string, intentId?: string) {
+/** Active Ghost-network intents owned by a verified member, with how many ghosts each already has. */
+function memberIntents(networkId: string, intentId?: string) {
   return db.execute<{ id: string; payload: string; ghosts: number }>(sql`
     select i.id, i.payload,
       (select count(*)::int from negotiations g
@@ -158,20 +158,20 @@ function memberSignals(networkId: string, intentId?: string) {
 }
 
 /**
- * Research up to 3 ghosts for one signal and have Ghost rider introduce them.
- * The member's agent speaks first. A signal that is not shared in the Ghost
+ * Research up to 3 ghosts for one intent and have Ghost rider introduce them.
+ * The member's agent speaks first. An intent that is not shared in the Ghost
  * network, or that already has its ghosts, introduces nobody.
  *
- * The creation event is published before the signal is linked to its networks,
- * so a member's signal is checked once more after a short wait.
+ * The creation event is published before the intent is linked to its networks,
+ * so a member's intent is checked once more after a short wait.
  *
- * @param intentId - The signal to introduce for.
+ * @param intentId - The intent to introduce for.
  * @returns How many introductions were opened.
  */
-export async function introduceSignal(intentId: string): Promise<number> {
+export async function introduceIntent(intentId: string): Promise<number> {
   const networkId = ghostNetworkId();
-  let [signal] = await memberSignals(networkId, intentId);
-  if (!signal) {
+  let [intent] = await memberIntents(networkId, intentId);
+  if (!intent) {
     const [member] = await db.execute<{ id: string }>(sql`
       select i.id from intents i
       join network_members m on m.user_id = i.user_id and m.network_id = ${networkId} and m.deleted_at is null
@@ -179,42 +179,42 @@ export async function introduceSignal(intentId: string): Promise<number> {
     `);
     if (!member) return 0;
     await Bun.sleep(2000);
-    [signal] = await memberSignals(networkId, intentId);
-    if (!signal || signal.ghosts >= GHOSTS_PER_SIGNAL) return 0;
-  } else if (signal.ghosts >= GHOSTS_PER_SIGNAL) return 0;
+    [intent] = await memberIntents(networkId, intentId);
+    if (!intent || intent.ghosts >= GHOSTS_PER_INTENT) return 0;
+  } else if (intent.ghosts >= GHOSTS_PER_INTENT) return 0;
 
   const riderId = await ghostRider(networkId);
   let paired = 0;
   try {
-    for (const person of await findPeople(signal.payload, GHOSTS_PER_SIGNAL - signal.ghosts)) {
+    for (const person of await findPeople(intent.payload, GHOSTS_PER_INTENT - intent.ghosts)) {
       const ghostId = await upsertGhost(networkId, person);
       if (!ghostId) continue;
       const [closest] = await db.execute<{ id: string }>(sql`
         select g.id from intents g
         join intent_networks a on a.intent_id = g.id and a.network_id = ${networkId}
         where g.user_id = ${ghostId} and g.archived_at is null
-        order by g.embedding <=> (select embedding from intents where id = ${signal.id}) nulls last
+        order by g.embedding <=> (select embedding from intents where id = ${intent.id}) nulls last
         limit 1
       `);
       if (!closest) continue;
-      const outcome = await intentService.openOpportunity(riderId, networkId, [signal.id, closest.id], person.reason);
+      const outcome = await intentService.openOpportunity(riderId, networkId, [intent.id, closest.id], person.reason);
       if (outcome.kind === 'ok') paired++;
     }
   } catch (error) {
-    logger.error('Ghost seeding failed for a signal', { intentId, error: error instanceof Error ? error.message : String(error) });
+    logger.error('Ghost seeding failed for an intent', { intentId, error: error instanceof Error ? error.message : String(error) });
   }
   return paired;
 }
 
 /**
- * Introduce ghosts for every member signal still under the cap.
+ * Introduce ghosts for every member intent still under the cap.
  *
  * @returns How many introductions were opened.
  */
 export async function seedPass(): Promise<number> {
-  const signals = await memberSignals(ghostNetworkId());
+  const intents = await memberIntents(ghostNetworkId());
   let paired = 0;
-  for (const signal of signals) paired += await introduceSignal(signal.id);
+  for (const intent of intents) paired += await introduceIntent(intent.id);
   return paired;
 }
 
@@ -225,11 +225,11 @@ export async function seedPass(): Promise<number> {
  */
 export async function outreachPass(): Promise<number> {
   const networkId = ghostNetworkId();
-  const rows = await db.execute<{ id: string; email: string; member_name: string; member_signal: string; reason: string | null }>(sql`
+  const rows = await db.execute<{ id: string; email: string; member_name: string; member_intent: string; reason: string | null }>(sql`
     select o.id,
       case when not iu.email_verified then iu.email else ru.email end as email,
       case when iu.email_verified then iu.name else ru.name end as member_name,
-      case when iu.email_verified then ii.payload else ri.payload end as member_signal,
+      case when iu.email_verified then ii.payload else ri.payload end as member_intent,
       coalesce(o.metadata->'introducer'->>'context',
         (select t.message from negotiation_turns t where t.negotiation_id = g.id order by t.turn_index desc limit 1)) as reason
     from negotiations g
@@ -255,7 +255,7 @@ export async function outreachPass(): Promise<number> {
   let sent = 0;
   for (const row of rows) {
     try {
-      const email = ghostOutreachTemplate({ memberName: row.member_name, memberSignal: row.member_signal, reason: row.reason });
+      const email = ghostOutreachTemplate({ memberName: row.member_name, memberIntent: row.member_intent, reason: row.reason });
       const result = await executeSendEmail({ to: row.email, ...email }) as { skipped?: boolean };
       if (result.skipped) continue;
       await db.execute(sql`

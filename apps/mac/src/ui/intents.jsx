@@ -1,9 +1,9 @@
 /* global useIndexEnv */
 // Intents, the shelf of saved searches. This is the app's hub:
-// brand promise ("find your others"), active signals, and the entry point for
-// a new signal.
+// brand promise ("find your others"), active intents, and the entry point for
+// a new intent.
 
-/* How tall the signals shelf is allowed to get. Six rows, then it scrolls.
+/* How tall the intents shelf is allowed to get. Six rows, then it scrolls.
    IntentRow's own height and the shelf's gap live here so the cap stays
    correct if either changes; a hardcoded pixel maxHeight would quietly start
    cutting a row in half. */
@@ -63,7 +63,7 @@ function NetworksRow({ count, onClick }) {
   );
 }
 
-// Every person-to-person thread, including ones whose signal is gone. Same
+// Every person-to-person thread, including ones whose intent is gone. Same
 // shelf treatment as the networks row below it.
 function ConversationsRow({ unread = 0, onClick }) {
   return (
@@ -99,7 +99,7 @@ function ConversationsRow({ unread = 0, onClick }) {
 // living inside one network's access tab. It sits under the pitch, not on the
 // shelf: inviting someone is the next thing the copy asks of you, while the
 // shelf rows are places to go. Pale green with green ink and a gem mark so it
-// reads as an action without competing with the orange "new signal".
+// reads as an action without competing with the orange "new intent".
 function InviteButton({ onClick }) {
   const [hover, setHover] = useState(false);
   return (
@@ -275,13 +275,13 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     env.refreshIntents();
   }, [env.live, env.refreshIntents]);
 
-  // A just-onboarded user has no signals yet, the hub opens empty. Once any
-  // signals are in the snapshot, show them — `fresh` must not hide the ones
+  // A just-onboarded user has no intents yet, the hub opens empty. Once any
+  // intents are in the snapshot, show them — `fresh` must not hide the ones
   // that remain after an archive.
-  const [signals, setSignals] = useState(() => env.data.INTENTS || []);
+  const [intents, setIntents] = useState(() => env.data.INTENTS || []);
   useEffect(() => {
     const intents = env.data.INTENTS || [];
-    setSignals(fresh && intents.length === 0 ? [] : intents);
+    setIntents(fresh && intents.length === 0 ? [] : intents);
   }, [env.data, fresh]);
 
   const [hovered, setHovered] = useState(null);
@@ -289,7 +289,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   const [showInvite, setShowInvite] = useState(false);
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
-  // new-signal row below can line up with the rows inside. Measured rather
+  // new-intent row below can line up with the rows inside. Measured rather
   // than hardcoded to 16px, it's zero whenever the list fits.
   const shelfRef = useRef(null);
   const [shelfGutter, setShelfGutter] = useState(0);
@@ -302,7 +302,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [signals.length, showAgents]);
+  }, [intents.length, showAgents]);
 
   // Settings, networks and negotiations are owned by the app shell, so that the
   // Index and View menus open the same screens; the hub only asks for one.
@@ -332,7 +332,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     );
   }
 
-  const visible  = signals.filter(i => i && i.status !== "archived");
+  const visible  = intents.filter(i => i && i.status !== "archived");
   const active   = visible.filter(i => i.status === "active");
   const idle     = visible.filter(i => i.status === "idle");
   const paused   = visible.filter(i => i.status === "paused");
@@ -355,7 +355,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
         minWidth: 0,
         maxHeight: "calc(100vh - 112px)",
       }}>
-        {/* the shelf inside already says "your signals"; the title bar only has
+        {/* the shelf inside already says "your intents"; the title bar only has
             to say which app the window belongs to */}
         <MacWindow title="index" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
@@ -363,7 +363,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
             display:"grid",
             // fluid, not px floors: 260+360+gap+padding is wider than the
             // window once it's narrow, and the tracks would keep their floor
-            // and push the signal list out through the right-hand frame
+            // and push the intent list out through the right-hand frame
             gridTemplateColumns:"minmax(0, 0.85fr) minmax(0, 1.15fr)",
             gap:24,
             flex:1,
@@ -401,7 +401,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                   fontSize:13, lineHeight:1.5, maxWidth:540,
                   fontFamily:"var(--mac-sans)",
                 }}>
-                  start a signal by talking to your agent. it negotiates it with the
+                  start an intent by talking to your agent. it negotiates it with the
                   other agents and makes an intro when both sides are interested.
                 </p>
                 <InviteButton onClick={() => setShowInvite(true)}/>
@@ -424,14 +424,14 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
               display:"flex",
               flexDirection:"column",
             }}>
-              <RuleLabel>your signals</RuleLabel>
+              <RuleLabel>your intents</RuleLabel>
               <div style={{ height:8 }}/>
 
-              {/* Sized to its content when the list is short (so the new-signal
+              {/* Sized to its content when the list is short (so the new-intent
                   row sits right under the last one), and capped at six rows
                   once it is long: past that the shelf reads as a backlog rather
                   than the set of things you are running, and "start a new
-                  signal" drifts further down the screen. The rest scroll. */}
+                  intent" drifts further down the screen. The rest scroll. */}
               <div ref={shelfRef} className="mac-scroll" style={{
                 flex:"0 1 auto", minHeight:0, overflowY:"auto",
                 maxHeight: SHELF_VISIBLE_ROWS * SHELF_ROW_H
@@ -439,9 +439,9 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                 display:"flex", flexDirection:"column", gap: SHELF_ROW_GAP,
                 paddingRight: 6,
               }}>
-                {/* Same line as web and Hermes. The new signal row below is its action. */}
+                {/* Same line as web and Hermes. The new intent row below is its action. */}
                 {ordered.length === 0 && (
-                  <EmptyState message="no signals yet. start one and your agent goes looking."/>
+                  <EmptyState message="no intents yet. start one and your agent goes looking."/>
                 )}
                 {ordered.map(intent => (
                   <IntentRow
@@ -455,7 +455,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                 ))}
               </div>
 
-              {/* Starting a signal is what this screen is for, so it sits
+              {/* Starting an intent is what this screen is for, so it sits
                   outside the shelf, a long list scrolls behind it rather than
                   pushing it out of reach. The right padding matches the rows
                   above, which sit clear of the scrollbar when one is showing. */}
@@ -475,7 +475,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   );
 }
 
-/* A signal reads as what it is after, not as a sentence about wanting it. The
+/* An intent reads as what it is after, not as a sentence about wanting it. The
    summary that comes back from the API is written as prose ("Receive feedback
    on a launch video for an AI product from designers, founders, ..."), so the
    shelf drops the opening verb, lowercases it, and cuts it at a word so no row
@@ -484,9 +484,9 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 const TITLE_MAX = 45;
 const TITLE_LEAD = /^(receive|explore|find|discover|connect with|connect to|connect|meet|seeking|seek|looking for|look for|get)\s+/;
 
-function signalTitle(raw) {
+function intentTitle(raw) {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ").replace(TITLE_LEAD, "");
-  if (!text) return "untitled signal";
+  if (!text) return "untitled intent";
   if (text.length <= TITLE_MAX) return text;
   const head = text.slice(0, TITLE_MAX + 1);
   const lastSpace = head.lastIndexOf(" ");
@@ -494,10 +494,10 @@ function signalTitle(raw) {
   return cut.replace(/[\s,;:.·/+-]+$/, "") + "…";
 }
 
-/* What the signal is doing, in its own words: scanning, mid-negotiation with
+/* What the intent is doing, in its own words: scanning, mid-negotiation with
    another agent, resolved, or ended. "running" said the process was alive
    without saying what it was doing with the time. */
-function signalStatus(intent) {
+function intentStatus(intent) {
   if (intent.status === "archived") return "closed";
   if (intent.status === "paused") return "paused";
   if (intent.matches > 0) return "matched";
@@ -508,11 +508,11 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  // Unanswered questions plus opportunities awaiting you, on a live signal.
+  // Unanswered questions plus opportunities awaiting you, on a live intent.
   const pending = intent.status === "active" ? (intent.pending ?? 0) : 0;
   const hasQ = pending > 0;
-  const statusLabel = signalStatus(intent);
-  // the blink is the signal working. only the states that are actually running
+  const statusLabel = intentStatus(intent);
+  // the blink is the intent working. only the states that are actually running
   // get it, so a shelf of closed and matched rows stays still
   const running = statusLabel === "live" || statusLabel === "negotiating";
 
@@ -527,7 +527,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         height: SHELF_ROW_H,
         // the shelf is a column flex container, so without this the rows
         // shrink to share whatever height is left instead of the shelf
-        // scrolling, squashing every signal and pushing the question count
+        // scrolling, squashing every intent and pushing the question count
         // out through the row's own border
         flex: "0 0 auto",
         boxSizing: "border-box",
@@ -549,7 +549,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
           lineHeight: 1.2,
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
         }} title={intent.title}>
-          {signalTitle(intent.title)}
+          {intentTitle(intent.title)}
         </div>
         <span style={{
           display:"flex", alignItems:"center", gap:6,
@@ -604,7 +604,7 @@ function NewIntentRow({ onClick }) {
         <div style={{
           fontFamily:"var(--mac-sans)", fontSize: 15, fontWeight: 700,
           letterSpacing:-0.2,
-        }}>new signal</div>
+        }}>new intent</div>
       </div>
     </button>
   );

@@ -59,7 +59,7 @@ let cache: { raw: string; origins: ReadonlySet<string> } | null = null;
  *
  * A malformed entry is skipped and named in a warning, not fatal. Failing the
  * boot would let one typo in one entry take the whole API down, and silently
- * dropping it is how a trusted set quietly shrinks to nothing with no signal;
+ * dropping it is how a trusted set quietly shrinks to nothing with no intent;
  * the warning is emitted once per distinct `TRUSTED_ORIGINS` value, so it lands
  * at startup on the first request rather than on every request. Skipping can
  * only ever shrink the set — it never widens it.

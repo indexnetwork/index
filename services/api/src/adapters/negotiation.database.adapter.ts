@@ -44,7 +44,7 @@ export interface IntentCounterpartyPair {
   introducer?: { userId: string; context: string };
 }
 
-/** A signal eligible to hold a seat in a negotiation, with its owner. */
+/** An intent eligible to hold a seat in a negotiation, with its owner. */
 export interface SeatedIntent {
   intentId: string;
   userId: string;
@@ -116,7 +116,7 @@ export interface NegotiationState {
   eligible: boolean;
   turns: { seatUserId: string; action: NegotiationTurnAction; message: string }[];
 }
-export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
+export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive'
   | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
   | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
@@ -146,11 +146,11 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * A signal still worth negotiating over: not paused, not removed. Null status
+ * An intent still worth negotiating over: not paused, not removed. Null status
  * is legacy-active, matching `activeIntentLifecycleWhere` elsewhere.
  *
  * A negotiation needs both sides live to be workable, so this gates on the pair
- * rather than on the caller's own signal.
+ * rather than on the caller's own intent.
  *
  * @returns A Drizzle predicate over the `intents` table.
  */
@@ -212,12 +212,12 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Resolve a signal that may hold a seat in a negotiation on this network:
+   * Resolve an intent that may hold a seat in a negotiation on this network:
    * unarchived, still discoverable, and shared into the network.
    *
-   * @param intentId - The signal to seat.
+   * @param intentId - The intent to seat.
    * @param networkId - The network the negotiation would sit in.
-   * @returns The signal with its owner, or null when it is not seated there.
+   * @returns The intent with its owner, or null when it is not seated there.
    */
   async seatedIntent(intentId: string, networkId: string): Promise<SeatedIntent | null> {
     const [row] = await db
@@ -309,7 +309,7 @@ export class NegotiationDatabaseAdapter {
             category: 'collaboration',
             reasoning: pair.reasoning,
             confidence: pair.score / 100,
-            signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
+            intents: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
           },
           context: { networkId: pair.networkId },
           confidence: String(pair.score / 100),
@@ -350,7 +350,7 @@ export class NegotiationDatabaseAdapter {
    * The caller's negotiations, newest first.
    *
    * @param userId - The seat owner.
-   * @param options - Narrow to one signal, or to records still open.
+   * @param options - Narrow to one intent, or to records still open.
    * @returns One view per negotiation the caller sits in.
    */
   async listForUser(
@@ -374,9 +374,9 @@ export class NegotiationDatabaseAdapter {
     }
     if (options.open) {
       conditions.push(isNull(negotiations.settledAt));
-      // Open means workable. A paused or removed signal on either side owes
+      // Open means workable. A paused or removed intent on either side owes
       // nobody a turn, so it drops out of the queue without settling the
-      // record — resuming the signal brings it back.
+      // record — resuming the intent brings it back.
       conditions.push(inArray(
         negotiations.initiatorIntentId,
         db.select({ id: intents.id }).from(intents).where(liveIntentWhere()),

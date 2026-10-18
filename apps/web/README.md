@@ -29,9 +29,9 @@ src/
   services/     Typed fetch wrappers for the API service
 ```
 
-## Signal intake
+## Intent intake
 
-`/i/new` uses `components/signals/GuidedSignalIntake.tsx` (or `FastSignalIntake` when that flag is on): live `ask_user_question` cards, answered summaries, proposal confirmation, exact intent ID, retry, and duplicate-protection behavior. Session reset and kickoff are split across a committed render so kickoff always uses the fresh unscoped transport state.
+`/i/new` uses `components/intents/GuidedIntentIntake.tsx` (or `FastIntentIntake` when that flag is on): live `ask_user_question` cards, answered summaries, proposal confirmation, exact intent ID, retry, and duplicate-protection behavior. Session reset and kickoff are split across a committed render so kickoff always uses the fresh unscoped transport state.
 
 ## Scripts
 

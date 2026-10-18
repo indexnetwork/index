@@ -4,7 +4,14 @@
 
 ### Added
 
+- `OpportunityCard` gains `priorOpportunity` (an earlier accepted opportunity, or a pending one the viewer already said yes to) and `peerChat` (the viewer's existing direct chat with the counterpart), two separate facts. The card presenter gets the prior opportunity and no longer words a known contact as new. Types `PriorOpportunity` and `PeerChat` are exported.
+- `OpportunityCardsDatabase` and `OpportunityControllerDatabase` require `findPriorOpportunities(viewerId, peerIds, excludeOpportunityIds?)` and `findPeerChats(viewerId, peerIds)`, both batched and read-only.
 - `OpportunityDetection.source` gains `'introducer'`, stamped on opportunities a third party opens.
+- Protocol agent requests to OpenRouter carry `HTTP-Referer` and `X-Title` headers, so their spend is attributed apart from the hosted agent's, and a `trace` and `metadata` (`service: "protocol"`, `operation`) named by the agent key (for example `intentInferrer` or `chat`).
+
+### Fixed
+
+- `listOpportunityCards` no longer drops accepted opportunities that rank beyond the read window.
 
 ## 66.0.0
 
@@ -339,7 +346,7 @@ pin a supported release, use `latest`.
 - Agent-facing tool descriptions, scope-refusal messages, and `read_docs`
   guidance now say "network" or "community" wherever they said "index".
 - The intent assignment pipeline keeps its verb naming (`getIntentForIndexing`,
-  `indexer.graph.ts`, `IndexedIntent`): those describe assigning a signal, not
+  `indexer.graph.ts`, `IndexedIntent`): those describe assigning an intent, not
   the community noun.
 
 ## 48.1.0 - 2026-09-04
@@ -359,7 +366,7 @@ pin a supported release, use `latest`.
 ### Added
 
 - **`Intents.clarify({ payload, answers? })` → `{ payload, questions }`.** One
-  stateless round of signal clarification: with no answers it returns the payload
+  stateless round of intent clarification: with no answers it returns the payload
   untouched plus the questions worth asking; with answers it rewrites the payload
   so those answers are stated in it and returns whatever is still open. Nothing
   is stored, so skipping is always valid. `ClarifyAnswer`, `ClarifyInput`,
@@ -372,14 +379,14 @@ pin a supported release, use `latest`.
   `FollowUpPlan`, `SynthesisInput` and `SynthesisResult` are removed along with
   the pack generator and intake orchestrator. Clarification is `clarify` now, and
   it holds no run state — hosts can drop their intake pack and run storage.
-- **BREAKING: signals are no longer proposed before they are created.** The
+- **BREAKING: intents are no longer proposed before they are created.** The
   dry-run branch of `create_intent`, the `intent_proposal` fence it emitted and
   the `autoApprove` argument are gone. `create_intent({ description, networkIds })`
   persists directly, so hosts can drop their proposal storage and their confirm
   and reject endpoints.
 - **BREAKING: networks are no longer assigned by a model.** `IntentNetworkIndexer`,
   `IntentIndexingResult`, `Intents.indexIntent` and the evaluated branch of the
-  indexer graph are removed, and so is the threshold scoring behind them. A signal
+  indexer graph are removed, and so is the threshold scoring behind them. An intent
   reaches exactly the networks its owner names on create or links afterwards with
   `create_intent_index`.
 - **BREAKING: agents no longer have transports.** `AgentTransportRecord`,
@@ -517,7 +524,7 @@ No aliases or compatibility shims: hosts must drop the deleted ports.
   refs and the `personal-agent.e2e` spec — are deleted. Index no longer runs an
   agent; a host that wants one builds it as a client over REST/MCP.
 - **BREAKING: `ChatGraph` and the whole chat capability are gone.**
-  `ChatGraphFactory`, `ChatAgent`, the personas (`SIGNAL_PERSONA`,
+  `ChatGraphFactory`, `ChatAgent`, the personas (`INTENT_PERSONA`,
   `ONBOARDING_PERSONA`, `withPersona`), the streamer, suggester, summarizer,
   title generator, interrupt classifier, question-dedup, chat state/tools/utils
   and the chat-streaming types no longer exist. There is no H2A chat runtime in
@@ -727,14 +734,14 @@ remains.
 
 - **`NegotiationGraph` refuses to open an opportunity whose introducers have
   not all approved it.** The gate now lives on the write, not only where
-  discovery decides which signals to wake, so no caller can reach past it.
+  discovery decides which intents to wake, so no caller can reach past it.
 - **New negotiation pause reason `open_failed`.** `NEGOTIATION_PAUSE_REASONS`
   gains it, and `{ negotiationId, pause }` now accepts
   `NegotiationSystemPauseReason` (`'counterparty_silent' | 'open_failed'`)
   rather than the single literal. A kickoff whose open failed after `init`
   created the task compensates it into this pause, so the round's active count
   can still reach zero. Unlike `turn_cap` it stays re-kickable.
-- **A negotiation binds a signal PER SEAT.** `NegotiationTaskMetadata.intentId`
+- **A negotiation binds an intent PER SEAT.** `NegotiationTaskMetadata.intentId`
   and `.round` are replaced by `seats: Record<string, NegotiationSeatBinding>`
   keyed by intent id (`{ userId, round }`), and `setNegotiationRound` becomes
   `bindNegotiationSeat(taskId, intentId, binding)`. Both sides' IS-A can now
@@ -750,7 +757,7 @@ remains.
   the caller's own brief only. The `brief` on the graph's open/resume inputs is
   the INITIATING seat's, never the counterparty's.
 - **`NegotiationGraphDatabase` gains `getPausedNegotiationTasksForIntent`** —
-  the signal-scoped read of every paused, unresolved negotiation. Reflect
+  the intent-scoped read of every paused, unresolved negotiation. Reflect
   reasons over that, not over one round: a negotiation a later kickoff left
   behind keeps its old round, and a round-scoped read hid it from every future
   verdict.
@@ -765,11 +772,11 @@ remains.
   `END` without it, so a chat- or MCP-run discovery persists matches nobody is
   woken for.
 - **`PersonalAgentDeps` gains `wakeForMatches`** — the agent wakes its own
-  signal again for a discovery batch that landed after the turn read its match
+  intent again for a discovery batch that landed after the turn read its match
   list.
 - **The retired `queueNegotiateExisting` host callback is removed** from
   `ToolDeps` and `OpportunityGraphFactory`. Approving the final introducer
-  gate emits `matches_ready` for the source participant's bound signal; it
+  gate emits `matches_ready` for the source participant's bound intent; it
   never directly opens or resumes a negotiation.
 
 - **AgentGraph: one PersonalAgent, routed on the shape of its input.** New
@@ -781,7 +788,7 @@ remains.
   what ACT does. IS-A's verbs are `message_user`, `ask`, `kickoff`, `promote`,
   `reject`, `note_dossier`, `retire_dossier`, `accept_opportunity`; there is
   no `wait`. Asking BLOCKS acting: a turn that asks executes no verdicts and
-  starts no negotiations. The host implements the ports (signal DM, dossier,
+  starts no negotiations. The host implements the ports (intent DM, dossier,
   act ledger, reply transport, the owner's accept path, matches list).
 - **The interim `NegotiationAuthor` is deleted.** `NegotiationGraphDeps.author`
   is now a required `NegotiationTurnAuthor` port taking ids only
@@ -790,15 +797,15 @@ remains.
   Removed exports: `NegotiationAuthor`, `NegotiationAuthorInput`.
 - **Discovery no longer opens negotiations.** The opportunity graph's
   `negotiate` node is replaced by a `matches_ready` node that emits ONE event
-  per signal per persisted batch through the new `MatchesReadyFn` host
-  callback; the signal's PersonalAgent decides whether to reach out at all.
+  per intent per persisted batch through the new `MatchesReadyFn` host
+  callback; the intent's PersonalAgent decides whether to reach out at all.
   `OpportunityGraphFactory`'s sixth constructor argument changes from
   `negotiationGraph` to `matchesReady`, and `ToolFactory`/`ToolDeps` gain
   `matchesReady`. The tool factory no longer builds a second, reflect-less
   negotiation graph: without the host's own composition there is no
   negotiation graph in that context at all.
 - **The all-paused → reflect trigger is gated on a round-size stamp.**
-  `NegotiationRoundReflectJobData` gains `userId` (the signal's owner, so the
+  `NegotiationRoundReflectJobData` gains `userId` (the intent's owner, so the
   consumer can invoke the PersonalAgent). `NegotiationGraphDatabase` gains
   `getNegotiationTasksForIntentRound`, `getIntentNegotiationRound` and
   `stampIntentNegotiationRoundSize`, and `bumpIntentNegotiationRound` must now
@@ -835,13 +842,13 @@ remains.
 
 ### Changed
 
-- **One PersonalAgent persona.** The signal, onboarding, and negotiator chat
+- **One PersonalAgent persona.** The intent, onboarding, and negotiator chat
   personas collapse into a single `createPersonalAgentPersona(identity)`
   factory with `PERSONAL_AGENT_PERSONA_ID = 'personal'`. What a turn may do is
   derived from the session's resolved scope context, never from a persona id;
   the onboarding prompt/toolset is a fragment selected by incomplete-onboarding
   session state on truly unscoped sessions only. Removed exports:
-  `SIGNAL_PERSONA_ID`, `createSignalPersona`, `ONBOARDING_PERSONA_ID`,
+  `INTENT_PERSONA_ID`, `createIntentPersona`, `ONBOARDING_PERSONA_ID`,
   `createOnboardingPersona`, `NEGOTIATOR_PERSONA_ID`, `PersonalAgentChat`,
   `PersonalAgentChatDeps`. The negotiator persona (prompt, chat toolset, and
   its `remember`/`forget` chat tools plus the `negotiatorMemoryTools` host
@@ -923,7 +930,7 @@ remains.
   client answered the one question the initiator paused to ask, the resumed
   turn-0 decision was entirely re-drafted: an agent that still held a
   withdraw-worthy concern it never asked the client about (e.g. a location
-  preference read from the profile rather than the signal) could withdraw
+  preference read from the profile rather than the intent) could withdraw
   anyway, seconds after the client answered the thing it did ask, with the
   counterparty never contacted. Now, if the resumed turn drafts `withdraw`
   and the dimension actually asked about reconciled to `ok`, the graph
@@ -1005,7 +1012,7 @@ remains.
 
 - **BREAKING: the intent graph routes on the shape of its input, not an
   `operationMode` flag.** `operationMode` is gone from the graph's invoke
-  input. Callers now signal intent by which fields they set:
+  input. Callers now express intent by which fields they set:
   `inputContent` alone creates; `inputContent` + `targetIntentIds` is an
   explicit update; `targetIntentIds` + `archive: true` expires; `targetIntentIds`
   + `status` pauses/resumes; `proposalId` (+ `description`, `networkId`)
@@ -1077,7 +1084,7 @@ remains.
   the deterministic consultation policy are on; deadlock-shift is on; the
   negotiator drafts in the `skeptic` stance (`advocate` and `evaluator`, and the
   `stance*` predicates that distinguished them, are gone); negotiators receive
-  only each participant's exact opportunity-bound signal; HyDE generates under
+  only each participant's exact opportunity-bound intent; HyDE generates under
   `frame-v1`; candidate evaluation runs in parallel; retrieval floor is `0.20`
   and the evaluator score floor is `40`; the two question miners are pinned to
   `shadow`.
@@ -1163,7 +1170,7 @@ remains.
 - **Persona identity + create_intent scope rule (#1479) — the version stamp
   the change shipped without.** Every chat persona now introduces itself as
   the user's own agent: `buildAgentSelfIntroduction`, plus
-  `createSignalPersona` / `createOnboardingPersona` factories taking
+  `createIntentPersona` / `createOnboardingPersona` factories taking
   `agentName` the way the negotiator already did. Tool registration gained
   the scope rule (`isToolAllowedInScope`, `filterToolsForScope`). #1479
   merged these exports without bumping, so two different export surfaces
@@ -1203,11 +1210,11 @@ remains.
 - **An answer beats staleness — drift is logged, never fatal.** Observed live:
   a client answered her own parked question ("Timing: This week") through the
   new MCP answer lane, routing succeeded, consumption ran — and the settle
-  returned `lost`, because the signal had been edited twice since the park and
+  returned `lost`, because the intent had been edited twice since the park and
   the revalidation fence required the world to look exactly as it did at park
   time. The park became a zombie: still `input_required`, still rendered as
   "waiting on YOUR answer" by every surface, structurally unanswerable. The
-  design law is explicit: signal edits cascade nothing, and a stale negotiation
+  design law is explicit: intent edits cascade nothing, and a stale negotiation
   is solved by ANSWERING its question — the user's answer is the freshest
   commitment there is, and the resumed turn rebuilds its context from current
   data anyway.
@@ -1215,16 +1222,16 @@ remains.
   The settle's one fence is now two. Coherence stays hard: an answer that does
   not belong to its park (settlement mismatch, wrong recipient, task no longer
   parked, a dismiss/timeout settlement won the race) is still refused. Drift
-  stops losing: within a live opportunity and an active signal, the answer
+  stops losing: within a live opportunity and an active intent, the answer
   settles and resumes regardless of what moved since the park.
 
 - **The unresumable tail is an explicit proposal, not a silent drop.** When
   current reality genuinely cannot continue — terminal opportunity or archived
-  signal — the answer is still recorded as heard: settlement result and resume
+  intent — the answer is still recorded as heard: settlement result and resume
   outcome `recorded_unresumable` (additive), the block-consumption result
   counts it in its own `recorded` array so a `skipped` count can never again
   hide it, and the implementation retires the park and tells the client the
-  truth, proposing re-discovery under the updated signal — an offer, never an
+  truth, proposing re-discovery under the updated intent — an offer, never an
   automatic act.
 
 ## 23.6.0 - 2026-08-20
@@ -1370,14 +1377,14 @@ remains.
 ### Added
 
 - **The owner's verdict has a lane in their own DM.** Observed live: in the
-  negotiator DM for one signal, a client told their agent to reject the
+  negotiator DM for one intent, a client told their agent to reject the
   counterparty — a pairing parked `input_required`. The agent could not comply.
   The owner makes exactly three kinds of decision in that room. They ANSWER a
   question a parked negotiation asked, which `answer_pending_question` gave a
-  lane. They EDIT the signal, which `update_intent` always covered.
+  lane. They EDIT the intent, which `update_intent` always covered.
   And they pass a VERDICT on a counterparty, which had no lever at all. So on
   "reject them" the persona's whole repertoire was to say something back, or to
-  edit the signal instead; the pairing stayed parked and the counterparty
+  edit the intent instead; the pairing stayed parked and the counterparty
   stayed live.
 
   `update_opportunity` is in the negotiator toolset and cannot substitute for
@@ -1397,7 +1404,7 @@ remains.
   cannot see them. `NegotiatorVerdictToolsHost` is the whole surface the package
   knows; the composition root owns everything behind it.
 
-- **Numbered refs, never ids.** The prompt renders this signal's actionable
+- **Numbered refs, never ids.** The prompt renders this intent's actionable
   counterparties as `N. {name} — {state}`, and the tool takes the number. The
   schema offers no place to put an id and no result string carries one. The rule
   is `answer_pending_question`'s, for a sharper reason: a ref the model can name
@@ -1412,18 +1419,18 @@ remains.
 
 ### Changed
 
-- **The pinned-signal prompt gains a verdict section, and only where the tools
+- **The pinned-intent prompt gains a verdict section, and only where the tools
   exist.** `NegotiatorPromptOptions.actionableCounterparties` renders
   `## Verdicts {userName} can pass here` plus two tool-reference rows. It says
   the tool call IS the decision — not the sentence about it, and not an edit of
-  the signal; that a verdict the client did not pass must never be passed for
+  the intent; that a verdict the client did not pass must never be passed for
   them; that `update_opportunity` is not this lever; and that an accept is one
   side of two and never a connection. Rendered only in an intent-pinned session
   with a non-empty list, since that is the only place the tools are registered.
   Absent or empty leaves the prompt byte-identical to 23.4.0.
 
 - **Result copy is honest at every status.** `executed` names the counterparty
-  and forbids also editing the signal; `none_actionable` forbids implying a
+  and forbids also editing the intent; `none_actionable` forbids implying a
   decision was recorded; `unknown_counterparty` states plainly that nothing was
   decided and re-lists the current set; `already_decided` says whose move it is;
   `error` forbids describing the pairing as decided. A host that throws is
@@ -1592,7 +1599,7 @@ remains.
 ### Changed
 
 - **A verdict has a floor under it: an askable unknown outranks a conclusion.**
-  Every stage of the flow — signal, discovery, agents talking, match, meet — was
+  Every stage of the flow — intent, discovery, agents talking, match, meet — was
   verified working except one arrow: the agent asking its own client something
   only that client can settle. In a week of live traffic it fired zero times,
   against 23 policy-recognized consultation moments. The reason is structural
@@ -1664,7 +1671,7 @@ remains.
   settle, so an open dimension on turn 0 is the shape the protocol asked for, not
   a dodge — and a floor that bound there would park every negotiation before it
   ever made contact. Turn 0 already has its own designed consult, the pre-contact
-  verdict, bounded per signal.
+  verdict, bounded per intent.
 
 - **The verdict prompt's escape hatch is now conditional.** "What remains unknown
   is the kind of thing two people settle in a first conversation" waved verdicts
@@ -1682,7 +1689,7 @@ remains.
 ### Fixed
 
 - **No turn may repeat a message already on the record.** A counterparty asked what
-  a phrase in the client's own signal meant; the answering agent could not consult
+  a phrase in the client's own intent meant; the answering agent could not consult
   its (unreachable) principal and its record did not settle the phrase, so with no
   legal move left it copied the question back word for word. Both models then
   locked — reproducing text already in context is close to deterministic — and the
@@ -1702,7 +1709,7 @@ remains.
   `PRINCIPAL_UNREACHABLE_RULE` said never stall and never route the client's
   question to the other side, but named no move for the case that occurred: the
   COUNTERPARTY asks something client-authoritative that the record does not
-  settle. The rule now says to state the limit of the record — "X's signal says
+  settle. The rule now says to state the limit of the record — "X's intent says
   Y; it does not specify further" is a complete answer — and to let the
   counterparty score that dimension unknown, never repeating or mirroring their
   question and never inventing an answer the record does not hold.
@@ -1757,7 +1764,7 @@ remains.
 
 ### Fixed
 
-- **Retrieval scores no longer clamp at a flat ceiling.** The multi-signal bonus in
+- **Retrieval scores no longer clamp at a flat ceiling.** The multi-intent bonus in
   `mergeStrategyCandidates` was added to the raw similarity and then clamped
   (`Math.min(raw + boost, 1)`), so candidates found by enough strategies all landed
   on exactly 1.0. Candidates enter evaluation strictly by rank, so a head cluster of
@@ -1847,7 +1854,7 @@ remains.
 
 - **The QuestionerAgent generation half** (conversational-questions plan,
   "Retirements"). Questions are conversation: the parked negotiation is the
-  durable record and the question-message in the signal's DM is its
+  durable record and the question-message in the intent's DM is its
   rendering, so the card generators go. Removed: `QuestionerAgent`,
   `question.presets`, the blocking chat `ask_user_question` tool and its
   `ChatQuestionsHost` bridge (with the `user_question` stream event and the
@@ -1862,8 +1869,8 @@ remains.
 
 ### Changed
 
-- The signal and onboarding personas interview in plain conversation: the
-  guided New Signal intake drops its blocking question-card rounds, and its
+- The intent and onboarding personas interview in plain conversation: the
+  guided New Intent intake drops its blocking question-card rounds, and its
   stage machine reduces to interview → complete (`create_intent` is the only
   remaining stage marker).
 
@@ -1996,7 +2003,7 @@ same 44 names as before. Only paths private to the capability moved.
 
 - **BREAKING**: The `intents` capability now ships as a single class. `Intents`
   replaces `IntentGraphFactory`, `SemanticVerifier`, `IntentIndexer`,
-  `SignalIntakePackGenerator`, `SignalIntakeOrchestrator`,
+  `IntentIntakePackGenerator`, `IntentIntakeOrchestrator`,
   `normalizeIntentDescription`, and `FALLBACK_WHO_QUESTION`, all of which are
   no longer exported. Dependencies move from positional constructor arguments
   to a named `IntentsDeps` bag, and every field is optional — a host that wants
@@ -2007,9 +2014,9 @@ same 44 names as before. Only paths private to the capability moved.
   | `new IntentGraphFactory(db, embedder, queue, enqueue).createGraph()` | `new Intents({ database, embedder, queue, questionerEnqueue }).createGraph()` |
   | `new SemanticVerifier().invoke(content, context)` | `new Intents().verifyIntent(content, context)` |
   | `new IntentIndexer().invoke(...)` / `.evaluate(...)` | `new Intents().indexIntent(...)` |
-  | `new SignalIntakePackGenerator().generate(input)` | `new Intents().generateIntakePack(input)` |
-  | `new SignalIntakeOrchestrator().generateFollowUps(input)` | `new Intents().generateIntakeFollowUps(input)` |
-  | `new SignalIntakeOrchestrator().synthesize(input)` | `new Intents().synthesizeIntake(input)` |
+  | `new IntentIntakePackGenerator().generate(input)` | `new Intents().generateIntakePack(input)` |
+  | `new IntentIntakeOrchestrator().generateFollowUps(input)` | `new Intents().generateIntakeFollowUps(input)` |
+  | `new IntentIntakeOrchestrator().synthesize(input)` | `new Intents().synthesizeIntake(input)` |
   | `normalizeIntentDescription(text)` | `Intents.normalizeDescription(text)` |
   | `FALLBACK_WHO_QUESTION` | `Intents.FALLBACK_INTAKE_QUESTION` |
 
@@ -2075,7 +2082,7 @@ same 44 names as before. Only paths private to the capability moved.
 - `ContactServiceAdapter` narrows to `listContacts` / `removeContact` /
   `searchContacts`; `importContacts` and `addContact` are gone, along with the
   `ContactInput`, `ContactResult` and `ContactImportResult` domain types.
-- Orchestrator, negotiator, signal and onboarding prompt surfaces no longer
+- Orchestrator, negotiator, intent and onboarding prompt surfaces no longer
   advertise contact import or Gmail import.
 
 ## 16.1.0 - 2026-08-17
@@ -2142,7 +2149,7 @@ from the package root.
   (`projectActivitySummary`, `ActivitySummaryResponseSchema`,
   `QUESTION_MODE_TO_DOMAIN`, `READ_ACTIVITY_SUMMARY_TOOL_NAME`, …).
 - **Persona helpers** — the `filter*Tools` / `narrow*Tools` helpers, the
-  `*_TOOL_NAMES` constants, and the `SIGNAL_NEW_SIGNAL_KICKOFF` /
+  `*_TOOL_NAMES` constants, and the `INTENT_NEW_INTENT_KICKOFF` /
   `ONBOARDING_PROFILE_KICKOFF` constants. The persona IDs, the prompt
   constants, and `REPORTER_BRIEFING_KICKOFF` stay — `apps/web` imports the
   latter.
@@ -2154,7 +2161,7 @@ from the package root.
   slated for removal with the eval harnesses, and this accessor should be
   pruned in the same change. These back live Railway configuration and are
   unchanged in behaviour; only the re-export is gone.
-- **Signal-intake types** — `IntakePack`, `IntakePackInput`, `SynthesisInput`,
+- **Intent-intake types** — `IntakePack`, `IntakePackInput`, `SynthesisInput`,
   `SynthesisResult`, `FollowUpPlan`, `answerLabel`, `normalizeIntakePack`, …
 
 Two of the removed symbols (`createAgentTools` and
@@ -2359,7 +2366,7 @@ Directory names only.
 
   | before | after |
   |---|---|
-  | `signals/` | `intents/` |
+  | `intents/` | `intents/` |
   | `communities/` | `networks/` |
   | `opportunity/` | `opportunities/` |
   | `negotiation/` | `negotiations/` |
@@ -2395,7 +2402,7 @@ This is internal structure only.
   were `*.tools.port.ts` port definitions misfiled into a facade directory. The
   ports moved into their capability's `ports/`.
 - Removed the nine per-capability `public/index.ts` barrels. Three of them
-  (`signals`, `communities`, `opportunity`) already had zero importers.
+  (`intents`, `communities`, `opportunity`) already had zero importers.
 
 ### Changed
 
@@ -2426,7 +2433,7 @@ This is internal structure only.
     (three pure text predicates, no imports of its own). `negotiation` and
     `contacts` needed it and were pulling the whole opportunity capability.
   - `UnderspecificationTypeSchema` → `shared/schemas/underspecification.schema.ts`.
-    The signals clarifier was importing the entire questions capability — LLM
+    The intents clarifier was importing the entire questions capability — LLM
     agents and tools included — to reach a three-value enum.
 
 - `CAPABILITY_DIRECTORIES` mapped `questioner` but not `questions`, so every
@@ -2467,7 +2474,7 @@ commit (`225425371d`) rather than from memory.
 
   Production evidence at the time: the orchestrator had written no new session
   since 2026-08-04, and the presence of `onboarding`-persona rows showed the
-  Signal cutover flag was already on. The 9,464 historical orchestrator
+  Intent cutover flag was already on. The 9,464 historical orchestrator
   conversations remain readable.
 
 ## 13.2.1 - 2026-08-16
@@ -2482,7 +2489,7 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
   declaration-only placeholders with zero inbound imports; `runtime/background`
   and `public` consisted of nothing but a header comment. The only thing
   referencing them was a spec asserting that they existed.
-- Removed eight unused capability barrels (`signals/index.ts`,
+- Removed eight unused capability barrels (`intents/index.ts`,
   `communities/index.ts`, `contacts/index.ts`, `questions/index.ts`,
   `opportunity/index.ts`, `negotiation/index.ts`, `integrations/index.ts`,
   `participant-agents/index.ts`). Each was `export * from "./public/index.js"`
@@ -2501,8 +2508,8 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
   `shared/agent/tool.registry.ts` and `shared/agent/tool.factory.ts`, and the
   indirection is gone. `mcp.server.ts` was the one direct consumer of the old
   location and now resolves to the same single home.
-- `signals/application/intent.tools.ts` is imported directly by the tool
-  factory; the `runtime/foreground/signals/intent.tools.ts` pass-through
+- `intents/application/intent.tools.ts` is imported directly by the tool
+  factory; the `runtime/foreground/intents/intent.tools.ts` pass-through
   re-export that sat between them is removed.
 - Replaced `architecture/tests/runtime-shells.spec.ts` with
   `architecture/tests/package-entry.spec.ts`, which asserts the invariants that
@@ -2631,7 +2638,7 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 
 ### Removed
 
-- **Breaking (14.0.0):** remove the `orchestrator` chat persona. `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the public API, and the orchestrator system prompt (`buildSystemContent`) and its conditional prompt-module registry are deleted. `ChatPersonaLoopBehaviors.hallucinationRecovery` is retained — it is opted into by the onboarding, signal and negotiator personas, not just the removed one.
+- **Breaking (14.0.0):** remove the `orchestrator` chat persona. `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the public API, and the orchestrator system prompt (`buildSystemContent`) and its conditional prompt-module registry are deleted. `ChatPersonaLoopBehaviors.hallucinationRecovery` is retained — it is opted into by the onboarding, intent and negotiator personas, not just the removed one.
 - Remove the never-emitted `question_generator_start` / `question_generator_end` stream events and the `DebugMetaDiscoveryQuestions` debug payload, which had no producer.
 
 ### Changed
@@ -2685,26 +2692,26 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 
 ### Added
 - Add the Personal Agent Hermes negotiation-runtime contract (11.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill receives a privacy-minimal structural envelope: server-provided seat, protocol version, deadlines, closed allowed actions, consultation eligibility, opportunity identifiers/status, and message-free history. Owner memory, private context, consultation text, evaluator reasoning, actor prose, and shared-message prose are excluded; each scheduled pass permits at most one response or owner consultation and treats all pickup prose as untrusted data.
-- Add a live answer-first signal-intake eval with unrelated, relevant, and no-bridge profile cases plus provider-free corpus, runner, and scorer checks.
+- Add a live answer-first intent-intake eval with unrelated, relevant, and no-bridge profile cases plus provider-free corpus, runner, and scorer checks.
 - Add the protocol-only Guided Atlas, deterministic architecture inventory
   generator, and source-evidenced Configuration Lab. The atlas explains
   normative concepts, the current `packages/protocol` reference implementation,
   and counterfactual behavior-gate changes, while live environment values and
   concrete API or host implementations remain outside its scope. Tooling-only
   public-package change; no root export or runtime behavior changes.
-- Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
+- Deterministic fast intent intake (#1307; 8.1.0). `IntentIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and
-  `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine
+  `IntentIntakeOrchestrator` drives the funnel as a deterministic state machine
   on flash instead of sequential pro turns, with synthesis speculated during a
-  deterministic community picker. New stable exports from the `signals` facade:
-  `SignalIntakePackGenerator`, `normalizeIntakePack`, `SignalIntakeOrchestrator`,
+  deterministic community picker. New stable exports from the `intents` facade:
+  `IntentIntakePackGenerator`, `normalizeIntakePack`, `IntentIntakeOrchestrator`,
   `answerLabel`, `FALLBACK_WHO_QUESTION`, `FALLBACK_BRING_QUESTION`, and the
   `IntakePack` / `IntakePackInput` / `IntakePackQuestion` /
   `IntakePackQuestionOption` / `IntakeAnswer` / `SynthesisInput` /
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Changed
-- Make fast signal-intake follow-ups answer-first with a two-stage model boundary: an answer-only core call chooses the missing axis and supplies two or three concrete domain options, then an isolated bridge call may append at most one premise-derived profile option so an existing profile theme cannot dominate or reorder a newly stated intent.
+- Make fast intent-intake follow-ups answer-first with a two-stage model boundary: an answer-only core call chooses the missing axis and supplies two or three concrete domain options, then an isolated bridge call may append at most one premise-derived profile option so an existing profile theme cannot dominate or reorder a newly stated intent.
 - Remove unsupported deprecated source/deep forwarding shims after migrating repository consumers to canonical modules; stable package-root exports are unchanged.
 - Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
   safety foundation; no runtime or public API behavior changes.
@@ -2797,12 +2804,12 @@ above. Entries below keep the version they were developed under.
 - Add canonical shared guidance source and unified MCP_INSTRUCTIONS/read_docs
   (IND-602/603; 7.10.0): The single normative `CANONICAL_GUIDANCE_SUMMARY`
   (1,555 chars, under the 4,500-char MCP context budget) covers Index Network
-  entity model (identity/context, premises, signals, communities/networks,
+  entity model (identity/context, premises, intents, communities/networks,
   opportunities), negotiation semantics with the critical distinction
   **"A2A acceptance is not owner approval"** (separate gates), H2A/A2A
   workflows, and the boundary **"H2H (human-to-human) never exposed; escalation
   to native surfaces (web, Telegram) is outside MCP scope."** Seven detailed
-  canonical topics (identity-context, premises, signals, communities-networks,
+  canonical topics (identity-context, premises, intents, communities-networks,
   opportunities, negotiations, workflows) are published via read_docs on both
   MCP and REST/chat surfaces. MCP surface read_docs serves canonical guidance
   only; REST/chat retains legacy supplemental topics for backwards compatibility.
@@ -2970,7 +2977,7 @@ above. Entries below keep the version they were developed under.
   `manage:negotiations`); the handler then passes the typed resolved MCP caller
   context into one centralized permission projection, so global agents receive
   only the domains their permissions authorize while session humans receive the
-  full owner view. Signal IDs/titles (`opportunitiesBySignal`) are exposed only
+  full owner view. Intent IDs/titles (`opportunitiesByIntent`) are exposed only
   with `manage:intents`, and question counts are meta-network — never network
   filtered — while each count inherits the permission of the domain the
   question affects: the adapter groups pending/answered counts by question
@@ -3165,15 +3172,15 @@ above. Entries below keep the version they were developed under.
   policy characterization.
 - Characterization specs for membership authority (join-policy enforcement,
   owner-only removal), privacy/scope intersection (scoped vs unscoped read,
-  `showAll` bypass), and signal assignment policy (direct / evaluated /
+  `showAll` bypass), and intent assignment policy (direct / evaluated /
   no-prompt fast path, membership re-check at persistence time, unassign
   authority).
 
 ### Changed
 - `capabilities/communities.facade.ts` now imports from
   `communities/application/` instead of the old `network/` paths.
-- `capabilities/signals.indexing.facade.ts` updated to import
-  `IntentIndexer` from `capabilities/signals.facade.ts` (canonical) instead
+- `capabilities/intents.indexing.facade.ts` updated to import
+  `IntentIndexer` from `capabilities/intents.facade.ts` (canonical) instead
   of the legacy `intent/intent.indexer.ts` shim.
 - Communities capability boundary script updated: `communities/` directory now
   maps to the `communities` capability (alongside legacy `network/`).
@@ -3292,7 +3299,7 @@ above. Entries below keep the version they were developed under.
   the graph while retaining its LangGraph node routing and externally visible
   lifecycle semantics (IND-530).
 - Slice tool-factory dependencies into named capability-owned ports for
-  enrichment, signals, communities, opportunities, premises, contacts,
+  enrichment, intents, communities, opportunities, premises, contacts,
   integrations, participant agents, negotiations, and questions. `ToolDeps`
   and `ToolContext` remain structurally compatible composition intersections at
   registry/runtime boundaries; ports are declared and exported through their
@@ -3311,20 +3318,20 @@ above. Entries below keep the version they were developed under.
 - Allow the private intent-refinement provenance snapshot to identify intent creation as a producer and make the shared refinement prompt independent of no-opportunity process state, enabling creation and authoritative discovery producers to converge on one ordinary intent-page question cadence.
 
 ### Added
-- Capability facades for Signals, Participant context, Communities,
+- Capability facades for Intents, Participant context, Communities,
   Opportunities, Negotiation, Questions, Participant agents, Contacts, and
   Integrations. Cross-capability callers now use named, narrow facade contracts;
   the root barrel remains backward compatible and also adds the corresponding
   explicit tool-factory entry points. Architecture tooling records every allowed
   dependency direction and preserves the in-place directory layout for later
   extraction work (IND-528).
-- Add the private `recovery` Questioner purpose and one-question intent recovery preset for post-discovery signal refinement (IND-506). The preset receives only the owned intent, global owner context, and an optional bounded aggregate count of fail-closed validated no-opportunity outcomes; it forbids candidate/counterparty/process narration, preserves the existing creation-time intent preset, persists publicly as ordinary `mode='intent'` questions with versioned internal recovery metadata, and carries optional material-fingerprint plus expected-owner guards through answer-only updates so the final database write can recheck lifecycle as well as content.
+- Add the private `recovery` Questioner purpose and one-question intent recovery preset for post-discovery intent refinement (IND-506). The preset receives only the owned intent, global owner context, and an optional bounded aggregate count of fail-closed validated no-opportunity outcomes; it forbids candidate/counterparty/process narration, preserves the existing creation-time intent preset, persists publicly as ordinary `mode='intent'` questions with versioned internal recovery metadata, and carries optional material-fingerprint plus expected-owner guards through answer-only updates so the final database write can recheck lifecycle as well as content.
 - Add versioned internal negotiation-question provenance and explicit source/candidate opportunity-actor intent threading for ordinary follow-up, inflight consultation, and uptake questions (IND-507). Runtime mode/purpose discriminants, structured `askUser` safety validation, neutral uptake context, and visible-field output gates exclude raw counterparty profile/identity/intent, private transcript, evaluator reasoning, match reasons, event/community inference, evidence, and internal IDs. Exact settlement/task correlation now threads through run-existing continuation admission without changing producer triggers or the ≤2 ordinary/inflight and ≤1 uptake cardinality.
-- Add the restricted persisted `onboarding` chat persona (IND-450) with an exact consent/profile/guided-signal/completion allowlist, an onboarding-specific privacy and explicit-approval prompt, Signal's proposal-only live-membership narrowing, shared guided intake stages, and durable `profileConfirmedAt` / exact `firstSignalIntentId` completion markers; selected first signals must be active, owned, and created no earlier than a valid profile-confirmation timestamp. Gmail/contact import, opportunity/discovery/negotiation, community and membership mutation, administration, arbitrary scraping, and unreviewed shared tools remain excluded; the legacy orchestrator onboarding flow remains available to flag-off and non-web consumers.
+- Add the restricted persisted `onboarding` chat persona (IND-450) with an exact consent/profile/guided-intent/completion allowlist, an onboarding-specific privacy and explicit-approval prompt, Intent's proposal-only live-membership narrowing, shared guided intake stages, and durable `profileConfirmedAt` / exact `firstIntentId` completion markers; selected first intents must be active, owned, and created no earlier than a valid profile-confirmation timestamp. Gmail/contact import, opportunity/discovery/negotiation, community and membership mutation, administration, arbitrary scraping, and unreviewed shared tools remain excluded; the legacy orchestrator onboarding flow remains available to flag-off and non-web consumers.
 - Harden reporter turn handling so only the exact kickoff produces the detailed briefing, focused follow-ups stay narrow, and one-turn-local contextual natural-language confirmation deterministically bypasses the model and tools in favor of the visible confirmation card (IND-493).
-- Dark-gated reporter cleanup-action proposals for retracting owner premises, narrowing owned signals, and pausing owned signals (IND-490 PR1). `propose_cleanup_actions` is conditionally registered only when `WEB_AGENT_ACTIONS_ENABLED` is enabled alongside the reporter surface; it validates full owner UUIDs, requires pause evidence, persists a confirmation request, and never mutates data in chat.
+- Dark-gated reporter cleanup-action proposals for retracting owner premises, narrowing owned intents, and pausing owned intents (IND-490 PR1). `propose_cleanup_actions` is conditionally registered only when `WEB_AGENT_ACTIONS_ENABLED` is enabled alongside the reporter surface; it validates full owner UUIDs, requires pause evidence, persists a confirmation request, and never mutates data in chat.
 - Read-only `reporter` chat persona for Agent-surface activity reporting (IND-476 PR1), with an exact positive allowlist, self-only narrowing, aggregate-only opportunity reporting, grounded `report_agent_activity` metrics, and a public briefing kickoff marker. Mutation, discovery, negotiation, memory, question-answering, scraping, and counterparty identity surfaces remain unavailable.
-- Restricted `signal` chat persona for the main-web cutover (IND-449), built on the existing persona-neutral runtime with a custom signals/profile prompt, an exact positive allowlist, proposal hallucination recovery, and the discovery-coupled create-intent callback disabled. Signal-specific wrappers clamp focused intent/network reads to owned active intents and current memberships, prohibit other-user membership enumeration, and validate live membership before forwarding network-scoped proposals. Shared orchestrator, MCP, and direct-tool registries are unchanged.
+- Restricted `intent` chat persona for the main-web cutover (IND-449), built on the existing persona-neutral runtime with a custom intents/profile prompt, an exact positive allowlist, proposal hallucination recovery, and the discovery-coupled create-intent callback disabled. Intent-specific wrappers clamp focused intent/network reads to owned active intents and current memberships, prohibit other-user membership enumeration, and validate live membership before forwarding network-scoped proposals. Shared orchestrator, MCP, and direct-tool registries are unchanged.
 - `RawEvidenceOwnerAnswer` is now re-exported from the root barrel alongside the other Lens C negotiation-evidence segment types, so API-side projections (IND-465 slice 2) can type owner-answer evidence without deep imports. Type-only, additive; no runtime change.
 - Default-off `POOL_QUESTIONS_VISIT_TRIGGER` accessor plus the shared 6h `POOL_VISIT_MINING_DEBOUNCE_MS` debounce window for visit-triggered pool mining: the flag only adds a *when* for the existing mining hook — every mining/question gate (`POOL_QUESTIONS_MODE`, k-anonymity floor, VoI threshold, per-intent budgets, freshness fingerprints, push budgets) applies unchanged (IND-439 visibility-audit slice).
 - Default-off deadlock detection with a persuasion→bargaining mode shift for v2 negotiations (IND-428, dialogue-game backlog item 6): a deterministic trailing-run detector (`assessDeadlock`, no LLM in the decision) flags N consecutive `counter`/`question` turns without convergence (`NEGOTIATION_DEADLOCK_THRESHOLD`, integer >= 2, default 4) and — only when `NEGOTIATION_DEADLOCK_SHIFT_ENABLED` is literally `true` — shifts the system agent's drafting stance from arguing merits to offering concessions/scope reductions, escalating to `ask_user` only where that action is already legally held. The shift changes stance only: locutions, seat vocabularies (`allowedActionsFor`), termination rules, and turn-cap semantics are untouched; externally dispatched turns never receive the stance. The applied shift is recorded once per session as internal-only `tasks.metadata.deadlockShift` (optional `setTaskDeadlockShift` hook; never projected by API surfaces) plus a `negotiation_deadlock_shift` trace event. Detection and persistence fail open, and with the flag off the drafting path is byte-identical to before. The turn protocol's formal dialogue-game framing (locutions, combination rules, commitment store, termination) is documented in `docs/design/negotiation-dialogue-game.md`. Symbols are module-local (deep import from `negotiation/negotiation.deadlock.js`), deliberately not re-exported from the root barrel per the IND-457 externally-consumed-surface policy.
@@ -3356,7 +3363,7 @@ above. Entries below keep the version they were developed under.
 - Made negotiation startup claim the exact persisted pre-negotiation status and version, atomically promote the winning opportunity to `negotiating` with its task, and skip finalize persistence when init owns no task (IND-496).
 - Made Personal Agent negotiation narration lifecycle-accurate: concluded agent tasks now carry additive current-opportunity, owner-acceptance, and no-H2H-evidence labels; agent-side `accept` no longer implies owner acceptance, a completed connection, or a message thread (IND-492).
 - Made owned-intent opportunity persistence trigger-aware: recent/lifecycle dedup now reuses only rows linked to the same trigger intent, cross-trigger rows remain independently visible, enrichment cannot absorb another trigger's row, and final persistence reports typed same-trigger/active-negotiation conflicts (IND-495).
-- Clamped intent-pinned `list_negotiations` results to the user's signal, added explicit signal/all scope metadata, and prevented stale cross-signal history from being presented as current negotiations (IND-483).
+- Clamped intent-pinned `list_negotiations` results to the user's intent, added explicit intent/all scope metadata, and prevented stale cross-intent history from being presented as current negotiations (IND-483).
 - Routed continuation-created and recovered opportunities through the normal negotiation boundary, threaded each persisted attempt version into atomic negotiation-task claiming, protected active/input-required tasks from duplicate negotiation, compensated pre-task failures and timeouts to truthful draft/latent states, and refreshed continuation cards from current lifecycle state (IND-470).
 - Normalized opportunity actor intent IDs at evaluator, graph, and shared persistence boundaries so blank or null-like model sentinels are omitted, valid branded string IDs remain supported, enrichment cannot use or reintroduce malformed provenance, and legacy negotiation reads fail closed (IND-469).
 - Forwarded per-attempt `AbortSignal`s through eval provider paths and hardened failure provenance against secret leakage, hostile rejection objects, classifier failures, and concurrent artifact writers (IND-444).

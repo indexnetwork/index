@@ -1,4 +1,4 @@
-import type { OpportunityCard, OpportunityStatus } from '@indexnetwork/protocol';
+import type { OpportunityCard, OpportunityStatus, PeerChat, PriorOpportunity } from '@indexnetwork/protocol';
 
 /** Cacheable lifecycle statuses for async presenter preload (not negotiating). */
 export const CACHEABLE_PRESENTATION_STATUSES: OpportunityStatus[] = [
@@ -39,6 +39,10 @@ export interface PresentedOpportunity {
   personalizedSummary?: string;
   narratorRemark?: string;
   acceptedAt?: string | null;
+  /** An earlier opportunity with this person (accepted, or the viewer already said yes). */
+  priorOpportunity?: PriorOpportunity | null;
+  /** The direct-message chat with this person, when one exists. */
+  peerChat?: PeerChat | null;
 }
 
 export interface PresentedOpportunityList {
@@ -81,6 +85,8 @@ export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOppo
     viewerCommitted: item.viewerCommitted === true,
     personalizedSummary: item.mainText,
     narratorRemark: item.narratorChip?.text ?? '',
+    priorOpportunity: item.priorOpportunity ?? null,
+    peerChat: item.peerChat ?? null,
   };
 }
 

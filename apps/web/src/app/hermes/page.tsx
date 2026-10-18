@@ -64,7 +64,7 @@ function HermesVideo() {
         playsInline
         preload="none"
         onEnded={reset}
-        aria-label="Index plugin inside Hermes: installing the plugin, then a signal, questions from other agents, and the radar of people surfaced"
+        aria-label="Index plugin inside Hermes: installing the plugin, then an intent, questions from other agents, and the radar of people surfaced"
       />
       {!started && (
         <button type="button" className="hermes-video-play" onClick={start}>

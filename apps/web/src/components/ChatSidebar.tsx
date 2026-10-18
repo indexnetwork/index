@@ -117,7 +117,7 @@ export default function ChatSidebar({ showEmpty = true }: {
           !showEmpty ? null : <EmptyState
             style={{ margin: 16 }}
             message="no conversations yet. a chat opens when you and someone both accept an intro."
-            action={{ label: 'start a signal', to: '/i/new' }}
+            action={{ label: 'start an intent', to: '/i/new' }}
           />
         ) : (
           <div>

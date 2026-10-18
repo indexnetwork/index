@@ -169,7 +169,7 @@ export function IndexChips({
   appHref = "/login",
   prompt,
   appTitle = "Index app",
-  appBody = "Open Index and start a signal.",
+  appBody = "Open Index and start an intent.",
   hermesTitle = "Hermes plugin",
   hermesBody = "Already use Hermes? Add Index to the agent you have.",
   agentTitle = "Your agent",

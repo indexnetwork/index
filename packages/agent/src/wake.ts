@@ -3,7 +3,7 @@ import type { Counterparty, CounterpartyPick, Index } from "@indexnetwork/client
 import { BRIEF_LIMIT, BRIEF_PROMPT, DECISIONS, principalFacts, principalOnly, recordBrief, screens } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { ConversationEntry, Decision, Intent, WakeAction, WakeInput, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, Opportunity, WakeAction, WakeInput, WakeResult } from "./types.ts";
 
 /** How many turns a wake gets: room to decide a few things, speak, and search. */
 const WAKE_STEPS = 8;
@@ -15,28 +15,57 @@ const SEARCH_QUERIES = 5;
 const OPEN_LIMIT = 30;
 
 const WAKE_PROMPT = [
-  "You think for your principal about one signal, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
-  "A wake is situational. You are not reviewing the signal: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
+  "You think for your principal about one intent, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
+  "A wake is situational. You are not reviewing the intent: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
   BRIEF_PROMPT,
-  "A signal with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
+  "An intent with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
-  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
+  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the intent, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
 /** The line a morning wake adds. */
 const MORNING =
-  "It is morning. Anyone new along this signal's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+  "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+
+/** How many focused passes a wake makes over the stalls it still owes. */
+const STALL_PASSES = 3;
+
+/** How many of a negotiation's latest turns a wake reads. */
+const TURNS_READ = 2;
+
+/**
+ * What a wake reads of its opportunities: only as much as it can act on, with
+ * the ones that change least first so the prompt's prefix stays cacheable.
+ * Settled ones stay listed so accept and reject still resolve them, and one
+ * whose stall already waits on a question is left alone, so neither needs its
+ * turns or brief.
+ *
+ * @param opportunities - The intent's opportunities as the host assembled them.
+ * @returns Settled, then waiting on a question, then the rest.
+ */
+function view(opportunities: Opportunity[]): Partial<Opportunity>[] {
+  const settled: Partial<Opportunity>[] = [];
+  const waiting: Partial<Opportunity>[] = [];
+  const rest: Partial<Opportunity>[] = [];
+  for (const opportunity of opportunities) {
+    const { id, counterpart, status, decision, stall, turns } = opportunity;
+    if (["agreed", "declined", "closed"].includes(status)) settled.push({ id, counterpart, status, ...(decision ? { decision } : {}) });
+    else if (stall?.questionId && !stall.answered) waiting.push({ id, counterpart, status, stall });
+    else rest.push(turns ? { ...opportunity, turns: turns.slice(-TURNS_READ) } : opportunity);
+  }
+  return [...settled, ...waiting, ...rest];
+}
 
 /**
  * The questions still waiting on the principal, mirroring how the host reads
  * the same transcript: an answer or an expiry retires one, a later question
  * does not.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns Each open question's text by id.
  */
 function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
@@ -53,7 +82,7 @@ function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
  * Find the latest direct message that has not received a direct reply.
  * An answer to a question is not a direct message; notes and bookkeeping do not reply.
  *
- * @param conversation - The signal's conversation, oldest first.
+ * @param conversation - The intent's conversation, oldest first.
  * @returns The message to answer, or null when none is waiting.
  */
 export function unansweredPrincipalMessage(conversation: ConversationEntry[]): { text: string } | null {
@@ -69,15 +98,15 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
 }
 
 /**
- * Discover along each query and open each signal that does not already share
+ * Discover along each query and open each intent that does not already share
  * a negotiation with this one. A negotiation on some other pair does not
- * count. A person holding several matching signals keeps one seat, at their
+ * count. A person holding several matching intents keeps one seat, at their
  * strongest.
  *
  * @param client - Index for this owner.
- * @param intent - The signal to open from.
+ * @param intent - The intent to open from.
  * @param queries - Each direction to discover separately.
- * @param since - When set, only people whose signal arrived after this ISO time.
+ * @param since - When set, only people whose intent arrived after this ISO time.
  * @param keep - When set, only the people it keeps are opened.
  * @returns How many distinct people were found, how many were picked, and the opportunities opened.
  */
@@ -115,21 +144,23 @@ export async function reach(
 }
 
 /**
- * One wake over one signal: a single reasoning pass that decides what this
+ * One wake over one intent: a single reasoning pass that decides what this
  * event requires, in whatever mix of deciding, speaking and searching that
  * takes — or nothing.
  *
  * Every decision is reported through `onBrief` the moment it lands, so its
  * negotiator can start while the wake is still thinking.
  *
- * @param input - The signal, its conversation, its opportunities, the model, and Index.
+ * @param input - The intent, its conversation, its opportunities, the model, and Index.
  * @returns The actions for the host to persist and run. Empty means stay silent.
  */
 export async function wake(input: WakeInput): Promise<WakeResult> {
   const { user, intent, opportunities, client } = input;
   const actions: WakeAction[] = [];
   const conversation = principalOnly(input.principalConversation);
-  const unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
+  let unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
+  /** Whether the message above has had its reply on this wake. */
+  let replied = false;
   const open = openQuestions(input.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   /** Opportunities whose stall a question on this wake asks about. */
@@ -268,11 +299,18 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         properties: { text: { type: "string", minLength: 1 } },
         required: ["text"],
       },
-      run: ({ text }: { text: string }) => {
+      run: async ({ text }: { text: string }) => {
         if (!unansweredMessage) throw new Error("No unanswered direct message from your principal to reply to.");
-        if (actions.some((action) => action.type === "reply")) {
+        if (replied) {
           throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
         }
+        // Said now, not when the wake ends. A failure is kept for the caller, like the decisions.
+        try {
+          await input.onReply?.(text);
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
+        replied = true;
         actions.push({ type: "reply", text });
         return "Reply recorded.";
       },
@@ -381,7 +419,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "reach_counterparties",
       description:
-        "Discover people in this signal's communities and open an opportunity with each one that does not already have one. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
+        "Discover people in this intent's communities and open an opportunity with each one that does not already have one. A query describes the kind of person this intent needs, in your own words, not the intent restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -411,12 +449,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             unpersisted ??= cause;
           }
         };
-        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
+        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.decide ? { decide: input.decide } : {}), ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
         const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
           return found
-            ? "No one discovered fits this signal well enough to reach, or everyone already has an opportunity."
+            ? "No one discovered fits this intent well enough to reach, or everyone already has an opportunity."
             : "No counterparties matched those queries. Try different ones, or stop.";
         }
         // Each one is briefed and proposed on outside this wake, so discovery is
@@ -427,37 +465,56 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     }),
   ];
 
+  /** A newer message is the one to answer now, and it has not had its reply. */
+  const steer = async (): Promise<string[]> => {
+    const texts = input.steer?.() ?? [];
+    if (!texts.length) return texts;
+    unansweredMessage = { text: texts[texts.length - 1]! };
+    replied = false;
+    // Only a courtesy line: failing to write it is not worth another wake.
+    try { await input.onProgress?.("Read your new message."); } catch { /* ignored */ }
+    return texts;
+  };
+
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input.model,
+    operation: input.reason === "morning" ? "wake.morning" : "wake",
     identity,
     intent,
     maxSteps: WAKE_STEPS,
+    steer,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     instructions: input.reason === "morning" ? `${WAKE_PROMPT}\n\n${MORNING}` : WAKE_PROMPT,
     prompt:
       (input.reason === "morning"
         ? MORNING
-        : "Something happened on this signal. Work out what it changes, act only there, and stop.") + "\n" +
+        : "Something happened on this intent. Work out what it changes, act only there, and stop.") + "\n" +
       JSON.stringify({
         principal: principalFacts(user),
+        opportunities: view(opportunities),
         conversation,
         unansweredMessage,
-        opportunities,
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
     tools,
   });
 
-  // A stall is never left to disappear: one focused pass over what is still owed.
-  if (!unpersisted && owed().length) {
+  // A stall is never left to disappear: focused passes over what is still owed,
+  // while each one settles some, so the host does not rerun this whole wake for
+  // what is left.
+  for (let pass = 0, before = Infinity; !unpersisted && pass < STALL_PASSES; pass++) {
     const due = new Set(owed());
+    if (!due.size || due.size >= before) break;
+    before = due.size;
     await run({
       model: input.model,
+      operation: "wake.stalls",
       identity,
       intent,
       maxSteps: 4,
+      steer,
       ...(input.now ? { now: input.now } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       instructions: [
@@ -467,7 +524,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       prompt: JSON.stringify({
         principal: principalFacts(user),
         conversation,
-        opportunities: opportunities.filter(({ id }) => due.has(id)),
+        // Stalls on the same missing fact sit together, for one question to cover.
+        opportunities: opportunities
+          .filter(({ id }) => due.has(id))
+          .sort((a, b) => (a.stall?.reason ?? "").localeCompare(b.stall?.reason ?? "")),
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
       tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name)),
@@ -475,9 +535,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   }
 
   if (unpersisted) throw unpersisted;
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     await run({
       model: input.model,
+      operation: "wake.reply",
       identity,
       intent,
       maxSteps: 2,
@@ -486,14 +547,14 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       instructions: "Reply to your principal's unanswered direct message in English, even when they wrote in another language. Call reply_principal exactly once; this run has no other product.",
       prompt: JSON.stringify({
         principal: principalFacts(user),
+        opportunities: view(opportunities),
         conversation,
         unansweredMessage,
-        opportunities,
       }),
       tools: tools.filter((entry) => entry.name === "reply_principal"),
     });
   }
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     throw new Error("No reply to principal's direct message.");
   }
   const unresolved = owed();

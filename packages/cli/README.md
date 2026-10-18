@@ -129,7 +129,7 @@ index docs workflows --json
 index agent me --json
 ```
 
-Topics are `identity-context`, `signals`, `communities-networks`,
+Topics are `identity-context`, `intents`, `communities-networks`,
 `opportunities`, `negotiations`, and `workflows`. An unknown topic exits nonzero.
 
 ### `index logout`

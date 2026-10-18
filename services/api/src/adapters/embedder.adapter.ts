@@ -20,7 +20,7 @@ export interface IntentSearchOptions {
   networkScope: string[]; excludeUserId?: string; limit: number;
   /** Similarity cutoff, 0..1. Zero searches without one, for a caller that wants a top-N. */
   minScore: number;
-  /** Only signals created, or shared into the community, after this. */
+  /** Only intents created, or shared into the community, after this. */
   since?: Date;
   signal?: AbortSignal;
 }

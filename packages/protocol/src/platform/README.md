@@ -19,7 +19,7 @@ request-context store. This package consumes the matching TypeScript port.
 - Use `*Port` only when an interface needs distinguishing from a protocol
   entity. Do not use `*.interface.ts`.
 - Keep vendor, transport, and persistence words out of port names:
-  `Drizzle`, `Postgres`, `Redis`, `BullMQ`, `HTTP`, and `Controller` signal a
+  `Drizzle`, `Postgres`, `Redis`, `BullMQ`, `HTTP`, and `Controller` intent a
   host implementation and do not belong here.
 
 ## Boundary test

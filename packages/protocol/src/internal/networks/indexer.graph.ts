@@ -18,7 +18,7 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  * - read: List intent–network links (by intentId or by networkId)
  * - delete: Unlink an intent from a network
  *
- * ## Signal assignment policy
+ * ## Intent assignment policy
  *
  * There is none to apply: a link exists because its owner asked for it. The
  * assign node writes the row at score 1 with `mode: manual_override`.
@@ -265,7 +265,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
             })),
             count: intents.length,
             mode: "intents_in_network",
-            note: "Community titles and full signal details come from the community and signal reads.",
+            note: "Community titles and full intent details come from the community and intent reads.",
           },
         };
       }
@@ -283,7 +283,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
           })),
           count: intents.length,
           mode: "intents_in_network",
-          note: "Community titles and full signal details come from the community and signal reads.",
+          note: "Community titles and full intent details come from the community and intent reads.",
         },
       };
     } catch (err) {

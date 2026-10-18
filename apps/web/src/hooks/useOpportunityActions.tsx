@@ -10,7 +10,7 @@ export type OpportunityActionScope =
   | { intentId: string }
   | undefined;
 
-/** Local radar update after this viewer accepts, so the open signal can show the chat. */
+/** Local radar update after this viewer accepts, so the open intent can show the chat. */
 export type AcceptedOpportunityUpdate = {
   opportunityId: string;
   status: OpportunityLifecycleStatus;
