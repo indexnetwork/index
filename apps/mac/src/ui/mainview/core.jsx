@@ -254,12 +254,17 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [agentHosted, setAgentHosted] = useState(false);
   // Messages shown before the server has them. `seen` is how many identical ones it already had.
   const [pending, setPending] = useState([]);
+  // Answers shown before the server has them, until the write and the read after it are done.
+  const [pendingAnswers, setPendingAnswers] = useState([]);
+  // Numbers every read; one that finishes after a newer one started holds older data and is dropped.
+  const inboxGen = useRef(0);
   const refreshInbox = React.useCallback(() => {
     if (!live || !client || !intentId) return Promise.resolve();
     const forIntent = intentId;
+    const gen = ++inboxGen.current;
     return client.conversations.messages("agent", { intentId: forIntent })
       .then((res) => {
-        if (intentIdRef.current !== forIntent) return;
+        if (intentIdRef.current !== forIntent || gen !== inboxGen.current) return;
         const questions = (res && res.agent && res.agent.questions) || [];
         setAgentQuestions(questions);
         setAgentHosted(Boolean(res && res.agent && res.agent.status === "hosted"));
@@ -301,6 +306,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setAgentMessages([]);
     setAgentQuestions([]);
     setPending([]);
+    setPendingAnswers([]);
     if (!live || !client) return;
     refreshInbox();
     const t = setInterval(refreshInbox, 5000);
@@ -341,13 +347,23 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     sent.then(() => onDone && onDone());
     sent.then(() => refreshInbox()).then(() => setPending((prev) => prev.filter((m) => m.id !== id)));
   };
-  const shownAgentMessages = [...agentMessages, ...pending.filter((p) =>
-    agentMessages.filter((m) => m.kind === "user" && m.text === p.text).length <= p.seen)];
+  const answeredNow = new Set(pendingAnswers.map((a) => a.questionId));
+  const shownAgentQuestions = agentQuestions.filter((q) => !answeredNow.has(q.id));
+  const shownAgentMessages = [
+    ...agentMessages.map((m) => (m.kind === "open-question" && answeredNow.has(m.questionId) ? { ...m, kind: "question-history" } : m)),
+    ...pendingAnswers.map((a) => ({ id: `pending-answer-${a.questionId}`, kind: "answer-history", text: a.text, questionId: a.questionId })),
+    ...pending.filter((p) => agentMessages.filter((m) => m.kind === "user" && m.text === p.text).length <= p.seen),
+  ];
 
   const sendAgentAnswers = (answers, onDone) => {
     if (!client || !intentId || !answers.length) return;
-    client.conversations.sendAnswers(intentId, answers)
-      .then(() => refreshInbox()).finally(() => onDone && onDone());
+    inboxGen.current++;
+    setPendingAnswers((prev) => [...prev, ...answers]);
+    if (onDone) onDone();
+    // If the write fails, the read after it brings the questions back open.
+    client.conversations.sendAnswers(intentId, answers).catch(() => {})
+      .then(() => refreshInbox())
+      .then(() => setPendingAnswers((prev) => prev.filter((a) => !answers.includes(a))));
   };
 
   // The four states an opportunity can be in for you, in the order they happen:
@@ -682,7 +698,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onRespondPerson={respondPerson}
             agentMessages={live ? shownAgentMessages : null}
             agentHosted={agentHosted}
-            agentQuestions={live ? agentQuestions : []}
+            agentQuestions={live ? shownAgentQuestions : []}
             onSendAgent={live ? sendAgentMessage : null}
             onSendAnswers={live ? sendAgentAnswers : null}
             focusQuestion={focusQuestion}

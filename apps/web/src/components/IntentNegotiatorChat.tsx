@@ -80,7 +80,7 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
       seen.add(provenance.questionId);
       const answer = answers.get(provenance.questionId);
       if (live.has(provenance.questionId)) feed.push({ kind: "open-question", id: message.id, question });
-      else if (answer) feed.push({ kind: "answered-question", id: `answered-${provenance.questionId}`, question, answer });
+      else if (answer) feed.push({ kind: "answered-question", id: message.id, question, answer });
       continue;
     }
     if (provenance?.record === "brief" || provenance?.record === "decision") continue;
@@ -243,15 +243,18 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const questions = agent?.questions ?? [];
+  // An answer in the transcript settles its question, even while the server's list still holds it.
+  const answered = new Set(messages.map((message) => (message.metadata?.principalMessage as Provenance | undefined)).filter((provenance) => provenance?.kind === "answer").map((provenance) => provenance!.questionId));
+  const questions = (agent?.questions ?? []).filter((question) => !answered.has(question.id));
   // Read off the questions on screen, so a selection whose question is gone
   // counts for nothing and is never sent.
   const chosen = questions.filter((question) => selections[question.id]?.trim());
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
-    // A pending message gives way to the real one with the same text, whichever arrives first.
-    const real = new Set(incoming.filter((message) => message.role === "user" && !message.id.startsWith(PENDING)).map(messageText));
-    setMessages((previous) => [...new Map([...previous.filter((message) => !message.id.startsWith(PENDING) || !real.has(messageText(message))), ...incoming].map((message) => [message.id, message])).values()]
+    // A pending message gives way to the real one with the same text (and question, for an answer), whichever arrives first.
+    const same = (message: ConversationMessage) => `${(message.metadata?.principalMessage as Provenance | undefined)?.questionId ?? ""}\n${messageText(message)}`;
+    const real = new Set(incoming.filter((message) => message.role === "user" && !message.id.startsWith(PENDING)).map(same));
+    setMessages((previous) => [...new Map([...previous.filter((message) => !message.id.startsWith(PENDING) || !real.has(same(message))), ...incoming].map((message) => [message.id, message])).values()]
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
   }, []);
 
@@ -314,23 +317,34 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const sendAnswers = async () => {
     if (!chosen.length || sending) return;
     const answers = chosen.map((question) => ({ questionId: question.id, text: selections[question.id]!.trim() }));
+    const previous = { selections, writing };
+    // Shown at once; each gives way to the real message, which names the same question.
+    const pending = answers.map(({ questionId, text }): ConversationMessage => ({
+      id: `${PENDING}${questionId}`, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user",
+      parts: [{ kind: "text", text }], metadata: { intentId, principalMessage: { kind: "answer", questionId } }, createdAt: new Date().toISOString(),
+    }));
+    mergeMessages(pending);
     setSelections({});
     setWriting({});
     setSending(true);
     try {
       mergeMessages(await conversations.sendAnswers(intentId, answers));
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // Put the answers back so they can be sent again.
+      setSelections(previous.selections);
+      setWriting(previous.writing);
     } finally {
-      await refresh();
+      const ids = new Set(pending.map((message) => message.id));
+      setMessages((current) => current.filter((message) => !ids.has(message.id)));
       setSending(false);
+      void refresh();
     }
   };
 
   const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
   // Only a hosted agent answers here; an external one never will, so nothing waits on it.
   const hosted = agent?.status === "hosted";
-  const waiting = hosted && feed.at(-1)?.kind === "user";
+  const waiting = hosted && messages.at(-1)?.role === "user";
   let firstWaiting = feed.length;
   while (waiting && firstWaiting > 0 && feed[firstWaiting - 1].kind === "user") firstWaiting--;
 

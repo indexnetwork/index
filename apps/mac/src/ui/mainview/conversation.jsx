@@ -45,7 +45,9 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   const questions = inbox ? (agentQuestions || []) : [];
   const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
   // The agent owes an answer to the last thing you said; queued ones sit behind the first.
-  const waiting = agentHosted && inboxFeed.length > 0 && inboxFeed[inboxFeed.length - 1].kind === "user";
+  // An answer is something you said too, so it leaves the agent owing a reply the same way.
+  const lastSaid = inbox && agentMessages.length ? agentMessages[agentMessages.length - 1].kind : "";
+  const waiting = agentHosted && (lastSaid === "user" || lastSaid === "answer-history");
   let firstWaiting = inboxFeed.length;
   while (waiting && firstWaiting > 0 && inboxFeed[firstWaiting - 1].kind === "user") firstWaiting--;
   const firstOpenId = inboxFeed.find((item) => item.kind === "open-question")?.id;

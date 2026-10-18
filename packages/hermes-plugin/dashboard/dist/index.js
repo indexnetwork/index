@@ -3948,12 +3948,15 @@
     const rootRef = useRef(null);
     const threadRef = useRef(null);
     const aliveRef = useRef(true);
+    // Numbers every read; one that finishes after a newer one started holds older data and is dropped.
+    const readGenRef = useRef(0);
     const intentId = props.intentId;
 
     function read() {
+      const gen = ++readGenRef.current;
       return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
         .then(function (payload) {
-          if (!aliveRef.current) return;
+          if (!aliveRef.current || gen !== readGenRef.current) return;
           if (!payload || payload.success === false) throw new Error((payload && payload.error) || "unreadable");
           setMessages(payload.messages || []);
           setAgent(payload.agent || null);
@@ -3994,7 +3997,16 @@
       });
     }, [intentId]);
 
-    const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+    // An answer, sent or still on its way, settles its question even while the server's list still holds it.
+    const answeredIds = {};
+    messages.forEach(function (m) {
+      const p = m.metadata && m.metadata.principalMessage;
+      if (p && p.kind === "answer" && p.questionId) answeredIds[p.questionId] = true;
+    });
+    pending.forEach(function (p) { if (p.questionId) answeredIds[p.questionId] = true; });
+    const questions = ((agent && Array.isArray(agent.questions)) ? agent.questions : []).filter(function (q) {
+      return !answeredIds[q.id];
+    });
     // Keyed by id so the transcript can render each pending question where it
     // was asked rather than dropping the message and stacking the cards last.
     const carded = {};
@@ -4039,6 +4051,14 @@
       const answers = chosen.map(function (question) {
         return { questionId: question.id, text: selections[question.id].trim() };
       });
+      const previous = { selections: selections, writing: writing };
+      // Shown at once, each as the reply it will be; they go once the write and the read after it are done.
+      const shown = answers.map(function (answer) {
+        const seen = messages.filter(function (m) { return m.role === "user" && extractContent(m.parts).text === answer.text; }).length;
+        return { id: "pending-answer-" + answer.questionId, questionId: answer.questionId, text: answer.text, seen: seen };
+      });
+      readGenRef.current++;
+      setPending(function (prev) { return prev.concat(shown); });
       setSelections({});
       setWriting({});
       setSending(true);
@@ -4047,9 +4067,16 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intentId: intentId, answers: answers }),
       })
-        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
-        .then(read)
-        .then(function () { if (aliveRef.current) setSending(false); });
+        .catch(function () {
+          // Put the answers back so they can be sent again.
+          if (!aliveRef.current) return;
+          setSelections(previous.selections);
+          setWriting(previous.writing);
+        })
+        .then(function () { if (aliveRef.current) setSending(false); return read(); })
+        .then(function () {
+          if (aliveRef.current) setPending(function (prev) { return prev.filter(function (m) { return shown.indexOf(m) < 0; }); });
+        });
     }
 
     function choose(questionId, text) {
