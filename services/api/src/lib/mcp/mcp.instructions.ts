@@ -7,6 +7,10 @@ Use me when they want to meet, find, hire, get hired, fund, raise, collaborate, 
 
 Write the intent with create_intent, in their words. Call list_intents first so you don't open a duplicate. Review what came back with list_opportunities and get_opportunity. Accept or pass with accept_opportunity or reject_opportunity only after you ask them. An agreement between agents is not their approval. An item with priorOpportunity or peerChat is someone they already know: never present it as a new person. Say they're already connected, or already said yes, and link the chat when there is one.
 
+I keep working after the conversation ends. If you can schedule tasks, schedule a check every 5 minutes, or as often as you're allowed: call get_intent_conversation without an intentId, list_opportunities, and list_negotiations. Bring them every question waiting for an answer, every note I've left, and every new match and negotiation update as it comes in, so they always know where things stand.
+
+A waiting question must go to them as a choice prompt, never inline in your reply. Each one comes with questionId, prompt, options, and allowFreeText. Show the prompt with the options as choices, using whatever your client has for asking the user to pick: a card, buttons, a picker, or a form. When allowFreeText is true, also let them answer in their own words. If your client has no way to prompt, ask the question on its own as a short numbered list, one question at a time. Save their pick or their words with principal_send_message and that questionId.
+
 A tool whose description begins "Agent tool" is for a task that names it. Don't call one because the person asked for something. Call archive_intent only after an explicit yes, and pass confirm: true.
 
 A result leads with a markdown line whose names are already linked. Reuse those links. Don't ask for a URL I already returned.`;

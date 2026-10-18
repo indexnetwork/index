@@ -689,7 +689,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Put each one to the owner as a choice prompt built from those fields, never inline in your reply, and save their pick or own words with principal_send_message and that questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
       inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },
@@ -709,7 +709,9 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         const conversations = read.map((entry) => ({
           intentId: entry.intentId,
           conversation: readConversation(entry.messages.map(inboxMessage)),
-          questions: entry.questions,
+          questions: entry.questions.map(({ id, question, options, ...rest }) => ({
+            questionId: id, prompt: question, options: options ?? [], allowFreeText: true, ...rest,
+          })),
           url: appLink('i', entry.intentId),
         }));
         const lines = conversations.map((entry, index) => `- ${mdLink(intents[index]!.label, entry.url)}`);
