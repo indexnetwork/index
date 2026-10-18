@@ -367,6 +367,7 @@ export class ConversationDatabaseAdapter {
           { participantId: userB, participantType },
         ],
         dmPair,
+        userA,
       );
     } catch (err: unknown) {
       // Unique constraint violation — concurrent create won
@@ -430,11 +431,13 @@ export class ConversationDatabaseAdapter {
    * Creates a conversation with a dmPair key for DM deduplication.
    * @param participants - List of participant descriptors
    * @param dmPair - Normalized pair key (sorted user IDs joined by ':')
+   * @param starterId - When set, everyone else starts hidden until the first message, so an empty DM never shows up for them
    * @returns The newly created conversation row
    */
   private async createConversationWithDmPair(
     participants: { participantId: string; participantType: 'user' | 'agent' }[],
     dmPair: string,
+    starterId?: string,
   ): Promise<Conversation> {
     const id = crypto.randomUUID();
     const now = new Date();
@@ -447,6 +450,7 @@ export class ConversationDatabaseAdapter {
             conversationId: id,
             participantId: p.participantId,
             participantType: p.participantType,
+            hiddenAt: starterId && p.participantId !== starterId ? now : null,
           })),
         );
       }

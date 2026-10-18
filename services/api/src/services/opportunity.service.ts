@@ -70,10 +70,12 @@ type MatchProvenanceDatabase = OpportunityControllerDatabase & {
   appendMatchProvenance(conversationId: string, provenance: MatchProvenanceInput): Promise<void>;
 };
 
-function buildMatchProvenance(opportunity: Pick<Opportunity, 'id' | 'actors'>): MatchProvenanceInput {
+/** `onlyUserId` keeps just that person's intent, so the other side learns nothing before they commit. */
+function buildMatchProvenance(opportunity: Pick<Opportunity, 'id' | 'actors'>, onlyUserId?: string): MatchProvenanceInput {
   return {
     opportunityId: opportunity.id,
     intents: opportunity.actors
+      .filter((actor) => !onlyUserId || actor.userId === onlyUserId)
       .filter((actor): actor is typeof actor & { intent: string } => typeof actor.intent === 'string' && actor.intent.length > 0)
       .map((actor) => ({ userId: actor.userId, intentId: actor.intent })),
     recordedAt: new Date().toISOString(),
@@ -585,15 +587,25 @@ export class OpportunityService {
 
     const counterpart = resolveCounterpart(updated.actors, userId);
     if (!counterpart) return { opportunity: presented };
+    let conversation: { id: string };
     try {
-      await this.db.getOrCreateDM(userId, counterpart.userId);
+      conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
     } catch (err) {
       updateStatusLogger.error('getOrCreateDM failed after the set committed', {
         opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
       });
       return { error: 'Failed to create conversation for this opportunity', status: 500 };
     }
+    await this.unhideForBoth(conversation.id, userId, counterpart.userId);
     return { opportunity: presented, counterpartUserId: counterpart.userId };
+  }
+
+  /** Best-effort: once both committed, the DM shows for both even before the first message. */
+  private async unhideForBoth(conversationId: string, userId: string, counterpartUserId: string): Promise<void> {
+    await Promise.all([userId, counterpartUserId].map((id) =>
+      this.db.unhideConversation(id, conversationId).catch((err: unknown) => {
+        logger.error('unhideConversation failed (non-blocking)', { conversationId, userId: id, error: err });
+      })));
   }
 
   /**
@@ -702,7 +714,8 @@ export class OpportunityService {
       });
       return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
     }
-    await appendMatchProvenance(this.db, conversation.id, buildMatchProvenance(opp)).catch((err: unknown) => {
+    const provenance = buildMatchProvenance(opp, applied.introduction ? undefined : userId);
+    await appendMatchProvenance(this.db, conversation.id, provenance).catch((err: unknown) => {
       startChatLogger.error('appendMatchProvenance failed (non-blocking)', {
         conversationId: conversation.id, opportunityId, userId, error: err,
       });
@@ -713,6 +726,7 @@ export class OpportunityService {
       });
     });
     if (applied.introduction) {
+      await this.unhideForBoth(conversation.id, userId, counterpart.userId);
       await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
         startChatLogger.error('closeForOpportunities failed (non-blocking)', { opportunityId, userId, error: err });
       });
