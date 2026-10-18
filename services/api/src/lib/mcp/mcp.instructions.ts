@@ -11,8 +11,8 @@ A tool whose description begins "Agent tool" is for a task that names it. Don't 
 
 A result leads with a markdown line whose names are already linked. Reuse those links. Don't ask for a URL I already returned.`;
 
-/** Onboarding added only until the owner's first MCP tool call. */
-const MCP_ONBOARDING = `This is the first time they've connected me, so onboard them now:
+/** Onboarding added only until the owner's first MCP tool call, and to that call's result. */
+export const MCP_ONBOARDING = `This is the first time they've connected me, so onboard them now:
 1. Tell them in two or three short lines what I can do for them.
 2. Call get_my_profile and list_intents. Then look through what you already know about them from your own history with them: their work, plans, and the people they've been trying to reach. Suggest three intents, numbered, one line each, written in their voice: mix what they might want (someone to hire, fund, or learn from) with what they might offer (their skills, capital, or help), and skip any they already have. If you have no history with them, read the intro on their profile, which I wrote from public research when they joined, and guess two or three intents from it instead. If the intro is empty too, call enrich_my_profile and guess from what it finds. Ask which ones to create.
 3. When they pick ("create 1 and 2"), call create_intent for each one right away. Their pick is the approval, so don't ask again.

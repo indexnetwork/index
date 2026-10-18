@@ -92,30 +92,32 @@ async function rpcMethods(request: Request): Promise<string[]> {
 }
 
 /**
- * Whether this request should carry the onboarding instructions. Onboarding
- * lasts until the owner's agent makes its first tool call, so a client that
- * probes the server more than once still sees it, and later sessions don't.
+ * Where this request should carry onboarding: the handshake's instructions, or
+ * the result of the owner's first tool call. Onboarding lasts until that call,
+ * so a client that probes the server more than once still sees it, and later
+ * sessions don't.
  */
-async function firstConnection(request: Request, principal: McpPrincipal): Promise<boolean> {
+async function firstConnection(request: Request, principal: McpPrincipal): Promise<'instructions' | 'result' | null> {
   const methods = await rpcMethods(request);
   const handshake = methods.some((method) => INSTRUCTION_METHODS.has(method));
   const toolCall = methods.includes(TOOL_CALL);
-  if (!handshake && !toolCall) return false;
+  if (!handshake && !toolCall) return null;
   try {
-    if (await userService.isMcpOnboarded(principal.userId)) return false;
-    if (toolCall) await userService.markMcpOnboarded(principal.userId);
-    return handshake;
+    if (await userService.isMcpOnboarded(principal.userId)) return null;
+    if (!toolCall) return 'instructions';
+    await userService.markMcpOnboarded(principal.userId);
+    return 'result';
   } catch (error) {
     // Onboarding is a nicety: a failed read must never break the connection.
     logger.warn('MCP onboarding state unavailable', { userId: principal.userId, error: String(error) });
-    return false;
+    return null;
   }
 }
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
-function createIndexMcpServer(principal: McpPrincipal, onboarding: boolean): McpServer {
-  const server = new McpServer({ name: 'index', version }, { instructions: mcpInstructions(onboarding) });
-  registerMcpTools(server, principal);
+function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions' | 'result' | null): McpServer {
+  const server = new McpServer({ name: 'index', version }, { instructions: mcpInstructions(onboarding === 'instructions') });
+  registerMcpTools(server, onboarding === 'result' ? { ...principal, onboarding: true } : principal);
   registerMcpEvents(server, principal);
   return server;
 }
