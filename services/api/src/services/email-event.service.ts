@@ -15,6 +15,7 @@ class EmailEventService {
         emailId: event.emailId,
         type: event.type,
         kind: event.kind,
+        userId: event.userId,
         occurredAt: event.occurredAt,
       })
       .onConflictDoNothing();

@@ -9,6 +9,16 @@ const logger = log.lib.from("email/transport.helper");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+/** Resend tag values may only hold letters, numbers, underscores and dashes. */
+const TAG_VALUE = /^[A-Za-z0-9_-]{1,256}$/;
+
+export function emailTags(kind?: EmailKind, userId?: string): { name: string; value: string }[] | undefined {
+  if (!kind) return undefined;
+  const tags: { name: string; value: string }[] = [{ name: 'kind', value: kind }];
+  if (userId && TAG_VALUE.test(userId)) tags.push({ name: 'user_id', value: userId });
+  return tags;
+}
+
 export const executeSendEmail = async (options: {
   to: string | string[];
   subject: string;
@@ -17,6 +27,8 @@ export const executeSendEmail = async (options: {
   headers?: Record<string, string>;
   from?: string;
   kind?: EmailKind;
+  /** The recipient's user id, sent as a Resend tag so opens and clicks can be counted per user. */
+  userId?: string;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
@@ -80,7 +92,7 @@ ${options.html}
       html: options.html,
       text: options.text,
       headers: options.headers,
-      tags: options.kind ? [{ name: 'kind', value: options.kind }] : undefined,
+      tags: emailTags(options.kind, options.userId),
     });
 
     if (result.error) {

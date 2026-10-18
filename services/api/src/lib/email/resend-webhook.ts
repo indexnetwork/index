@@ -26,6 +26,7 @@ export interface ParsedEmailEvent {
   type: TrackedEvent;
   emailId: string;
   kind: EmailKind;
+  userId: string | null;
   occurredAt: Date;
 }
 
@@ -87,7 +88,7 @@ function tagValue(tags: unknown, name: string): string | null {
 
 /**
  * Reduce a Resend webhook payload to what the counts need: no address and no
- * subject is kept. Returns null for event types that are not tracked, such as
+ * subject is kept, only the user id the send was tagged with. Returns null for event types that are not tracked, such as
  * contact or domain events, and for email of a kind that is not tracked.
  */
 export function parseResendEvent(payload: unknown): ParsedEmailEvent | null {
@@ -106,5 +107,5 @@ export function parseResendEvent(payload: unknown): ParsedEmailEvent | null {
   if (Number.isNaN(when.getTime())) return null;
   const kind = tagValue(data?.tags, 'kind');
   if (!kind || !(TRACKED_KINDS as readonly string[]).includes(kind)) return null;
-  return { type: name as TrackedEvent, emailId, kind: kind as EmailKind, occurredAt: when };
+  return { type: name as TrackedEvent, emailId, kind: kind as EmailKind, userId: tagValue(data?.tags, 'user_id'), occurredAt: when };
 }

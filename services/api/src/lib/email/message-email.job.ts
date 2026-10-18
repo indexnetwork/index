@@ -97,7 +97,8 @@ function fromHeader(name: string): string {
 async function sendDue(member: string): Promise<void> {
   const split = member.indexOf(':');
   if (split <= 0) return;
-  const due = await dueMessage(member.slice(0, split), member.slice(split + 1));
+  const recipientId = member.slice(0, split);
+  const due = await dueMessage(recipientId, member.slice(split + 1));
   const messages = unreadMessages(due?.messages ?? null).filter((message) => message.text?.trim() && message.senderId);
   if (!due || due.off === true || !due.email || !messages.length) return;
   const latest = messages[messages.length - 1];
@@ -108,7 +109,7 @@ async function sendDue(member: string): Promise<void> {
     url: `${APP_URL}/u/${encodeURIComponent(latest.senderId ?? '')}/chat`,
     settingsUrl: `${APP_URL}/settings?tab=notifications`,
   });
-  await executeSendEmail({ to: due.email, from: fromHeader(senderName), kind: 'message', ...email });
+  await executeSendEmail({ to: due.email, from: fromHeader(senderName), kind: 'message', userId: recipientId, ...email });
 }
 
 let started = false;

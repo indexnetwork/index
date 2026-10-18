@@ -22,11 +22,13 @@ The Index Trace boards show real negotiation text from a pseudonymized dev branc
 
 `dashboards/email.json` (Index - Email) shows daily sent, opened and clicked counts, open and click rates, delivery problems, and a table by email type. It reads `analytics.email_events`, a view over `public.email_events`, which the API fills from Resend webhooks (`services/api/src/controllers/resend-webhook.controller.ts`). Nothing appears until all of these are done, in this order:
 
-1. Deploy the API with the `0014_email_events` migration applied.
+1. Deploy the API with the `0014_email_events` and `0015_email_events_user` migrations applied.
 2. Run `sql/email_analytics.sql` once as the database owner to create the view and grant it to `grafana_ro`.
 3. In Resend, add a webhook to `<API_URL>/api/webhooks/resend` with the email events (sent, delivered, delivery delayed, bounced, complained, failed, opened, clicked), and set its signing secret as `RESEND_WEBHOOK_SECRET` on the API service. Without it the endpoint answers 503.
 4. In Resend, turn on open tracking and click tracking for the sending domain (`agent.index.network`). Without them there are no opened or clicked events.
 5. Rebuild and redeploy the bundle (below) so the board is provisioned.
+
+Each tracked send is tagged with the recipient's user id, so the board also counts users (emailed, opened, clicked), and two panels join email to the rest of the analytics: users who were active within 24 hours of a click (Index - Email), and weekly active users who clicked an email that week (Index - Retention). Those joins show association, not cause. The boards show counts only, never user ids, but `analytics.email_events` carries `user_id` and anyone who can query the Index datasource can read it, so keep that datasource to people who may see per-user email behaviour.
 
 Counts start from the day the webhook is on. Resend does not replay earlier events. Opens are inflated by Apple Mail Privacy Protection and by security scanners that open links, so read the open rate as an upper bound and trust clicks more.
 

@@ -47,6 +47,10 @@ def dash(uid, title, panels, rng="now-30d"):
             "refresh": "5m", "time": {"from": rng, "to": "now"}, "panels": panels, "templating": {"list": []}}
 
 
+def described(panel, text):
+    return {**panel, "description": text}
+
+
 def ev(t, expr="count(distinct opportunity_id)"):
     return f"select {expr} as value from analytics.opportunity_events where type = '{t}' and $__timeFilter(at)"
 
@@ -102,6 +106,9 @@ select w as time, count(*) filter (where w = fw) as new_users, count(*) filter (
     ts(6, "Week-over-week retention (share of last week's actives active again)", "with " + WK + """
 select p.w + interval '7 days' as time, count(c.u)::float / count(*) as retention from wk p left join wk c on c.u = p.u and c.w = p.w + interval '7 days' where p.w + interval '7 days' <= date_trunc('week', now()) and $__timeFilter(p.w + interval '7 days') group by 1 order by 1""", 0, 13, 12, unit="percentunit"),
     ts(7, "Accounts deleted per week", "select date_trunc('week', deleted_at) as time, count(*) as deleted from analytics.users where deleted_at is not null and $__timeFilter(deleted_at) group by 1 order by 1", 12, 13, stack=True),
+    described(ts(8, "Weekly active users: how many clicked an email that week", "with " + WK + """
+select w as time, count(*) as active_users, count(*) filter (where exists (select 1 from analytics.email_events e where e.user_id = wk.u and e.type = 'clicked' and date_trunc('week', e.at) = wk.w)) as active_and_clicked_email from wk where $__timeFilter(w) group by w order by w""", 0, 22, 24),
+              "Needs the email tracking setup. Counts people active in the week who also clicked a tracked email in it; it does not show that the email caused the activity."),
 ], "now-90d")
 
 supply = dash("index-supply", "Index - Supply", [
@@ -127,10 +134,6 @@ def mail(t, expr="count(*)"):
     return f"select {expr} as value from analytics.email_events where type = '{t}' and $__timeFilter(at)"
 
 
-def described(panel, text):
-    return {**panel, "description": text}
-
-
 EVENT_DAY = "Counted on the day each event happened, not the day the email was sent, so a rate can pass 100% on a day with late opens."
 
 email = dash("index-email", "Index - Email", [
@@ -142,23 +145,40 @@ email = dash("index-email", "Index - Email", [
               "Apple Mail Privacy Protection and some security scanners open emails automatically, so opens overstate real reading."),
     stat(8, "Click rate (unique clicks / delivered)", "select count(distinct email_id) filter (where type = 'clicked')::float / nullif(count(*) filter (where type = 'delivered'), 0) as value from analytics.email_events where $__timeFilter(at)", 8, 4, "percentunit", 8),
     stat(9, "Click-to-open rate (unique clicks / unique opens)", "select count(distinct email_id) filter (where type = 'clicked')::float / nullif(count(distinct email_id) filter (where type = 'opened'), 0) as value from analytics.email_events where $__timeFilter(at)", 16, 4, "percentunit", 8),
-    ts(10, "Sent per day by email type", "select $__timeGroupAlias(at,'1d'), coalesce(kind, 'untagged') as metric, count(*) as value from analytics.email_events where type = 'sent' and $__timeFilter(at) group by 1,2 order by 1", 0, 8, 24, 9, stack=True),
-    described(ts(11, "Opens per day", "select $__timeGroupAlias(at,'1d'), count(*) as opens, count(distinct email_id) as unique_opens from analytics.email_events where type = 'opened' and $__timeFilter(at) group by 1 order by 1", 0, 17, 12),
+    stat(10, "Users emailed", "select count(distinct user_id) as value from analytics.email_events where type = 'sent' and $__timeFilter(at)", 0, 8, w=6),
+    stat(11, "Users who opened", "select count(distinct user_id) as value from analytics.email_events where type = 'opened' and $__timeFilter(at)", 6, 8, w=6),
+    stat(12, "Users who clicked", "select count(distinct user_id) as value from analytics.email_events where type = 'clicked' and $__timeFilter(at)", 12, 8, w=6),
+    described(stat(13, "Users who clicked, then were active within 24h", "with " + ACTS + " select count(distinct e.user_id) as value from analytics.email_events e where e.type = 'clicked' and $__timeFilter(e.at) and exists (select 1 from acts a where a.u = e.user_id and a.t > e.at and a.t <= e.at + interval '24 hours')", 18, 8, w=6),
+              "Activity is a new intent, a message or a commit after the click. It shows people came back, not that the email caused it."),
+    described(stat(14, "Emailed users who never opened (share)", "select 1 - count(distinct user_id) filter (where type = 'opened')::float / nullif(count(distinct user_id) filter (where type = 'sent'), 0) as value from analytics.email_events where $__timeFilter(at)", 0, 12, "percentunit", 8),
+              "Of the users sent a tracked email in the range, the share with no open event in it. Open tracking misses people who block images."),
+    ts(15, "Users per day: emailed, opened, clicked", "select $__timeGroupAlias(at,'1d'), count(distinct user_id) filter (where type = 'sent') as emailed, count(distinct user_id) filter (where type = 'opened') as opened, count(distinct user_id) filter (where type = 'clicked') as clicked from analytics.email_events where $__timeFilter(at) group by 1 order by 1", 8, 12, 16, 4),
+    bars(16, "Emailed users by number of opens in range", """select bucket, users from (
+  with s as (select user_id, count(*) filter (where type = 'opened') as opens from analytics.email_events where user_id is not null and $__timeFilter(at) group by 1 having count(*) filter (where type = 'sent') > 0)
+  select '1 none' as bucket, count(*) as users from s where opens = 0
+  union all select '2 one', count(*) from s where opens = 1
+  union all select '3 two to four', count(*) from s where opens between 2 and 4
+  union all select '4 five or more', count(*) from s where opens >= 5
+) b order by bucket""", 0, 16, 24, 6),
+    ts(17, "Sent per day by email type", "select $__timeGroupAlias(at,'1d'), coalesce(kind, 'untagged') as metric, count(*) as value from analytics.email_events where type = 'sent' and $__timeFilter(at) group by 1,2 order by 1", 0, 22, 24, 9, stack=True),
+    described(ts(18, "Opens per day", "select $__timeGroupAlias(at,'1d'), count(*) as opens, count(distinct email_id) as unique_opens from analytics.email_events where type = 'opened' and $__timeFilter(at) group by 1 order by 1", 0, 31, 12),
               "Opens counts every open event. Unique opens counts each email once per day."),
-    described(ts(12, "Clicks per day", "select $__timeGroupAlias(at,'1d'), count(*) as clicks, count(distinct email_id) as unique_clicks from analytics.email_events where type = 'clicked' and $__timeFilter(at) group by 1 order by 1", 12, 17, 12),
+    described(ts(19, "Clicks per day", "select $__timeGroupAlias(at,'1d'), count(*) as clicks, count(distinct email_id) as unique_clicks from analytics.email_events where type = 'clicked' and $__timeFilter(at) group by 1 order by 1", 12, 31, 12),
               "Clicks counts every click event. Unique clicks counts each email once per day."),
-    described(ts(13, "Daily open and click rate", "select $__timeGroupAlias(at,'1d'), count(distinct email_id) filter (where type = 'opened')::float / nullif(count(*) filter (where type = 'delivered'), 0) as open_rate, count(distinct email_id) filter (where type = 'clicked')::float / nullif(count(*) filter (where type = 'delivered'), 0) as click_rate from analytics.email_events where $__timeFilter(at) group by 1 order by 1", 0, 26, 12, unit="percentunit"), EVENT_DAY),
-    ts(14, "Delivery problems per day", "select $__timeGroupAlias(at,'1d'), type as metric, count(*) as value from analytics.email_events where type in ('bounced', 'complained', 'failed', 'delivery_delayed') and $__timeFilter(at) group by 1,2 order by 1", 12, 26, 12, stack=True),
-    table(15, "By email type", """select coalesce(kind, 'untagged') as email_type,
+    described(ts(20, "Daily open and click rate", "select $__timeGroupAlias(at,'1d'), count(distinct email_id) filter (where type = 'opened')::float / nullif(count(*) filter (where type = 'delivered'), 0) as open_rate, count(distinct email_id) filter (where type = 'clicked')::float / nullif(count(*) filter (where type = 'delivered'), 0) as click_rate from analytics.email_events where $__timeFilter(at) group by 1 order by 1", 0, 40, 12, unit="percentunit"), EVENT_DAY),
+    ts(21, "Delivery problems per day", "select $__timeGroupAlias(at,'1d'), type as metric, count(*) as value from analytics.email_events where type in ('bounced', 'complained', 'failed', 'delivery_delayed') and $__timeFilter(at) group by 1,2 order by 1", 12, 40, 12, stack=True),
+    table(22, "By email type", """select coalesce(kind, 'untagged') as email_type,
   count(*) filter (where type = 'sent') as sent,
   count(*) filter (where type = 'delivered') as delivered,
   count(distinct email_id) filter (where type = 'opened') as unique_opens,
   count(distinct email_id) filter (where type = 'clicked') as unique_clicks,
+  count(distinct user_id) filter (where type = 'opened') as users_opened,
+  count(distinct user_id) filter (where type = 'clicked') as users_clicked,
   count(distinct email_id) filter (where type = 'opened')::float / nullif(count(*) filter (where type = 'delivered'), 0) as open_rate,
   count(distinct email_id) filter (where type = 'clicked')::float / nullif(count(*) filter (where type = 'delivered'), 0) as click_rate,
   count(*) filter (where type = 'bounced') as bounced,
   count(*) filter (where type = 'complained') as complained
-from analytics.email_events where $__timeFilter(at) group by 1 order by sent desc""", 0, 35, 24, 8),
+from analytics.email_events where $__timeFilter(at) group by 1 order by sent desc""", 0, 49, 24, 8),
 ])
 
 DASHES = {"activation": activation, "opportunity": opportunity, "negotiation": negotiation, "retention": retention, "supply": supply, "email": email}

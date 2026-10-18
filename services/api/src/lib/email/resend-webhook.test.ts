@@ -5,7 +5,7 @@ import { parseResendEvent, verifyResendWebhook } from './resend-webhook';
 
 const key = Buffer.from('a-test-signing-key-of-some-length');
 const secret = `whsec_${key.toString('base64')}`;
-const body = JSON.stringify({ type: 'email.opened', created_at: '2026-10-17T09:30:00.000Z', data: { email_id: 'em_1', tags: { kind: 'morning_brief' } } });
+const body = JSON.stringify({ type: 'email.opened', created_at: '2026-10-17T09:30:00.000Z', data: { email_id: 'em_1', tags: { kind: 'morning_brief', user_id: 'user_1' } } });
 const now = 1_790_000_000;
 
 function headers(id: string, timestamp: number, payload: string, signingKey: Buffer = key): Headers {
@@ -47,6 +47,7 @@ describe('parseResendEvent', () => {
       type: 'opened',
       emailId: 'em_1',
       kind: 'morning_brief',
+      userId: 'user_1',
       occurredAt: new Date('2026-10-17T09:30:00.000Z'),
     });
   });
@@ -54,6 +55,10 @@ describe('parseResendEvent', () => {
   test('reads tags sent as a list', () => {
     const event = parseResendEvent({ type: 'email.clicked', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_2', tags: [{ name: 'kind', value: 'message' }] } });
     expect(event?.kind).toBe('message');
+  });
+
+  test('leaves the user empty when the send had no user tag', () => {
+    expect(parseResendEvent({ type: 'email.opened', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_6', tags: { kind: 'message' } } })?.userId).toBeNull();
   });
 
   test('ignores email with no kind tag or an untracked kind', () => {
