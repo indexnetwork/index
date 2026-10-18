@@ -12,7 +12,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 /** Resend tag values may only hold letters, numbers, underscores and dashes. */
 const TAG_VALUE = /^[A-Za-z0-9_-]{1,256}$/;
 
-export function emailTags(kind?: EmailKind, userId?: string): { name: string; value: string }[] | undefined {
+function emailTags(kind?: EmailKind, userId?: string): { name: string; value: string }[] | undefined {
   if (!kind) return undefined;
   const tags: { name: string; value: string }[] = [{ name: 'kind', value: kind }];
   if (userId && TAG_VALUE.test(userId)) tags.push({ name: 'user_id', value: userId });
