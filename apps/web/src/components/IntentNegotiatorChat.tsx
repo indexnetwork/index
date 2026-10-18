@@ -26,6 +26,9 @@ type QuestionCard = {
   matches: PrincipalQuestion["matches"];
 };
 
+/** Id prefix of a message shown before the server has confirmed it. */
+const PENDING = "pending-";
+
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
@@ -246,7 +249,9 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const chosen = questions.filter((question) => selections[question.id]?.trim());
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
-    setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
+    // A pending message gives way to the real one with the same text, whichever arrives first.
+    const real = new Set(incoming.filter((message) => message.role === "user" && !message.id.startsWith(PENDING)).map(messageText));
+    setMessages((previous) => [...new Map([...previous.filter((message) => !message.id.startsWith(PENDING) || !real.has(messageText(message))), ...incoming].map((message) => [message.id, message])).values()]
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
   }, []);
 
@@ -290,14 +295,18 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     if (!text || sending) return;
     setDraft("");
     setSending(true);
+    const parts = [{ kind: "text", text }];
+    const pendingId = `${PENDING}${Date.now()}`;
+    mergeMessages([{ id: pendingId, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user", parts, metadata: { intentId }, createdAt: new Date().toISOString() }]);
     try {
-      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, [{ kind: "text", text }], { metadata: { intentId } })]);
+      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, parts, { metadata: { intentId } })]);
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // The refresh below is the transcript's only truth.
     } finally {
-      await refresh();
+      setMessages((previous) => previous.filter((message) => message.id !== pendingId));
       setSending(false);
       inputRef.current?.focus();
+      void refresh();
     }
   };
 
@@ -319,6 +328,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   };
 
   const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
+  // Only a hosted agent answers here; an external one never will, so nothing waits on it.
+  const hosted = agent?.status === "hosted";
+  const waiting = hosted && feed.at(-1)?.kind === "user";
+  let firstWaiting = feed.length;
+  while (waiting && firstWaiting > 0 && feed[firstWaiting - 1].kind === "user") firstWaiting--;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
@@ -334,7 +348,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           />
         ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
           ask about your matches, share a preference, or tell your agent what to look for.
-        </p> : feed.map((piece) => {
+        </p> : feed.map((piece, index) => {
           if (piece.kind === "discovery") {
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
           }
@@ -344,6 +358,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
                 <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
+                {waiting && index > firstWaiting && <span style={{ alignSelf: "flex-end", marginLeft: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
               </div>
             );
           }
@@ -364,6 +379,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             </AgentFeedNote>
           );
         })}
+      {waiting && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· thinking…</p>}
       <div ref={endRef} />
       </div>
 

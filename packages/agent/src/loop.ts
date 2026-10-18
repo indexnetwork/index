@@ -26,6 +26,8 @@ export interface RunInput {
   requireTool?: boolean;
   now?: () => Date;
   signal?: AbortSignal;
+  /** Messages the principal wrote while this run was going; each is read before the next step. */
+  steer?: () => string[] | Promise<string[]>;
 }
 
 function formatDate(now: Date): string {
@@ -78,7 +80,13 @@ export async function run(input: RunInput): Promise<void> {
       prompt: input.prompt,
       tools,
       stopWhen: isStepCount(input.maxSteps),
-      prepareStep: ({ stepNumber }) => (stepNumber === 0 && input.requireTool ? { toolChoice: "required" } : undefined),
+      prepareStep: async ({ stepNumber, messages }) => {
+        const texts = await input.steer?.() ?? [];
+        return {
+          ...(stepNumber === 0 && input.requireTool ? { toolChoice: "required" as const } : {}),
+          ...(texts.length ? { messages: [...messages, ...texts.map((text) => ({ role: "user" as const, content: `Your principal just wrote: ${text}` }))] } : {}),
+        };
+      },
       // Tools share the run's state: a note must land before the question after it.
       toolCallConcurrency: 1,
       maxOutputTokens: MAX_TOKENS,

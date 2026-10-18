@@ -145,6 +145,10 @@ export interface WakeInput {
   onOpened?: (opportunityIds: string[]) => void;
   /** Persist one user-facing boundary for each discovery tool call. */
   onProgress?: (text: string) => void | Promise<void>;
+  /** The reply to the principal's direct message, the moment it is written. A failure is raised from `wake` once the loop ends. */
+  onReply?: (text: string) => void | Promise<void>;
+  /** Messages the principal wrote since the last call, so a running wake reads them before its next step. */
+  steer?: () => string[];
   /** Omitted for an event. Morning is the same wake, with one extra instruction. */
   reason?: "morning";
 }

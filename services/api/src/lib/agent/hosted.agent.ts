@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
@@ -30,7 +30,7 @@ const WAKE_BLOCK_MS = 2000;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string };
+  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -51,7 +51,8 @@ export class HostedAgent {
       running: () => this.running,
       holdsSeat: (userId) => this.holdsSeat(userId),
       activeIntent: (userId, intentId) => this.activeIntent(userId, intentId),
-      runWake: (userId, intent) => this.invokeWake(userId, intent),
+      runWake: (userId, intent, steer) => this.invokeWake(userId, intent, steer),
+      notify: (userId, intentId, text) => new HostedIndex(userId).sendPrincipal(intentId, encodeActions([{ type: 'progress', text }], { counterparts: new Map() })),
       closeInitiation: (userId, intent) => closeInitiation(new HostedIndex(userId), intent, this.runtime()),
       runNegotiate: (userId, intent, opportunityId) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime()),
       getNegotiation: async (userId, opportunityId) => {
@@ -188,7 +189,8 @@ export class HostedAgent {
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
-        if (intentId) this.session.run(this.session.wake(userId, intentId));
+        // A plain message reaches a wake already running, which reads it before its next step.
+        if (intentId) this.session.run(this.session.wake(userId, intentId, frame.data?.questionId ? undefined : frame.data?.text));
         break;
       case 'intent.created':
         if (intentId) this.session.run(this.session.wake(userId, intentId));
@@ -232,9 +234,10 @@ export class HostedAgent {
    * One event wake. Each opportunity opens the moment its own decision is
    * published, so the first turns go out while the wake is still thinking.
    */
-  private async invokeWake(userId: string, intent: Intent): Promise<void> {
+  private async invokeWake(userId: string, intent: Intent, steer: () => string[]): Promise<void> {
     await runWake(new HostedIndex(userId), intent, {
       ...this.runtime(),
+      steer,
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
   }
