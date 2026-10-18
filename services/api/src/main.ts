@@ -17,6 +17,7 @@ import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
+import { ResendWebhookController } from './controllers/resend-webhook.controller';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
@@ -30,7 +31,7 @@ import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
 import { auth } from './lib/betterauth/auth.instance';
-import { API_URL } from './lib/betterauth/betterauth';
+import { API_URL, WEB_APP_URL } from './lib/betterauth/betterauth';
 // Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { startMessageEmails } from './lib/email/message-email.job';
@@ -93,6 +94,7 @@ controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
+controllerInstances.set(ResendWebhookController, new ResendWebhookController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 const conversationService = new ConversationService();
 controllerInstances.set(ConversationController, new ConversationController(conversationService));
@@ -145,6 +147,11 @@ Bun.serve({
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');
+    }
+
+    // MCP hosts draw the connector's avatar from the server domain's favicon.
+    if (url.pathname === '/favicon.ico') {
+      return Response.redirect(`${WEB_APP_URL}/favicon-white.png`, 302);
     }
 
     // MCP is a modern, stateless, API-key or device-session endpoint. It lives

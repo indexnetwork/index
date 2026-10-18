@@ -5,6 +5,7 @@ import cron from 'node-cron';
 import type { Intent } from '@indexnetwork/agent';
 
 import { createRedisClient } from '../../adapters/cache.adapter';
+import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { opportunityService } from '../../services/opportunity.service';
 import { MAX_WAITING, morningBriefTemplate } from '../email/templates';
 import { executeSendEmail } from '../email/transport.helper';
@@ -26,13 +27,23 @@ let emailing = false;
  */
 export async function composeMorningEmail(userId: string, name: string, since: Date) {
   const owed = await owedForEmail(userId, since);
-  const waiting = await Promise.all(owed.waiting.map(async (person, index) => {
+  const peerIds = owed.waiting.map((person) => person.userId);
+  const [priors, chats] = await Promise.all([
+    chatDatabaseAdapter.findPriorOpportunities(userId, peerIds, owed.waiting.map((person) => person.opportunityId)),
+    chatDatabaseAdapter.findPeerChats(userId, peerIds),
+  ]);
+  const isConnected = (person: { userId: string }) => priors.get(person.userId)?.status === 'accepted';
+  const connected = owed.waiting.filter(isConnected).map((person) => {
+    const last = chats.get(person.userId)?.lastMessage;
+    return { userId: person.userId, name: person.name, context: person.context, hasChat: chats.has(person.userId), noReply: !!last && last.fromUserId !== userId };
+  });
+  const waiting = await Promise.all(owed.waiting.filter((person) => !isConnected(person)).map(async (person, index) => {
     if (index >= MAX_WAITING) return person;
     const opportunity = await opportunityService.getStoredOpportunity(person.opportunityId);
     const card = opportunity && await opportunityService.presentOpportunityForViewer(opportunity, userId);
     return card?.headline ? { ...person, context: card.cta } : person;
   }));
-  return morningBriefTemplate({ viewerId: userId, name, ...owed, waiting, appUrl: WEB_APP_URL });
+  return morningBriefTemplate({ viewerId: userId, name, ...owed, waiting, connected, appUrl: WEB_APP_URL });
 }
 
 /**
@@ -49,7 +60,7 @@ async function sendMorningEmails(logger: ReturnType<typeof log.agent.from>): Pro
       if (claim.off) continue;
       try {
         const email = await composeMorningEmail(claim.id, claim.name, claim.since);
-        if (email) await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', ...email });
+        if (email) await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', kind: 'morning_brief', userId: claim.id, ...email });
       } catch (error) {
         logger.error(describeFailure('Morning email failed', error), {
           userId: claim.id,

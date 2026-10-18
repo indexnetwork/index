@@ -6,6 +6,8 @@ export interface MorningBriefParams {
   name: string;
   talked: number;
   waiting: { opportunityId: string; userId: string; name: string; context: string | null; fresh: boolean }[];
+  /** Waiting on the owner, but with someone they are already connected to. Listed apart; never sent for on their own. */
+  connected?: { userId: string; name: string; context: string | null; hasChat: boolean; noReply: boolean }[];
   notes: { text: string; intentId: string | null }[];
   questions: { text: string; intentId: string | null }[];
   appUrl: string;
@@ -47,6 +49,13 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
     pass: actionLink(person.opportunityId, p.viewerId, 'decline'),
   }));
   const more = everyone.length - waiting.length;
+  const connected = (p.connected ?? []).map((person) => ({
+    name: person.name,
+    context: person.context ? clip(person.context, 90) : null,
+    url: person.hasChat ? `${appLink('u', person.userId)}/chat` : appLink('u', person.userId),
+    label: person.hasChat ? 'open chat ›' : 'view profile',
+    status: `You're already connected.${person.noReply ? ' Their last message has no reply yet.' : ''}`,
+  }));
   const intent = (intentId: string | null) => (intentId ? appLink('i', intentId) : p.appUrl);
   const notes = p.notes.map((note) => ({ text: firstSentences(note.text, 2), url: intent(note.intentId) }))
     .filter((note) => note.text).slice(0, MAX_NOTES);
@@ -70,6 +79,8 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
   ${opening ? `<p>${escapeHtml(opening)}</p>` : ''}
   ${waiting.map((person) => `<p style="margin: 0 0 14px;"><a href="${href(person.profile)}" style="color: #111; font-weight: bold; text-decoration: none;">${escapeHtml(person.name)}</a>${person.context ? `<span style="color: #666;">: ${escapeHtml(person.context)}</span>` : ''}<br />${act(person.accept, 'accept')} <span style="color: #ccc;">·</span> ${act(person.pass, 'pass')}</p>`).join('\n  ')}
   ${more ? `<p>${small(p.appUrl, `and ${more} more`)}</p>` : ''}
+  ${connected.length ? `<p>From someone you're already connected with:</p>
+  ${connected.map((person) => `<p style="margin: 0 0 14px;"><b>${escapeHtml(person.name)}</b>${person.context ? `<span style="color: #666;">: ${escapeHtml(person.context)}</span>` : ''}<br /><span style="color: #666; font-size: 12px;">${escapeHtml(person.status)}</span> ${act(person.url, escapeHtml(person.label))}</p>`).join('\n  ')}` : ''}
   ${notes.map((note) => `<p>${escapeHtml(note.text)} ${small(note.url, 'See conversations')}</p>`).join('\n  ')}
   ${questions.length ? `<p>${ask}</p>
   ${questions.map((q) => `<p style="margin: 0 0 14px;">${escapeHtml(q.text)}<br />${act(q.url, 'answer →')}</p>`).join('\n  ')}` : ''}
@@ -82,6 +93,7 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
     ...(opening ? ['', opening] : []),
     ...waiting.flatMap((person) => ['', `${person.name}${person.context ? `: ${person.context}` : ''}`, `Accept: ${person.accept}`, `Pass: ${person.pass}`]),
     ...(more ? ['', `and ${more} more: ${p.appUrl}`] : []),
+    ...(connected.length ? ['', "From someone you're already connected with:", ...connected.flatMap((person) => ['', `${person.name}${person.context ? `: ${person.context}` : ''}`, person.status, `${person.label}: ${person.url}`])] : []),
     ...notes.flatMap((note) => ['', note.text, `See conversations: ${note.url}`]),
     ...(questions.length ? ['', ask, ...questions.flatMap((q) => ['', q.text, `Answer: ${q.url}`])] : []),
     '',

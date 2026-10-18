@@ -106,6 +106,13 @@
       "when": 1792300000000,
       "tag": "0014_rename_signal_to_intent",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792353077767,
+      "tag": "0015_email_events",
+      "breakpoints": true
     }
   ]
 }

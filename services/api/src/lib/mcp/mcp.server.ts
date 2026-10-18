@@ -14,6 +14,8 @@ import type { McpPrincipal } from './mcp.types';
 // `src/` and `dist/` sit at the same depth, and `package.json` is outside `rootDir`, so it cannot be imported.
 const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string };
 
+const WEB_APP_URL = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
+
 const logger = log.lib.from('mcp/mcp.server');
 
 /** Methods whose result carries the instructions, and the one that ends onboarding. */
@@ -116,7 +118,13 @@ async function firstConnection(request: Request, principal: McpPrincipal): Promi
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
 function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions' | 'result' | null): McpServer {
-  const server = new McpServer({ name: 'index', version }, { instructions: mcpInstructions(onboarding === 'instructions') });
+  const server = new McpServer({
+    name: 'index',
+    title: 'Index',
+    version,
+    websiteUrl: WEB_APP_URL,
+    icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
+  }, { instructions: mcpInstructions(onboarding === 'instructions') });
   registerMcpTools(server, onboarding === 'result' ? { ...principal, onboarding: true } : principal);
   registerMcpEvents(server, principal);
   return server;

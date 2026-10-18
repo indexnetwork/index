@@ -51,7 +51,8 @@ function intentEvent(description: string): EventDefinition {
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
  * copy. The owner reads an intent's chat with get_intent_conversation and
  * answers with principal_send_message. The hosted negotiator writes the
- * agent's side. `message`, `principal.input` and `question.pending` are omitted.
+ * agent's side. `message`, `principal.input`, `question.pending` and the
+ * negotiation events are omitted; read negotiations with list_negotiations.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
   'intent.created': intentEvent('The owner created an intent. Read it with get_intent.'),
@@ -88,24 +89,6 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       opportunityId: String(data.opportunityId),
       intentId: (data.intentId as string | null | undefined) ?? null,
       status: String(data.status),
-      url: appLink('o', String(data.opportunityId)),
-    }),
-  },
-  'negotiation.turn': {
-    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity. The turn message is not included.',
-    args: z.object({ intentId: intentFilter }).strict(),
-    payload: z.object({
-      opportunityId: z.string(),
-      intentId: z.string().nullable(),
-      turnIndex: z.number(),
-      summary: z.string(),
-      url: z.string(),
-    }).strict(),
-    toPayload: ({ body, data = {} }) => ({
-      opportunityId: String(data.opportunityId),
-      intentId: (data.intentId as string | null | undefined) ?? null,
-      turnIndex: Number(data.turnIndex),
-      summary: body ?? '',
       url: appLink('o', String(data.opportunityId)),
     }),
   },

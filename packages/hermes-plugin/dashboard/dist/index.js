@@ -3936,6 +3936,10 @@
     const sendingState = useState(false);
     const sending = sendingState[0];
     const setSending = sendingState[1];
+    // Messages shown before the transcript has them. `seen` is how many identical ones it already had.
+    const pendingState = useState([]);
+    const pending = pendingState[0];
+    const setPending = pendingState[1];
     // "loading" until the first read lands, "error" if it failed with nothing
     // shown yet, then "ready". A later failed poll keeps the last transcript.
     const readStateState = useState("loading");
@@ -3944,12 +3948,15 @@
     const rootRef = useRef(null);
     const threadRef = useRef(null);
     const aliveRef = useRef(true);
+    // Numbers every read; one that finishes after a newer one started holds older data and is dropped.
+    const readGenRef = useRef(0);
     const intentId = props.intentId;
 
     function read() {
+      const gen = ++readGenRef.current;
       return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
         .then(function (payload) {
-          if (!aliveRef.current) return;
+          if (!aliveRef.current || gen !== readGenRef.current) return;
           if (!payload || payload.success === false) throw new Error((payload && payload.error) || "unreadable");
           setMessages(payload.messages || []);
           setAgent(payload.agent || null);
@@ -3990,7 +3997,16 @@
       });
     }, [intentId]);
 
-    const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+    // An answer, sent or still on its way, settles its question even while the server's list still holds it.
+    const answeredIds = {};
+    messages.forEach(function (m) {
+      const p = m.metadata && m.metadata.principalMessage;
+      if (p && p.kind === "answer" && p.questionId) answeredIds[p.questionId] = true;
+    });
+    pending.forEach(function (p) { if (p.questionId) answeredIds[p.questionId] = true; });
+    const questions = ((agent && Array.isArray(agent.questions)) ? agent.questions : []).filter(function (q) {
+      return !answeredIds[q.id];
+    });
     // Keyed by id so the transcript can render each pending question where it
     // was asked rather than dropping the message and stacking the cards last.
     const carded = {};
@@ -4000,9 +4016,15 @@
       return typeof answer === "string" && answer.trim();
     });
 
+    // Follow new content to the bottom, but not a question closing: answering
+    // one shrinks the list and should leave the view where it is.
+    const seenRef = useRef({ messages: 0, questions: 0 });
     useEffect(function () {
+      const seen = seenRef.current;
+      const closed = messages.length === seen.messages && questions.length < seen.questions;
+      seenRef.current = { messages: messages.length, questions: questions.length };
       const node = threadRef.current;
-      if (node) node.scrollTop = node.scrollHeight;
+      if (node && !closed) node.scrollTop = node.scrollHeight;
     }, [messages.length, questions.length]);
 
     useEffect(function () {
@@ -4015,14 +4037,19 @@
       if (!text || sending) return;
       setDraft("");
       setSending(true);
+      const pendingId = "pending-" + Date.now();
+      const seen = messages.filter(function (m) { return m.role === "user" && extractContent(m.parts).text === text; }).length;
+      setPending(function (prev) { return prev.concat([{ id: pendingId, text: text, seen: seen }]); });
       fetchPluginJSON(API + "/agent/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intentId: intentId, text: text }),
       })
         .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
-        .then(read)
-        .then(function () { if (aliveRef.current) setSending(false); });
+        .then(function () { if (aliveRef.current) setSending(false); return read(); })
+        .then(function () {
+          if (aliveRef.current) setPending(function (prev) { return prev.filter(function (m) { return m.id !== pendingId; }); });
+        });
     }
 
     function sendAnswers() {
@@ -4030,6 +4057,14 @@
       const answers = chosen.map(function (question) {
         return { questionId: question.id, text: selections[question.id].trim() };
       });
+      const previous = { selections: selections, writing: writing };
+      // Shown at once, each as the reply it will be; they go once the write and the read after it are done.
+      const shown = answers.map(function (answer) {
+        const seen = messages.filter(function (m) { return m.role === "user" && extractContent(m.parts).text === answer.text; }).length;
+        return { id: "pending-answer-" + answer.questionId, questionId: answer.questionId, text: answer.text, seen: seen };
+      });
+      readGenRef.current++;
+      setPending(function (prev) { return prev.concat(shown); });
       setSelections({});
       setWriting({});
       setSending(true);
@@ -4038,10 +4073,32 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intentId: intentId, answers: answers }),
       })
-        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
-        .then(read)
-        .then(function () { if (aliveRef.current) setSending(false); });
+        .catch(function () {
+          // Put the answers back so they can be sent again.
+          if (!aliveRef.current) return;
+          setPending(function (prev) { return prev.filter(function (m) { return shown.indexOf(m) < 0; }); });
+          setSelections(previous.selections);
+          setWriting(previous.writing);
+        })
+        .then(function () { if (aliveRef.current) setSending(false); return read(); });
     }
+
+    // A sent answer stays shown until a read holds it or no longer lists its
+    // question, so a read dropped as stale can't reopen the question.
+    useEffect(function () {
+      const listed = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+      setPending(function (prev) {
+        const rest = prev.filter(function (p) {
+          if (!p.questionId) return true;
+          const answered = messages.some(function (m) {
+            const meta = m.metadata && m.metadata.principalMessage;
+            return meta && meta.kind === "answer" && meta.questionId === p.questionId;
+          });
+          return !answered && listed.some(function (q) { return q.id === p.questionId; });
+        });
+        return rest.length === prev.length ? prev : rest;
+      });
+    }, [messages, agent]);
 
     function choose(questionId, text) {
       setSelections(function (current) {
@@ -4151,7 +4208,7 @@
         continue;
       }
       if (raw.role === "user") {
-        entries.push({ id: raw.id, kind: "user", text: content.text });
+        entries.push({ id: raw.id, kind: "user", text: content.text, at: raw.createdAt ? Date.parse(raw.createdAt) : Date.now() });
         continue;
       }
       // What the agent writes down as it works carries its `record`. Stalls and
@@ -4168,6 +4225,18 @@
       });
     }
 
+    pending.forEach(function (p) {
+      const have = entries.filter(function (e) { return e.kind === "user" && e.text === p.text; }).length;
+      if (have <= p.seen) entries.push({ id: p.id, kind: "user", text: p.text, at: Date.now() });
+    });
+    // The agent owes an answer to the last thing said. A hosted one always will;
+    // your own runtime may be off, so it only counts for a couple of minutes.
+    const last = entries[entries.length - 1];
+    const waiting = !!last && last.kind === "user"
+      && ((agent && agent.status === "hosted") || Date.now() - last.at < 120000);
+    const queued = {};
+    for (let i = entries.length - 1; waiting && i > 0 && entries[i].kind === "user" && entries[i - 1].kind === "user"; i--) queued[entries[i].id] = true;
+
     const bubbles = buildDiscoveryFeed(entries).map(function (entry) {
       if (entry.kind === "card") return questionCard(entry.question);
       if (entry.kind === "user") {
@@ -4175,6 +4244,7 @@
           React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
             React.createElement(Markdown, { text: entry.text }),
           ),
+          queued[entry.id] ? React.createElement("span", { className: "index-dashboard__agent-queued" }, "queued") : null,
         );
       }
       if (entry.kind === "loading") return React.createElement(LoadingTrace, { key: entry.id, lines: entry.lines });
@@ -4190,7 +4260,7 @@
 
     const feed = bubbles.concat(questions.filter(function (question) {
       return !placed[question.id];
-    }).map(questionCard));
+    }).map(questionCard)).concat(waiting ? [React.createElement(ProgressLine, { key: "thinking", text: "thinking…" })] : []);
     const threadBody = feed.length
       ? feed
       : readState === "loading"

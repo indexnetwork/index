@@ -2428,6 +2428,12 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findOpportunitiesByActors(actorIds, options);
   }
+  async findPriorOpportunities(viewerId: string, peerIds: string[], excludeOpportunityIds?: string[]) {
+    return this.opportunityAdapter.findPriorOpportunities(viewerId, peerIds, excludeOpportunityIds);
+  }
+  async findPeerChats(viewerId: string, peerIds: string[]) {
+    return new ConversationDatabaseAdapter().findPeerChats(viewerId, peerIds);
+  }
   async getRecentlyRejectedOpportunityCounterparties(
     discovererId: string,
     candidateUserIds: string[],

@@ -13,7 +13,7 @@ import { describeFailure } from './failure-line';
 /** How many times a failed wake is retried before it waits for the next event or restart. */
 export const WAKE_RETRIES = 3;
 /** The first retry's delay; each later one waits that much longer again. */
-export const WAKE_RETRY_MS = 30_000;
+export const WAKE_RETRY_MS = 10_000;
 
 /** The negotiation row a turn needs. Null when it cannot be read. */
 export interface NegotiationSeat {
@@ -26,7 +26,10 @@ export interface HostedSessionIO {
   running(): boolean;
   holdsSeat(userId: string): Promise<boolean>;
   activeIntent(userId: string, intentId: string): Promise<Intent | null>;
-  runWake(userId: string, intent: Intent): Promise<void>;
+  /** `steer` hands over what the principal wrote since its last call, for the running wake to read. */
+  runWake(userId: string, intent: Intent, steer: () => string[]): Promise<void>;
+  /** Tell the principal something in their conversation. */
+  notify(userId: string, intentId: string, text: string): Promise<void>;
   closeInitiation(userId: string, intent: Intent): Promise<'pending' | 'idle' | 'done'>;
   runNegotiate(userId: string, intent: Intent, opportunityId: string): Promise<NegotiateRun>;
   getNegotiation(userId: string, opportunityId: string): Promise<NegotiationSeat | null>;
@@ -41,6 +44,8 @@ export class HostedSession {
   /** Intents with a wake in flight, and those that asked for one while it ran. */
   private readonly waking = new Set<string>();
   private readonly again = new Set<string>();
+  /** What the principal wrote while a wake ran, by intent, until a step of it reads it. */
+  private readonly inbox = new Map<string, string[]>();
   /** Opportunities with a negotiator in flight, by the intent they stand on. */
   private readonly working = new Map<string, string>();
   /** Failed wakes retried so far, by intent. */
@@ -72,13 +77,15 @@ export class HostedSession {
    *
    * @param userId - The intent's owner.
    * @param intentId - The intent to think about.
+   * @param text - A direct message that caused this wake. While a wake runs it is handed to that wake instead of waiting for another.
    */
-  async wake(userId: string, intentId: string): Promise<void> {
+  async wake(userId: string, intentId: string, text?: string): Promise<void> {
     if (!this.io.running()) return;
     // Claimed before the first await: two frames for one intent must not both
     // become a wake.
     if (this.waking.has(intentId)) {
-      this.again.add(intentId);
+      if (text) this.inbox.set(intentId, [...this.inbox.get(intentId) ?? [], text]);
+      else this.again.add(intentId);
       return;
     }
     this.waking.add(intentId);
@@ -93,7 +100,7 @@ export class HostedSession {
       if (!intent) return;
       // Each opportunity opens the moment its own decision is published, so the
       // first turns go out while the wake is still thinking.
-      await this.io.runWake(userId, intent);
+      await this.io.runWake(userId, intent, () => this.inbox.get(intentId)?.splice(0) ?? []);
       this.retries.delete(intentId);
     } catch (error: unknown) {
       failed = true;
@@ -101,6 +108,9 @@ export class HostedSession {
       throw error;
     } finally {
       this.waking.delete(intentId);
+      // A message no step read, because the wake was already done with its last one, gets a wake of its own.
+      if (!failed && this.inbox.get(intentId)?.length) this.again.add(intentId);
+      this.inbox.delete(intentId);
       if (!failed && this.again.delete(intentId) && this.io.running()) this.run(this.wake(userId, intentId));
     }
   }
@@ -118,11 +128,14 @@ export class HostedSession {
     const attempt = (this.retries.get(intentId) ?? 0) + 1;
     if (!this.io.running() || attempt > WAKE_RETRIES) {
       this.retries.delete(intentId);
+      if (this.io.running()) this.run(this.io.notify(userId, intentId, "Couldn't finish. I'll try again on your next message."));
       return;
     }
+    const delay = WAKE_RETRY_MS * attempt;
     this.retries.set(intentId, attempt);
     this.io.verbose('Hosted wake retry scheduled', { intentId, attempt });
-    this.io.schedule(() => this.run(this.wake(userId, intentId)), WAKE_RETRY_MS * attempt);
+    this.run(this.io.notify(userId, intentId, `Something went wrong, retrying in ${delay / 1000}s.`));
+    this.io.schedule(() => this.run(this.wake(userId, intentId)), delay);
   }
 
   /**

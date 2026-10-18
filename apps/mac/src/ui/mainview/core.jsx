@@ -250,14 +250,24 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // messages. Same poll the web app runs.
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentQuestions, setAgentQuestions] = useState([]);
+  // Only a hosted agent answers here; an external one never will.
+  const [agentHosted, setAgentHosted] = useState(false);
+  // Messages shown before the server has them. `seen` is how many identical ones it already had.
+  const [pending, setPending] = useState([]);
+  // Answers shown before the server has them, until the write and the read after it are done.
+  const [pendingAnswers, setPendingAnswers] = useState([]);
+  // Numbers every read; one that finishes after a newer one started holds older data and is dropped.
+  const inboxGen = useRef(0);
   const refreshInbox = React.useCallback(() => {
     if (!live || !client || !intentId) return Promise.resolve();
     const forIntent = intentId;
+    const gen = ++inboxGen.current;
     return client.conversations.messages("agent", { intentId: forIntent })
       .then((res) => {
-        if (intentIdRef.current !== forIntent) return;
+        if (intentIdRef.current !== forIntent || gen !== inboxGen.current) return;
         const questions = (res && res.agent && res.agent.questions) || [];
         setAgentQuestions(questions);
+        setAgentHosted(Boolean(res && res.agent && res.agent.status === "hosted"));
         const carded = {};
         questions.forEach((q) => { if (q && q.id) carded[q.id] = true; });
         setAgentMessages(window.IndexApp.normalizeList(res, "messages").map((m) => {
@@ -295,6 +305,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   useEffect(() => {
     setAgentMessages([]);
     setAgentQuestions([]);
+    setPending([]);
+    setPendingAnswers([]);
     if (!live || !client) return;
     refreshInbox();
     const t = setInterval(refreshInbox, 5000);
@@ -325,17 +337,43 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   const sendAgentMessage = (text, onDone) => {
     if (!client || !intentId || !text) return;
-    client.conversations.sendMessage("agent", {
+    const id = `pending-${Date.now()}`;
+    const seen = agentMessages.filter((m) => m.kind === "user" && m.text === text).length;
+    setPending((prev) => [...prev, { id, kind: "user", text, seen }]);
+    const sent = client.conversations.sendMessage("agent", {
       parts: [{ kind: "text", text }],
       metadata: { intentId },
-    }).then(() => refreshInbox()).finally(() => onDone && onDone());
+    }).catch(() => {});
+    sent.then(() => onDone && onDone());
+    sent.then(() => refreshInbox()).then(() => setPending((prev) => prev.filter((m) => m.id !== id)));
   };
+  const answeredNow = new Set(pendingAnswers.map((a) => a.questionId));
+  const shownAgentQuestions = agentQuestions.filter((q) => !answeredNow.has(q.id));
+  const shownAgentMessages = [
+    ...agentMessages.map((m) => (m.kind === "open-question" && answeredNow.has(m.questionId) ? { ...m, kind: "question-history" } : m)),
+    ...pendingAnswers.map((a) => ({ id: `pending-answer-${a.questionId}`, kind: "answer-history", text: a.text, questionId: a.questionId })),
+    ...pending.filter((p) => agentMessages.filter((m) => m.kind === "user" && m.text === p.text).length <= p.seen),
+  ];
 
   const sendAgentAnswers = (answers, onDone) => {
     if (!client || !intentId || !answers.length) return;
+    inboxGen.current++;
+    setPendingAnswers((prev) => [...prev, ...answers]);
+    if (onDone) onDone();
+    // They stay until a read shows them (below), so a read that gets dropped as stale can't reopen the question.
+    // If the write fails they go at once, and the read brings the questions back open.
     client.conversations.sendAnswers(intentId, answers)
-      .then(() => refreshInbox()).finally(() => onDone && onDone());
+      .catch(() => setPendingAnswers((prev) => prev.filter((a) => !answers.includes(a))))
+      .then(() => refreshInbox());
   };
+  // An answer is settled once a read holds it, or no longer lists its question.
+  useEffect(() => {
+    setPendingAnswers((prev) => {
+      const rest = prev.filter((a) => !agentMessages.some((m) => m.kind === "answer-history" && m.questionId === a.questionId)
+        && agentQuestions.some((q) => q.id === a.questionId));
+      return rest.length === prev.length ? prev : rest;
+    });
+  }, [agentMessages, agentQuestions]);
 
   // The four states an opportunity can be in for you, in the order they happen:
   // it needs you, agents are still talking, you took it, it closed.
@@ -667,8 +705,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             conversation={conversation}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
-            agentMessages={live ? agentMessages : null}
-            agentQuestions={live ? agentQuestions : []}
+            agentMessages={live ? shownAgentMessages : null}
+            agentHosted={agentHosted}
+            agentQuestions={live ? shownAgentQuestions : []}
             onSendAgent={live ? sendAgentMessage : null}
             onSendAnswers={live ? sendAgentAnswers : null}
             focusQuestion={focusQuestion}

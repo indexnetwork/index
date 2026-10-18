@@ -41,7 +41,7 @@ class NetworkInvitationService {
 
     if (!alreadyMember) {
       const networkName = await this.lookupNetworkName(params.networkId);
-      await this.dispatchInvitationEmail({ to: email, networkName });
+      await this.dispatchInvitationEmail({ to: email, userId: user.id, networkName });
       logger.info('Invited user to network', { userId: user.id, networkId: params.networkId });
     }
 
@@ -59,6 +59,7 @@ class NetworkInvitationService {
 
   private async dispatchInvitationEmail(params: {
     to: string;
+    userId: string;
     networkName: string;
   }): Promise<void> {
     const rendered = networkInvitationTemplate({ networkName: params.networkName });
@@ -69,6 +70,8 @@ class NetworkInvitationService {
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        kind: 'network_invitation',
+        userId: params.userId,
       })) as { skipped?: boolean; reason?: string };
       if (result.skipped) {
         logger.info('Email send skipped', {

@@ -128,6 +128,8 @@ export type OpportunityControllerDatabase = Pick<
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
   | 'unhideConversation'
+  | 'findPriorOpportunities'
+  | 'findPeerChats'
 >;
 
 /**
@@ -234,4 +236,6 @@ export type OpportunityCardsDatabase = Pick<
   | 'getActiveIntents'
   | 'getNetwork'
   | 'getUser'
+  | 'findPriorOpportunities'
+  | 'findPeerChats'
 > & NegotiationContextDatabase;

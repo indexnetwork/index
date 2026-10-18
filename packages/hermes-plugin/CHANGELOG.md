@@ -4,6 +4,8 @@
 ## Unreleased
 
 ### Changed
+- Answering your agent's questions shows at once: the answers appear as your replies with a thinking line, and the questions close without waiting for the server. A read that finishes after a newer one is ignored, so an answered question no longer flickers open again, and a failed send puts your answers back.
+- A message you send to your agent shows at once with a thinking line, and a message sent while it works is read before its next step. The reply is written as soon as it is ready, and a failed wake retries after 10s, 20s and 30s with a line in the conversation.
 - The bridge serves OpenAI chat completions at `/v1/chat/completions` instead of `/complete`, and the negotiator reaches it through the AI SDK's OpenAI-compatible provider.
 - The agent inbox reads briefs, decisions, progress and stalls from each entry's `record`, not from a `Brief: ` style prefix. Resolutions are hidden with stalls.
 - The negotiator runs in any Hermes server, not only the gateway: `hermes gateway run`, Desktop's `hermes serve` backend, or `hermes dashboard`. Before, it waited 60 seconds for a gateway runner, so Desktop alone never started it. A lock file in the Hermes home keeps it to one process. The plugin no longer reads the gateway's private runner reference to decide this.

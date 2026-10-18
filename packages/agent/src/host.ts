@@ -27,6 +27,8 @@ export interface Runtime {
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
   onNegotiate?: (opportunityId: string) => void;
+  /** Messages the principal wrote while a wake ran, read before its next step. */
+  steer?: () => string[];
   /** When set, decides the turn instead of the built-in negotiator, unless it calls `next`. */
   negotiate?: NegotiateHook;
 }
@@ -388,7 +390,7 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
  * @returns The wake's actions.
  */
 export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning" }): Promise<WakeResult> {
-  const { model, decide, now, signal, log = () => {}, onNegotiate, reason } = runtime;
+  const { model, decide, now, signal, log = () => {}, onNegotiate, reason, steer } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -454,6 +456,8 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
       for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
     onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
+    onReply: (text) => publishActions(client, intent.id, [{ type: "reply", text }], context),
+    ...(steer ? { steer } : {}),
     ...(reason ? { reason } : {}),
   });
 
@@ -461,7 +465,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
   await publishActions(
     client,
     intent.id,
-    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"),
+    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress" && action.type !== "reply"),
     context,
   );
   // What the wake did is kept. What it still owes stands on the conversation for

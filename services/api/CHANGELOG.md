@@ -14,6 +14,7 @@ section before promoting to `main`).
 - Counterparty discovery returns only intents whose owners verified their email.
 
 ### Changed
+- **BREAKING: `get_intent_conversation` reads every intent in one call.** `intentId` is optional; omitting it returns every non-archived intent's chat. The result is always `conversations`, each with `intentId`, `conversation`, `questions`, and `url`.
 - **MCP keeps the owner's intent chat.** `get_intent_conversation` reads one owned intent's chat. `principal_send_message` saves what the owner wrote, and a `questionId` marks an answer to that waiting question. The agent write tools stay off; the hosted negotiator writes that side. `principal.input` and `question.pending` stay off the public event list.
 - **MCP agent writes are one tool each.** `agent_send_message` is `agent_send_note`, `agent_send_reply`, `agent_send_progress`, `agent_ask`, and `agent_expire_question`. Expiring a question is marked destructive.
 - **MCP conversation tools are renamed by who writes.** `get_agent_conversation` is `get_intent_conversation`, `publish_agent_action` is `agent_send_message`, and `answer_agent_questions` is `principal_send_message`. `principal_send_message` takes `messages`, each `text` with an optional `questionId`; a message without one is saved as a plain owner message. The batch is still written together, then `principal.input` is published.

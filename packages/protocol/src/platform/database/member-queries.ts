@@ -2,6 +2,8 @@
  * Database operations for user contexts.
  */
 
+import type { PeerChat } from './entities.js';
+
 /** User-context operations. */
 export interface DatabaseMemberQueries {
   /**
@@ -12,6 +14,13 @@ export interface DatabaseMemberQueries {
    * accepting an opportunity.
    */
   getOrCreateDM(userA: string, userB: string, participantType?: 'user' | 'agent'): Promise<{ id: string }>;
+
+  /**
+   * Read-only lookup of the DM chat between the viewer and each peer, with the
+   * latest message's sender and time. Never creates a conversation. Peers with
+   * no chat are absent.
+   */
+  findPeerChats(viewerId: string, peerIds: string[]): Promise<Map<string, PeerChat>>;
 
   /**
    * Clears hiddenAt for a user on a conversation, making it visible in their

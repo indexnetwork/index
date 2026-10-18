@@ -446,6 +446,25 @@ export interface UpdateNetworkSettingsData {
 export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 /**
+ * The strongest other opportunity between the viewer and one peer: an accepted
+ * one, else a pending one the viewer committed to. `topic` is what its
+ * negotiation settled on, truncated; never a transcript.
+ */
+export interface PriorOpportunity {
+  opportunityId: string;
+  status: 'accepted' | 'pending';
+  /** When it became accepted, or when the viewer said yes (ISO). */
+  at: string;
+  topic?: string;
+}
+
+/** The direct-message chat between the viewer and one peer. Never carries message text. */
+export interface PeerChat {
+  conversationId: string;
+  lastMessage?: { fromUserId: string; at: string };
+}
+
+/**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.
  * `acceptedByOwner` is true only when the authenticated owner is the persisted
  * human acceptor; other terminal states do not imply an owner action.

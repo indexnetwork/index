@@ -73,8 +73,9 @@ function opportunityState(status: string): string {
   return OPPORTUNITY_STATE[status] ?? status;
 }
 
-function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string): string {
-  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}`;
+function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string, prior?: { status: string } | null): string {
+  const earlier = prior?.status === 'accepted' ? ' — already connected' : prior ? ' — you already said yes earlier' : '';
+  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}${earlier}`;
 }
 
 async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
@@ -528,7 +529,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -552,23 +553,31 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         limit: limit + offset,
       });
       if ('error' in result) return mcpError('opportunities_unavailable', result.error);
-      const opportunities = result.opportunities.slice(offset, offset + limit).map((opportunity) => ({
-        id: opportunity.opportunityId,
-        url: appLink('o', opportunity.opportunityId),
-        acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
-        declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
-        status: opportunity.status,
-        negotiating: opportunity.status === 'negotiating',
-        createdAt: opportunity.createdAt,
-        updatedAt: opportunity.updatedAt,
-        peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
-        viewerRole: opportunity.viewerRole,
-        headline: opportunity.headline,
-        summary: opportunity.mainText,
-        cta: opportunity.cta,
-      }));
+      const opportunities = result.opportunities.slice(offset, offset + limit).map((opportunity) => {
+        // With a chat already open, link to it: the /o/ link would say yes for the owner.
+        const chatUrl = opportunity.peerChat ? `${appLink('u', opportunity.peer.userId)}/chat` : null;
+        return {
+          id: opportunity.opportunityId,
+          url: chatUrl ?? appLink('o', opportunity.opportunityId),
+          ...(chatUrl ? {} : {
+            acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
+            declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
+          }),
+          priorOpportunity: opportunity.priorOpportunity ?? null,
+          peerChat: opportunity.peerChat && chatUrl ? { ...opportunity.peerChat, url: chatUrl } : null,
+          status: opportunity.status,
+          negotiating: opportunity.status === 'negotiating',
+          createdAt: opportunity.createdAt,
+          updatedAt: opportunity.updatedAt,
+          peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
+          viewerRole: opportunity.viewerRole,
+          headline: opportunity.headline,
+          summary: opportunity.mainText,
+          cta: opportunity.cta,
+        };
+      });
       const lines = opportunities.map((opportunity) =>
-        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status)}`);
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity)}`);
       return mcpSuccess({
         opportunities,
         pagination: {
@@ -614,30 +623,97 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     }),
   );
 
+  const negotiationView = <T extends Awaited<ReturnType<typeof negotiationService.list>>[number]>(view: T) => ({
+    ...view,
+    url: appLink('o', view.opportunityId),
+    yourTurn: view.awaitingUserId === principal.userId,
+    counterparty: { ...view.counterparty, url: appLink('u', view.counterparty.userId) },
+  });
+
+  const negotiationLine = (view: ReturnType<typeof negotiationView>): string => {
+    const status = view.outcome ?? (view.yourTurn ? 'your agent\'s turn' : 'their turn');
+    return `${mdLink(view.counterparty.name || 'Someone', view.url)} — ${status} — ${view.turnCount} turns`;
+  };
+
+  server.registerTool(
+    'list_negotiations',
+    {
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT,
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1).optional(),
+        state: z.enum(['open', 'settled']).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+        offset: z.number().int().min(0).max(10_000).optional(),
+      }).strict(),
+      annotations: hints('List negotiations', true, false, false, true),
+    },
+    (input) => runTool('list_negotiations', principal, async () => {
+      const limit = input.limit ?? 50;
+      const offset = input.offset ?? 0;
+      let resolvedIntentId: string | undefined;
+      if (input.intentId) {
+        const resolved = await resolveIntent(input.intentId, principal);
+        if ('error' in resolved) return resolved.error;
+        resolvedIntentId = resolved.id;
+      }
+      const all = await negotiationService.list(principal.userId, {
+        intentId: resolvedIntentId,
+        ...(input.state === 'open' ? { open: true } : {}),
+      });
+      const filtered = input.state === 'settled' ? all.filter((view) => view.settledAt !== null) : all;
+      const negotiations = filtered.slice(offset, offset + limit).map(negotiationView);
+      return mcpSuccess({
+        negotiations,
+        pagination: { limit, offset, count: negotiations.length },
+      }, negotiations.length ? ['Negotiations:', ...negotiations.map((view) => `- ${negotiationLine(view)}`)].join('\n') : 'No negotiations.');
+    }),
+  );
+
+  server.registerTool(
+    'get_negotiation',
+    {
+      description: 'Get one negotiation by its opportunity UUID or supported short ID prefix, with every turn the agents took. This is for the owner to read.' + LINK_HINT,
+      inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
+      annotations: hints('Get negotiation', true, false, false, true),
+    },
+    ({ opportunityId }) => runTool('get_negotiation', principal, async () => {
+      const resolved = await resolveOpportunity(opportunityId, principal);
+      if ('error' in resolved) return resolved.error;
+      const negotiation = await negotiationService.read(resolved.id, principal.userId);
+      if (!negotiation) return mcpError('negotiation_not_found', 'Negotiation not found.');
+      const view = negotiationView(negotiation);
+      return mcpSuccess({ negotiation: view }, negotiationLine(view));
+    }),
+  );
+
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read one owned intent’s chat: the agent’s notes, progress, and questions, and what the owner has already said. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
-      inputSchema: intentIdSchema,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
-      const resolved = await resolveIntent(intentId, principal);
-      if ('error' in resolved) return resolved.error;
+      let intents: { id: string; label: string }[];
+      if (intentId) {
+        const resolved = await resolveIntent(intentId, principal);
+        if ('error' in resolved) return resolved.error;
+        const intent = await intentService.getById(resolved.id, principal.userId);
+        intents = [{ id: resolved.id, label: intentLabel(intent?.summary ?? intent?.payload) }];
+      } else {
+        const { intents: listed } = await intentService.listIntents(principal.userId, { limit: 100 });
+        intents = listed.map((intent) => ({ id: intent.id, label: intentLabel(intent.summary ?? intent.payload) }));
+      }
       try {
-        const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
-        if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
-        const [stored, agent] = await Promise.all([
-          conversationService.getMessages(conversation.id, { intentId: resolved.id, userId: principal.userId }),
-          conversationService.agentState(principal.userId, resolved.id),
-        ]);
-        const { url, link } = await linkedIntent(resolved.id, principal.userId);
-        return mcpSuccess({
-          intentId: resolved.id,
-          conversation: readConversation(stored.map(inboxMessage)),
-          questions: agent.questions,
-          url,
-        }, link);
+        const read = await conversationService.intentConversations(principal.userId, intents.map((intent) => intent.id));
+        const conversations = read.map((entry) => ({
+          intentId: entry.intentId,
+          conversation: readConversation(entry.messages.map(inboxMessage)),
+          questions: entry.questions,
+          url: appLink('i', entry.intentId),
+        }));
+        const lines = conversations.map((entry, index) => `- ${mdLink(intents[index]!.label, entry.url)}`);
+        return mcpSuccess({ conversations }, lines.length ? lines.join('\n') : 'No intents.');
       } catch (error) {
         const mapped = agentConversationFailure(error);
         if (mapped) return mapped;

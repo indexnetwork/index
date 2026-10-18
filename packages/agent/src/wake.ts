@@ -158,7 +158,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const { user, intent, opportunities, client } = input;
   const actions: WakeAction[] = [];
   const conversation = principalOnly(input.principalConversation);
-  const unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
+  let unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
+  /** Whether the message above has had its reply on this wake. */
+  let replied = false;
   const open = openQuestions(input.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   /** Opportunities whose stall a question on this wake asks about. */
@@ -297,11 +299,18 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         properties: { text: { type: "string", minLength: 1 } },
         required: ["text"],
       },
-      run: ({ text }: { text: string }) => {
+      run: async ({ text }: { text: string }) => {
         if (!unansweredMessage) throw new Error("No unanswered direct message from your principal to reply to.");
-        if (actions.some((action) => action.type === "reply")) {
+        if (replied) {
           throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
         }
+        // Said now, not when the wake ends. A failure is kept for the caller, like the decisions.
+        try {
+          await input.onReply?.(text);
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
+        replied = true;
         actions.push({ type: "reply", text });
         return "Reply recorded.";
       },
@@ -456,6 +465,17 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     }),
   ];
 
+  /** A newer message is the one to answer now, and it has not had its reply. */
+  const steer = async (): Promise<string[]> => {
+    const texts = input.steer?.() ?? [];
+    if (!texts.length) return texts;
+    unansweredMessage = { text: texts[texts.length - 1]! };
+    replied = false;
+    // Only a courtesy line: failing to write it is not worth another wake.
+    try { await input.onProgress?.("Read your new message."); } catch { /* ignored */ }
+    return texts;
+  };
+
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input.model,
@@ -463,6 +483,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     identity,
     intent,
     maxSteps: WAKE_STEPS,
+    steer,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     instructions: input.reason === "morning" ? `${WAKE_PROMPT}\n\n${MORNING}` : WAKE_PROMPT,
@@ -493,6 +514,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       identity,
       intent,
       maxSteps: 4,
+      steer,
       ...(input.now ? { now: input.now } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       instructions: [
@@ -513,7 +535,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   }
 
   if (unpersisted) throw unpersisted;
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     await run({
       model: input.model,
       operation: "wake.reply",
@@ -532,7 +554,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       tools: tools.filter((entry) => entry.name === "reply_principal"),
     });
   }
-  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+  if (unansweredMessage && !replied) {
     throw new Error("No reply to principal's direct message.");
   }
   const unresolved = owed();

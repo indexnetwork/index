@@ -6,6 +6,12 @@ import { log } from '../lib/log';
 
 const logger = log.lib.from('conversation-database');
 
+/** Aligned with the protocol's `PeerChat`; adapters do not import the protocol. */
+interface PeerChat {
+  conversationId: string;
+  lastMessage?: { fromUserId: string; at: string };
+}
+
 /** Inactivity gap that opens a new durable H2A/H2H conversation session. */
 const CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 
@@ -367,6 +373,7 @@ export class ConversationDatabaseAdapter {
           { participantId: userB, participantType },
         ],
         dmPair,
+        userA,
       );
     } catch (err: unknown) {
       // Unique constraint violation — concurrent create won
@@ -381,6 +388,39 @@ export class ConversationDatabaseAdapter {
       }
       throw err;
     }
+  }
+
+  /**
+   * Read-only: the DM between the viewer and each peer, with the latest
+   * message's sender and time. Never creates a conversation.
+   *
+   * @param viewerId - The viewing user.
+   * @param peerIds - Counterpart user IDs.
+   * @returns Map of peer user ID to their chat; peers with no chat are absent.
+   */
+  async findPeerChats(viewerId: string, peerIds: string[]): Promise<Map<string, PeerChat>> {
+    const chats = new Map<string, PeerChat>();
+    const peers = [...new Set(peerIds)].filter((id) => id !== viewerId);
+    if (peers.length === 0) return chats;
+    const peerByPair = new Map(peers.map((id) => [[viewerId, id].sort().join(':'), id]));
+    const rows = await db.execute<{ dmPair: string; conversationId: string; fromUserId: string | null; at: Date | string | null }>(sql`
+      SELECT c.dm_pair AS "dmPair", c.id AS "conversationId", lm.sender_id AS "fromUserId", lm.created_at AS at
+      FROM conversations c
+      LEFT JOIN LATERAL (
+        SELECT m.sender_id, m.created_at FROM messages m
+        WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1
+      ) lm ON true
+      WHERE c.dm_pair = ANY(ARRAY[${sql.join([...peerByPair.keys()].map((pair) => sql`${pair}`), sql`, `)}]::text[])
+    `);
+    for (const row of rows) {
+      const peerId = peerByPair.get(row.dmPair);
+      if (!peerId) continue;
+      chats.set(peerId, {
+        conversationId: row.conversationId,
+        ...(row.fromUserId && row.at ? { lastMessage: { fromUserId: row.fromUserId, at: new Date(row.at).toISOString() } } : {}),
+      });
+    }
+    return chats;
   }
 
   /**
@@ -430,11 +470,13 @@ export class ConversationDatabaseAdapter {
    * Creates a conversation with a dmPair key for DM deduplication.
    * @param participants - List of participant descriptors
    * @param dmPair - Normalized pair key (sorted user IDs joined by ':')
+   * @param starterId - When set, everyone else starts hidden until the first message, so an empty DM never shows up for them
    * @returns The newly created conversation row
    */
   private async createConversationWithDmPair(
     participants: { participantId: string; participantType: 'user' | 'agent' }[],
     dmPair: string,
+    starterId?: string,
   ): Promise<Conversation> {
     const id = crypto.randomUUID();
     const now = new Date();
@@ -447,6 +489,7 @@ export class ConversationDatabaseAdapter {
             conversationId: id,
             participantId: p.participantId,
             participantType: p.participantType,
+            hiddenAt: starterId && p.participantId !== starterId ? now : null,
           })),
         );
       }
