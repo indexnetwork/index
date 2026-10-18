@@ -274,6 +274,26 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/**
+ * One Resend event per row, for the daily send, open and click counts. The
+ * primary key is the webhook message id, so Resend's retries cannot double
+ * count. No recipient address or subject is stored; user_id is the id the send
+ * was tagged with, with no foreign key so deleting a user keeps the counts.
+ */
+export const emailEvents = pgTable('email_events', {
+  id: text('id').primaryKey(),
+  emailId: text('email_id').notNull(),
+  type: text('type').notNull(),
+  kind: text('kind'),
+  userId: text('user_id'),
+  occurredAt: timestamp('occurred_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  occurredAtIdx: index('email_events_type_occurred_at_idx').on(table.type, table.occurredAt),
+  emailIdIdx: index('email_events_email_id_idx').on(table.emailId),
+  userIdIdx: index('email_events_user_id_idx').on(table.userId, table.occurredAt),
+}));
+
 export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer';
   createdBy?: Id<'users'> | string;

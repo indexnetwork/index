@@ -1,0 +1,280 @@
+{
+ "uid": "index-supply",
+ "title": "Index - Supply",
+ "tags": [
+  "index"
+ ],
+ "timezone": "utc",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "stat",
+   "title": "Active intents",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.intents where status = 'active' and archived_at is null"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "Weekly active users (last 7d)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "with acts as (\n  select user_id as u, created_at as t from analytics.intents\n  union all select sender_id, created_at from analytics.messages\n  union all select actor_user_id, at from analytics.opportunity_events where type = 'committed'\n) select count(distinct a.u) as value from acts a join analytics.users us on us.id = a.u where a.t > now() - interval '7 days'"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "Active intents per weekly active user",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "with acts as (\n  select user_id as u, created_at as t from analytics.intents\n  union all select sender_id, created_at from analytics.messages\n  union all select actor_user_id, at from analytics.opportunity_events where type = 'committed'\n), w as (select count(distinct a.u) as n from acts a join analytics.users us on us.id = a.u where a.t > now() - interval '7 days') select (select count(*) from analytics.intents where status = 'active' and archived_at is null)::float / nullif((select n from w), 0) as value"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "Networks with no activity in 14d",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.networks n\nleft join (select network_id, max(created_at) as t from analytics.intent_networks group by 1) ia on ia.network_id = n.id\nleft join (select network_id, max(created_at) as t from analytics.opportunity_networks group by 1) op on op.network_id = n.id\nwhere n.deleted_at is null and coalesce(ia.t, 'epoch'::timestamptz) < now() - interval '14 days' and coalesce(op.t, 'epoch'::timestamptz) < now() - interval '14 days'"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "Intents created and archived per day",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 9
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 70,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select $__timeGroupAlias(created_at,'1d'), 'created' as metric, count(*) as value from analytics.intents where $__timeFilter(created_at) group by 1 union all select $__timeGroupAlias(archived_at,'1d'), 'archived', count(*) from analytics.intents where archived_at is not null and $__timeFilter(archived_at) group by 1 order by 1"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "table",
+   "title": "Dormant networks (no intent assignment and no opportunity in 14d)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 24,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {},
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select n.id as network, coalesce(m.members, 0) as members, ia.t as last_intent_assignment, op.t as last_opportunity\nfrom analytics.networks n\nleft join (select network_id, count(*) as members from analytics.network_members where deleted_at is null group by 1) m on m.network_id = n.id\nleft join (select network_id, max(created_at) as t from analytics.intent_networks group by 1) ia on ia.network_id = n.id\nleft join (select network_id, max(created_at) as t from analytics.opportunity_networks group by 1) op on op.network_id = n.id\nwhere n.deleted_at is null and coalesce(ia.t, 'epoch'::timestamptz) < now() - interval '14 days' and coalesce(op.t, 'epoch'::timestamptz) < now() - interval '14 days'\norder by members desc limit 50"
+    }
+   ]
+  }
+ ],
+ "templating": {
+  "list": []
+ }
+}

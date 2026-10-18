@@ -1,0 +1,130 @@
+{
+  "id": "fx12-firm-requirement",
+  "description": "B states a firm but legitimate requirement that matches A's mandate; the humans still decline.",
+  "trace": {
+    "interactionId": "fx12-firm-requirement",
+    "opportunityId": "fx12-firm-requirement",
+    "source": "fixture",
+    "purpose": "Looking for roles starting in November or later.",
+    "openedAt": null,
+    "agentVerdict": "agreed",
+    "opportunityStatus": "rejected",
+    "committedCount": 0,
+    "humanOutcome": "declined",
+    "hoursToFirstCommit": null,
+    "principals": {
+      "A": {
+        "intent": "Looking for roles starting in November or later.",
+        "intro": null,
+        "conversation": [
+          {
+            "id": "conv:A:0",
+            "at": null,
+            "text": "November start or later is fine."
+          }
+        ],
+        "agentNotes": []
+      },
+      "B": {
+        "intent": "Hiring an engineer who can start in November.",
+        "intro": null,
+        "conversation": [],
+        "agentNotes": []
+      }
+    },
+    "turns": [
+      {
+        "index": 0,
+        "seat": "A",
+        "action": "propose",
+        "message": "A is looking for engineering roles starting in November or later.",
+        "at": null
+      },
+      {
+        "index": 1,
+        "seat": "B",
+        "action": "counter",
+        "message": "We need someone who can start in November; that is a firm requirement for the role.",
+        "at": null
+      },
+      {
+        "index": 2,
+        "seat": "A",
+        "action": "accept",
+        "message": "November works for A.",
+        "at": null
+      },
+      {
+        "index": 3,
+        "seat": "B",
+        "action": "accept",
+        "message": "Good. Connecting you now.",
+        "at": null
+      }
+    ]
+  },
+  "annotations": {
+    "annotator": "manual-agent",
+    "mandate": {
+      "statements": [
+        {
+          "principal": "A",
+          "source": "conversation",
+          "kind": "preference",
+          "quote": "November start or later is fine."
+        }
+      ]
+    },
+    "fidelity": {
+      "fidelity": []
+    },
+    "acts": {
+      "acts": [
+        {
+          "turnIndex": 0,
+          "performative": null,
+          "commitmentLevel": "tentative",
+          "authorityVerdict": "within",
+          "authorityReason": null,
+          "quote": "A is looking for engineering roles starting in November or later."
+        },
+        {
+          "turnIndex": 1,
+          "performative": null,
+          "commitmentLevel": "tentative",
+          "authorityVerdict": "within",
+          "authorityReason": null,
+          "quote": "We need someone who can start in November; that is a firm requirement for the role."
+        },
+        {
+          "turnIndex": 2,
+          "performative": null,
+          "commitmentLevel": "binding",
+          "authorityVerdict": "within",
+          "authorityReason": null,
+          "quote": "November works for A."
+        },
+        {
+          "turnIndex": 3,
+          "performative": null,
+          "commitmentLevel": "binding",
+          "authorityVerdict": "within",
+          "authorityReason": null,
+          "quote": "Good. Connecting you now."
+        }
+      ],
+      "claims": [],
+      "termDeltas": []
+    },
+    "findings": {
+      "findings": [],
+      "outcomeRationale": "No conduct problem is visible; the human decline is unexplained by the record.",
+      "missedOpportunityQuote": null
+    }
+  },
+  "gold": {
+    "findings": [],
+    "authorityExceededTurns": [],
+    "outcomeClass": "assessment_failure"
+  }
+}
