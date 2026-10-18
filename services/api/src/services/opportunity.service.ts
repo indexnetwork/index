@@ -632,7 +632,7 @@ export class OpportunityService {
     if (!opp) {
       return { error: 'Opportunity not found', status: 404 };
     }
-    if (opp.status === 'accepted') {
+    if (opp.status !== 'pending') {
       const isActor = opp.actors.some((a) => a.userId === userId);
       if (!isActor) {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
@@ -671,12 +671,6 @@ export class OpportunityService {
           userId,
           options?.intentId,
         ),
-      };
-    }
-    if (opp.status !== 'pending') {
-      return {
-        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending.`,
-        status: 400,
       };
     }
     const callerActor = opp.actors.find((a) => a.userId === userId);
