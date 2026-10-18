@@ -4009,7 +4009,8 @@
 /* The owner's own words keep the thread's bubble, on their side of it. */
 .index-dashboard__agent-mine {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .index-dashboard__agent-mine .index-dashboard__msg-bubble {
@@ -4017,8 +4018,7 @@
 }
 
 .index-dashboard__agent-queued {
-  align-self: flex-end;
-  margin-right: 8px;
+  margin-top: 4px;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   opacity: 0.6;

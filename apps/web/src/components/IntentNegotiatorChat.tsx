@@ -368,11 +368,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           }
           if (piece.kind === "user") {
             return (
-              <div key={piece.id} style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div key={piece.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                 <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
-                {waiting && index > firstWaiting && <span style={{ alignSelf: "flex-end", marginLeft: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
+                {waiting && index > firstWaiting && <span style={{ marginTop: 4, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
               </div>
             );
           }

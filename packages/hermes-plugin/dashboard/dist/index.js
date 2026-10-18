@@ -4241,10 +4241,10 @@
       if (entry.kind === "card") return questionCard(entry.question);
       if (entry.kind === "user") {
         return React.createElement("div", { key: entry.id, className: "index-dashboard__agent-mine" },
-          queued[entry.id] ? React.createElement("span", { className: "index-dashboard__agent-queued" }, "queued") : null,
           React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
             React.createElement(Markdown, { text: entry.text }),
           ),
+          queued[entry.id] ? React.createElement("span", { className: "index-dashboard__agent-queued" }, "queued") : null,
         );
       }
       if (entry.kind === "loading") return React.createElement(LoadingTrace, { key: entry.id, lines: entry.lines });

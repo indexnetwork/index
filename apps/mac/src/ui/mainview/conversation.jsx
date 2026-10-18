@@ -1246,14 +1246,14 @@ function AgentLine({ children, pending, highlight, collective }) {
 // markdown as the agent's, so a list you typed reads as a list.
 function UserLine({ children, queued = false }) {
   return (
-    <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
-      {queued && <span style={{ alignSelf:"flex-end", marginRight:8, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>queued</span>}
+    <div className="fade-up own-md" style={{ display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
       <div style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
         fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
         wordBreak:"break-word",
       }}><AgentMarkdown text={children}/></div>
+      {queued && <span style={{ marginTop:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>queued</span>}
     </div>
   );
 }
