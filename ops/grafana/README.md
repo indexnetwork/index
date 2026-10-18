@@ -27,6 +27,8 @@ The Index password is read from `INDEX_PG_PASSWORD`. It is not in this repositor
 
 Each tracked send is tagged with the recipient's user id, so the board also counts users (emailed, opened, clicked), and two panels join email to the rest of the analytics: users who were active within 24 hours of a click (Index - Email), and weekly active users who clicked an email that week (Index - Retention). Those joins show association, not cause. The boards show counts only, never user ids, but `analytics.email_events` carries `user_id` and anyone who can query the Index datasource can read it, so keep that datasource to people who may see per-user email behaviour.
 
+`dashboards/email-health.json` (Index - Email health) is the people board. It has three sections: too much mail (five or more in the range, a second morning brief on one UTC day, three message emails in one day), people who were emailed and did not click, and mail that went out after a bounce or a spam report. It shows counts only, never a user id. Clicks are the engagement signal. Opens stay on the volume board because privacy fetches inflate them.
+
 Counts start from the day the webhook is on. Resend does not replay earlier events. Opens are inflated by Apple Mail Privacy Protection and by security scanners that open links, so read the open rate as an upper bound and trust clicks more.
 
 ## Delivering the files to Railway

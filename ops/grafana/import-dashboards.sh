@@ -1,7 +1,9 @@
 #!/bin/sh
 # Grafana 13 reads dashboards from unified storage. The file provisioner can
-# finish a startup walk without Index - Email showing up there, so the board
-# URL 404s. Push that one file through the dashboard API once Grafana is up.
+# finish a startup walk without a new board showing up there, so its URL 404s.
+# Push each dashboard file through the dashboard API once Grafana is up.
+# Boards already present are left alone, except Index - Email health, which is
+# updated so a new bundle can change it.
 echo "index-dashboard-import: start"
 user="${GF_SECURITY_ADMIN_USER:-admin}"
 pass="${GF_SECURITY_ADMIN_PASSWORD:-}"
@@ -31,11 +33,8 @@ fi
 echo "index-dashboard-import: ready"
 sleep 2
 
-file=/var/lib/grafana-dashboards/email.json
-uid=index-email
-if [ ! -f "$file" ]; then
-  echo "index-dashboard-import: email.json missing"
-  ls -l /var/lib/grafana-dashboards 2>/dev/null || true
+if [ ! -d /var/lib/grafana-dashboards ]; then
+  echo "index-dashboard-import: dashboard directory missing"
   exit 0
 fi
 
@@ -58,43 +57,62 @@ folder=$(printf '%s' "$folders" | tr -d '\n' | awk '
 ')
 echo "index-dashboard-import: folder=${folder:-root}"
 
-body=$(mktemp)
-if [ -n "$folder" ]; then
-  printf '%s' '{"apiVersion":"dashboard.grafana.app/v1","kind":"Dashboard","metadata":{"name":"'"$uid"'","annotations":{"grafana.app/folder":"'"$folder"'"}},"spec":' > "$body"
-else
-  printf '%s' '{"apiVersion":"dashboard.grafana.app/v1","kind":"Dashboard","metadata":{"name":"'"$uid"'"},"spec":' > "$body"
-fi
-cat "$file" >> "$body"
-printf '%s' '}' >> "$body"
-
 post() {
   curl -sS -o /tmp/index-import-out -w '%{http_code}' \
     -H "Authorization: Basic $auth" -H 'Content-Type: application/json' \
     -X "$1" "$2" --data-binary @"$3" || echo fail
 }
 
-code=$(post POST "$base/apis/dashboard.grafana.app/v1/namespaces/default/dashboards" "$body")
-echo "index-dashboard-import: post $code $(head -c 300 /tmp/index-import-out)"
-if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-  code=$(post PUT "$base/apis/dashboard.grafana.app/v1/namespaces/default/dashboards/$uid" "$body")
-  echo "index-dashboard-import: put $code $(head -c 300 /tmp/index-import-out)"
-fi
-if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-  classic=$(mktemp)
-  printf '%s' '{"overwrite":true,' > "$classic"
-  if [ -n "$folder" ]; then
-    printf '%s' '"folderUid":"'"$folder"'",' >> "$classic"
+for file in /var/lib/grafana-dashboards/*.json; do
+  uid=$(tr -d '\n' < "$file" | awk '
+    match($0, /"uid"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+      s = substr($0, RSTART, RLENGTH)
+      sub(/.*"uid"[[:space:]]*:[[:space:]]*"/, "", s)
+      sub(/"$/, "", s)
+      print s
+      exit
+    }
+  ')
+  if [ -z "$uid" ]; then
+    echo "index-dashboard-import: no uid in $file"
+    continue
   fi
-  printf '%s' '"dashboard":' >> "$classic"
-  cat "$file" >> "$classic"
-  printf '%s' '}' >> "$classic"
-  code=$(post POST "$base/api/dashboards/db" "$classic")
-  echo "index-dashboard-import: classic $code $(head -c 300 /tmp/index-import-out)"
-  rm -f "$classic"
-fi
-
-dto=$(curl -sS -o /tmp/index-import-dto -w '%{http_code}' -H "Authorization: Basic $auth" \
-  "$base/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/$uid/dto" || echo fail)
-echo "index-dashboard-import: dto $dto $(head -c 200 /tmp/index-import-dto)"
-rm -f "$body"
+  dto=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Basic $auth" \
+    "$base/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/$uid/dto" || echo fail)
+  if [ "$dto" = "200" ] && [ "$uid" != "index-email-health" ]; then
+    echo "index-dashboard-import: skip $uid"
+    continue
+  fi
+  body=$(mktemp)
+  if [ -n "$folder" ]; then
+    printf '%s' '{"apiVersion":"dashboard.grafana.app/v1","kind":"Dashboard","metadata":{"name":"'"$uid"'","annotations":{"grafana.app/folder":"'"$folder"'"}},"spec":' > "$body"
+  else
+    printf '%s' '{"apiVersion":"dashboard.grafana.app/v1","kind":"Dashboard","metadata":{"name":"'"$uid"'"},"spec":' > "$body"
+  fi
+  cat "$file" >> "$body"
+  printf '%s' '}' >> "$body"
+  code=$(post POST "$base/apis/dashboard.grafana.app/v1/namespaces/default/dashboards" "$body")
+  echo "index-dashboard-import: post $uid $code $(head -c 180 /tmp/index-import-out)"
+  if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+    code=$(post PUT "$base/apis/dashboard.grafana.app/v1/namespaces/default/dashboards/$uid" "$body")
+    echo "index-dashboard-import: put $uid $code $(head -c 180 /tmp/index-import-out)"
+  fi
+  if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+    classic=$(mktemp)
+    printf '%s' '{"overwrite":true,' > "$classic"
+    if [ -n "$folder" ]; then
+      printf '%s' '"folderUid":"'"$folder"'",' >> "$classic"
+    fi
+    printf '%s' '"dashboard":' >> "$classic"
+    cat "$file" >> "$classic"
+    printf '%s' '}' >> "$classic"
+    code=$(post POST "$base/api/dashboards/db" "$classic")
+    echo "index-dashboard-import: classic $uid $code $(head -c 180 /tmp/index-import-out)"
+    rm -f "$classic"
+  fi
+  dto=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Basic $auth" \
+    "$base/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/$uid/dto" || echo fail)
+  echo "index-dashboard-import: dto $uid $dto"
+  rm -f "$body"
+done
 echo "index-dashboard-import: done"
