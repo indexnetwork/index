@@ -320,7 +320,6 @@ export class NetworkRequestService {
       subject: `Network request: ${row.title.replace(/[\r\n\t]+/g, ' ').slice(0, 200)}`,
       html,
       text,
-      kind: 'network_request_staff',
     });
   }
 
@@ -341,7 +340,7 @@ export class NetworkRequestService {
         networkName: row.title,
         networkUrl: `${webBaseUrl()}/networks/${row.id}`,
       });
-      await executeSendEmail({ to: user.email, subject: rendered.subject, html: rendered.html, text: rendered.text, kind: 'network_request_decision' });
+      await executeSendEmail({ to: user.email, subject: rendered.subject, html: rendered.html, text: rendered.text });
       return;
     }
 
@@ -350,7 +349,7 @@ export class NetworkRequestService {
       reviewNote: readRequest(row)?.reviewNote ?? '',
       networksUrl: `${webBaseUrl()}/networks`,
     });
-    await executeSendEmail({ to: user.email, subject: rendered.subject, html: rendered.html, text: rendered.text, kind: 'network_request_decision' });
+    await executeSendEmail({ to: user.email, subject: rendered.subject, html: rendered.html, text: rendered.text });
   }
 }
 

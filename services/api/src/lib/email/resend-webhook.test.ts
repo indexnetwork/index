@@ -56,8 +56,9 @@ describe('parseResendEvent', () => {
     expect(event?.kind).toBe('message');
   });
 
-  test('leaves the kind empty when the email has no tag', () => {
-    expect(parseResendEvent({ type: 'email.sent', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_3' } })?.kind).toBeNull();
+  test('ignores email with no kind tag or an untracked kind', () => {
+    expect(parseResendEvent({ type: 'email.sent', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_3' } })).toBeNull();
+    expect(parseResendEvent({ type: 'email.sent', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_3', tags: { kind: 'magic_link' } } })).toBeNull();
   });
 
   test('ignores event types that are not tracked', () => {
@@ -67,7 +68,7 @@ describe('parseResendEvent', () => {
   });
 
   test('does not keep the recipient', () => {
-    const event = parseResendEvent({ type: 'email.delivered', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_5', to: ['person@example.com'], subject: 'Hi' } });
+    const event = parseResendEvent({ type: 'email.delivered', created_at: '2026-10-17T10:00:00.000Z', data: { email_id: 'em_5', tags: { kind: 'message' }, to: ['person@example.com'], subject: 'Hi' } });
     expect(JSON.stringify(event)).not.toContain('person@example.com');
   });
 });

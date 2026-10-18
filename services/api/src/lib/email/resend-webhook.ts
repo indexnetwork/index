@@ -12,12 +12,20 @@ export const TRACKED_EVENTS = [
   'clicked',
 ] as const;
 
+/**
+ * The flows whose email is tracked. A send carries its kind as a Resend tag,
+ * which comes back on every event; events of any other kind are not stored.
+ */
+export const TRACKED_KINDS = ['message', 'morning_brief', 'network_invitation'] as const;
+
+export type EmailKind = (typeof TRACKED_KINDS)[number];
+
 export type TrackedEvent = (typeof TRACKED_EVENTS)[number];
 
 export interface ParsedEmailEvent {
   type: TrackedEvent;
   emailId: string;
-  kind: string | null;
+  kind: EmailKind;
   occurredAt: Date;
 }
 
@@ -80,7 +88,7 @@ function tagValue(tags: unknown, name: string): string | null {
 /**
  * Reduce a Resend webhook payload to what the counts need: no address and no
  * subject is kept. Returns null for event types that are not tracked, such as
- * contact or domain events.
+ * contact or domain events, and for email of a kind that is not tracked.
  */
 export function parseResendEvent(payload: unknown): ParsedEmailEvent | null {
   if (typeof payload !== 'object' || payload === null) return null;
@@ -96,5 +104,7 @@ export function parseResendEvent(payload: unknown): ParsedEmailEvent | null {
   if (typeof emailId !== 'string' || !emailId) return null;
   const when = new Date(typeof createdAt === 'string' ? createdAt : typeof data?.created_at === 'string' ? data.created_at : Date.now());
   if (Number.isNaN(when.getTime())) return null;
-  return { type: name as TrackedEvent, emailId, kind: tagValue(data?.tags, 'kind'), occurredAt: when };
+  const kind = tagValue(data?.tags, 'kind');
+  if (!kind || !(TRACKED_KINDS as readonly string[]).includes(kind)) return null;
+  return { type: name as TrackedEvent, emailId, kind: kind as EmailKind, occurredAt: when };
 }
