@@ -43,7 +43,9 @@ The script writes `bundle.tgz`, `bundle.b64` and `chunks/TR_00..TR_NN`, and prin
 2. Set the printed start command.
 3. Redeploy.
 
-The start command reassembles the chunks, checks the sha256, and extracts into `/`. If the check fails it prints `bundle-check-failed-using-previous` and unpacks the earlier Index-only bundle held in `IDX_00..IDX_10`, so a mistyped chunk cannot leave the service without dashboards. It always ends with `exec /run.sh`. Once the new bundle has run cleanly for a while, the `IDX_` variables and the fallback can be removed.
+The start command reassembles the chunks, checks the sha256, and extracts into `/`. If the check fails it prints `bundle-check-failed-using-previous` and unpacks the earlier Index-only bundle held in `IDX_00..IDX_10`, so a mistyped chunk cannot leave the service without dashboards. It then starts `import-dashboards.sh` and `exec /run.sh`. Once the new bundle has run cleanly for a while, the `IDX_` variables and the fallback can be removed.
+
+Grafana 13 keeps dashboards in unified storage. A file that the startup provisioner does not write there is missing from the UI (`/d/index-email` returns “Dashboard not found”). `import-dashboards.sh` creates Index - Email through the dashboard API after Grafana is accepting requests. A healthy boot logs `index-dashboard-import: dto 200`.
 
 A healthy deploy logs `/tmp/b.tgz: OK` and then `finished to provision dashboards`.
 
