@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 
-import AppHandoff from "@/components/AppHandoff";
+import { useOpportunities } from "@/contexts/APIContext";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { apiUrl } from "@/lib/api";
 import { parseSocial } from "@/lib/socials";
 
 /**
- * Opportunity link (`/o/:id`). The web has no opportunity page, so this is
- * the handoff screen: open in the Mac app or Hermes, otherwise the download page.
+ * Opportunity link (`/o/:id`). Starts (or reopens) the chat with the other
+ * person and opens it, asking the visitor to sign in first.
  * `?action=&viewer=&sig=` accepts or declines from a signed link, then
  * `?surface=` opens the other person's profile on that surface when there is
  * exactly one. Otherwise it opens their public profile at `/u/`. No sign-in.
@@ -22,7 +24,36 @@ export default function OpportunityLinkPage() {
   if (action && viewer && sig) {
     return <ActionOpportunityLink id={id ?? ""} action={action} viewer={viewer} sig={sig} surface={surface} />;
   }
-  return <AppHandoff kind="o" id={id ?? ""} />;
+  return <OpenOpportunityChat id={id ?? ""} />;
+}
+
+function OpenOpportunityChat({ id }: { id: string }) {
+  const navigate = useNavigate();
+  const opportunities = useOpportunities();
+  const { error: showError } = useNotifications();
+  const { isAuthenticated, isLoading, openLoginModal } = useAuthContext();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated) {
+      openLoginModal(window.location.href);
+      return;
+    }
+    let cancelled = false;
+    opportunities.startChat(id).then(
+      ({ counterpartUserId }) => {
+        if (!cancelled) navigate(`/u/${encodeURIComponent(counterpartUserId)}/chat`, { replace: true });
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        showError(error instanceof Error ? error.message : "Failed to start chat");
+        navigate("/chat", { replace: true });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [id, isLoading, isAuthenticated, openLoginModal, opportunities, showError, navigate]);
+
+  return null;
 }
 
 function surfaceHrefs(surface: string, values: string[]): string[] {
@@ -70,7 +101,7 @@ function ActionOpportunityLink({ id, action, viewer, sig, surface }: {
     return () => { cancelled = true; };
   }, [id, action, viewer, sig, surface, navigate]);
 
-  if (fallback) return <AppHandoff kind="o" id={id} />;
+  if (fallback) return <OpenOpportunityChat id={id} />;
   return null;
 }
 
