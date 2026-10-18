@@ -26,6 +26,9 @@ type QuestionCard = {
   matches: PrincipalQuestion["matches"];
 };
 
+/** Id prefix of a message shown before the server has confirmed it. */
+const PENDING = "pending-";
+
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
@@ -52,8 +55,8 @@ function questionCard(provenance: Provenance, text: string, live?: PrincipalQues
   };
 }
 
-/** Same classification as the Mac signal inbox: a question stays where it was asked, and its answer sits on that card. */
-function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestion[]): FeedPiece[] {
+/** Same classification as the Mac intent inbox: a question stays where it was asked, and its answer sits on that card. */
+function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestion[]): FeedPiece[] {
   const live = new Map(questions.map((question) => [question.id, question]));
   const answers = new Map<string, string>();
   for (const message of messages) {
@@ -77,7 +80,7 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
       seen.add(provenance.questionId);
       const answer = answers.get(provenance.questionId);
       if (live.has(provenance.questionId)) feed.push({ kind: "open-question", id: message.id, question });
-      else if (answer) feed.push({ kind: "answered-question", id: `answered-${provenance.questionId}`, question, answer });
+      else if (answer) feed.push({ kind: "answered-question", id: message.id, question, answer });
       continue;
     }
     if (provenance?.record === "brief" || provenance?.record === "decision") continue;
@@ -240,13 +243,18 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const questions = agent?.questions ?? [];
+  // An answer in the transcript settles its question, even while the server's list still holds it.
+  const answered = new Set(messages.map((message) => (message.metadata?.principalMessage as Provenance | undefined)).filter((provenance) => provenance?.kind === "answer").map((provenance) => provenance!.questionId));
+  const questions = (agent?.questions ?? []).filter((question) => !answered.has(question.id));
   // Read off the questions on screen, so a selection whose question is gone
   // counts for nothing and is never sent.
   const chosen = questions.filter((question) => selections[question.id]?.trim());
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
-    setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
+    // A pending message gives way to the real one with the same text (and question, for an answer), whichever arrives first.
+    const same = (message: ConversationMessage) => `${(message.metadata?.principalMessage as Provenance | undefined)?.questionId ?? ""}\n${messageText(message)}`;
+    const real = new Set(incoming.filter((message) => message.role === "user" && !message.id.startsWith(PENDING)).map(same));
+    setMessages((previous) => [...new Map([...previous.filter((message) => !message.id.startsWith(PENDING) || !real.has(same(message))), ...incoming].map((message) => [message.id, message])).values()]
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
   }, []);
 
@@ -283,21 +291,23 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, questions.length]);
-
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
     setDraft("");
     setSending(true);
+    const parts = [{ kind: "text", text }];
+    const pendingId = `${PENDING}${Date.now()}`;
+    mergeMessages([{ id: pendingId, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user", parts, metadata: { intentId }, createdAt: new Date().toISOString() }]);
     try {
-      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, [{ kind: "text", text }], { metadata: { intentId } })]);
+      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, parts, { metadata: { intentId } })]);
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // The refresh below is the transcript's only truth.
     } finally {
-      await refresh();
+      setMessages((previous) => previous.filter((message) => message.id !== pendingId));
       setSending(false);
       inputRef.current?.focus();
+      void refresh();
     }
   };
 
@@ -305,20 +315,38 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const sendAnswers = async () => {
     if (!chosen.length || sending) return;
     const answers = chosen.map((question) => ({ questionId: question.id, text: selections[question.id]!.trim() }));
+    const previous = { selections, writing };
+    // Shown at once; each gives way to the real message, which names the same question.
+    const pending = answers.map(({ questionId, text }): ConversationMessage => ({
+      id: `${PENDING}${questionId}`, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user",
+      parts: [{ kind: "text", text }], metadata: { intentId, principalMessage: { kind: "answer", questionId } }, createdAt: new Date().toISOString(),
+    }));
+    mergeMessages(pending);
     setSelections({});
     setWriting({});
     setSending(true);
     try {
       mergeMessages(await conversations.sendAnswers(intentId, answers));
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // Put the answers back so they can be sent again.
+      setSelections(previous.selections);
+      setWriting(previous.writing);
     } finally {
-      await refresh();
+      const ids = new Set(pending.map((message) => message.id));
+      setMessages((current) => current.filter((message) => !ids.has(message.id)));
       setSending(false);
+      void refresh();
     }
   };
 
-  const feed = useMemo(() => signalFeed(messages, questions), [messages, questions]);
+  const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
+  // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
+  // Only a hosted agent answers here; an external one never will, so nothing waits on it.
+  const hosted = agent?.status === "hosted";
+  const waiting = hosted && messages.at(-1)?.role === "user";
+  let firstWaiting = feed.length;
+  while (waiting && firstWaiting > 0 && feed[firstWaiting - 1].kind === "user") firstWaiting--;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
@@ -334,7 +362,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           />
         ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
           ask about your matches, share a preference, or tell your agent what to look for.
-        </p> : feed.map((piece) => {
+        </p> : feed.map((piece, index) => {
           if (piece.kind === "discovery") {
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
           }
@@ -344,6 +372,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
                 <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
+                {waiting && index > firstWaiting && <span style={{ alignSelf: "flex-end", marginLeft: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
               </div>
             );
           }
@@ -364,6 +393,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             </AgentFeedNote>
           );
         })}
+      {waiting && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· thinking…</p>}
       <div ref={endRef} />
       </div>
 

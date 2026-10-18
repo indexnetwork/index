@@ -14,16 +14,16 @@ import { log } from './log';
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
  * than the turn — the agent reads `GET /opportunities/:id/negotiation` to act.
- * `intent.created` and `intent.lifecycle` are scoped to a signal instead: that
- * a signal now exists, and whether the agent should be working it at all.
+ * `intent.created` and `intent.lifecycle` are scoped to an intent instead: that
+ * an intent now exists, and whether the agent should be working it at all.
  * Creation has its own frame because an agent that only follows lifecycle
- * changes would never learn about a signal made after it started.
+ * changes would never learn about an intent made after it started.
  * `negotiation.changed` refreshes both seats after a negotiation is opened,
  * after a turn, or after a related intent's lifecycle change. It does not imply
  * that either seat owes the next turn; `negotiation.turn` remains addressed to
  * the seat that does.
  *
- * `question.pending` is scoped to a signal too, but the other way round: the
+ * `question.pending` is scoped to an intent too, but the other way round: the
  * personal agent stopped and cannot continue until its owner answers, so the
  * frame names the intent whose H2A conversation holds the question.
  * `principal.input` is the owner's answer or message on that same conversation
@@ -48,10 +48,10 @@ export type UserEventType =
   | 'message';
 
 /**
- * The effective state of a signal as agents see it.
+ * The effective state of an intent as agents see it.
  *
  * `archived` is a wire value, not a column: removal sets `archived_at` rather
- * than a status, and an agent only needs to know the signal is gone.
+ * than a status, and an agent only needs to know the intent is gone.
  */
 export type IntentLifecycleWireStatus = 'active' | 'paused' | 'archived';
 
@@ -103,7 +103,7 @@ interface ConversationEventMessage {
   parts: unknown;
   /**
    * The persisted row's metadata, carried verbatim. Owner surfaces filter the
-   * agent DM by `metadata.intentId` to tell one signal's H2A from another's, so
+   * agent DM by `metadata.intentId` to tell one intent's H2A from another's, so
    * this frame is the live path for that inbox, not just a notification.
    */
   metadata: unknown;

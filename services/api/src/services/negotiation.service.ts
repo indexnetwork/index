@@ -30,7 +30,7 @@ export class NegotiationService {
    * The caller's negotiations.
    *
    * @param userId - The seat owner.
-   * @param options - Narrow to one signal, or to records still open.
+   * @param options - Narrow to one intent, or to records still open.
    * @returns One view per negotiation the caller sits in.
    */
   async list(

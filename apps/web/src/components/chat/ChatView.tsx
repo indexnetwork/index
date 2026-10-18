@@ -28,7 +28,7 @@ interface ChatViewProps {
   onFirstMessageSent?: () => void;
   onClose: () => void;
   onBack?: () => void;
-  /** Third window on a signal: the window already has the name header. */
+  /** Third window on an intent: the window already has the name header. */
   embedded?: boolean;
   /** Match write-up shown above the thread, the way the desktop chat opens. */
   opener?: { headline?: string; detail?: string };
@@ -320,7 +320,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
               <EmptyState tone="loading" style={{ padding: "60px 0" }} />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
-              <EmptyState message="agents matched you on this signal. say hi." style={{ padding: "20px 0" }} />
+              <EmptyState message="agents matched you on this intent. say hi." style={{ padding: "20px 0" }} />
             ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
               <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
             ) : null}

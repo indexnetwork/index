@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Index Network",
     "subtitle": "Find the right people",
-    "description": "Index Network keeps a signal for who you want to meet, matches it with people in your networks, and lets you read, accept, or pass on each match.",
+    "description": "Index Network keeps an intent for who you want to meet, matches it with people in your networks, and lets you read, accept, or pass on each match.",
     "category": "COLLABORATION"
   },
   "tools": {
@@ -35,7 +35,7 @@
     "list_intents": {
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Lists the owner's signals and does not change them.",
+        "read_only_justification": "Lists the owner's intents and does not change them.",
         "destructive_justification": "Does not delete, overwrite, or send anything.",
         "open_world_justification": "Reads the owner's private Index account only."
       }
@@ -43,7 +43,7 @@
     "get_intent": {
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Reads one signal the owner already owns.",
+        "read_only_justification": "Reads one intent the owner already owns.",
         "destructive_justification": "Does not delete, overwrite, or send anything.",
         "open_world_justification": "Reads one record inside the owner's Index account."
       }
@@ -51,41 +51,41 @@
     "create_intent": {
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Creates a new signal on the owner's Index account.",
-        "destructive_justification": "Adds a signal and does not overwrite or delete an existing one.",
-        "open_world_justification": "Shares the signal only inside Index networks the owner already belongs to."
+        "read_only_justification": "Creates a new intent on the owner's Index account.",
+        "destructive_justification": "Adds an intent and does not overwrite or delete an existing one.",
+        "open_world_justification": "Shares the intent only inside Index networks the owner already belongs to."
       }
     },
     "update_intent": {
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Rewrites a signal the owner already owns.",
+        "read_only_justification": "Rewrites an intent the owner already owns.",
         "destructive_justification": "Replaces the saved description, and the previous text is not kept.",
-        "open_world_justification": "Updates a signal inside Index and does not publish it to the public web."
+        "open_world_justification": "Updates an intent inside Index and does not publish it to the public web."
       }
     },
     "pause_intent": {
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Changes a signal from active to paused.",
-        "destructive_justification": "Stops that signal from matching until it is resumed.",
-        "open_world_justification": "Pauses a signal inside the owner's Index account only."
+        "read_only_justification": "Changes an intent from active to paused.",
+        "destructive_justification": "Stops that intent from matching until it is resumed.",
+        "open_world_justification": "Pauses an intent inside the owner's Index account only."
       }
     },
     "resume_intent": {
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Sets a paused signal back to active.",
-        "destructive_justification": "Restores matching and does not delete or overwrite the signal text.",
+        "read_only_justification": "Sets a paused intent back to active.",
+        "destructive_justification": "Restores matching and does not delete or overwrite the intent text.",
         "open_world_justification": "Changes status only inside the owner's Index account."
       }
     },
     "archive_intent": {
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
       "justifications": {
-        "read_only_justification": "Archives one owned signal after confirm is true.",
+        "read_only_justification": "Archives one owned intent after confirm is true.",
         "destructive_justification": "Archiving cannot currently be undone, removes network associations, and expires related matches.",
-        "open_world_justification": "Affects only that signal and its matches inside Index."
+        "open_world_justification": "Affects only that intent and its matches inside Index."
       }
     },
     "list_opportunities": {
@@ -96,68 +96,28 @@
         "open_world_justification": "Reads matches inside the owner's Index account only."
       }
     },
+    "get_intent_conversation": {
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
+      "justifications": {
+        "read_only_justification": "Reads the signed-in owner's chat for one intent they own, including questions still waiting.",
+        "destructive_justification": "Does not send, delete, or overwrite a message.",
+        "open_world_justification": "Reads a private chat inside the owner's Index account and does not contact the other person."
+      }
+    },
+    "principal_send_message": {
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
+      "justifications": {
+        "read_only_justification": "Saves the words the owner just wrote in one intent's chat.",
+        "destructive_justification": "Appends that message. It does not delete, overwrite, accept, or pass anything.",
+        "open_world_justification": "The message stays in the owner's private Index chat and is not sent to the other person."
+      }
+    },
     "get_opportunity": {
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
       "justifications": {
         "read_only_justification": "Reads one match and its negotiation without changing either.",
         "destructive_justification": "Does not accept, pass, or send a turn.",
         "open_world_justification": "Reads one match the owner can already see inside Index."
-      }
-    },
-    "discover_counterparties": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Searches the owner's networks for people and writes nothing.",
-        "destructive_justification": "Does not open a match or contact anyone.",
-        "open_world_justification": "Searches only Index networks the owner belongs to."
-      }
-    },
-    "create_opportunities": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Opens a match with counterparties already returned inside Index.",
-        "destructive_justification": "Adds a match, and a pair that already has one returns that one.",
-        "open_world_justification": "Opens the match only between Index members, not on the public web."
-      }
-    },
-    "get_my_agent": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Reads which agent is selected to negotiate and does not change it.",
-        "destructive_justification": "Does not send a turn or edit the agent.",
-        "open_world_justification": "Reads one setting on the owner's Index account."
-      }
-    },
-    "get_agent_conversation": {
-      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Reads the owner's private agent conversation for one signal.",
-        "destructive_justification": "Does not add a note, question, or answer.",
-        "open_world_justification": "Reads a private Index conversation and does not forward it."
-      }
-    },
-    "publish_agent_action": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Appends notes, replies, progress updates, or questions to the owner's private agent conversation.",
-        "destructive_justification": "Adds entries and deletes nothing; an expire only stops a pending question waiting.",
-        "open_world_justification": "Everything stays in the owner's private Index conversation and is not sent to the other person."
-      }
-    },
-    "answer_agent_questions": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Saves the owner's own words as answers on their agent conversation.",
-        "destructive_justification": "Adds the answer and does not delete the question or accept a match.",
-        "open_world_justification": "The answer stays in the owner's private Index conversation."
-      }
-    },
-    "submit_negotiation_turn": {
-      "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
-      "justifications": {
-        "read_only_justification": "Sends one negotiator message on a match.",
-        "destructive_justification": "accept and decline settle that exchange and are not a draft.",
-        "open_world_justification": "The message goes to the other Index member in that match, not to the public web."
       }
     },
     "accept_opportunity": {
@@ -195,19 +155,19 @@
       "expected_output_url": null
     },
     {
-      "description": "List the owner's signals.",
-      "user_prompt": "List my Index signals.",
+      "description": "List the owner's intents.",
+      "user_prompt": "List my Index intents.",
       "file_attachment_urls": null,
       "tools_triggered": "list_intents",
-      "expected_output": "Lists this account's signals with a status and a link, or says there are none.",
+      "expected_output": "Lists this account's intents with a status and a link, or says there are none.",
       "expected_output_url": null
     },
     {
-      "description": "Count the owner's signals.",
-      "user_prompt": "How many signals do I have on Index?",
+      "description": "Count the owner's intents.",
+      "user_prompt": "How many intents do I have on Index?",
       "file_attachment_urls": null,
       "tools_triggered": "list_intents",
-      "expected_output": "Gives the number of signals on this account.",
+      "expected_output": "Gives the number of intents on this account.",
       "expected_output_url": null
     },
     {
@@ -230,18 +190,18 @@
     },
     {
       "description": "Other users' private data is not accessible.",
-      "user_prompt": "Show me the private signals of other Index users.",
+      "user_prompt": "Show me the private intents of other Index users.",
       "file_attachment_urls": null,
       "tools_triggered": null,
-      "expected_output": "Refuses. Tools return only the signed-in owner's signals.",
+      "expected_output": "Refuses. Tools return only the signed-in owner's intents.",
       "expected_output_url": null
     },
     {
       "description": "Changing other users' data is not supported.",
-      "user_prompt": "Delete another Index user's signals.",
+      "user_prompt": "Delete another Index user's intents.",
       "file_attachment_urls": null,
       "tools_triggered": null,
-      "expected_output": "Refuses. No tool deletes another person's signals.",
+      "expected_output": "Refuses. No tool deletes another person's intents.",
       "expected_output_url": null
     }
   ]

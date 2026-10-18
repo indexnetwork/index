@@ -250,7 +250,7 @@
    buttons drew black text on black). Under a dark theme the ink becomes the
    page's own foreground and the solid fill inverts to it, so the buttons keep
    the Mac gadget look the light theme has. `:where` holds these at the base
-   button's weight, so a button with its own colors (New signal, Save, the
+   button's weight, so a button with its own colors (New intent, Save, the
    radar card actions) still wins. */
 .index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn,
 .index-network-desktop-page :where(.index-dashboard[data-scheme="dark"]) .idx-btn--outlined,
@@ -295,13 +295,13 @@
   text-transform: uppercase;
 }
 
-.index-network-desktop-page .index-dashboard__new-signal-btn.idx-btn {
+.index-network-desktop-page .index-dashboard__new-intent-btn.idx-btn {
   color: #fff;
   border-color: var(--color-success, #3d9a5b);
   background: var(--color-success, #3d9a5b);
 }
 
-.index-network-desktop-page .index-dashboard__new-signal-btn.idx-btn:hover:not(:disabled) {
+.index-network-desktop-page .index-dashboard__new-intent-btn.idx-btn:hover:not(:disabled) {
   color: #fff;
   border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 85%, #000);
   background: color-mix(in srgb, var(--color-success, #3d9a5b) 85%, #000);
@@ -354,7 +354,7 @@
   background: var(--ui-text-secondary, #333);
 }
 
-/* Signal chat fills the pane so the composer sits on the bottom. The shared
+/* Intent chat fills the pane so the composer sits on the bottom. The shared
    sheet caps the transcript at 18rem for a scrolling web page. */
 .index-network-desktop-page:has(.index-dashboard__detail) {
   overflow: hidden;
@@ -384,7 +384,7 @@
   flex-direction: column;
 }
 
-/* Dark mode: signal and radar sit on their own raised surface, like the Mac
+/* Dark mode: intent and radar sit on their own raised surface, like the Mac
    app's two windows, instead of dissolving into one flat page. */
 .index-network-desktop-page .index-dashboard[data-scheme="dark"] .index-dashboard__detail-cols {
   gap: 1rem;

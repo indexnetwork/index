@@ -1,11 +1,11 @@
 import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "@opentui/core";
 
-import type { Inbox, Negotiation, Owner, Person, Question, Signal } from "./api";
+import type { Inbox, Negotiation, Owner, Person, Question, Intent } from "./api";
 
 const colors = { background: "#10151e", text: "#dce4ef", muted: "#8996aa", focus: "#77b8ff", question: "#f4c773", success: "#8de3b0", border: "#364255" };
 type Pane = "inbox" | "radar" | "negotiation";
 
-/** The three owner views read the same data as the macOS signal workspace. */
+/** The three owner views read the same data as the macOS intent workspace. */
 export async function runTui(owner: Owner): Promise<void> {
   let close!: () => void;
   const closed = new Promise<void>((resolve) => { close = resolve; });
@@ -52,17 +52,17 @@ export async function runTui(owner: Owner): Promise<void> {
 
   const selector = new BoxRenderable(renderer, { visible: false, position: "absolute", top: 1, left: 0, width: "100%", height: "100%", zIndex: 1, border: true, borderColor: colors.focus, backgroundColor: colors.background, flexDirection: "column" });
   const selectorList = new ScrollBoxRenderable(renderer, { flexGrow: 1, minHeight: 0, scrollY: true, contentOptions: { flexDirection: "column" } });
-  selector.add(new TextRenderable(renderer, { content: " Choose a signal · ↑↓ select · Enter open · Esc close", height: 2, fg: colors.focus }));
+  selector.add(new TextRenderable(renderer, { content: " Choose an intent · ↑↓ select · Enter open · Esc close", height: 2, fg: colors.focus }));
   selector.add(selectorList);
   root.add(selector);
 
-  let signals: Signal[] = [];
-  let loadingSignals = true;
+  let intents: Intent[] = [];
+  let loadingIntents = true;
   let loadingInbox = true;
   let loadingRadar = true;
   let inboxFailed = false;
   let radarFailed = false;
-  let signal: Signal | undefined;
+  let intent: Intent | undefined;
   let inbox: Inbox = { messages: [], questions: [] };
   let people: Person[] = [];
   let negotiation: Negotiation | null = null;
@@ -73,12 +73,12 @@ export async function runTui(owner: Owner): Promise<void> {
   let selectedPerson = 0;
   let selectedQuestion = 0;
   let selectedChoice = 0;
-  let selectedSignal = 0;
+  let selectedIntent = 0;
   let busy = false;
   let error = "";
   let notice = "";
   let awaitingReply = false;
-  let outgoing: { id?: string; text: string; stage: "sending" | "saved"; signalId: string } | null = null;
+  let outgoing: { id?: string; text: string; stage: "sending" | "saved"; intentId: string } | null = null;
   let confirmation: "accepted" | "rejected" | null = null;
   let generation = 0;
   let inboxRequest = 0;
@@ -137,9 +137,9 @@ export async function runTui(owner: Owner): Promise<void> {
   radarPane.box.onMouseUp = () => focus("radar");
   negotiationPane.box.onMouseUp = () => focus("negotiation");
 
-  function switchSignal(next: Signal) {
+  function switchIntent(next: Intent) {
     generation++;
-    signal = next;
+    intent = next;
     inbox = { messages: [], questions: [] };
     people = [];
     loadingInbox = loadingRadar = true;
@@ -166,8 +166,8 @@ export async function runTui(owner: Owner): Promise<void> {
     void refreshRadar();
   }
   async function refreshInbox() {
-    if (!signal || renderer.isDestroyed) return;
-    const current = signal.id;
+    if (!intent || renderer.isDestroyed) return;
+    const current = intent.id;
     const version = ++inboxRequest;
     const session = generation;
     try {
@@ -192,8 +192,8 @@ export async function runTui(owner: Owner): Promise<void> {
     }
   }
   async function refreshRadar() {
-    if (!signal || renderer.isDestroyed) return;
-    const current = signal.id;
+    if (!intent || renderer.isDestroyed) return;
+    const current = intent.id;
     const version = ++radarRequest;
     const session = generation;
     try {
@@ -237,11 +237,11 @@ export async function runTui(owner: Owner): Promise<void> {
   }
   async function send(text: string, choice?: string) {
     const content = (choice ?? text).trim();
-    if (!signal || !content || busy) return;
+    if (!intent || !content || busy) return;
     const question = activeQuestion();
-    const intentId = signal.id;
+    const intentId = intent.id;
     const draft = input.plainText;
-    outgoing = { text: content, stage: "sending", signalId: intentId };
+    outgoing = { text: content, stage: "sending", intentId: intentId };
     notice = "";
     error = "";
     busy = true; render();
@@ -249,32 +249,32 @@ export async function runTui(owner: Owner): Promise<void> {
       const result = (question
         ? await owner.sendAnswer(intentId, question.id, content)
         : await owner.sendMessage(intentId, content)) as { message?: { id?: string }; messages?: { id?: string }[] };
-      if (signal.id !== intentId) return;
-      outgoing = { text: content, stage: "saved", signalId: intentId, id: result.message?.id ?? result.messages?.[0]?.id };
+      if (intent.id !== intentId) return;
+      outgoing = { text: content, stage: "saved", intentId: intentId, id: result.message?.id ?? result.messages?.[0]?.id };
       if (input.plainText === draft) input.clear();
-      notice = signal.status === "paused"
+      notice = intent.status === "paused"
         ? "Saved. Agent is on hold while paused; Ctrl+R resumes it."
         : "Saved to agent inbox. Waiting for agent activity; checking every 5s.";
       awaitingReply = true;
       refresh();
     } catch (cause) {
-      if (signal.id === intentId) {
+      if (intent.id === intentId) {
         outgoing = null;
         error = `Not sent: ${cause instanceof Error ? cause.message : String(cause)}. Your draft is still here.`;
       }
     } finally { busy = false; render(); }
   }
-  async function toggleSignal() {
-    if (!signal || busy) return;
-    const current = signal;
+  async function toggleIntent() {
+    if (!intent || busy) return;
+    const current = intent;
     const next = current.status === "paused" ? "active" : "paused";
-    busy = true; notice = `Updating signal…`; error = ""; render();
+    busy = true; notice = `Updating intent…`; error = ""; render();
     try {
-      await owner.setSignalStatus(current.id, next);
-      if (signal?.id !== current.id) return;
+      await owner.setIntentStatus(current.id, next);
+      if (intent?.id !== current.id) return;
       current.status = next;
-      notice = next === "active" ? "Signal resumed. Discovery can continue." : "Signal paused. Discovery is on hold.";
-      signals = signals.map((entry) => entry.id === current.id ? current : entry);
+      notice = next === "active" ? "Intent resumed. Discovery can continue." : "Intent paused. Discovery is on hold.";
+      intents = intents.map((entry) => entry.id === current.id ? current : entry);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
       notice = "";
@@ -282,14 +282,14 @@ export async function runTui(owner: Owner): Promise<void> {
   }
   async function review(status: "accepted" | "rejected") {
     const person = activePerson();
-    if (!signal || busy) return;
+    if (!intent || busy) return;
     if (!person || person.status !== "ready") {
       notice = person ? "This opportunity is not awaiting your review." : "Select an opportunity to review.";
       render();
       return;
     }
     if (confirmation !== status) { confirmation = status; render(); return; }
-    const intentId = signal.id;
+    const intentId = intent.id;
     confirmation = null;
     busy = true; render();
     try {
@@ -302,17 +302,17 @@ export async function runTui(owner: Owner): Promise<void> {
   }
   function renderSelector() {
     clear(selectorList);
-    signals.forEach((entry, index) => line(selectorList, `${index === selectedSignal ? "›" : " "} ${entry.title} · ${entry.status} · ${entry.pending} awaiting you`, index === selectedSignal ? colors.focus : colors.text, `signal-${index}`));
-    selectorList.scrollChildIntoView(`signal-${selectedSignal}`);
+    intents.forEach((entry, index) => line(selectorList, `${index === selectedIntent ? "›" : " "} ${entry.title} · ${entry.status} · ${entry.pending} awaiting you`, index === selectedIntent ? colors.focus : colors.text, `intent-${index}`));
+    selectorList.scrollChildIntoView(`intent-${selectedIntent}`);
   }
   function render() {
     if (renderer.isDestroyed) return;
     const host = new URL(owner.apiUrl).hostname;
-    const title = signal?.title || "No signal selected";
+    const title = intent?.title || "No intent selected";
     const maxTitle = Math.max(12, renderer.terminalWidth - 12);
-    header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Signal: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
-    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Ctrl+X to choose." : signal.status === "paused" ? " ● paused · Agent on hold · Ctrl+R resume" : " ● active · Updates every 5s · Ctrl+R pause";
-    banner.fg = signal?.status === "paused" || !signal ? colors.question : colors.success;
+    header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Intent: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
+    banner.content = loadingIntents ? " ● Loading intents…" : !intent ? " ● No intent · Ctrl+X to choose." : intent.status === "paused" ? " ● paused · Agent on hold · Ctrl+R resume" : " ● active · Updates every 5s · Ctrl+R pause";
+    banner.fg = intent?.status === "paused" || !intent ? colors.question : colors.success;
     const wide = renderer.terminalWidth >= 115;
     inboxPane.box.visible = true;
     radarPane.box.visible = !detailPersonId || wide;
@@ -321,7 +321,7 @@ export async function runTui(owner: Owner): Promise<void> {
     radarPane.box.flexGrow = detailPersonId && wide ? 30 : 44;
     negotiationPane.box.flexGrow = detailPersonId && wide ? 30 : 44;
     for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.borderColor = focused === name ? colors.focus : colors.border;
-    const messages = JSON.stringify([inbox.messages, outgoing, loadingInbox, inboxFailed, signal?.status]);
+    const messages = JSON.stringify([inbox.messages, outgoing, loadingInbox, inboxFailed, intent?.status]);
     if (messages !== renderedInbox) {
       renderedInbox = messages;
       clear(inboxPane.history);
@@ -332,10 +332,10 @@ export async function runTui(owner: Owner): Promise<void> {
         const label = message.role === "user" ? "YOU" : provenance?.kind === "question" ? "? YOUR AGENT ASKS" : "YOUR AGENT";
         line(inboxPane.history, `${label}\n${text}`, message.role === "user" ? colors.text : colors.focus);
       }
-      if (outgoing && outgoing.signalId === signal?.id) {
+      if (outgoing && outgoing.intentId === intent?.id) {
         line(inboxPane.history, `YOU · ${outgoing.stage === "sending" ? "SENDING…" : "SAVED ON SERVER"}\n${outgoing.text}`, colors.question);
       } else if (inbox.messages.at(-1)?.role === "user") {
-        line(inboxPane.history, signal?.status === "paused" ? "Agent on hold while paused · Ctrl+R resumes." : "No agent response yet · updates every 5s.", colors.muted);
+        line(inboxPane.history, intent?.status === "paused" ? "Agent on hold while paused · Ctrl+R resumes." : "No agent response yet · updates every 5s.", colors.muted);
       }
       if (!inbox.messages.length && !outgoing) line(inboxPane.history, loadingInbox ? "Loading agent messages…" : inboxFailed ? "Could not load messages. Retrying…" : "No messages yet. Share what you need from your agent below.", colors.muted);
     }
@@ -343,7 +343,7 @@ export async function runTui(owner: Owner): Promise<void> {
     questionText.content = question ? ` ${selectedQuestion + 1}/${inbox.questions.length} · ${question.scope || "question"}: ${question.question}` : "";
     choicesText.content = question ? [...(question.options || []), "Custom reply…"].map((text, index) => ` ${selectedChoice === index ? "›" : " "} ${text}`).join("\n") : "";
     input.placeholder = question ? "Answer the selected question…" : "Message your agent…";
-    const radar = JSON.stringify([people, selectedPerson, signal?.status, loadingRadar, radarFailed]);
+    const radar = JSON.stringify([people, selectedPerson, intent?.status, loadingRadar, radarFailed]);
     if (radar !== renderedRadar) {
       renderedRadar = radar;
       clear(radarPane.history);
@@ -351,7 +351,7 @@ export async function runTui(owner: Owner): Promise<void> {
         const stage = person.status === "passed" || person.status === "rejected" ? "not a fit" : person.status === "expired" ? "missed" : person.status;
         line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${stage}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}\n  [Negotiation ›]`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`, () => openNegotiation(person.id));
       });
-      if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : signal?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);
+      if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : intent?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);
       else radarPane.history.scrollChildIntoView(`person-${selectedPerson}`);
     }
     const transcript = JSON.stringify([detailPersonId, detailPerson(), negotiation, negotiationLoading, negotiationFailed]);
@@ -366,13 +366,13 @@ export async function runTui(owner: Owner): Promise<void> {
     }
     let idleStatus = ` ● ${inbox.questions.length} questions · ${people.length} opportunities · ${activePerson()?.name || "no match selected"}`;
     if (focused === "inbox" && inbox.messages.at(-1)?.role === "user") {
-      idleStatus = signal?.status === "paused" ? " ● Agent on hold while paused · Ctrl+R resumes." : " ● Latest message is yours; no agent response yet.";
+      idleStatus = intent?.status === "paused" ? " ● Agent on hold while paused · Ctrl+R resumes." : " ● Latest message is yours; no agent response yet.";
     }
     status.content = confirmation ? ` Press ${confirmation === "accepted" ? "a" : "x"} again to ${confirmation === "accepted" ? "accept" : "pass"} ${activePerson()?.name}; Esc cancels.`
-      : error ? ` ● ${error}` : notice ? ` ● ${notice}` : busy ? " ● Working…" : loadingSignals || loadingInbox || loadingRadar ? " ● Loading live data…" : idleStatus;
+      : error ? ` ● ${error}` : notice ? ` ● ${notice}` : busy ? " ● Working…" : loadingIntents || loadingInbox || loadingRadar ? " ● Loading live data…" : idleStatus;
     status.fg = confirmation || error ? colors.question : notice ? colors.success : colors.muted;
     help.content = focused === "inbox"
-      ? " Tab panes · Ctrl+X signals · Ctrl+C quit\n ←→ questions · ↑↓ options · Enter send"
+      ? " Tab panes · Ctrl+X intents · Ctrl+C quit\n ←→ questions · ↑↓ options · Enter send"
       : focused === "radar"
         ? " Tab panes · ↑↓ select · Enter negotiation\n a accept · x pass · Ctrl+C quit"
         : " Esc close · Tab panes · PgUp/PgDn\n Ctrl+C quit";
@@ -387,17 +387,17 @@ export async function runTui(owner: Owner): Promise<void> {
     } else if (key.name === "x" && key.ctrl) {
       key.preventDefault();
       selector.visible = !selector.visible;
-      if (selector.visible) { selectedSignal = Math.max(0, signals.findIndex((entry) => entry.id === signal?.id)); renderSelector(); }
+      if (selector.visible) { selectedIntent = Math.max(0, intents.findIndex((entry) => entry.id === intent?.id)); renderSelector(); }
       render();
     } else if (selector.visible) {
       key.preventDefault();
       if (key.name === "escape") selector.visible = false;
       else if (key.name === "up" || key.name === "down") {
-        selectedSignal = Math.max(0, Math.min(signals.length - 1, selectedSignal + (key.name === "up" ? -1 : 1)));
+        selectedIntent = Math.max(0, Math.min(intents.length - 1, selectedIntent + (key.name === "up" ? -1 : 1)));
         renderSelector();
       } else if (key.name === "return") {
-        const next = signals[selectedSignal];
-        if (next) switchSignal(next);
+        const next = intents[selectedIntent];
+        if (next) switchIntent(next);
       }
       render();
     } else if (key.name === "escape" && confirmation) {
@@ -405,7 +405,7 @@ export async function runTui(owner: Owner): Promise<void> {
     } else if (key.name === "escape" && detailPersonId && focused === "negotiation") {
       key.preventDefault(); closeNegotiation();
     } else if (key.name === "r" && key.ctrl) {
-      key.preventDefault(); void toggleSignal();
+      key.preventDefault(); void toggleIntent();
     } else if (key.name === "tab") {
       key.preventDefault();
       const order: Pane[] = ["inbox", ...(!detailPersonId || renderer.terminalWidth >= 115 ? ["radar" as const] : []), ...(detailPersonId ? ["negotiation" as const] : [])];
@@ -438,12 +438,12 @@ export async function runTui(owner: Owner): Promise<void> {
   };
   renderer.keyInput.on("keypress", onKey);
   const stopEvents = owner.events((event) => {
-    if (!signal) return;
-    if (event.type === "message" && event.message?.metadata?.intentId === signal.id || event.type === "question.pending" && event.data?.intentId === signal.id) void refreshInbox();
-    if (event.data?.intentId === signal.id && ["negotiation.changed", "negotiation.turn"].includes(event.type)) void refreshRadar();
-    if (["intent.created", "intent.lifecycle"].includes(event.type)) void owner.signals().then((next) => {
-      signals = next;
-      signal = next.find((entry) => entry.id === signal?.id) || signal;
+    if (!intent) return;
+    if (event.type === "message" && event.message?.metadata?.intentId === intent.id || event.type === "question.pending" && event.data?.intentId === intent.id) void refreshInbox();
+    if (event.data?.intentId === intent.id && ["negotiation.changed", "negotiation.turn"].includes(event.type)) void refreshRadar();
+    if (["intent.created", "intent.lifecycle"].includes(event.type)) void owner.intents().then((next) => {
+      intents = next;
+      intent = next.find((entry) => entry.id === intent?.id) || intent;
       render();
     }).catch((cause: unknown) => { error = String(cause); render(); });
   });
@@ -452,9 +452,9 @@ export async function runTui(owner: Owner): Promise<void> {
   process.once("SIGINT", onInterrupt);
   try {
     render();
-    signals = await owner.signals();
-    loadingSignals = false;
-    if (signals[0]) switchSignal(signals[0]);
+    intents = await owner.intents();
+    loadingIntents = false;
+    if (intents[0]) switchIntent(intents[0]);
     else { loadingInbox = loadingRadar = false; render(); }
     await closed;
   } finally {

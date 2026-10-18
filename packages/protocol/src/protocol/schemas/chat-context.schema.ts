@@ -14,7 +14,7 @@ export const ChatContextDigestSchema = z.object({
   statedFacts: z.array(entry).max(20),
   /** Questions the assistant asked that the user has not yet answered. */
   openQuestions: z.array(entry).max(10),
-  /** User pushback / negative signals on prior cards. */
+  /** User pushback / negative intents on prior cards. */
   rejectionReasons: z.array(entry).max(10),
   /** Facts the assistant has already surfaced from prior negotiation turns. */
   surfacedFindings: z.array(entry).max(20),

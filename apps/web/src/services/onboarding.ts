@@ -19,7 +19,7 @@ interface OnboardingUser {
 
 /**
  * First run, same steps and gates as the Mac app: confirm the name, look the
- * person up, review the profile (which confirms it), then the first signal
+ * person up, review the profile (which confirms it), then the first intent
  * completes onboarding.
  */
 export const onboardingService = {
@@ -34,8 +34,8 @@ export function needsOnboarding(user: unknown): boolean {
   return !(user as OnboardingUser).onboarding?.profileConfirmedAt;
 }
 
-/** Confirmed but not yet finished: the next signal created completes onboarding. */
-export function awaitsFirstSignal(user: unknown): boolean {
+/** Confirmed but not yet finished: the next intent created completes onboarding. */
+export function awaitsFirstIntent(user: unknown): boolean {
   const onboarding = (user as OnboardingUser | null)?.onboarding;
   return !!onboarding?.profileConfirmedAt && !onboarding.completedAt;
 }

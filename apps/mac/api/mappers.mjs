@@ -45,7 +45,7 @@ export function mapEventSummary(input = {}) {
 }
 
 /**
- * Convert API intents to the current mac signal rows.
+ * Convert API intents to the current mac intent rows.
  * @param {Array<Object>} intents
  */
 export function mapIntents(intents = []) {
@@ -53,7 +53,7 @@ export function mapIntents(intents = []) {
 }
 
 /**
- * Convert one API intent to a mac signal row.
+ * Convert one API intent to a mac intent row.
  * @param {Object} intent
  */
 export function mapIntent(intent) {
@@ -66,18 +66,18 @@ export function mapIntent(intent) {
 
   return {
     id: intent.id,
-    title: intent.summary || intent.payload || 'untitled signal',
+    title: intent.summary || intent.payload || 'untitled intent',
     edges: networkTitles.join(' · '),
     offLimits: '',
     status: archived ? 'archived' : paused ? 'paused' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
-    lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
+    lastIntent: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
     age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',
     matches: 0,
     connected: 0,
     inConversations: 0,
     // Row and Dock badge: unanswered questions plus opportunities awaiting you,
-    // on active signals only. Paused and archived rows stay listed without a count.
+    // on active intents only. Paused and archived rows stay listed without a count.
     pending: !archived && !paused
       ? count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount)
       : 0,
@@ -87,7 +87,7 @@ export function mapIntent(intent) {
 }
 
 /**
- * Patch one mapped signal row's hub status after pause/archive/resume.
+ * Patch one mapped intent row's hub status after pause/archive/resume.
  * Keeps the intents shelf in sync without waiting for a full snapshot reload.
  * @param {Array<Object>} intents
  * @param {string} intentId
@@ -139,7 +139,7 @@ export function mapPersonFromRadarCard(card) {
     arrived: 0,
     distance: card.mutualIntentsLabel || '',
     mutuals: 0,
-    signals: compact([card.mutualIntentsLabel]),
+    intents: compact([card.mutualIntentsLabel]),
     overlap: compact([card.headline]),
     // the presenter card carries a 0-1 match score; it was being dropped
     score: typeof card.score === 'number' ? card.score : null,
@@ -218,7 +218,7 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
     mutuals: 0,
-    signals: compact([opportunity.category, opportunity.network?.title]),
+    intents: compact([opportunity.category, opportunity.network?.title]),
     overlap: compact([opportunity.interpretation?.summary]),
     score: typeof opportunity.confidence === 'number' ? opportunity.confidence : null,
     status: mapOpportunityStatusToPrototype(opportunity.status),

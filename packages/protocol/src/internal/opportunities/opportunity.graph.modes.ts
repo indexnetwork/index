@@ -56,7 +56,7 @@ export async function readOpportunities(
         return {
           readResult: {
             count: 0,
-            message: 'You have no opportunities yet. Create or refine an approved signal; matching runs in the background. Review persisted results later from the opportunities read.',
+            message: 'You have no opportunities yet. Create or refine an approved intent; matching runs in the background. Review persisted results later from the opportunities read.',
             opportunities: [],
           },
         };

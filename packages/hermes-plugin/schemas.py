@@ -6,7 +6,7 @@ native Hermes tool and what arguments are accepted.
 
 GUIDANCE_TOPICS = (
     "identity-context",
-    "signals",
+    "intents",
     "communities-networks",
     "opportunities",
     "negotiations",
@@ -17,8 +17,8 @@ GUIDANCE_TOPICS = (
 INDEX_READ_INTENTS = {
     "name": "index_read_intents",
     "description": (
-        "Read Index Network intents/signals. Use this when the user asks what "
-        "they are looking for, what signals they have, or what members of a "
+        "Read Index Network intents. Use this when the user asks what "
+        "they are looking for, what intents they have, or what members of a "
         "specific network/community are seeking. With no parameters, returns "
         "the caller's own active intents. Pass networkId to browse the intents "
         "shared in a community the caller belongs to; pass query to match the "
@@ -63,9 +63,9 @@ INDEX_CREATE_INTENT = {
     "description": (
         "Use when the user wants to meet, find, hire, fund, collaborate with, or "
         "be introduced to people. "
-        "Create one Index Network signal from the user's own words. The signal "
+        "Create one Index Network intent from the user's own words. The intent "
         "is shared in every community the caller belongs to unless networkIds "
-        "narrows it. Only create a signal the user actually asked for."
+        "narrows it. Only create an intent the user actually asked for."
     ),
     "parameters": {
         "type": "object",
@@ -77,7 +77,7 @@ INDEX_CREATE_INTENT = {
             "networkIds": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Optional network UUIDs to share the signal in.",
+                "description": "Optional network UUIDs to share the intent in.",
             },
         },
         "required": ["description"],
@@ -87,14 +87,14 @@ INDEX_CREATE_INTENT = {
 INDEX_UPDATE_INTENT = {
     "name": "index_update_intent",
     "description": (
-        "Rewrite one of the caller's own signals and reprocess it. Use this when "
+        "Rewrite one of the caller's own intents and reprocess it. Use this when "
         "what the user is looking for has changed."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "intentId": {"type": "string", "description": "The signal's UUID."},
-            "description": {"type": "string", "description": "The rewritten signal text."},
+            "intentId": {"type": "string", "description": "The intent's UUID."},
+            "description": {"type": "string", "description": "The rewritten intent text."},
         },
         "required": ["intentId", "description"],
     },
@@ -102,11 +102,11 @@ INDEX_UPDATE_INTENT = {
 
 INDEX_LIST_INTENT_NETWORKS = {
     "name": "index_list_intent_networks",
-    "description": "List the communities one of the caller's signals is shared in.",
+    "description": "List the communities one of the caller's intents is shared in.",
     "parameters": {
         "type": "object",
         "properties": {
-            "intentId": {"type": "string", "description": "The signal's UUID."},
+            "intentId": {"type": "string", "description": "The intent's UUID."},
         },
         "required": ["intentId"],
     },
@@ -115,13 +115,13 @@ INDEX_LIST_INTENT_NETWORKS = {
 INDEX_ADD_INTENT_TO_NETWORK = {
     "name": "index_add_intent_to_network",
     "description": (
-        "Share one of the caller's signals in a community they belong to. Read "
+        "Share one of the caller's intents in a community they belong to. Read "
         "index_read_networks first if the network UUID is not already known."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "intentId": {"type": "string", "description": "The signal's UUID."},
+            "intentId": {"type": "string", "description": "The intent's UUID."},
             "networkId": {"type": "string", "description": "The community's UUID."},
         },
         "required": ["intentId", "networkId"],
@@ -293,7 +293,7 @@ INDEX_OPEN_APP = {
         "Open an Index Network universal link (https://index.network/...) with the "
         "operating system's default handler. Use this when the user asks to open "
         "Index, an opportunity, or a profile on this machine — for example with the "
-        "appUrl returned on opportunities, signals, and people. The link "
+        "appUrl returned on opportunities, intents, and people. The link "
         "opens the Index macOS app when it is installed and the Index web page "
         "otherwise; only index.network URLs are accepted."
     ),

@@ -4,7 +4,7 @@
  * serves cached cards, and presents the misses through OpportunityPresenter.
  */
 
-import type { Opportunity, OpportunityCardsDatabase, OpportunityStatus } from '../../platform/database.js';
+import type { Opportunity, OpportunityCardsDatabase, OpportunityStatus, PeerChat, PriorOpportunity } from '../../platform/database.js';
 import type { OpportunityCache } from '../../platform/discovery/cache.js';
 
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -42,7 +42,21 @@ export interface OpportunityCard {
    * empty because the presenter was skipped. Never cached.
    */
   presentationPending?: boolean;
+  /** An earlier opportunity with this person. Stamped live on every read, never cached. */
+  priorOpportunity?: PriorOpportunity | null;
+  /** The direct-message chat with this person. Stamped live on every read, never cached. */
+  peerChat?: PeerChat | null;
+  /** Which prior opportunity the cached copy was written against, so a changed one regenerates it. */
+  presentedPrior?: string | null;
 }
+
+/** What the viewer already has with one counterpart, besides the opportunity being shown. */
+interface PeerContext {
+  priorOpportunity: PriorOpportunity | null;
+  peerChat: PeerChat | null;
+}
+
+const priorKey = (prior: PriorOpportunity | null | undefined) => prior ? `${prior.opportunityId}:${prior.status}` : null;
 
 /** Everything card presentation reaches for. */
 export interface OpportunityCardsDeps {
@@ -93,13 +107,38 @@ function stampViewerCommitted(card: OpportunityCard, viewerCommitted: boolean): 
   return { ...card, viewerCommitted };
 }
 
+function stampPeerContext(card: OpportunityCard, context: PeerContext): OpportunityCard {
+  return { ...card, ...context };
+}
+
+/** One batched read of prior opportunities and chats for the counterparts of `opportunities`. */
+async function loadPeerContext(
+  database: OpportunityCardsDatabase,
+  viewerId: string,
+  opportunities: Opportunity[],
+): Promise<Map<string, PeerContext>> {
+  const peerOf = new Map(opportunities.map((opp) => [opp.id, pickDisplayCounterpartActor(opp, viewerId)?.userId]));
+  const peerIds = [...new Set([...peerOf.values()].filter((id): id is string => !!id))];
+  const [priors, chats] = await Promise.all([
+    database.findPriorOpportunities(viewerId, peerIds, opportunities.map((opp) => opp.id)),
+    database.findPeerChats(viewerId, peerIds),
+  ]).catch((error) => {
+    logger.warn('peer context read failed, presenting without it', { error });
+    return [new Map<string, PriorOpportunity>(), new Map<string, PeerChat>()] as const;
+  });
+  return new Map(opportunities.map((opp) => {
+    const peerId = peerOf.get(opp.id);
+    return [opp.id, { priorOpportunity: (peerId && priors.get(peerId)) || null, peerChat: (peerId && chats.get(peerId)) || null }];
+  }));
+}
+
 /**
  * Present one opportunity as a card for the viewer.
  *
  * @param deps - Database, cache, and presenter.
  * @param opportunity - The opportunity to present.
  * @param viewerId - The viewing user.
- * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter; `noCache` skips the stored-card read.
+ * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter; `noCache` skips the stored-card read; `peerContext` is the prior opportunity and chat when the caller already loaded them.
  * @returns The card, or null when the counterpart's name cannot be resolved.
  * @throws When the presenter fails.
  */
@@ -107,7 +146,7 @@ export async function presentOpportunityCard(
   deps: OpportunityCardsDeps,
   opportunity: Opportunity,
   viewerId: string,
-  options: { intentId?: string; skeleton?: boolean; noCache?: boolean } = {},
+  options: { intentId?: string; skeleton?: boolean; noCache?: boolean; peerContext?: PeerContext } = {},
 ): Promise<OpportunityCard | null> {
   const { database } = deps;
   const viewerRole = opportunity.actors.find((a) => a.userId === viewerId)?.role ?? 'party';
@@ -115,12 +154,16 @@ export async function presentOpportunityCard(
   if (!counterpart) return null;
 
   const viewerCommitted = viewerHasCommitted(opportunity, viewerId);
+  const peerContext = options.peerContext
+    ?? (await loadPeerContext(database, viewerId, [opportunity])).get(opportunity.id)!;
   const cacheable = opportunity.status !== 'negotiating';
   const cacheKey = buildOpportunityCardCacheKey(opportunity.id, viewerId, options.intentId);
   if (cacheable && !options.skeleton && !options.noCache) {
     try {
       const hit = await deps.cache.get<OpportunityCard>(cacheKey);
-      if (hit) return stampViewerCommitted({ ...hit, status: opportunity.status }, viewerCommitted);
+      if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
+        return stampPeerContext(stampViewerCommitted({ ...hit, status: opportunity.status }, viewerCommitted), peerContext);
+      }
     } catch (error) {
       logger.warn('card cache read failed, presenting', { opportunityId: opportunity.id, error });
     }
@@ -147,10 +190,10 @@ export async function presentOpportunityCard(
   };
 
   if (options.skeleton) {
-    return stampViewerCommitted(
+    return stampPeerContext(stampViewerCommitted(
       { ...identity, mainText: '', cta: '', mutualIntentsLabel: 'Shared interests', presentationPending: true },
       viewerCommitted,
-    );
+    ), peerContext);
   }
 
   const [context, negotiationContext] = await Promise.all([
@@ -161,6 +204,7 @@ export async function presentOpportunityCard(
     ...context,
     opportunityStatus: opportunity.status,
     ...(negotiationContext ? { negotiationContext } : {}),
+    ...(peerContext.priorOpportunity ? { priorOpportunity: peerContext.priorOpportunity } : {}),
   });
   const card: OpportunityCard = stampViewerCommitted({
     ...identity,
@@ -169,13 +213,14 @@ export async function presentOpportunityCard(
     headline: presentation.headline,
     mutualIntentsLabel: presentation.mutualIntentsLabel,
     narratorChip: { name: 'Index', text: presentation.narratorRemark },
+    presentedPrior: priorKey(peerContext.priorOpportunity),
   }, viewerCommitted);
   if (cacheable) {
     await deps.cache.set(cacheKey, card).catch((error) => {
       logger.warn('card cache write failed', { opportunityId: opportunity.id, error });
     });
   }
-  return card;
+  return stampPeerContext(card, peerContext);
 }
 
 /**
@@ -187,7 +232,7 @@ export async function presentOpportunityCard(
  * one. Cards whose presentation fails are dropped.
  *
  * @param deps - Database, cache, and presenter.
- * @param input - Viewer, statuses, optional network/intent scope, limit, cache bypass, skeleton mode.
+ * @param input - Viewer, statuses, optional network/intent scope, limit, cache bypass, skeleton mode. Accepted rows are read without the recency window.
  * @returns The cards and the number of opportunities selected.
  */
 export async function listOpportunityCards(
@@ -203,12 +248,26 @@ export async function listOpportunityCards(
   },
 ): Promise<{ cards: OpportunityCard[]; totalOpportunities: number }> {
   const { viewerId, intentId } = input;
-  const raw = await deps.database.getOpportunitiesForUser(viewerId, {
-    limit: Math.min(150, Math.max(50, input.limit * 3)),
-    statuses: input.statuses,
+  const scope = {
     ...(input.networkId ? { networkId: input.networkId } : {}),
     ...(intentId ? { scopeType: 'intent' as const, scopeId: intentId } : {}),
-  });
+  };
+  // Accepted rows are few and always win a person's slot, so they are read apart,
+  // not left to fall outside the newest-rows window the other statuses share.
+  const others = input.statuses.filter((status) => status !== 'accepted');
+  const [accepted, rest] = await Promise.all([
+    input.statuses.includes('accepted')
+      ? deps.database.getOpportunitiesForUser(viewerId, { statuses: ['accepted'], ...scope })
+      : [],
+    others.length
+      ? deps.database.getOpportunitiesForUser(viewerId, {
+        limit: Math.min(150, Math.max(50, input.limit * 3)),
+        statuses: others,
+        ...scope,
+      })
+      : [],
+  ]);
+  const raw = [...accepted, ...rest];
 
   const requested = new Set(input.statuses);
   const visible = raw
@@ -227,6 +286,7 @@ export async function listOpportunityCards(
     return true;
   }).slice(0, input.limit);
 
+  const peerContexts = await loadPeerContext(deps.database, viewerId, opportunities);
   const cacheable = (opp: Opportunity) => opp.status !== 'negotiating';
   const keyFor = (opp: Opportunity) => buildOpportunityCardCacheKey(opp.id, viewerId, intentId);
   const cacheableOpps = input.noCache ? [] : opportunities.filter(cacheable);
@@ -236,7 +296,10 @@ export async function listOpportunityCards(
       const hits = await deps.cache.mget<OpportunityCard>(cacheableOpps.map(keyFor));
       cacheableOpps.forEach((opp, i) => {
         const hit = hits[i];
-        if (hit) cached.set(opp.id, stampViewerCommitted({ ...hit, status: opp.status }, viewerHasCommitted(opp, viewerId)));
+        const peerContext = peerContexts.get(opp.id)!;
+        if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
+          cached.set(opp.id, stampPeerContext(stampViewerCommitted({ ...hit, status: opp.status }, viewerHasCommitted(opp, viewerId)), peerContext));
+        }
       });
     } catch (error) {
       logger.warn('card cache read failed, presenting all', { error });
@@ -254,12 +317,8 @@ export async function listOpportunityCards(
           intentId,
           skeleton: input.skeleton,
           noCache: input.noCache,
+          peerContext: peerContexts.get(opp.id),
         });
-        if (card && !card.presentationPending && cacheable(opp)) {
-          await deps.cache.set(keyFor(opp), card).catch((error) => {
-            logger.warn('card cache write failed', { opportunityId: opp.id, error });
-          });
-        }
         return card;
       } catch (error) {
         logger.warn('presenter failed, dropping card', { opportunityId: opp.id, error });

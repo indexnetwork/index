@@ -47,7 +47,7 @@ A failure is JSON `{ "error": "..." }` and the HTTP status. A body that fails va
 | 401 | The credential is missing, expired, or unknown |
 | 403 | The caller is authenticated and not allowed, including an API key on a session-only route |
 | 404 | The id does not resolve for this caller |
-| 409 | The record moved: a settled negotiation, a raced turn, a paused signal |
+| 409 | The record moved: a settled negotiation, a raced turn, a paused intent |
 | 422 | The server read the request and refused it, such as an intent draft it will not admit |
 | 503 | Preparation failed and can be retried; answers already sent are kept |
 
@@ -133,4 +133,4 @@ Uploaded image bytes are served with no credential at `GET /api/storage/avatars/
 
 `GET /api/docs` is the same guidance as `index docs`. Omit `topic` for `{ "topics", "content" }`, the summary and the topic list. A known topic returns `{ "topic", "content" }`. An unknown topic is 404 with `{ "error", "topics" }`.
 
-Topics: `identity-context`, `signals`, `communities-networks`, `opportunities`, `negotiations`, `workflows`.
+Topics: `identity-context`, `intents`, `communities-networks`, `opportunities`, `negotiations`, `workflows`.

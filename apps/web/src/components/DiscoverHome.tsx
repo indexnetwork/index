@@ -86,7 +86,7 @@ export default function DiscoverHome() {
         setIntentsError(false);
       }
     } catch (err) {
-      logger.error("Failed to load signals", { error: err });
+      logger.error("Failed to load intents", { error: err });
       if (mountedRef.current) setIntentsError(true);
     }
   }, []);
@@ -143,7 +143,7 @@ export default function DiscoverHome() {
     try {
       await apiClient.patch(`/intents/${intent.id}/archive`);
     } catch {
-      showError("Failed to archive signal");
+      showError("Failed to archive intent");
     }
   }, [showError]);
 
@@ -154,8 +154,8 @@ export default function DiscoverHome() {
     return <InviteNetworksModal onClose={() => setInviteOpen(false)} />;
   }
 
-  const newSignalButton = (
-    <button type="button" className="wb-new-signal" onClick={() => navigate("/i/new")}>
+  const newIntentButton = (
+    <button type="button" className="wb-new-intent" onClick={() => navigate("/i/new")}>
       <span style={{
         width: 24,
         height: 24,
@@ -168,11 +168,11 @@ export default function DiscoverHome() {
         fontSize: 16,
         fontWeight: 700,
       }}>+</span>
-      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>new signal</span>
+      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>new intent</span>
     </button>
   );
 
-  // Compact: signals are the whole screen. Conversations, agents and the
+  // Compact: intents are the whole screen. Conversations, agents and the
   // profile menu move to the tab bar; networks and settings sit in its "you" sheet.
   if (compact) {
     return (
@@ -185,11 +185,11 @@ export default function DiscoverHome() {
                   find your others
                 </h1>
                 <p style={{ margin: "8px 0 0", color: "#000", fontSize: 13, lineHeight: 1.45, fontFamily: "var(--mac-sans)" }}>
-                  start a signal by talking to your agent. it negotiates with other agents and makes an intro when both sides are interested.
+                  start an intent by talking to your agent. it negotiates with other agents and makes an intro when both sides are interested.
                 </p>
               </div>
             </div>
-            <RuleLabel>your signals</RuleLabel>
+            <RuleLabel>your intents</RuleLabel>
             <IntentList
               intents={visible}
               isLoading={loading}
@@ -201,7 +201,7 @@ export default function DiscoverHome() {
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
               onArchiveIntent={handleArchive}
             />
-            <div style={{ flex: "0 0 auto" }}>{newSignalButton}</div>
+            <div style={{ flex: "0 0 auto" }}>{newIntentButton}</div>
           </div>
         </Window>
       </Stage>
@@ -247,7 +247,7 @@ export default function DiscoverHome() {
                 maxWidth: 540,
                 fontFamily: "var(--mac-sans)",
               }}>
-                start a signal by talking to your agent. it negotiates it with the
+                start an intent by talking to your agent. it negotiates it with the
                 other agents and makes an intro when both sides are interested.
               </p>
               <button type="button" className="wb-invite" onClick={() => setInviteOpen(true)}>
@@ -342,7 +342,7 @@ export default function DiscoverHome() {
           </div>
 
           <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <RuleLabel>your signals</RuleLabel>
+            <RuleLabel>your intents</RuleLabel>
             <div style={{ height: 8 }} />
             <IntentList
               intents={visible}
@@ -355,7 +355,7 @@ export default function DiscoverHome() {
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
               onArchiveIntent={handleArchive}
             />
-            {newSignalButton}
+            {newIntentButton}
           </div>
         </div>
       </Window>

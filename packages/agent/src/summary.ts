@@ -15,7 +15,7 @@ const SUMMARY_PROMPT = [
   "Call submit_note exactly once. That call is this run's whole product: nothing you say outside it is kept.",
 ].join("\n\n");
 
-/** Everything the summary sees: the talks on one signal that already have a turn. */
+/** Everything the summary sees: the talks on one intent that already have a turn. */
 export interface SummaryInput {
   user: User;
   intent: Intent;
@@ -44,9 +44,9 @@ function conversations(opportunities: Opportunity[]): string {
 }
 
 /**
- * One note about what people are saying across the talks on a signal.
+ * One note about what people are saying across the talks on an intent.
  *
- * @param input - The principal, the signal, and the negotiations that have a turn.
+ * @param input - The principal, the intent, and the negotiations that have a turn.
  * @returns The note, or nothing when this run did not land one within the limit.
  */
 export async function summarize(input: SummaryInput): Promise<string | undefined> {
@@ -78,6 +78,7 @@ export async function summarize(input: SummaryInput): Promise<string | undefined
 
   await run({
     model: input.model,
+    operation: "summary",
     identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
     intent,
     instructions: SUMMARY_PROMPT,

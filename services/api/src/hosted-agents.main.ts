@@ -3,7 +3,7 @@ import './bootstrap';
 
 import * as Sentry from '@sentry/bun';
 
-import { createModel } from '@indexnetwork/agent';
+import { createDecide, createModel } from '@indexnetwork/agent';
 
 import { HostedAgent } from './lib/agent/hosted.agent';
 import { startMorningBrief } from './lib/agent/morning.job';
@@ -12,8 +12,12 @@ import { McpEventDispatcher } from './lib/mcp/mcp-events.dispatcher';
 
 const logger = log.agent.from('hosted-agents.main');
 
+// Attributes this process's OpenRouter spend apart from the API's protocol agents.
+const headers = { 'HTTP-Referer': 'https://index.network/hosted-agent', 'X-Title': 'Index Hosted Agent' };
+
 // The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(createModel({ apiKey: process.env.OPENROUTER_API_KEY! }));
+const apiKey = process.env.OPENROUTER_API_KEY!;
+const hostedAgent = new HostedAgent(createModel({ apiKey, headers }), createDecide({ apiKey, headers }));
 void hostedAgent.start();
 const morningDisabled = process.env.DISABLE_MORNING_BRIEF === 'true';
 const morning = morningDisabled

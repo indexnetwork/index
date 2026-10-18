@@ -21,14 +21,14 @@ const ROUTE_BY_SEGMENT = {
   o: 'card',
   u: 'profile',
   chat: 'conversation',
-  i: 'signal',
+  i: 'intent',
 };
 
 /**
  * @typedef {{ route: 'card', id: string }
  *   | { route: 'profile', id: string }
  *   | { route: 'conversation', id: string }
- *   | { route: 'signal', id: string }} DeepLinkRoute
+ *   | { route: 'intent', id: string }} DeepLinkRoute
  */
 
 /**

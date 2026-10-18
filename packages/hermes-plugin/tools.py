@@ -31,7 +31,7 @@ _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
 _GUIDANCE_TOPICS = (
     "identity-context",
-    "signals",
+    "intents",
     "communities-networks",
     "opportunities",
     "negotiations",
@@ -105,7 +105,7 @@ def _app_base_url() -> str:
 
 
 def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:
-    """Attach `appUrl` to every opportunity-, signal-, or user-shaped object.
+    """Attach `appUrl` to every opportunity-, intent-, or user-shaped object.
 
     An object with `opportunityId` links to `/o/`. Otherwise an object with
     only `intentId` links to `/i/` and one with only `userId` links to `/u/`;
@@ -313,7 +313,7 @@ def _required_id(args: dict, key: str) -> tuple[str | None, str | None]:
 
 
 def index_read_intents(args: dict, **kwargs) -> str:
-    """Read the caller's signals, or the signals shared in one community."""
+    """Read the caller's intents, or the intents shared in one community."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
@@ -343,7 +343,7 @@ def index_read_intents(args: dict, **kwargs) -> str:
 
 
 def index_create_intent(args: dict, **kwargs) -> str:
-    """Create a signal, shared in every community unless networkIds narrows it."""
+    """Create an intent, shared in every community unless networkIds narrows it."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
@@ -358,7 +358,7 @@ def index_create_intent(args: dict, **kwargs) -> str:
 
 
 def index_update_intent(args: dict, **kwargs) -> str:
-    """Rewrite a signal's description and reprocess it."""
+    """Rewrite an intent's description and reprocess it."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
@@ -372,7 +372,7 @@ def index_update_intent(args: dict, **kwargs) -> str:
 
 
 def index_list_intent_networks(args: dict, **kwargs) -> str:
-    """List the communities a signal is shared in."""
+    """List the communities an intent is shared in."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
@@ -383,7 +383,7 @@ def index_list_intent_networks(args: dict, **kwargs) -> str:
 
 
 def index_add_intent_to_network(args: dict, **kwargs) -> str:
-    """Share a signal in one community."""
+    """Share an intent in one community."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")

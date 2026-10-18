@@ -373,7 +373,7 @@ function SourceBadge({ source, sourceMeta }) {
     agent:      { face: <MyAgentAvatar size={14}/>, label:"from your agent" },
     individual: { face: owner ? <AgentAvatar size={14} seed={owner}/> : <MyAgentAvatar size={14}/>,
                   label: `from ${agentLabel(sourceMeta?.name)}` },
-    collective: { glyph:"⁂", label: sourceMeta?.count ? `aggregated · ${sourceMeta.count} ${sourceMeta.of}` : "aggregated signal" },
+    collective: { glyph:"⁂", label: sourceMeta?.count ? `aggregated · ${sourceMeta.count} ${sourceMeta.of}` : "aggregated intent" },
     room:       { glyph:"≋", label: sourceMeta?.count ? `the room · ${sourceMeta.count} ${sourceMeta.of}` : "ambient · the room" },
   }[source] || { glyph:"·", label:"" };
   return (
@@ -513,7 +513,7 @@ function PicturePicker({ size = 46, label = "change picture", onPick, onError, c
 
 /* ---------- Escape closes the topmost window ----------
    Windows push themselves onto a stack as they mount, so Escape always hits the
-   one opened most recently: the profile panel rather than the signals window
+   one opened most recently: the profile panel rather than the intents window
    behind it. Doing it here rather than per screen means any window that takes
    an `onClose` gets the shortcut for free.
 

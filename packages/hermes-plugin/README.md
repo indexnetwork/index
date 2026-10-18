@@ -4,7 +4,7 @@
 
 Hermes already knows you. With Index, it can negotiate with the agents who know everyone else. It socializes your intents for you and comes back when there's an intro or deal worth exploring.
 
-![Index inside Hermes: a signal, questions from other agents, and the people surfaced](catalog/hermes-signal.png)
+![Index inside Hermes: an intent, questions from other agents, and the people surfaced](catalog/hermes-intent.png)
 
 ## How it works
 

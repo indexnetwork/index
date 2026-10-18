@@ -5,6 +5,7 @@ import cron from 'node-cron';
 import type { Intent } from '@indexnetwork/agent';
 
 import { createRedisClient } from '../../adapters/cache.adapter';
+import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { opportunityService } from '../../services/opportunity.service';
 import { MAX_WAITING, morningBriefTemplate } from '../email/templates';
 import { executeSendEmail } from '../email/transport.helper';
@@ -20,19 +21,29 @@ let emailing = false;
 
 /**
  * Build an owner's morning email. The people shown carry the line their radar
- * card shows, falling back to their signal when the card cannot be presented.
+ * card shows, falling back to their intent when the card cannot be presented.
  *
  * @returns Null when there is nothing to send.
  */
 export async function composeMorningEmail(userId: string, name: string, since: Date) {
   const owed = await owedForEmail(userId, since);
-  const waiting = await Promise.all(owed.waiting.map(async (person, index) => {
+  const peerIds = owed.waiting.map((person) => person.userId);
+  const [priors, chats] = await Promise.all([
+    chatDatabaseAdapter.findPriorOpportunities(userId, peerIds, owed.waiting.map((person) => person.opportunityId)),
+    chatDatabaseAdapter.findPeerChats(userId, peerIds),
+  ]);
+  const isConnected = (person: { userId: string }) => priors.get(person.userId)?.status === 'accepted';
+  const connected = owed.waiting.filter(isConnected).map((person) => {
+    const last = chats.get(person.userId)?.lastMessage;
+    return { userId: person.userId, name: person.name, context: person.context, hasChat: chats.has(person.userId), noReply: !!last && last.fromUserId !== userId };
+  });
+  const waiting = await Promise.all(owed.waiting.filter((person) => !isConnected(person)).map(async (person, index) => {
     if (index >= MAX_WAITING) return person;
     const opportunity = await opportunityService.getStoredOpportunity(person.opportunityId);
     const card = opportunity && await opportunityService.presentOpportunityForViewer(opportunity, userId);
     return card?.headline ? { ...person, context: card.cta } : person;
   }));
-  return morningBriefTemplate({ viewerId: userId, name, ...owed, waiting, appUrl: WEB_APP_URL });
+  return morningBriefTemplate({ viewerId: userId, name, ...owed, waiting, connected, appUrl: WEB_APP_URL });
 }
 
 /**
@@ -108,7 +119,7 @@ async function acquireMorningLock(): Promise<(() => Promise<void>) | null> {
  * local 08:00. Each owner keeps one stable minute. A morning that has already
  * passed waits until the next day, and only one process claims the day.
  *
- * @param options - Where one signal's morning runs, given the owner's previous morning.
+ * @param options - Where one intent's morning runs, given the owner's previous morning.
  * @returns A stop handle for shutdown.
  */
 export function startMorningBrief(options: {
@@ -132,7 +143,7 @@ export function startMorningBrief(options: {
         try {
           await options.wake(owner.id, { id: item.id, statement: item.statement }, claim.previous);
         } catch (error) {
-          logger.error(describeFailure('Morning signal failed', error), {
+          logger.error(describeFailure('Morning intent failed', error), {
             userId: owner.id,
             intentId: item.id,
             error: error instanceof Error ? error.message : String(error),

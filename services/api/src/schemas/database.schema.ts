@@ -19,11 +19,13 @@ export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['pro
 export interface OnboardingState {
   completedAt?: string;
   profileConfirmedAt?: string;
-  firstSignalIntentId?: string;
+  firstIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_intent' | 'complete';
   networkId?: string;
   invitationCode?: string;
+  /** When the owner's first MCP agent made its first tool call, ending MCP onboarding. */
+  mcpOnboardedAt?: string;
 }
 
 export interface NetworkPermissionsState {
@@ -288,7 +290,7 @@ export interface OpportunityActor {
   role: string;
 }
 
-export interface OpportunitySignal {
+export interface OpportunityIntent {
   type: string;
   weight: number;
   detail?: string;
@@ -298,7 +300,7 @@ export interface OpportunityInterpretation {
   category: string;
   reasoning: string;
   confidence: number;
-  signals?: OpportunitySignal[];
+  intents?: OpportunityIntent[];
 }
 
 export interface OpportunityContext {

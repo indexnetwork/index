@@ -6,7 +6,7 @@ capability façades decide what is supported.
 | Area | Used by | Responsibility |
 | --- | --- | --- |
 | `agents/` | Agent registry ports | Agent records and permissions |
-| `intents/` | `Intents` | Signal lifecycle, clarification, and verification |
+| `intents/` | `Intents` | Intent lifecycle, clarification, and verification |
 | `networks/` | `Networks` | Community lifecycle, membership, and assignments |
 | `discovery/` | Opportunity workflows | HyDE search preparation and retrieval |
 | `opportunities/` | Opportunity functions | Matching, presentation, cards, and the read-only negotiation context loader |

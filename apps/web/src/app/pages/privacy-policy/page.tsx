@@ -41,7 +41,7 @@ export const SECTIONS: LegalSection[] = [
           sharing &amp; processors for details.
         </li>
         <li>
-          <strong>Signals and matches</strong> — the text of a signal (who you
+          <strong>Intents and matches</strong> — the text of an intent (who you
           want to meet), the networks you share it with, matches, and the
           messages your agent exchanges while negotiating a match.
         </li>
@@ -54,7 +54,7 @@ export const SECTIONS: LegalSection[] = [
           connect Index, each tool call sends only the fields that tool needs,
           and we return only that tool&apos;s result. A profile read returns
           your name, intro, location, timezone, avatar, and social links. A
-          signal read returns the signal text, status, and networks. A match
+          intent read returns the intent text, status, and networks. A match
           read returns who it is with, why it fits, and any negotiation. A
           write saves the field you asked to change, on your account only.
         </li>
@@ -72,8 +72,8 @@ export const SECTIONS: LegalSection[] = [
         <li>Monitor performance, debug issues, and ensure reliability.</li>
         <li>Comply with legal obligations and enforce our terms.</li>
         <li>
-          Match a signal with people in networks you belong to, and let your
-          agent negotiate a match using the signal and the facts you confirmed.
+          Match an intent with people in networks you belong to, and let your
+          agent negotiate a match using the intent and the facts you confirmed.
         </li>
       </ul>
     ),
@@ -115,13 +115,13 @@ export const SECTIONS: LegalSection[] = [
             or that the service needs to operate your account.
           </li>
           <li>
-            <strong>Matching</strong> — OpenRouter, which receives signal text
+            <strong>Matching</strong> — OpenRouter, which receives intent text
             so we can compute embeddings and find relevant people. It does not
             receive your password or your agent conversation.
           </li>
           <li>
             <strong>Other members</strong> — people in a network you join can
-            see the profile and signals you share there. The other person in a
+            see the profile and intents you share there. The other person in a
             match can see that match and its negotiation.
           </li>
           <li>
@@ -155,9 +155,9 @@ export const SECTIONS: LegalSection[] = [
     title: "data retention",
     body: (
       <p>
-        We keep your account, profile, signals, matches, negotiation messages,
-        and agent conversation while your account exists. Pausing a signal
-        stops new matching and leaves the signal in place. Archiving a signal
+        We keep your account, profile, intents, matches, negotiation messages,
+        and agent conversation while your account exists. Pausing an intent
+        stops new matching and leaves the intent in place. Archiving an intent
         removes it from its networks and expires related matches; the archived
         copy stays until you ask us to delete the account. Email{" "}
         <a href="mailto:hello@index.network">hello@index.network</a> to access,
@@ -185,7 +185,7 @@ export const SECTIONS: LegalSection[] = [
           categories of personal information, sources, purposes, and recipients;
           to request deletion or correction; to opt out of certain sharing; and
           to not be discriminated against for exercising rights. In the product
-          you can edit your profile, pause or archive a signal, accept or pass
+          you can edit your profile, pause or archive an intent, accept or pass
           on a match, and disconnect a connected assistant. Those controls take
           effect on your Index account immediately.
         </p>

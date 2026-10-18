@@ -17,7 +17,7 @@ import { intentService } from '../../services/intent.service';
 import { negotiationService, type NegotiationDetail as StoredNegotiation, type NegotiationView } from '../../services/negotiation.service';
 import { opportunityService } from '../../services/opportunity.service';
 
-/** How many of the owner's signals one read covers, matching the HTTP default. */
+/** How many of the owner's intents one read covers, matching the HTTP default. */
 const INTENT_LIMIT = 100;
 
 /** One agent DM row as the database holds it. */
@@ -108,8 +108,8 @@ export class HostedIndex implements Index {
   }
 
   /**
-   * @param limit - How many signals to read.
-   * @returns The owner's signals. `archived` is derived from `archivedAt`, which is how removal is recorded.
+   * @param limit - How many intents to read.
+   * @returns The owner's intents. `archived` is derived from `archivedAt`, which is how removal is recorded.
    */
   async listIntents(limit = INTENT_LIMIT): Promise<IntentSummary[]> {
     const { intents } = await intentService.listIntents(this.userId, { limit });
@@ -121,12 +121,12 @@ export class HostedIndex implements Index {
   }
 
   /**
-   * @param intentId - The signal to search from.
+   * @param intentId - The intent to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return.
-   * @param since - When set, only signals created or shared into a community after this ISO time.
+   * @param since - When set, only intents created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
-   * @throws When the signal is not the owner's, or is no longer active.
+   * @throws When the intent is not the owner's, or is no longer active.
    */
   async discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]> {
     const result = await intentService.discover(intentId, this.userId, {
@@ -134,19 +134,19 @@ export class HostedIndex implements Index {
       ...(limit === undefined ? {} : { limit }),
       ...(since === undefined ? {} : { since: new Date(since) }),
     });
-    if (result.kind !== 'ok') throw new Error(`Signal ${intentId} is ${result.kind}.`);
+    if (result.kind !== 'ok') throw new Error(`Intent ${intentId} is ${result.kind}.`);
     return result.counterparties;
   }
 
   /**
-   * @param intentId - The signal the opportunities belong to.
-   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @param intentId - The intent the opportunities belong to.
+   * @param counterparties - Counterparty intents and the community each pair sits in.
    * @returns The opportunities that now exist.
-   * @throws When the signal is not the owner's, or is no longer active.
+   * @throws When the intent is not the owner's, or is no longer active.
    */
   async createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]> {
     const result = await intentService.createOpportunities(intentId, this.userId, counterparties);
-    if (result.kind !== 'ok') throw new Error(`Signal ${intentId} is ${result.kind}.`);
+    if (result.kind !== 'ok') throw new Error(`Intent ${intentId} is ${result.kind}.`);
     return result.opportunities;
   }
 
@@ -156,7 +156,7 @@ export class HostedIndex implements Index {
     return negotiations.map(toNegotiation);
   }
 
-  /** @param intentId - The signal. @returns That signal's negotiations, open and settled. */
+  /** @param intentId - The intent. @returns That intent's negotiations, open and settled. */
   async listIntentNegotiations(intentId: string): Promise<Negotiation[]> {
     const negotiations = await negotiationService.list(this.userId, { intentId });
     return negotiations.map(toNegotiation);
@@ -209,14 +209,14 @@ export class HostedIndex implements Index {
     return { opportunityId: id, status };
   }
 
-  /** @param intentId - Signal whose principal conversation to read. @returns The agent DM slice for that signal. */
+  /** @param intentId - Intent whose principal conversation to read. @returns The agent DM slice for that intent. */
   async principalInbox(intentId: string): Promise<{ conversationId: string; messages: ConversationMessage[] }> {
     const conversation = await this.conversations.getOrCreateAgentDm(this.userId);
     const messages = await this.conversations.getMessages(conversation.id, { intentId, userId: this.userId });
     return { conversationId: conversation.id, messages: messages.map(toConversationMessage) };
   }
 
-  /** @param intentId - Signal. @param entries - `question` and `message` entries. @throws When the signal is not the owner's. */
+  /** @param intentId - Intent. @param entries - `question` and `message` entries. @throws When the intent is not the owner's. */
   async sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void> {
     await this.h2a.publishH2A({ userId: this.userId, intentId, entries });
   }

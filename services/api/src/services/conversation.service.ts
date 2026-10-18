@@ -34,7 +34,7 @@ export interface AgentConversationState {
  * nothing on its own, and a newer question does not retire the ones asked
  * before it.
  *
- * @param messages - The owner's agent DM for one signal, oldest first.
+ * @param messages - The owner's agent DM for one intent, oldest first.
  * @returns Every unanswered question, oldest first; the last is the displayed one.
  */
 function unanswered(messages: readonly PrincipalMessage[]): PrincipalQuestion[] {
@@ -197,8 +197,8 @@ export class ConversationService {
    * The agent speaks in its owner's agent DM.
    *
    * Questions only — outcomes live in Radar. One DM per owner carries every
-   * signal, so the `intentId` tag is what keeps the message on its own: it is
-   * read back only under that signal. The write itself tells the owner:
+   * intent, so the `intentId` tag is what keeps the message on its own: it is
+   * read back only under that intent. The write itself tells the owner:
    * `createMessage` publishes the message on their conversation channel, which
    * is where the question gets answered.
    *
@@ -234,7 +234,7 @@ export class ConversationService {
    *
    * @param conversationId - Conversation identifier.
    * @param opts - Caller visibility plus optional task or prior-session cursor.
-   * @returns The selected session, messages, and previous-session signal.
+   * @returns The selected session, messages, and previous-session intent.
    */
   async getSessionHistory(
     conversationId: string,
@@ -289,7 +289,7 @@ export class ConversationService {
    */
   async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
     if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
-    // Both seats ask: Index's hosted agent wakes on this signal and writes to
+    // Both seats ask: Index's hosted agent wakes on this intent and writes to
     // the same transcript, so the status names the speaker rather than deciding
     // whether there is one.
     const external = await this.registry.getSelectedNegotiator(userId) !== null;
@@ -298,7 +298,7 @@ export class ConversationService {
   }
 
   /**
-   * Persist owner input on this signal's inbox and notify the runtime.
+   * Persist owner input on this intent's inbox and notify the runtime.
    *
    * Whatever the owner sends is kept: a message written while questions are on
    * screen, or an answer to a question that has since been overtaken, still
@@ -327,12 +327,13 @@ export class ConversationService {
   }
 
   /**
-   * Persist several owner answers at once.
+   * Persist several owner messages at once.
    *
-   * Every answer is matched against one reading of the queue and written in a
+   * Every message is matched against one reading of the queue and written in a
    * single transaction, so the wake they trigger sees all of them rather than
-   * deciding on the first and clearing the rest. An answer naming a question
-   * that is no longer waiting is still kept, as a plain message. Like
+   * deciding on the first and clearing the rest. A message with no
+   * `questionId`, or naming a question that is no longer waiting, is still
+   * kept, as a plain message. Like
    * {@link sendOwnerInput}, the write is accepted whether or not a negotiator
    * is selected: the inbox is a chat, not the responder seat.
    *
@@ -340,7 +341,7 @@ export class ConversationService {
    * @returns The persisted messages, in the order given.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId: string; text: string }[] }) {
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
@@ -366,7 +367,7 @@ export class ConversationService {
 
   /**
    * Persist an agent's question or message on the owner's agent DM.
-   * @param input - Owner, signal, the selected agent when one is speaking, and agent-authored H2A entries.
+   * @param input - Owner, intent, the selected agent when one is speaking, and agent-authored H2A entries.
    * @throws AgentConversationError when the intent is not owned.
    */
   async publishH2A(input: { userId: string; intentId: string; agentId?: string; entries: PrincipalMessage[] }) {

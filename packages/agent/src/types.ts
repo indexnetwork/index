@@ -1,5 +1,6 @@
 import type { Index } from "@indexnetwork/client";
 
+import type { Decide } from "./decide.ts";
 import type { Model } from "./model.ts";
 
 export interface User {
@@ -109,17 +110,21 @@ export interface BriefInput {
   principalConversation: ConversationEntry[];
   opportunity: Opportunity;
   model: Model;
+  /** When set, screening asks it instead of running a full briefing. */
+  decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
 }
 
-/** Everything a wake sees: one signal, its conversation, and all of its opportunities. */
+/** Everything a wake sees: one intent, its conversation, and all of its opportunities. */
 export interface WakeInput {
   user: User;
   intent: Intent;
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
+  /** When set, discovery screens candidates with it instead of a full briefing. */
+  decide?: Decide;
   /** Index for this owner, for the two operations the model triggers mid-loop. */
   client: Index;
   now?: () => Date;
@@ -140,6 +145,10 @@ export interface WakeInput {
   onOpened?: (opportunityIds: string[]) => void;
   /** Persist one user-facing boundary for each discovery tool call. */
   onProgress?: (text: string) => void | Promise<void>;
+  /** The reply to the principal's direct message, the moment it is written. A failure is raised from `wake` once the loop ends. */
+  onReply?: (text: string) => void | Promise<void>;
+  /** Messages the principal wrote since the last call, so a running wake reads them before its next step. */
+  steer?: () => string[];
   /** Omitted for an event. Morning is the same wake, with one extra instruction. */
   reason?: "morning";
 }

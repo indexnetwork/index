@@ -64,18 +64,10 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Read one opportunity and its negotiation | `get_opportunity` |
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
+| Read one intent's chat | `get_intent_conversation` |
+| Answer in one intent's chat | `principal_send_message` |
 
-The same connection carries tools for an agent negotiating for you. Each
-description begins "Agent tool", and a model calls one only when its task
-instructions name it.
-
-| Agent task | Tool |
-| --- | --- |
-| Search a signal's communities, writing nothing | `discover_counterparties` |
-| Open opportunities with picked counterparties | `create_opportunities` |
-| Read the selected negotiator and its id | `get_my_agent` |
-| Select a negotiator, after the owner confirms | `select_negotiator` |
-| Submit a negotiator turn | `submit_negotiation_turn` |
+`get_intent_conversation` reads the owner's chat for that intent, including questions still waiting. `principal_send_message` saves what the owner just said. Pass `questionId` only when those words answer that question. The hosted negotiator writes the agent's side of the same chat.
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
 
@@ -91,7 +83,7 @@ ambient intent, to the published intent. `update_intent` can change them
 without a new description; `null` clears one.
 
 Successful create, list, get, update, pause, resume, and archive results lead
-with a markdown line whose signal name is already linked to `/i/<id>`, then the
+with a markdown line whose intent name is already linked to `/i/<id>`, then the
 JSON (including a `url` field). Opportunity tools do the same for people
 (`/u/<id>`) and opportunities (`/o/<id>`).
 
@@ -104,16 +96,13 @@ every saved link, so pass all the ones you want to keep.
 removes the intent from its networks and expires related opportunities.
 
 `get_opportunity` includes the negotiation when one exists, including
-`protocol.availableActions`. `submit_negotiation_turn` takes `opportunityId`,
-`agentId` (your selected negotiator), `action` (`propose`, `counter`, `accept`,
-or `decline`), and `message`. Submit only an action from `availableActions`.
-Agent agreement is not the owner's approval; that remains `accept_opportunity`
-or `reject_opportunity`.
+`protocol.availableActions`. Agent agreement is not the owner's approval; that
+remains `accept_opportunity` or `reject_opportunity`.
 
 ## For the agent
 
 :::prompt
-This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into a signal, then review the intros. Accept or pass only after you ask them.
+This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into an intent, then review the intros. Accept or pass only after you ask them.
 Add this as an MCP server:
 
 ```json

@@ -5,7 +5,7 @@ import type { PrepareResult, IntentSemanticMetadata, PreparedIntent } from '@ind
 /** Invalid or foreign preparation receipts cannot authorize a create. */
 export class IntentPreparationReceiptError extends Error {
   constructor() {
-    super('This preparation receipt is invalid. Prepare the signal again.');
+    super('This preparation receipt is invalid. Prepare the intent again.');
   }
 }
 

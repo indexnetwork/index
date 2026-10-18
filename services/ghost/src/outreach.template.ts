@@ -2,7 +2,7 @@ import { escapeHtml } from '@indexnetwork/api/src/lib/escapeHtml';
 
 export interface GhostOutreachParams {
   memberName: string;
-  memberSignal: string;
+  memberIntent: string;
   reason: string | null;
 }
 
@@ -31,7 +31,7 @@ export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmai
     subject: `${subjectName} would like to connect`,
     html: `<div style="font-family: Arial, sans-serif;">
   <p><strong>${escapeHtml(p.memberName)}</strong> would like to connect with you on Index Network.</p>
-  <p>They're working on: ${escapeHtml(p.memberSignal)}</p>
+  <p>They're working on: ${escapeHtml(p.memberIntent)}</p>
   ${reasonHtml}
   <p>Sign in with this email to see it and reply:</p>
   <p><a href="${safeUrl}">${safeUrl}</a></p>
@@ -42,7 +42,7 @@ export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmai
 </div>`,
     text: `${p.memberName} would like to connect with you on Index Network.
 
-They're working on: ${p.memberSignal}
+They're working on: ${p.memberIntent}
 ${reasonText}
 Sign in with this email to see it and reply: ${WEB_APP_URL}
 

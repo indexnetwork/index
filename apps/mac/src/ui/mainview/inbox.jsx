@@ -1,4 +1,4 @@
-/* Every person-to-person thread, whether or not a signal still holds the match
+/* Every person-to-person thread, whether or not an intent still holds the match
    behind it. Mirrors the Hermes dashboard's messages panel: the list on the
    left, the open thread on the right. Agent DMs and negotiations are left out,
    the same two-users filter the dashboard and web sidebar use. */
@@ -45,7 +45,7 @@ function isPersonThread(c) {
   return ps.length === 2 && ps.every(p => p && p.participantType === "user");
 }
 
-function Conversations({ initialConversationId, onClose, onRead, onNewSignal, onOpenProfile }) {
+function Conversations({ initialConversationId, onClose, onRead, onNewIntent, onOpenProfile }) {
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [convs, setConvs] = useState(null);
   const [listError, setListError] = useState(false);
@@ -186,7 +186,7 @@ function Conversations({ initialConversationId, onClose, onRead, onNewSignal, on
               ) : sorted.length === 0 ? (
                 <EmptyState
                   message="no conversations yet. a chat opens when you and someone both accept an intro."
-                  action={onNewSignal ? { label:"start a signal", onClick:onNewSignal } : null}
+                  action={onNewIntent ? { label:"start an intent", onClick:onNewIntent } : null}
                   align="left" style={{ margin:12 }}/>
               ) : sorted.map(c => (
                 <button key={c.id} onClick={() => setActiveId(c.id)} style={{
@@ -343,7 +343,7 @@ function expiryReason(person) {
   const R = [
     "the moment passed. they committed to something else before you replied.",
     "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your signal sharpened, and your edges drifted apart.",
+    "the overlap cooled as your intent sharpened, and your edges drifted apart.",
     "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
   ];
   const s = person.id || person.name || "x";
@@ -397,9 +397,9 @@ function SummaryWindow({ person, onClose }) {
           <SummarySection label="what your agent found">
             {person.pitchFromAgent || person.blurb}
           </SummarySection>
-          <SummarySection label="signals">
+          <SummarySection label="intents">
             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-              {(person.signals || []).map(s => (
+              {(person.intents || []).map(s => (
                 <span key={s} style={{
                   fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3,
                   padding:"1px 6px", border:"1px solid #000",
@@ -425,7 +425,7 @@ function SummaryWindow({ person, onClose }) {
 }
 
 /* The card's fields overlap heavily by construction, the API mappers build
-   `overlap` out of the same headline as `blurb`, and `signals` out of the same
+   `overlap` out of the same headline as `blurb`, and `intents` out of the same
    two strings as `location`/`distance`, so rendering every field gave the
    profile the same sentence three times under three different headings. This
    walks the fields in order of importance and drops anything already said. */
@@ -453,7 +453,7 @@ function profileContent(person) {
     return String(v).trim();
   };
 
-  // The headline and the shared-signal chips are both the system's summary of
+  // The headline and the shared-intent chips are both the system's summary of
   // this person, and neither is theirs. What the profile shows is the intro
   // they wrote about themselves, so the card's own blurb is only blocked here
   // to keep it from reappearing through another field.
@@ -514,9 +514,9 @@ function SocialLink({ social }) {
 }
 
 /* A card opened from outside the app (an index:// link or a universal link).
-   The route can land on any screen, including the hub where no signal is open
+   The route can land on any screen, including the hub where no intent is open
    and the radar's selection state does not exist, so it floats above whatever
    is showing instead. It only wraps the windows the radar already uses:
    an expired opportunity reads as its summary, anything else as the profile.
-   Read-only, because accept/pass/chat belong to the signal that surfaced the
-   card and a deep link does not say which signal that was. */
+   Read-only, because accept/pass/chat belong to the intent that surfaced the
+   card and a deep link does not say which intent that was. */

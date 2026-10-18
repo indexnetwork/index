@@ -422,7 +422,7 @@ export class NetworkController {
   }
 
   /**
-   * List the signals shared in a network, across all members. Members only.
+   * List the intents shared in a network, across all members. Members only.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/intents')

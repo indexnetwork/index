@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm/sql';
+import { and, eq, gt, isNull, max, min, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { RuntimeNotFoundError } from '../lib/agent/runtime-errors';
@@ -46,6 +46,15 @@ export interface AgentSystemIds {
   negotiator: string;
 }
 
+/** An MCP client (Grok, Claude, Cursor...) holding a live OAuth grant from the user. */
+export interface McpClientRow {
+  clientId: string;
+  name: string | null;
+  icon: string | null;
+  connectedAt: Date;
+  lastActiveAt: Date;
+}
+
 export interface AgentRegistryStore {
   createAgent(input: CreateAgentInput): Promise<AgentRow>;
   getAgent(agentId: string): Promise<AgentRow | null>;
@@ -58,6 +67,8 @@ export interface AgentRegistryStore {
   getSelectedNegotiator(ownerId: string): Promise<AgentRow | null>;
   getSystemAgentIds(): AgentSystemIds;
   touchLastSeen(agentId: string): Promise<void>;
+  listMcpClientsForUser(userId: string): Promise<McpClientRow[]>;
+  revokeMcpClient(userId: string, clientId: string): Promise<boolean>;
   setNegotiationExecutorBinding(input: {
     ownerId: string;
     targetAgentId: string | null;
@@ -137,6 +148,47 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     if (deleted?.handleNegotiations) await publishUserInvalidation(deleted.ownerId, 'agent.configuration');
 
     logger.info('Soft-deleted agent', { agentId });
+  }
+
+  /**
+   * MCP clients the user signed in through OAuth, one per client, while a
+   * refresh token is still live. Newest activity first.
+   */
+  async listMcpClientsForUser(userId: string): Promise<McpClientRow[]> {
+    const rows = await db
+      .select({
+        clientId: schema.oauthApplications.clientId,
+        name: schema.oauthApplications.name,
+        icon: schema.oauthApplications.icon,
+        connectedAt: min(schema.oauthAccessTokens.createdAt),
+        lastActiveAt: max(schema.oauthAccessTokens.updatedAt),
+      })
+      .from(schema.oauthAccessTokens)
+      .innerJoin(schema.oauthApplications, eq(schema.oauthApplications.clientId, schema.oauthAccessTokens.clientId))
+      .where(and(
+        eq(schema.oauthAccessTokens.userId, userId),
+        gt(schema.oauthAccessTokens.refreshTokenExpiresAt, new Date()),
+        or(isNull(schema.oauthApplications.disabled), eq(schema.oauthApplications.disabled, false)),
+      ))
+      .groupBy(schema.oauthApplications.clientId, schema.oauthApplications.name, schema.oauthApplications.icon);
+
+    return rows
+      .map((row) => ({ ...row, connectedAt: row.connectedAt ?? new Date(0), lastActiveAt: row.lastActiveAt ?? new Date(0) }))
+      .sort((left, right) => right.lastActiveAt.getTime() - left.lastActiveAt.getTime());
+  }
+
+  /**
+   * Drop every OAuth grant the user gave one MCP client. The client has to
+   * sign in again to reconnect.
+   * @returns Whether the user had a grant for that client.
+   */
+  async revokeMcpClient(userId: string, clientId: string): Promise<boolean> {
+    const deleted = await db
+      .delete(schema.oauthAccessTokens)
+      .where(and(eq(schema.oauthAccessTokens.userId, userId), eq(schema.oauthAccessTokens.clientId, clientId)))
+      .returning({ id: schema.oauthAccessTokens.id });
+    if (deleted.length) logger.info('Revoked MCP client', { userId, clientId, tokens: deleted.length });
+    return deleted.length > 0;
   }
 
   async listAgentsForUser(userId: string): Promise<AgentRow[]> {

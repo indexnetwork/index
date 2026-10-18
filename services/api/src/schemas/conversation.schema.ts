@@ -95,7 +95,7 @@ export const messages = pgTable(
       table.id,
     ),
     senderIdIdx: index('messages_sender_id_idx').on(table.senderId),
-    /** The agent DM's read: one conversation, filtered by the signal tag. */
+    /** The agent DM's read: one conversation, filtered by the intent tag. */
     conversationIntentCreatedAtIdx: index('messages_conversation_intent_created_at_idx').on(
       table.conversationId,
       sql`(${table.metadata}->>'intentId')`,

@@ -10,7 +10,7 @@ export interface ConversationSummary {
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
   lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
-  /** Viewer-scoped opportunity signal provenance, latest first. */
+  /** Viewer-scoped opportunity intent provenance, latest first. */
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   /** Number of counterpart messages newer than this viewer's read cursor. */
   unreadCount: number;
@@ -67,7 +67,7 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
 
   /**
    * Get messages for a conversation. `intentId` filters the agent DM to the
-   * messages tagged with that signal, and nothing else.
+   * messages tagged with that intent, and nothing else.
    *
    * The resolved id comes back with them: `AGENT_DM_ID` is the only way to
    * address the caller's own agent DM, and this is where it becomes a real one.

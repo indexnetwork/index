@@ -12,8 +12,8 @@ const LOOKUP_LINES = ["looking you up…", "reading what's already public…", "
 
 /**
  * First run: confirm the name, look the person up, review the profile, then
- * straight into the first signal. The review confirms the profile; the first
- * signal completes onboarding.
+ * straight into the first intent. The review confirms the profile; the first
+ * intent completes onboarding.
  */
 export default function OnboardingPage() {
   const navigate = useNavigate();
