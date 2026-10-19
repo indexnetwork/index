@@ -181,6 +181,16 @@ async function rpc(url: string, token: string, session: string | undefined, mess
   return { session: res.headers.get('mcp-session-id') ?? session, result: reply?.result as { isError?: boolean; content?: { type: string; text?: string }[] } | undefined };
 }
 
+/** A profile with an unpublished draft is read as its published side only, and compact: the member has not approved the draft. */
+function published(text: string): string {
+  try {
+    const { draft: _draft, hasUnpublishedDraft: _flag, ...profile } = JSON.parse(text) as Record<string, unknown>;
+    return JSON.stringify(profile);
+  } catch {
+    return text;
+  }
+}
+
 async function readProfile(mcp: Mcp, token: string): Promise<string | null> {
   const { url } = mcp;
   const init = await rpc(url, token, undefined, {
@@ -192,7 +202,7 @@ async function readProfile(mcp: Mcp, token: string): Promise<string | null> {
   // A tool that refuses its arguments answers with an error as text, which is not a profile.
   if (result?.isError) throw new Error((result.content?.[0]?.text ?? 'Tool failed').slice(0, 200));
   const text = (result?.content ?? []).filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim();
-  return text ? text.slice(0, PROFILE_LIMIT) : null;
+  return text ? published(text).slice(0, PROFILE_LIMIT) : null;
 }
 
 /**
