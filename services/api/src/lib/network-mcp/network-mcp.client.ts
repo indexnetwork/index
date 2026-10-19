@@ -16,7 +16,6 @@ import { log } from '../log';
 const logger = log.service.from('NetworkMcp');
 
 const REDIRECT_URI = `${API_URL}/api/networks/mcp/callback`;
-const PROFILE_TTL_MS = 24 * 60 * 60 * 1000;
 const PROFILE_LIMIT = 1500;
 const TIMEOUT_MS = 10_000;
 
@@ -217,7 +216,6 @@ export async function memberProfile(
   userId: string,
 ): Promise<string | null> {
   const { networkId, mcp, cached } = network;
-  if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < PROFILE_TTL_MS) return cached.text;
   try {
     const token = await accessToken(networkId, userId, mcp);
     const text = token && await readProfile(mcp, token);
