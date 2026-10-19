@@ -11,6 +11,9 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, db, eq, schema } from '../../adapters/database.shared';
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { API_URL } from '../betterauth/betterauth';
+import { log } from '../log';
+
+const logger = log.service.from('NetworkMcp');
 
 const REDIRECT_URI = `${API_URL}/api/networks/mcp/callback`;
 const PROFILE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -205,10 +208,14 @@ export async function memberProfile(
   try {
     const token = await accessToken(networkId, userId, mcp);
     const text = token && await readProfile(mcp.url, token, mcp.profileTool);
-    if (!text) return cached?.text ?? null;
+    if (!text) {
+      logger.verbose('No network profile', { networkId, userId, signedIn: Boolean(token) });
+      return cached?.text ?? null;
+    }
     await new ChatDatabaseAdapter().setMemberMcpProfile(networkId, userId, text);
     return text;
-  } catch {
+  } catch (error) {
+    logger.warn('Network profile read failed', { networkId, userId, error: error instanceof Error ? error.message : String(error) });
     return cached?.text ?? null;
   }
 }

@@ -234,6 +234,7 @@ export class HostedAgent {
           const text = await memberProfile(network, input.user.id);
           return text && `${network.title}:\n${text}`;
         }))).filter(Boolean);
+        if (profiles.length) logger.verbose('Negotiating with network profiles', { userId: input.user.id, opportunityId: input.opportunity.id, profiles: profiles.length });
         return next(profiles.length ? { ...input, evidence: profiles.join('\n\n') } : undefined);
       },
       ...(this.decide ? { decide: this.decide } : {}),
