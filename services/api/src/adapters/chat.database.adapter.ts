@@ -1193,6 +1193,58 @@ export class ChatDatabaseAdapter {
     return Array.from(byId.values());
   }
 
+  /**
+   * Search people the user shares a network with, by name or exact email.
+   * Emails are matched but never returned.
+   * @param excludeNetworkId - Leave out people already in this network.
+   */
+  async searchUsersInUserNetworks(
+    userId: Id<'users'>,
+    q: string,
+    excludeNetworkId?: string,
+    limit = 10,
+  ): Promise<{ id: Id<'users'>; name: string; avatar: string | null }[]> {
+    const term = q.trim();
+    if (!term) return [];
+
+    const myNetworkRows = await db
+      .select({ networkId: networkMembers.networkId })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+      .where(and(
+        eq(networkMembers.userId, userId),
+        isNull(networkMembers.deletedAt),
+        isNull(networks.deletedAt),
+      ));
+    const myNetworkIds = myNetworkRows.map((r) => r.networkId);
+    if (myNetworkIds.length === 0) return [];
+
+    let excludeIds: Id<'users'>[] = [];
+    if (excludeNetworkId) {
+      const memberRows = await db
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(and(eq(networkMembers.networkId, excludeNetworkId), isNull(networkMembers.deletedAt)));
+      excludeIds = memberRows.map((r) => r.userId);
+    }
+
+    const escaped = term.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const rows = await db
+      .selectDistinct({ id: users.id, name: users.name, avatar: users.avatar })
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(and(
+        inArray(networkMembers.networkId, myNetworkIds),
+        isNull(networkMembers.deletedAt),
+        isNull(users.deletedAt),
+        excludeIds.length > 0 ? notInArray(users.id, excludeIds) : undefined,
+        or(ilike(users.name, `%${escaped}%`), eq(users.email, term.toLowerCase())),
+      ))
+      .limit(limit);
+
+    return rows;
+  }
+
   async getNetworkIntentsForOwner(
     networkId: string,
     requestingUserId: string,

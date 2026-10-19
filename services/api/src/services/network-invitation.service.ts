@@ -6,6 +6,8 @@ import * as schema from '../schemas/database.schema';
 import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
 
+const WEB_APP_URL = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
+
 const logger = log.service.from('NetworkInvitationService');
 
 export interface InviteParams {
@@ -13,6 +15,15 @@ export interface InviteParams {
   email: string;
   /** Optional name applied only to the new user. Ignored if user already exists. */
   name?: string;
+  /** The owner doing the inviting, named in the email. */
+  invitedById?: string;
+}
+
+export interface NotifyAddedParams {
+  networkId: string;
+  userId: string;
+  /** The owner who added them, named in the email. */
+  addedById?: string;
 }
 
 export interface InviteResult {
@@ -40,29 +51,64 @@ class NetworkInvitationService {
     const { alreadyMember } = await this.joinNetwork(user.id, params.networkId);
 
     if (!alreadyMember) {
-      const networkName = await this.lookupNetworkName(params.networkId);
-      await this.dispatchInvitationEmail({ to: email, userId: user.id, networkName });
+      await this.notifyAdded({ networkId: params.networkId, userId: user.id, addedById: params.invitedById });
       logger.info('Invited user to network', { userId: user.id, networkId: params.networkId });
     }
 
     return { user, created, alreadyMember };
   }
 
-  private async lookupNetworkName(networkId: string): Promise<string> {
-    const [row] = await db
-      .select({ title: schema.networks.title })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
-    return row?.title ?? 'your network';
+  /**
+   * Email someone that an owner added them to a network, by email or by
+   * picking them. Never sent for people who joined on their own. Fail-soft:
+   * the membership is already written, so a send failure is only logged.
+   */
+  async notifyAdded(params: NotifyAddedParams): Promise<void> {
+    try {
+      const [recipient] = await db
+        .select({ email: schema.users.email, name: schema.users.name })
+        .from(schema.users)
+        .where(and(eq(schema.users.id, params.userId), isNull(schema.users.deletedAt)))
+        .limit(1);
+      if (!recipient?.email) return;
+
+      const [network] = await db
+        .select({ title: schema.networks.title })
+        .from(schema.networks)
+        .where(eq(schema.networks.id, params.networkId))
+        .limit(1);
+
+      let inviterName: string | undefined;
+      if (params.addedById && params.addedById !== params.userId) {
+        const [inviter] = await db
+          .select({ name: schema.users.name })
+          .from(schema.users)
+          .where(eq(schema.users.id, params.addedById))
+          .limit(1);
+        inviterName = inviter?.name ?? undefined;
+      }
+
+      await this.dispatchInvitationEmail({
+        to: recipient.email,
+        userId: params.userId,
+        rendered: networkInvitationTemplate({
+          networkName: network?.title ?? 'a network',
+          networkUrl: `${WEB_APP_URL}/networks/${encodeURIComponent(params.networkId)}`,
+          recipientName: recipient.name ?? undefined,
+          inviterName,
+        }),
+      });
+    } catch (err) {
+      logger.error('Failed to prepare added-to-network email', { userId: params.userId, networkId: params.networkId, error: err });
+    }
   }
 
   private async dispatchInvitationEmail(params: {
     to: string;
     userId: string;
-    networkName: string;
+    rendered: ReturnType<typeof networkInvitationTemplate>;
   }): Promise<void> {
-    const rendered = networkInvitationTemplate({ networkName: params.networkName });
+    const { rendered } = params;
 
     try {
       const result = (await executeSendEmail({
