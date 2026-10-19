@@ -178,16 +178,19 @@ async function rpc(url: string, token: string, session: string | undefined, mess
     ? JSON.parse(body)
     : body.split('\n').filter((line) => line.startsWith('data:')).map((line) => JSON.parse(line.slice(5))).find((m) => m.id === message.id);
   if (reply?.error) throw new Error(reply.error.message ?? 'MCP error');
-  return { session: res.headers.get('mcp-session-id') ?? session, result: reply?.result as { content?: { type: string; text?: string }[] } | undefined };
+  return { session: res.headers.get('mcp-session-id') ?? session, result: reply?.result as { isError?: boolean; content?: { type: string; text?: string }[] } | undefined };
 }
 
-async function readProfile(url: string, token: string, tool: string): Promise<string | null> {
+async function readProfile(mcp: Mcp, token: string): Promise<string | null> {
+  const { url } = mcp;
   const init = await rpc(url, token, undefined, {
     id: 1, method: 'initialize',
     params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'index-network', version: '1' } },
   });
   await rpc(url, token, init.session, { method: 'notifications/initialized' });
-  const { result } = await rpc(url, token, init.session, { id: 2, method: 'tools/call', params: { name: tool, arguments: {} } });
+  const { result } = await rpc(url, token, init.session, { id: 2, method: 'tools/call', params: { name: mcp.profileTool, arguments: mcp.profileArgs ?? {} } });
+  // A tool that refuses its arguments answers with an error as text, which is not a profile.
+  if (result?.isError) throw new Error((result.content?.[0]?.text ?? 'Tool failed').slice(0, 200));
   const text = (result?.content ?? []).filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim();
   return text ? text.slice(0, PROFILE_LIMIT) : null;
 }
@@ -207,7 +210,7 @@ export async function memberProfile(
   if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < PROFILE_TTL_MS) return cached.text;
   try {
     const token = await accessToken(networkId, userId, mcp);
-    const text = token && await readProfile(mcp.url, token, mcp.profileTool);
+    const text = token && await readProfile(mcp, token);
     if (!text) {
       logger.verbose('No network profile', { networkId, userId, signedIn: Boolean(token) });
       return cached?.text ?? null;

@@ -41,6 +41,8 @@ export interface NetworkMcp {
   url: string;
   /** The tool that returns the signed-in member's own profile. */
   profileTool: string;
+  /** Arguments the profile tool requires. */
+  profileArgs?: Record<string, unknown>;
   /** What to ask the member to grant, when the server requires a scope. */
   scope?: string;
   /** For servers that do not register clients dynamically. */
