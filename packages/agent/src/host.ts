@@ -20,7 +20,7 @@ export type NegotiateHook = (
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
   model: Model;
-  /** When set, discovery screens candidates with it instead of a full briefing. */
+  /** When set, it decides who discovery reaches. Without it, everyone is reached. */
   decide?: Decide;
   now?: () => Date;
   signal?: AbortSignal;
@@ -695,7 +695,9 @@ export async function runNegotiate(
 
   if (!opportunity.brief || !opportunity.decision) {
     log(`  briefing ${opportunityId} with ${opportunity.counterpart}`);
-    const decided = await briefIfMissing({ user, intent, principalConversation, opportunity, model, now, signal });
+    // Always continue: the screen cannot tell an incoming opportunity worth
+    // answering from one that is not, so the negotiator's own turn decides.
+    const decided = await briefIfMissing({ user, intent, principalConversation, opportunity, model, now, signal }, "continue");
     if (!decided.length) return { stall: { reason: "This opportunity could not be briefed." } };
     await publishActions(client, intent.id, decided, context);
     for (const action of decided) {

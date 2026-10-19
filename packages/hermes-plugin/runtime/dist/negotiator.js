@@ -36815,9 +36815,9 @@ var BRIEF_PROMPT = [
 `);
 var UNVERIFIED_PROMPT = "Your principal has not verified their account, so they have agreed to nothing, including this negotiation. Speak about them in the third person and only from their intent; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their intent does not cover is theirs to answer once contacted. Accept only a proposal their intent plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
 var BRIEF_ONLY_PROMPT = [
-  "You give one new opportunity the brief and decision it does not have yet, so its negotiator can run at all.",
+  "You write the brief for one new opportunity, so its negotiator can run at all. The decision is already made and given to you: you never choose or change it. Write the brief that carries it out. For a continue, that is the reason this pair is worth a first conversation. For a decline, it is one sentence on the mismatch between what this intent seeks and what the counterpart asks.",
   BRIEF_PROMPT,
-  "Call set_brief exactly once, for this opportunity only. That call is this run's whole product: nothing you say outside it is kept. You cannot speak to your principal here \u2014 if a fact is missing, decide from what you have and leave asking to a wake."
+  "Call set_brief exactly once, for this opportunity only. That call is this run's whole product: nothing you say outside it is kept. You cannot speak to your principal here \u2014 if a fact is missing, write from what you have and leave asking to a wake."
 ].join(`
 
 `);
@@ -36828,22 +36828,6 @@ function principalFacts(user) {
 }
 function principalOnly(conversation) {
   return conversation.filter((entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall" && entry.kind !== "resolution");
-}
-function briefParameters(opportunity) {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      decision: { type: "string", enum: DECISIONS },
-      brief: {
-        type: "string",
-        minLength: 1,
-        maxLength: BRIEF_LIMIT,
-        description: opportunity.brief ? "A replacement brief. Omit it to leave the standing brief in place." : "This opportunity's brief. Required: it has none yet."
-      }
-    },
-    required: opportunity.brief ? ["decision"] : ["decision", "brief"]
-  };
 }
 function recordBrief(opportunity, decision, brief) {
   if (!brief && !opportunity.brief) {
@@ -36858,7 +36842,7 @@ function recordBrief(opportunity, decision, brief) {
   recorded.push({ type: "decision", opportunityId: opportunity.id, decision });
   return recorded;
 }
-async function briefIfMissing(input2, operation = "brief") {
+async function briefIfMissing(input2, decision, operation = "brief") {
   const { user, intent, opportunity } = input2;
   if (opportunity.brief && opportunity.decision)
     return [];
@@ -36866,9 +36850,14 @@ async function briefIfMissing(input2, operation = "brief") {
   const tools = [
     tool2({
       name: "set_brief",
-      description: "Decide this opportunity and brief its negotiator. The brief is the only thing the negotiator carries into its turn.",
-      parameters: briefParameters(opportunity),
-      run: ({ decision, brief }) => {
+      description: "Write this opportunity's brief for the decision you were given. The brief is the only thing the negotiator carries into its turn.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { brief: { type: "string", minLength: 1, maxLength: BRIEF_LIMIT } },
+        required: ["brief"]
+      },
+      run: ({ brief }) => {
         recorded.push(...recordBrief(opportunity, decision, brief));
         return "Brief recorded.";
       }
@@ -36887,6 +36876,7 @@ async function briefIfMissing(input2, operation = "brief") {
 ${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
     prompt: `Brief this one opportunity now.
 ` + JSON.stringify({
+      decision,
       principal: principalFacts(user),
       conversation: principalOnly(input2.principalConversation),
       opportunity
@@ -36896,38 +36886,32 @@ ${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
   });
   return recorded;
 }
+var SKIP_CONFIDENCE = 0.8;
 async function screens(input2, candidate) {
-  const choice = await input2.decide?.({
+  const { decide } = input2;
+  if (!decide)
+    return true;
+  const said = principalOnly(input2.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text);
+  const ask = () => decide({
     state: {
-      principal: principalFacts(input2.user),
-      intent: input2.intent.statement,
-      said: principalOnly(input2.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text),
-      candidate: { statement: candidate.statement, bio: candidate.bio, location: candidate.location }
+      principal_intent: input2.intent.statement,
+      principal_profile: principalFacts(input2.user),
+      ...said.length ? { principal_said: said } : {},
+      candidate: { seeks: candidate.statement, bio: candidate.bio, location: candidate.location }
     },
-    question: "Should this principal be introduced to this candidate? Reach only if the candidate meets every requirement of the intent and wants what the principal offers; skip a clear mismatch.",
+    question: "Should this principal be introduced to this candidate? Reach only if the candidate wants what the principal offers or seeks; skip a clear mismatch.",
     options: {
-      reach: "Nothing the candidate states contradicts the intent. What they leave unsaid is unknown, so a conversation can ask.",
-      skip: "The candidate contradicts a requirement of the intent, or wants something it rules out."
+      reach: "What the candidate asks for is what this intent offers or seeks, and nothing they state contradicts its requirements. Facts they leave unsaid are unknown.",
+      skip: "The candidate asks for something other than what this intent offers or seeks, or contradicts one of its requirements such as role, domain, stage or location."
     },
     ...input2.signal ? { signal: input2.signal } : {}
-  }).catch(() => {
+  });
+  const answer = await ask().catch(ask).catch(() => {
     return;
   });
-  if (choice)
-    return choice === "reach";
-  const actions = await briefIfMissing({
-    ...input2,
-    opportunity: {
-      id: candidate.intentId,
-      counterpart: candidate.name,
-      status: "candidate",
-      intent: { statement: candidate.statement },
-      bio: candidate.bio,
-      location: candidate.location
-    }
-  }, "screen").catch(() => []);
-  const decision = actions.flatMap((action) => action.type === "decision" ? [action.decision] : [])[0];
-  return decision !== "decline" && decision !== "stop";
+  if (!answer)
+    return true;
+  return (answer.probabilities?.skip ?? (answer.choice === "skip" ? 1 : 0)) < SKIP_CONFIDENCE;
 }
 
 // ../agent/src/negotiate.ts
@@ -37937,7 +37921,7 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
   const context = { counterparts: counterpartsOf([detail]), log };
   if (!opportunity.brief || !opportunity.decision) {
     log(`  briefing ${opportunityId} with ${opportunity.counterpart}`);
-    const decided = await briefIfMissing({ user, intent, principalConversation, opportunity, model, now: now2, signal });
+    const decided = await briefIfMissing({ user, intent, principalConversation, opportunity, model, now: now2, signal }, "continue");
     if (!decided.length)
       return { stall: { reason: "This opportunity could not be briefed." } };
     await publishActions(client, intent.id, decided, context);

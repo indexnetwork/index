@@ -116,6 +116,12 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   useEffect(() => { resetForm(user); }, [user]); // eslint-disable-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
 
   const mark = () => setIsDirty(true);
+  // First run, when the lookup wrote about someone else: empty the bio and hand it over.
+  const writeOwnIntro = () => {
+    setIntro("");
+    mark();
+    document.getElementById("intro")?.focus();
+  };
   // The server only confirms a profile that has a name or an intro.
   const confirmBlocked = !!firstRun && !name.trim() && !intro.trim();
 
@@ -241,9 +247,13 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               </div>
 
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
                   <span>introduction</span>
-                  <span style={{ color: intro.length > 500 ? "var(--ink-warn)" : "var(--ink-2)", fontWeight: intro.length > 500 ? 700 : 400 }}>{intro.length}/500</span>
+                  {firstRun && !lookupFoundNothing(firstRun.lookup) && (
+                    <button type="button" onClick={writeOwnIntro} style={{ padding: 0, border: "none", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 400, color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer" }}>
+                      not you? write your own
+                    </button>
+                  )}
                 </div>
                 <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "8px 10px" }}>
                   <textarea id="intro" value={intro} rows={4} onChange={(e) => { setIntro(e.target.value); mark(); }} style={{ width: "100%", border: "none", outline: "none", resize: "vertical", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }} />

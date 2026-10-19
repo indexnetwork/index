@@ -186,6 +186,54 @@ function AskName({ initialName = "", onSubmit, onSignOut }) {
   );
 }
 
+// First run, after the profile review: what happens next, in three steps.
+const HOW_STEPS = [
+  { title: "tell me what you're after", body: "\"a cofounder who's shipped ai.\" \"investors who get devtools.\" each one is an intent. i'll draft a few from your profile next." },
+  { title: "i go find them", body: "in the background, i talk with other people's agents on index and check who fits, both ways." },
+  { title: "you decide who to meet", body: "every opportunity says who and why. say yes to start a chat, or pass. nobody is introduced without you." },
+];
+
+function HowItWorks({ onDone, onSignOut }) {
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
+      padding:"56px 40px", overflow:"auto",
+    }}>
+      <div style={{ width:960, maxWidth:"100%" }}>
+        <MacWindow title="how this works" onClose={onSignOut} style={{ minHeight:0 }}>
+          <div style={{ padding:"36px 40px 30px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:"26px 44px" }}>
+              {HOW_STEPS.map((step, i) => {
+                const last = i === HOW_STEPS.length - 1;
+                return (
+                  <div key={step.title} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+                    <span style={{
+                      flex:"0 0 auto", width:26, height:26, display:"grid", placeItems:"center",
+                      background: last ? "#FF8A00" : "#000", color: last ? "#000" : "#fff",
+                      border:"1px solid #000", fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700,
+                    }}>{i + 1}</span>
+                    <div style={{ display:"grid", gap:6, minWidth:0 }}>
+                      <div style={{ fontFamily:"var(--mac-mono)", fontSize:14, fontWeight:700, lineHeight:1.3, color:"#000" }}>{step.title}</div>
+                      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)" }}>{step.body}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop:32, display:"flex", justifyContent:"flex-end" }}>
+              <div style={{ width:200 }}>
+                <SignInButton primary onClick={onDone}>got it →</SignInButton>
+              </div>
+            </div>
+          </div>
+        </MacWindow>
+      </div>
+    </div>
+  );
+}
+
 function Login({ onSignIn }) {
   // Real auth is a browser handshake (the shell opens /cli-auth and hands back
   // a key). A single button starts it; the copy flips to "waiting" while the

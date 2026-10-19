@@ -26,9 +26,9 @@ export const UNVERIFIED_PROMPT =
   "Your principal has not verified their account, so they have agreed to nothing, including this negotiation. Speak about them in the third person and only from their intent; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their intent does not cover is theirs to answer once contacted. Accept only a proposal their intent plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
 
 const BRIEF_ONLY_PROMPT = [
-  "You give one new opportunity the brief and decision it does not have yet, so its negotiator can run at all.",
+  "You write the brief for one new opportunity, so its negotiator can run at all. The decision is already made and given to you: you never choose or change it. Write the brief that carries it out. For a continue, that is the reason this pair is worth a first conversation. For a decline, it is one sentence on the mismatch between what this intent seeks and what the counterpart asks.",
   BRIEF_PROMPT,
-  "Call set_brief exactly once, for this opportunity only. That call is this run's whole product: nothing you say outside it is kept. You cannot speak to your principal here — if a fact is missing, decide from what you have and leave asking to a wake.",
+  "Call set_brief exactly once, for this opportunity only. That call is this run's whole product: nothing you say outside it is kept. You cannot speak to your principal here — if a fact is missing, write from what you have and leave asking to a wake.",
 ].join("\n\n");
 
 /**
@@ -52,26 +52,6 @@ export function principalOnly(conversation: ConversationEntry[]): ConversationEn
   return conversation.filter(
     (entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall" && entry.kind !== "resolution",
   );
-}
-
-/** The `set_brief` parameter shape for one opportunity, requiring brief text only when it has none. */
-export function briefParameters(opportunity: Opportunity) {
-  return {
-    type: "object" as const,
-    additionalProperties: false,
-    properties: {
-      decision: { type: "string", enum: DECISIONS },
-      brief: {
-        type: "string",
-        minLength: 1,
-        maxLength: BRIEF_LIMIT,
-        description: opportunity.brief
-          ? "A replacement brief. Omit it to leave the standing brief in place."
-          : "This opportunity's brief. Required: it has none yet.",
-      },
-    },
-    required: opportunity.brief ? ["decision"] : ["decision", "brief"],
-  };
 }
 
 /**
@@ -99,18 +79,20 @@ export function recordBrief(opportunity: Opportunity, decision: Decision, brief?
 }
 
 /**
- * Give one opportunity a brief and decision when it has neither, so a
- * negotiator can run without waiting for a wake.
+ * Write one opportunity's brief when it has none, for a decision the caller
+ * already made, so a negotiator can run without waiting for a wake. The model
+ * only writes the brief text; it never picks or changes the decision.
  *
  * This is the whole reason briefing is no longer a wake phase: a counterpart
  * can open or move a negotiation at any time, and that alone should not pull
  * the principal's whole intent into a think pass.
  *
  * @param input - The opportunity, the conversation behind it, and the model.
+ * @param decision - What the negotiator will carry out: continue, or decline when the screen skipped.
  * @param operation - What the run is traced as.
  * @returns The brief and decision to persist, or nothing when both already stand.
  */
-export async function briefIfMissing(input: BriefInput, operation = "brief"): Promise<WakeAction[]> {
+export async function briefIfMissing(input: BriefInput, decision: Decision, operation = "brief"): Promise<WakeAction[]> {
   const { user, intent, opportunity } = input;
   if (opportunity.brief && opportunity.decision) return [];
 
@@ -119,9 +101,14 @@ export async function briefIfMissing(input: BriefInput, operation = "brief"): Pr
     tool({
       name: "set_brief",
       description:
-        "Decide this opportunity and brief its negotiator. The brief is the only thing the negotiator carries into its turn.",
-      parameters: briefParameters(opportunity),
-      run: ({ decision, brief }: { decision: Decision; brief?: string }) => {
+        "Write this opportunity's brief for the decision you were given. The brief is the only thing the negotiator carries into its turn.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { brief: { type: "string", minLength: 1, maxLength: BRIEF_LIMIT } },
+        required: ["brief"],
+      },
+      run: ({ brief }: { brief: string }) => {
         recorded.push(...recordBrief(opportunity, decision, brief));
         return "Brief recorded.";
       },
@@ -141,6 +128,7 @@ export async function briefIfMissing(input: BriefInput, operation = "brief"): Pr
     prompt:
       "Brief this one opportunity now.\n" +
       JSON.stringify({
+        decision,
         principal: principalFacts(user),
         conversation: principalOnly(input.principalConversation),
         opportunity,
@@ -152,43 +140,41 @@ export async function briefIfMissing(input: BriefInput, operation = "brief"): Pr
   return recorded;
 }
 
+/** How sure the decision model must be that a candidate is a mismatch before they are skipped. */
+const SKIP_CONFIDENCE = 0.8;
+
 /**
- * Decide a discovered person before they are reached, so a pair the brief
- * would decline is never opened and its counterpart never reads a decline.
+ * The only place a person is decided before they are reached: the cheap
+ * decision model skips a clear mismatch, so its counterpart never reads a
+ * decline. A borderline person passes, because a wrongful skip loses a match
+ * while a wrongful pass costs one negotiator turn.
  *
- * @param input - The principal, the intent, their conversation, and the model.
- * @param candidate - One person discovery found.
- * @returns Whether to open them. A screen that fails opens them.
+ * @param input - The principal, the intent, their conversation, and the decision model.
+ * @param candidate - The person to decide: a discovered counterparty or an incoming opportunity's.
+ * @returns Whether to reach them. No decision model, or one that fails twice, reaches them.
  */
-export async function screens(input: Omit<BriefInput, "opportunity">, candidate: Counterparty): Promise<boolean> {
-  // A decision model, when there is one, answers this alone; if it fails, the briefing below does.
-  const choice = await input.decide?.({
+export async function screens(
+  input: Omit<BriefInput, "opportunity">,
+  candidate: Pick<Counterparty, "statement" | "bio" | "location">,
+): Promise<boolean> {
+  const { decide } = input;
+  if (!decide) return true;
+  const said = principalOnly(input.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text);
+  const ask = () => decide({
     state: {
-      principal: principalFacts(input.user),
-      intent: input.intent.statement,
-      said: principalOnly(input.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text),
-      candidate: { statement: candidate.statement, bio: candidate.bio, location: candidate.location },
+      principal_intent: input.intent.statement,
+      principal_profile: principalFacts(input.user),
+      ...(said.length ? { principal_said: said } : {}),
+      candidate: { seeks: candidate.statement, bio: candidate.bio, location: candidate.location },
     },
-    question: "Should this principal be introduced to this candidate? Reach only if the candidate meets every requirement of the intent and wants what the principal offers; skip a clear mismatch.",
+    question: "Should this principal be introduced to this candidate? Reach only if the candidate wants what the principal offers or seeks; skip a clear mismatch.",
     options: {
-      reach: "Nothing the candidate states contradicts the intent. What they leave unsaid is unknown, so a conversation can ask.",
-      skip: "The candidate contradicts a requirement of the intent, or wants something it rules out.",
+      reach: "What the candidate asks for is what this intent offers or seeks, and nothing they state contradicts its requirements. Facts they leave unsaid are unknown.",
+      skip: "The candidate asks for something other than what this intent offers or seeks, or contradicts one of its requirements such as role, domain, stage or location.",
     },
     ...(input.signal ? { signal: input.signal } : {}),
-  }).catch(() => undefined);
-  if (choice) return choice === "reach";
-
-  const actions = await briefIfMissing({
-    ...input,
-    opportunity: {
-      id: candidate.intentId,
-      counterpart: candidate.name,
-      status: "candidate",
-      intent: { statement: candidate.statement },
-      bio: candidate.bio,
-      location: candidate.location,
-    },
-  }, "screen").catch(() => []);
-  const decision = actions.flatMap((action) => (action.type === "decision" ? [action.decision] : []))[0];
-  return decision !== "decline" && decision !== "stop";
+  });
+  const answer = await ask().catch(ask).catch(() => undefined);
+  if (!answer) return true;
+  return (answer.probabilities?.skip ?? (answer.choice === "skip" ? 1 : 0)) < SKIP_CONFIDENCE;
 }

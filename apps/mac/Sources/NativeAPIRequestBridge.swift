@@ -262,7 +262,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/agents$"#), ("POST", #"^/agents$"#),
         ("PATCH", #"^/agents/[^/?]+$"#), ("DELETE", #"^/agents/[^/?]+$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
-        ("POST", #"^/intents(?:/(?:list|prepare))?$"#),
+        ("POST", #"^/intents(?:/(?:list|prepare|suggestions))?$"#),
         ("GET", #"^/intents/[^/?]+/opportunities(?:\?.*)?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("PATCH", #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#),
@@ -630,6 +630,7 @@ final class NativeAPIRequestBridge {
                     && optionalInteger(item, "limit", minimum: 1, maximum: 100)
                     && optionalBool(item, "archived") && optionalString(item, "sourceType", maximum: 128)
             }
+        case "/intents/suggestions": return keysAllowed(body, allowed: [])
         case "/intents/prepare":
             return exactTypedObject(body, required: ["payload"], optional: ["answers"]) { item in
                 boundedString(item["payload"], maximum: 65_536)

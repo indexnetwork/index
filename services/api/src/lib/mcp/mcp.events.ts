@@ -74,7 +74,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'opportunity.status': {
-    description: 'An opportunity the owner is part of changed status: negotiating, pending (waiting on the owner), accepted, rejected, or expired.',
+    description: 'An opportunity the owner is part of changed status: negotiating, pending (waiting on the owner, or already a chat if the owner accepted: accepting is a single yes that opens the chat), accepted, rejected, or expired.',
     args: z.object({
       intentId: intentFilter,
       status: z.enum(['negotiating', 'pending', 'accepted', 'rejected', 'expired']).optional().describe('Only this status.'),

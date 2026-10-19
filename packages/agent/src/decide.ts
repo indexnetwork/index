@@ -12,7 +12,7 @@ export type Decide = (input: {
   /** Each option's key, with what choosing it means. */
   options: Record<string, string>;
   signal?: AbortSignal;
-}) => Promise<string>;
+}) => Promise<{ choice: string; /** Each option's probability, when the backend reports it. */ probabilities?: Record<string, number> }>;
 
 export interface DecideClientOptions {
   apiKey?: string;
@@ -47,11 +47,11 @@ export function createDecide(options: DecideClientOptions = {}): Decide {
       body: JSON.stringify({ model: options.model ?? DEFAULT_MODEL, state, questions: { choice: { type: "choice", instructions: question, criteria } } }),
       signal: timeout(signal),
     });
-    const body = await response.json().catch(() => null) as { answers?: { choice?: { choice?: string } }; error?: { message?: string } } | null;
+    const body = await response.json().catch(() => null) as { answers?: { choice?: { choice?: string; probabilities?: Record<string, number> } }; error?: { message?: string } } | null;
     if (!response.ok) throw new Error(body?.error?.message ?? `Decision failed with ${response.status}`);
-    const choice = body?.answers?.choice?.choice;
-    if (!choice || !(choice in criteria)) throw new Error("Decision returned no known option.");
-    return choice;
+    const answer = body?.answers?.choice;
+    if (!answer?.choice || !(answer.choice in criteria)) throw new Error("Decision returned no known option.");
+    return { choice: answer.choice, ...(answer.probabilities ? { probabilities: answer.probabilities } : {}) };
   };
 }
 
@@ -71,6 +71,6 @@ export function decideWith(model: Model): Decide {
       maxRetries: 0,
       abortSignal: timeout(signal),
     });
-    return output;
+    return { choice: output };
   };
 }

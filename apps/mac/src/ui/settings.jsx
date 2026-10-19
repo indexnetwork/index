@@ -2,11 +2,6 @@
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
-// Soft length guide for the introduction counter. The API stores intro with no
-// hard cap, and enrichment synthesizes a full narrative paragraph, so this is
-// generous enough that a real enriched profile doesn't render as "over".
-const INTRO_MAX = 2000;
-
 /* ---------- shared field chrome ---------- */
 
 function FieldLabel({ children, required, right }) {
@@ -187,8 +182,8 @@ function PhotoPicker({ me, name, photo, onPick }) {
   );
 }
 
-function ProfilePane({ me, form, set, profileOnly = false }) {
-  const over = form.intro.length > INTRO_MAX;
+function ProfilePane({ me, form, set, profileOnly = false, onWriteOwnIntro }) {
+  const introRef = useRef(null);
 
   return (
     <div>
@@ -225,15 +220,16 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
       </div>
 
       <div style={{ marginTop:14 }}>
-        <FieldLabel right={
-          <span style={{
-            fontFamily:"var(--mac-mono)", fontSize:11,
-            color: over ? "var(--ink-warn)" : "var(--ink-2)",
-            fontWeight: over ? 700 : 400,
-          }}>{form.intro.length}/{INTRO_MAX}</span>
-        }>introduction</FieldLabel>
+        <FieldLabel right={onWriteOwnIntro && (
+          <button type="button" onClick={() => { onWriteOwnIntro(); if (introRef.current) introRef.current.focus(); }} style={{
+            padding:0, border:"none", background:"transparent",
+            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+            textDecoration:"underline", cursor:"pointer",
+          }}>not you? write your own</button>
+        )}>introduction</FieldLabel>
         <div style={{ ...wellStyle(false), alignItems:"stretch", padding:"8px 10px" }}>
           <textarea
+            ref={introRef}
             value={form.intro}
             onChange={e => set("intro", e.target.value)}
             rows={4}
@@ -926,6 +922,8 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // Edited relative to what was assembled, drives whether reset is offered.
   const dirty = JSON.stringify(form) !== JSON.stringify(assembled.current);
   const reset = () => setForm(assembled.current);
+  // First run, when the lookup wrote about someone else: empty the bio and hand it over.
+  const writeOwnIntro = () => set("intro", "");
 
   // Write back onto the shared record so the rest of the app (the account row,
   // any pane reopened later) sees the edit, then get out of the way. This is
@@ -1053,7 +1051,8 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"20px 24px 22px",
           }}>
-            {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
+            {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}
+              onWriteOwnIntro={firstRun && !foundNothing ? writeOwnIntro : undefined}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle} timezone={timezone} onTimezone={setTimezone}/>}
             {tab === "keys"    && <AccessPane/>}
             {tab === "advanced" && <AdvancedPane/>}

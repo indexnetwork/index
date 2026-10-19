@@ -1,7 +1,7 @@
-import { Intents, Networks, decideNegotiationOpening, pairKeyOf, type PrepareInput } from '@indexnetwork/protocol';
+import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, type IntentSuggestions, type PrepareInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
-import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
+import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
@@ -148,6 +148,7 @@ export class IntentService {
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private emitCreated: (intentId: string, userId: string) => void;
+  private suggester: IntentSuggester | null = null;
 
   /**
    * @param deps - Optional dependency overrides for focused service tests.
@@ -180,6 +181,28 @@ export class IntentService {
     if (result.status !== 'ready') return result;
     const preparationReceipt = await issuePreparationReceipt(userId, result);
     return { status: result.status, payload: result.payload, preparationReceipt };
+  }
+
+  /**
+   * Suggest first intents from the owner's profile: two they might be looking
+   * for, then one they could offer. Onboarding offers these as one-tap starts.
+   *
+   * @returns The three suggestions and the example starters rewritten for them; both empty when the model has nothing.
+   */
+  async suggest(userId: string): Promise<IntentSuggestions> {
+    const [user, active] = await Promise.all([
+      userDatabaseAdapter.findById(userId),
+      chatDatabaseAdapter.getActiveIntents(userId),
+    ]);
+    if (!user) return { suggestions: [], examples: [] };
+    this.suggester ??= new IntentSuggester();
+    const result = await this.suggester.invoke({
+      name: user.name ?? null,
+      intro: user.intro ?? null,
+      location: user.location ?? null,
+      existingIntents: active.map((intent) => intent.summary || intent.payload),
+    });
+    return result ?? { suggestions: [], examples: [] };
   }
 
   private async runPrepare(input: PrepareInput) {

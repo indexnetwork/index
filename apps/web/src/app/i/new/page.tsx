@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -6,13 +6,15 @@ import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
-import { intentService, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
+import { intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 
 const OPENING_PROMPT = "what are you looking for right now?";
+const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
+const MORE_PROMPT = "i'm on it. anything else you're looking for?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
 const OPENING_OPTIONS = [
   "traveling soon, want to meet cool people in ai",
@@ -24,7 +26,7 @@ const OPENING_OPTIONS = [
   "have an idea, want someone to build it with",
 ];
 
-type Stage = "opening" | "recovery" | "summary" | "retry";
+type Stage = "picks" | "opening" | "recovery" | "summary" | "retry";
 type Turn = { id: string; prompt: string; answer: string };
 
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
@@ -33,8 +35,15 @@ export default function NewIntentPage() {
   const compact = useCompact();
   useVisualViewport();
   const { isAuthenticated, user, refetchUser } = useAuthContext();
+  // Read once: creating the picks finishes onboarding, but the flow keeps its three steps.
+  const [onboarding] = useState(() => awaitsFirstIntent(user));
+  const { suggestions, examples } = useSuggestions(onboarding);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [stage, setStage] = useState<Stage>("opening");
+  const [chosenStage, setStage] = useState<Stage>(onboarding ? "picks" : "opening");
+  // Nothing to suggest: onboarding goes straight to writing one.
+  const stage: Stage = chosenStage === "picks" && suggestions !== "loading" && !suggestions.length ? "opening" : chosenStage;
+  const [createdIds, setCreatedIds] = useState<string[]>([]);
+  const [picksNote, setPicksNote] = useState("");
   const [payload, setPayload] = useState("");
   const [recoveryFields, setRecoveryFields] = useState<RecoveryField[]>([]);
   const [preparationReceipt, setPreparationReceipt] = useState("");
@@ -66,10 +75,28 @@ export default function NewIntentPage() {
     }
   };
 
+  /** Each pick is created as it stands; the server admits it or says why not. */
+  const createPicks = async (picked: IntentSuggestion[]) => {
+    setCreating(true);
+    const results = await Promise.allSettled(picked.map((s) => intentService.create(s.text)));
+    const ids = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.intentId] : []));
+    const saved = picked.filter((_, i) => results[i].status === "fulfilled");
+    // The first intent after the profile review finishes onboarding, as on the Mac.
+    if (ids[0]) void onboardingService.complete(ids[0]).then(() => refetchUser()).catch(() => {});
+    const failed = picked.length - ids.length;
+    setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
+    setCreatedIds(ids);
+    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((s) => `· ${s.text}`).join("\n") }]);
+    setStage("opening");
+    setCreating(false);
+  };
+
+  const openingPrompt = createdIds.length ? MORE_PROMPT : OPENING_PROMPT;
+
   const submitOpening = (text: string) => {
     const answer = text.trim();
     if (!answer) return;
-    setTurns([{ id: "intent", prompt: OPENING_PROMPT, answer }]);
+    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer }]);
     setPayload(answer);
     void runPrepare(answer);
   };
@@ -83,7 +110,8 @@ export default function NewIntentPage() {
       if (awaitsFirstIntent(user)) {
         void onboardingService.complete(created.intentId).then(() => refetchUser()).catch(() => {});
       }
-      navigate(`/i/${created.intentId}`);
+      // Onboarding ends on the home page, where the new intents' updates come in.
+      navigate(onboarding ? "/" : `/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
       setFeedback(`that didn't go through. ${createFailureReason(error)}`);
@@ -94,7 +122,9 @@ export default function NewIntentPage() {
 
   if (!isAuthenticated) return <Navigate to="/" replace />;
 
-  const stepIdx = stage === "opening" ? 1 : 2;
+  const steps = onboarding ? ["picks", "opening"] : ["opening"];
+  const stepIdx = steps.includes(stage) ? steps.indexOf(stage) + 1 : steps.length + 1;
+  const stepCount = steps.length + 1;
 
   return (
     <div className="workbench mac-desktop wb-viewport">
@@ -113,9 +143,9 @@ export default function NewIntentPage() {
                   <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>← back</button>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}>
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", letterSpacing: "0.05em", flex: "0 0 auto" }}>step {stepIdx} of 2</span>
+                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", letterSpacing: "0.05em", flex: "0 0 auto" }}>step {stepIdx} of {stepCount}</span>
                   <div style={{ flex: 1, display: "flex", gap: 3 }}>
-                    {[0, 1].map((i) => (
+                    {Array.from({ length: stepCount }, (_, i) => (
                       <div key={i} style={{
                         flex: 1, height: 8, border: "1px solid #000",
                         background: i < stepIdx - 1 ? "#000" : i === stepIdx - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
@@ -148,8 +178,16 @@ export default function NewIntentPage() {
                     </div>
                   ) : stage === "recovery" ? (
                     <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers)} />
+                  ) : stage === "picks" ? (
+                    <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
                   ) : (
-                    <Opening onSubmit={submitOpening} />
+                    <Opening
+                      prompt={openingPrompt}
+                      note={picksNote}
+                      examples={examples.length ? examples : OPENING_OPTIONS}
+                      onSubmit={submitOpening}
+                      onDone={createdIds.length ? () => navigate("/") : undefined}
+                    />
                   )}
                 </div>
               </div>
@@ -157,7 +195,7 @@ export default function NewIntentPage() {
             {/* The live preview is a side panel; a phone has no side. */}
             {!compact && (
               <Window title="warming up">
-                <FieldPreview turns={turns} stepIdx={stepIdx} />
+                <FieldPreview turns={turns} refining={stepIdx === stepCount} />
               </Window>
             )}
           </div>
@@ -167,14 +205,20 @@ export default function NewIntentPage() {
   );
 }
 
-function Opening({ onSubmit }: {
+function Opening({ prompt, note, examples, onSubmit, onDone }: {
+  prompt: string;
+  note: string;
+  examples: string[];
   onSubmit: (text: string) => void;
+  /** After the picks: leave without writing another. */
+  onDone?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   return (
     <div className="fade-up" style={{ display: "grid", gap: 10 }}>
-      <AgentLine>{OPENING_PROMPT}</AgentLine>
+      <AgentLine>{prompt}</AgentLine>
       <div style={{ marginLeft: 42, display: "grid", gap: 10 }}>
+        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", color: "var(--ink-2)" }}>{note}</div>}
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}>
           <textarea
             autoFocus
@@ -190,12 +234,83 @@ function Opening({ onSubmit }: {
           </div>
         </form>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {OPENING_OPTIONS.map((option) => (
+          {examples.map((option) => (
             <OptionChip key={option} label={option} onClick={() => onSubmit(option)} />
           ))}
         </div>
+        {onDone && <div style={{ marginTop: 6 }}><Btn onClick={onDone}>that&apos;s all for now →</Btn></div>}
       </div>
     </div>
+  );
+}
+
+/** Onboarding step one: the agent's drafts from the profile, any number picked. */
+function Picks({ suggestions, onCreate, onSkip }: {
+  suggestions: IntentSuggestion[] | "loading";
+  onCreate: (picked: IntentSuggestion[]) => void;
+  onSkip: () => void;
+}) {
+  const [picked, setPicked] = useState<number[]>([]);
+  if (suggestions === "loading") {
+    return (
+      <div className="fade-up">
+        <AgentLine muted>reading what i found about you… <WorkingDots /></AgentLine>
+      </div>
+    );
+  }
+  const toggle = (i: number) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
+  return (
+    <div className="fade-up" style={{ display: "grid", gap: 10 }}>
+      <AgentLine>{PICKS_PROMPT}</AgentLine>
+      <div style={{ marginLeft: 42, display: "grid", gap: 8, justifyItems: "start" }}>
+        {suggestions.map((s, i) => (
+          <SuggestionChip key={s.text} suggestion={s} selected={picked.includes(i)} onClick={() => toggle(i)} />
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
+          <Btn primary disabled={!picked.length} onClick={() => onCreate(picked.sort().map((i) => suggestions[i]))}>
+            {picked.length > 1 ? `create these ${picked.length}` : "create this"} →
+          </Btn>
+          <button type="button" onClick={onSkip} style={{ fontFamily: "var(--mac-mono)", fontSize: 11, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}>
+            none of these, i&apos;ll write my own
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Onboarding only: the agent's drafts and example starters from the profile. Empty when there are none. */
+function useSuggestions(enabled: boolean): { suggestions: IntentSuggestion[] | "loading"; examples: string[] } {
+  const [result, setResult] = useState<{ suggestions: IntentSuggestion[] | "loading"; examples: string[] }>(
+    { suggestions: enabled ? "loading" : [], examples: [] },
+  );
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    intentService.suggestions()
+      .then((res) => ({ suggestions: res.suggestions, examples: res.examples ?? [] }))
+      .catch(() => ({ suggestions: [], examples: [] }))
+      .then((next) => { if (!cancelled) setResult(next); });
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return result;
+}
+
+function SuggestionChip({ suggestion, selected, onClick }: {
+  suggestion: IntentSuggestion;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected}
+      style={{
+        display: "inline-flex", alignItems: "baseline", gap: 10, minHeight: 36, maxWidth: 620,
+        padding: "8px 14px", cursor: "pointer", textAlign: "left",
+        background: selected ? "#111" : "#fff", color: selected ? "#fff" : "#111", border: "1px solid #000",
+      }}>
+      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 12 }}>{selected ? "[x]" : "[ ]"}</span>
+      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5 }}>{suggestion.text}</span>
+    </button>
   );
 }
 
@@ -232,7 +347,7 @@ function PastTurn({ prompt, answer }: {
     <div style={{ display: "grid", gap: 10 }}>
       <AgentLine muted>{prompt}</AgentLine>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>{answer}</div>
+        <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
       </div>
     </div>
   );
@@ -270,11 +385,12 @@ function IntentSummary({ description, note, canCreate, onChange, onCreate, onRec
   );
 }
 
-function FieldPreview({ turns, stepIdx }: { turns: Turn[]; stepIdx: number }) {
+function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean }) {
+  const latest = turns.at(-1);
   const lines = [
     "getting a read on what you need…",
-    turns[0] ? `you're after: "${truncate(turns[0].answer, 40)}"` : null,
-    stepIdx >= 2 ? "sharpening the edges…" : null,
+    latest ? `you're after: "${truncate(latest.answer.replace(/^· /, ""), 40)}"` : null,
+    refining ? "sharpening the edges…" : null,
   ].filter((line): line is string => Boolean(line));
 
   return (
