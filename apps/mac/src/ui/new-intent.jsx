@@ -17,7 +17,7 @@ const INTENT_STEP = {
   ],
 };
 
-const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like.";
+const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
 const MORE_PROMPT = "i'm on it. anything else you're looking for?";
 
 function NewIntent({ onDone, onBack, onHome, suggest = false }) {

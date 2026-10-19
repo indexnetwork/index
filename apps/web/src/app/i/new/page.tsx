@@ -13,7 +13,7 @@ import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 
 const OPENING_PROMPT = "what are you looking for right now?";
-const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like.";
+const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
 const MORE_PROMPT = "i'm on it. anything else you're looking for?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
 const OPENING_OPTIONS = [
