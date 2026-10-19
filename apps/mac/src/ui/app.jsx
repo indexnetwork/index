@@ -759,8 +759,8 @@ function App() {
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")} onHome={finishOnboarding} suggest={freshUser}/>}
         {/* First run, in three screens: confirm the name, look the person up
             behind the loader, then review what came back. The review is what
-            PATCHes profile + confirm-profile; the first intent after it POSTs
-            onboarding/complete. */}
+            PATCHes profile + confirm-profile; a short how-it-works follows, and
+            the first intent after it POSTs onboarding/complete. */}
         {screen === "name"        && <AskName
                                        initialName={(me && me.name) || ""}
                                        onSubmit={(name) => { setConfirmedName(name); setScreen("looking-up"); }}
@@ -779,6 +779,9 @@ function App() {
                                        enriched={enriched}
                                        name={confirmedName}
                                        onClose={signOut}
+                                       onDone={() => setScreen("how-it-works")}/>}
+        {screen === "how-it-works" && <HowItWorks
+                                       onSignOut={signOut}
                                        onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link
             can land on the hub, where the radar's selection state doesn't

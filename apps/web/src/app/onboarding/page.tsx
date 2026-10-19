@@ -6,13 +6,19 @@ import { Btn, Stage, Window } from "@/components/workbench/Workbench";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { needsOnboarding, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 
-type Step = "name" | "looking-up" | "review";
+type Step = "name" | "looking-up" | "review" | "how";
 
 const LOOKUP_LINES = ["looking you up…", "reading what's already public…", "almost there"];
 
+const HOW_STEPS = [
+  { title: "tell me what you're after", body: "\"a cofounder who's shipped ai.\" \"investors who get devtools.\" each one is an intent. i'll draft a few from your profile next." },
+  { title: "i go find them", body: "in the background, i talk with other people's agents on index and check who fits, both ways." },
+  { title: "you decide who to meet", body: "every opportunity says who and why. say yes to start a chat, or pass. nobody is introduced without you." },
+];
+
 /**
- * First run: confirm the name, look the person up, review the profile, then
- * straight into the first intent. The review confirms the profile; the first
+ * First run: confirm the name, look the person up, review the profile, a
+ * short how-it-works, then the first intent. The review confirms the profile; the first
  * intent completes onboarding.
  */
 export default function OnboardingPage() {
@@ -43,10 +49,12 @@ export default function OnboardingPage() {
 
   if (step === "looking-up") return <LookingUp />;
 
+  if (step === "how") return <HowItWorks onDone={() => navigate("/i/new", { replace: true })} onSignOut={() => void signOut()} />;
+
   if (step === "review") {
     return (
       <ProfileSettings
-        firstRun={{ lookup, name, onDone: () => navigate("/i/new", { replace: true }) }}
+        firstRun={{ lookup, name, onDone: () => setStep("how") }}
       />
     );
   }
@@ -109,6 +117,35 @@ function AskName({ initialName, onSubmit, onSignOut }: {
             </button>
           </div>
         </form>
+      </Window>
+    </Stage>
+  );
+}
+
+function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () => void }) {
+  return (
+    <Stage width={960}>
+      <Window title="how this works" onClose={onSignOut} style={{ height: "auto" }}>
+        <div style={{ padding: "36px 40px 30px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "26px 44px" }}>
+            {HOW_STEPS.map((step, i) => (
+              <div key={step.title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{
+                  flex: "0 0 auto", width: 26, height: 26, display: "grid", placeItems: "center",
+                  background: i === HOW_STEPS.length - 1 ? "#FF8A00" : "#000", color: i === HOW_STEPS.length - 1 ? "#000" : "#fff",
+                  border: "1px solid #000", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700,
+                }}>{i + 1}</span>
+                <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <div style={{ fontFamily: "var(--mac-mono)", fontSize: 14, fontWeight: 700, lineHeight: 1.3, color: "#000" }}>{step.title}</div>
+                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{step.body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end" }}>
+            <Btn primary onClick={onDone}>got it →</Btn>
+          </div>
+        </div>
       </Window>
     </Stage>
   );
