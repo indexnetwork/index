@@ -150,6 +150,10 @@ export class NetworkController {
         role = isOwnerRole ? 'owner' : 'member';
       }
       const result = await networkService.addMember(params.id, body.userId, user.id, role);
+      // Owner-added people get the email; self-joins (join, invite link, join requests) never reach this route.
+      if (!result.alreadyMember && body.userId !== user.id) {
+        await networkInvitationService.notifyAdded({ networkId: params.id, userId: body.userId, addedById: user.id });
+      }
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -305,6 +309,7 @@ export class NetworkController {
         networkId: params.id,
         email,
         name: name || undefined,
+        invitedById: user.id,
       });
       return Response.json({
         user: { id: result.user.id, email: result.user.email },
