@@ -176,6 +176,8 @@ export interface NegotiateInput {
   intent: Intent;
   brief: string;
   opportunity: Opportunity;
+  /** Profiles the principal linked from their networks, read by the host. */
+  evidence?: string;
   model: Model;
   now?: () => Date;
   signal?: AbortSignal;

@@ -1648,6 +1648,40 @@ export class ChatDatabaseAdapter {
     return { success: true, alreadyMember: result.length === 0 };
   }
 
+  /** @returns The MCP server this network is joined through, or null when it is an ordinary network. */
+  async getNetworkMcp(networkId: string): Promise<schema.NetworkMcp | null> {
+    const [row] = await db.select({ metadata: networks.metadata }).from(networks)
+      .where(and(eq(networks.id, networkId), isNull(networks.deletedAt))).limit(1);
+    return (row?.metadata as { mcp?: schema.NetworkMcp } | undefined)?.mcp ?? null;
+  }
+
+  /** @returns The MCP networks a user belongs to, with the profile last read for each. */
+  async getMemberMcpNetworks(userId: string): Promise<{ networkId: string; title: string; mcp: schema.NetworkMcp; cached?: { text: string; fetchedAt: string } }[]> {
+    const rows = await db
+      .select({ networkId: networks.id, title: networks.title, network: networks.metadata, member: networkMembers.metadata })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networks.id, networkMembers.networkId))
+      .where(and(
+        eq(networkMembers.userId, userId),
+        isNull(networkMembers.deletedAt),
+        isNull(networks.deletedAt),
+        sql`${networks.metadata}->'mcp' is not null`,
+      ));
+    return rows.map((row) => ({
+      networkId: row.networkId,
+      title: row.title,
+      mcp: (row.network as { mcp: schema.NetworkMcp }).mcp,
+      cached: (row.member as { mcpProfile?: { text: string; fetchedAt: string } }).mcpProfile,
+    }));
+  }
+
+  async setMemberMcpProfile(networkId: string, userId: string, text: string): Promise<void> {
+    const mcpProfile = { text, fetchedAt: new Date().toISOString() };
+    await db.update(networkMembers)
+      .set({ metadata: sql`${networkMembers.metadata} || ${JSON.stringify({ mcpProfile })}::jsonb` })
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)));
+  }
+
   async removeMemberFromNetwork(
     networkId: string,
     userId: string

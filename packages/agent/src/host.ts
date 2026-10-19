@@ -14,7 +14,7 @@ import { reach, unansweredPrincipalMessage, wake } from "./wake.ts";
  */
 export type NegotiateHook = (
   input: NegotiateInput,
-  next: () => Promise<NegotiateResult>,
+  next: (override?: NegotiateInput) => Promise<NegotiateResult>,
 ) => Promise<NegotiateResult>;
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
@@ -717,7 +717,7 @@ export async function runNegotiate(
 
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const input: NegotiateInput = { user, intent, brief, opportunity, model, now, signal };
-  const result = runtime.negotiate ? await runtime.negotiate(input, () => negotiate(input)) : await negotiate(input);
+  const result = runtime.negotiate ? await runtime.negotiate(input, (override = input) => negotiate(override)) : await negotiate(input);
   if ("turn" in result) {
     await client.submitTurn(opportunityId, result.turn);
     return result;

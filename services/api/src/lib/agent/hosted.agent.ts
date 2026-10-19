@@ -10,12 +10,14 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, encodeActions, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model, type Runtime } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
+import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
 import { log } from '../log';
+import { memberProfile } from '../network-mcp/network-mcp.client';
 import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
 
 import { HostedIndex } from './hosted.index';
@@ -36,6 +38,7 @@ interface WakeFrame {
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
 export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
+  private readonly networks = new ChatDatabaseAdapter();
   private readonly session: HostedSession;
   private readonly joined = new Set<string>();
   /** Owners whose seat an external negotiator holds, so this host leaves their stream unread. */
@@ -221,9 +224,18 @@ export class HostedAgent {
   }
 
   /** @returns What every run needs beyond Index: the model, the decision model, cancellation, and somewhere to report. */
-  private runtime() {
+  private runtime(): Runtime {
     return {
       model: this.model,
+      // The principal's own profile from each MCP network they joined, as evidence. Never blocks a turn.
+      negotiate: async (input, next) => {
+        const networks = await this.networks.getMemberMcpNetworks(input.user.id).catch(() => []);
+        const profiles = (await Promise.all(networks.map(async (network) => {
+          const text = await memberProfile(network, input.user.id);
+          return text && `${network.title}:\n${text}`;
+        }))).filter(Boolean);
+        return next(profiles.length ? { ...input, evidence: profiles.join('\n\n') } : undefined);
+      },
       ...(this.decide ? { decide: this.decide } : {}),
       signal: this.abort.signal,
       log: (line: string) => { logger.verbose(line.trim()); },

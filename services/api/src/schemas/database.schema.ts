@@ -36,6 +36,16 @@ export interface NetworkPermissionsState {
   requireAdminApproval?: boolean;
 }
 
+/** An MCP server a network is joined through, stored at `networks.metadata.mcp`. */
+export interface NetworkMcp {
+  url: string;
+  /** The tool that returns the signed-in member's own profile. */
+  profileTool: string;
+  /** For servers that do not register clients dynamically. */
+  clientId?: string;
+  clientSecret?: string;
+}
+
 export type NetworkJoinRequestStatus = 'pending' | 'declined';
 
 /**
