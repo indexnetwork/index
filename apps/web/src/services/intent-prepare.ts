@@ -21,9 +21,9 @@ export const intentService = {
   prepare: (payload: string, answers: PrepareAnswer[] = []) =>
     apiClient.post<PrepareResult>("/intents/prepare", { payload, answers }),
 
-  /** Two things to look for and one to offer, drafted from the profile; empty when there are none. */
+  /** Two things to look for and one to offer, drafted from the profile, plus the example starters rewritten for them; empty when there are none. */
   suggestions: () =>
-    apiClient.post<{ suggestions: IntentSuggestion[] }>("/intents/suggestions", {}),
+    apiClient.post<{ suggestions: IntentSuggestion[]; examples?: string[] }>("/intents/suggestions", {}),
 
   /** Save the final text using server-authorized preparation; without a receipt the server prepares it and refuses a draft that isn't ready. */
   create: (description: string, preparationReceipt?: string) =>

@@ -1,4 +1,4 @@
-import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, type IntentSuggestion, type PrepareInput } from '@indexnetwork/protocol';
+import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, type IntentSuggestions, type PrepareInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
@@ -187,22 +187,22 @@ export class IntentService {
    * Suggest first intents from the owner's profile: two they might be looking
    * for, then one they could offer. Onboarding offers these as one-tap starts.
    *
-   * @returns The three suggestions, or an empty list when the model has nothing.
+   * @returns The three suggestions and the example starters rewritten for them; both empty when the model has nothing.
    */
-  async suggest(userId: string): Promise<IntentSuggestion[]> {
+  async suggest(userId: string): Promise<IntentSuggestions> {
     const [user, active] = await Promise.all([
       userDatabaseAdapter.findById(userId),
       chatDatabaseAdapter.getActiveIntents(userId),
     ]);
-    if (!user) return [];
+    if (!user) return { suggestions: [], examples: [] };
     this.suggester ??= new IntentSuggester();
-    const suggestions = await this.suggester.invoke({
+    const result = await this.suggester.invoke({
       name: user.name ?? null,
       intro: user.intro ?? null,
       location: user.location ?? null,
       existingIntents: active.map((intent) => intent.summary || intent.payload),
     });
-    return suggestions ?? [];
+    return result ?? { suggestions: [], examples: [] };
   }
 
   private async runPrepare(input: PrepareInput) {

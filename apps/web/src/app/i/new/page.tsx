@@ -37,7 +37,7 @@ export default function NewIntentPage() {
   const { isAuthenticated, user, refetchUser } = useAuthContext();
   // Read once: creating the picks finishes onboarding, but the flow keeps its three steps.
   const [onboarding] = useState(() => awaitsFirstIntent(user));
-  const suggestions = useSuggestions(onboarding);
+  const { suggestions, examples } = useSuggestions(onboarding);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [chosenStage, setStage] = useState<Stage>(onboarding ? "picks" : "opening");
   // Nothing to suggest: onboarding goes straight to writing one.
@@ -184,6 +184,7 @@ export default function NewIntentPage() {
                     <Opening
                       prompt={openingPrompt}
                       note={picksNote}
+                      examples={examples.length ? examples : OPENING_OPTIONS}
                       onSubmit={submitOpening}
                       onDone={createdIds.length ? () => navigate("/") : undefined}
                     />
@@ -204,9 +205,10 @@ export default function NewIntentPage() {
   );
 }
 
-function Opening({ prompt, note, onSubmit, onDone }: {
+function Opening({ prompt, note, examples, onSubmit, onDone }: {
   prompt: string;
   note: string;
+  examples: string[];
   onSubmit: (text: string) => void;
   /** After the picks: leave without writing another. */
   onDone?: () => void;
@@ -232,7 +234,7 @@ function Opening({ prompt, note, onSubmit, onDone }: {
           </div>
         </form>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {OPENING_OPTIONS.map((option) => (
+          {examples.map((option) => (
             <OptionChip key={option} label={option} onClick={() => onSubmit(option)} />
           ))}
         </div>
@@ -277,19 +279,21 @@ function Picks({ suggestions, onCreate, onSkip }: {
   );
 }
 
-/** Onboarding only: the agent's drafts from the profile. Empty when there are none. */
-function useSuggestions(enabled: boolean): IntentSuggestion[] | "loading" {
-  const [suggestions, setSuggestions] = useState<IntentSuggestion[] | "loading">(enabled ? "loading" : []);
+/** Onboarding only: the agent's drafts and example starters from the profile. Empty when there are none. */
+function useSuggestions(enabled: boolean): { suggestions: IntentSuggestion[] | "loading"; examples: string[] } {
+  const [result, setResult] = useState<{ suggestions: IntentSuggestion[] | "loading"; examples: string[] }>(
+    { suggestions: enabled ? "loading" : [], examples: [] },
+  );
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     intentService.suggestions()
-      .then((res) => res.suggestions)
-      .catch(() => [])
-      .then((list) => { if (!cancelled) setSuggestions(list); });
+      .then((res) => ({ suggestions: res.suggestions, examples: res.examples ?? [] }))
+      .catch(() => ({ suggestions: [], examples: [] }))
+      .then((next) => { if (!cancelled) setResult(next); });
     return () => { cancelled = true; };
   }, [enabled]);
-  return suggestions;
+  return result;
 }
 
 function SuggestionChip({ suggestion, selected, onClick }: {

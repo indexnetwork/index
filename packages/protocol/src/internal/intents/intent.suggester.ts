@@ -17,6 +17,9 @@ export const IntentSuggestionOutputSchema = z.object({
     .array(SuggestionText)
     .describe("Exactly two things they might want: someone to learn from, hire, fund, build with, or meet."),
   offering: SuggestionText.describe("One thing they could offer others: their skills, capital, time, or help."),
+  examples: z
+    .array(z.string().describe("One line, at most 110 characters, lowercase, no trailing period."))
+    .describe("Five to seven of the example starters, rewritten for this person in the same casual shape."),
 });
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -33,6 +36,12 @@ export interface IntentSuggestionInput {
 export interface IntentSuggestion {
   kind: "looking_for" | "offering";
   text: string;
+}
+
+/** The picks, plus the example starters rewritten for this person. */
+export interface IntentSuggestions {
+  suggestions: IntentSuggestion[];
+  examples: string[];
 }
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
@@ -54,11 +63,32 @@ RULES:
 - Write each in their voice, first person implied, like they would type it:
   "looking for a technical cofounder who has shipped ml in production",
   "happy to give early founders feedback on their go-to-market".
-- Ground every suggestion in the profile: their work, field, stage, and place. Be concrete
-  enough that the right person would recognize themselves, but do not invent facts.
+- Ground every suggestion in the profile: their role and field. What we found may be old, so
+  stay at that level: never name a company, product, fund, school, or city, and leave out
+  details that go stale (stage, round, team size, dates). Do not invent facts.
 - One line each, at most 90 characters, lowercase, no trailing period, no emoji, no em dashes.
 - Skip anything that repeats one of their existing intents.
 - If the profile says little, still give three plausible, specific starting points.
+
+EXAMPLES:
+Also rewrite these generic starters for this person, keeping their short, casual
+"situation, want ..." shape:
+- traveling soon, want to meet cool people in ai
+- building something, want honest feedback on it
+- just launched, want cool people to try it
+- new in town, want to find my people
+- raising soon, want to meet investors who get it
+- hiring soon, want to meet great people early
+- have an idea, want someone to build it with
+Give each a light touch so it feels like theirs: swap the generic part for their broad field or
+role, nothing more. A founder in agent infrastructure might get "traveling soon, want to meet people
+building or investing in agents". Same limits as above: no company, product, fund, school, or city
+names, and nothing that would go stale. Keep them short and loose; one field word is usually enough.
+Swap any that do not fit their role for one that does: an investor does not raise, so "raising soon"
+becomes something like "deploying capital, want to meet founders in <their broad focus>"; someone who
+is not building does not launch. Drop any you cannot make fit, but always keep the traveling one.
+Return five to seven, each at most 90 characters, lowercase, no trailing period, no emoji, no em
+dashes, and none that repeat the three suggestions above.
 `;
 
 // ─── Agent class ──────────────────────────────────────────────────────────────
@@ -79,10 +109,10 @@ export class IntentSuggester {
 
   /**
    * @param input - The person's profile and their active intents.
-   * @returns Two "looking_for" suggestions then one "offering", or null when the call fails.
+   * @returns Two "looking_for" suggestions then one "offering", with the rewritten examples; null when the call fails.
    */
   @Timed()
-  public async invoke(input: IntentSuggestionInput): Promise<IntentSuggestion[] | null> {
+  public async invoke(input: IntentSuggestionInput): Promise<IntentSuggestions | null> {
     const clean = (text: string | null, max: number) => (text ?? "").replace(/\s+/g, " ").trim().slice(0, max);
     const prompt = [
       `## Name\n${clean(input.name, 200) || "(unknown)"}`,
@@ -101,10 +131,13 @@ export class IntentSuggester {
       const lookingFor = parsed.data.lookingFor.map(tidy).filter(Boolean).slice(0, 2);
       const offering = tidy(parsed.data.offering);
       if (lookingFor.length < 2 || !offering) return null;
-      return [
-        ...lookingFor.map((text) => ({ kind: "looking_for" as const, text })),
-        { kind: "offering" as const, text: offering },
-      ];
+      return {
+        suggestions: [
+          ...lookingFor.map((text) => ({ kind: "looking_for" as const, text })),
+          { kind: "offering" as const, text: offering },
+        ],
+        examples: parsed.data.examples.map(tidy).filter((text) => text && text.length <= 140).slice(0, 7),
+      };
     } catch (error) {
       logger.error("Error during execution", { error });
       return null;

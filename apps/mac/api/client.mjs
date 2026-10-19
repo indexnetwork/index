@@ -428,7 +428,8 @@ export function createIndexApiClient(options = {}) {
       // needs_revision includes feedback and recovery. Retain answers on failure.
       prepare: (body, options = {}) => request('/intents/prepare', { ...options, method: 'POST', body }),
       // Two things to look for and one to offer, drafted from the profile;
-      // resolves { suggestions: [{ kind: 'looking_for' | 'offering', text }] }, empty when there are none.
+      // resolves { suggestions: [{ kind: 'looking_for' | 'offering', text }], examples: [string] },
+      // the example starters rewritten for them; both empty when there are none.
       suggestions: (options = {}) => request('/intents/suggestions', { ...options, method: 'POST', body: {} }),
       // Persist { description, preparationReceipt? }; resolves { intentId, networkIds }.
       // The receipt authorizes final revisions without another admission gate.

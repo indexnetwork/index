@@ -46,12 +46,18 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
 
   // Onboarding only: the agent's drafts from the profile.
   const [suggestions, setSuggestions] = useState(onboarding ? "loading" : []);
+  // The example starters, rewritten for them; the generic ones until then or without.
+  const [examples, setExamples] = useState(INTENT_STEP.examples);
   useEffect(() => {
     if (!onboarding) return;
     client.intents.suggestions()
-      .then((res) => (res && res.suggestions) || [])
-      .catch(() => [])
-      .then((list) => { if (!cancelledRef.current) setSuggestions(list); });
+      .then((res) => res || {})
+      .catch(() => ({}))
+      .then((res) => {
+        if (cancelledRef.current) return;
+        setSuggestions(res.suggestions || []);
+        if (res.examples && res.examples.length) setExamples(res.examples);
+      });
   }, []);
   // Nothing to suggest: onboarding goes straight to writing one.
   const stage = chosenStage === "picks" && suggestions !== "loading" && !suggestions.length ? "opening" : chosenStage;
@@ -275,7 +281,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
                       </div>
                     </form>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                      {INTENT_STEP.examples.map(ex => (
+                      {examples.map(ex => (
                         <OptionChip key={ex} label={ex} onClick={() => submitOpening(ex)}/>
                       ))}
                     </div>

@@ -120,16 +120,16 @@ export class IntentController {
    *
    * @param _req - Unused; the profile is read server-side.
    * @param user - Authenticated owner.
-   * @returns `{ suggestions }`: two "looking_for" then one "offering", or an empty list.
+   * @returns `{ suggestions, examples }`: two "looking_for" then one "offering", and the example starters rewritten for the owner; empty lists when there are none.
    */
   @Post('/suggestions')
   @UseGuards(AuthGuard)
   async suggestions(_req: Request, user: AuthenticatedUser) {
     try {
-      return Response.json({ suggestions: await intentService.suggest(user.id) });
+      return Response.json(await intentService.suggest(user.id));
     } catch (error) {
       logger.error('Intent suggestions failed', { userId: user.id, error });
-      return Response.json({ suggestions: [] });
+      return Response.json({ suggestions: [], examples: [] });
     }
   }
 
