@@ -77,6 +77,21 @@ export class NetworkController {
   }
 
   /**
+   * Search people to add to a network: anyone the signed-in user shares a
+   * network with, by name or exact email, minus current members of `networkId`.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/search-users')
+  @UseGuards(AuthGuard)
+  async searchUsers(req: Request, user: AuthenticatedUser) {
+    const url = new URL(req.url);
+    const q = (url.searchParams.get('q') || '').slice(0, 200);
+    const networkId = url.searchParams.get('networkId') || undefined;
+    const users = await networkService.searchUsers(user.id, q, networkId);
+    return Response.json({ users });
+  }
+
+  /**
    * Get all members of every network the signed-in user is a member of (deduplicated).
    * Used for mentionable users (e.g. @mentions in chat).
    */

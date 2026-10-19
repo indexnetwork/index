@@ -121,6 +121,8 @@ export default function AccessTab({
     } catch (err) {
       logger.error('Error searching users', { error: err });
       setSuggestedUsers([]);
+      // Still offer the email invite when search is down.
+      setSearchHasQueried(true);
     } finally {
       setSearchIsLoading(false);
     }
