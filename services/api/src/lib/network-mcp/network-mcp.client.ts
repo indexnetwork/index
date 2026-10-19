@@ -12,7 +12,7 @@ import { and, db, eq, schema } from '../../adapters/database.shared';
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { API_URL } from '../betterauth/betterauth';
 
-const REDIRECT_URI = `${API_URL}/networks/mcp/callback`;
+const REDIRECT_URI = `${API_URL}/api/networks/mcp/callback`;
 const PROFILE_TTL_MS = 24 * 60 * 60 * 1000;
 const PROFILE_LIMIT = 1500;
 const TIMEOUT_MS = 10_000;
@@ -52,8 +52,9 @@ async function forget(identifier: string): Promise<void> {
 
 /** The OAuth client this network's server knows Index as: configured, or registered once and kept. */
 async function clientFor(networkId: string, mcp: Mcp): Promise<Client & { authorizationEndpoint: string }> {
-  const origin = new URL(mcp.url).origin;
-  const resource = await getJson<{ authorization_servers?: string[] }>(`${origin}/.well-known/oauth-protected-resource`);
+  const { origin, pathname } = new URL(mcp.url);
+  const resource = await getJson<{ authorization_servers?: string[] }>(`${origin}/.well-known/oauth-protected-resource${pathname}`)
+    ?? await getJson<{ authorization_servers?: string[] }>(`${origin}/.well-known/oauth-protected-resource`);
   const issuer = (resource?.authorization_servers?.[0] ?? origin).replace(/\/$/, '');
   const meta = await getJson<{ authorization_endpoint: string; token_endpoint: string; registration_endpoint?: string }>(`${issuer}/.well-known/oauth-authorization-server`)
     ?? await getJson<{ authorization_endpoint: string; token_endpoint: string; registration_endpoint?: string }>(`${issuer}/.well-known/openid-configuration`);
@@ -92,6 +93,7 @@ export async function authorizeUrl(networkId: string, userId: string, mcp: Mcp):
   const url = new URL(client.authorizationEndpoint);
   url.search = new URLSearchParams({
     response_type: 'code', client_id: client.clientId, redirect_uri: REDIRECT_URI, state, resource: mcp.url,
+    ...(mcp.scope ? { scope: mcp.scope } : {}),
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
   }).toString();
   return url.toString();
