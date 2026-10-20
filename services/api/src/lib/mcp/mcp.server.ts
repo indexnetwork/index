@@ -3,9 +3,6 @@ import { readFileSync } from 'node:fs';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 
 import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
-import { userService } from '../../services/user.service';
-import { log } from '../log';
-
 import { cosignNetwork, registerCosignTools } from './mcp.cosign';
 import { registerMcpEvents } from './mcp.events';
 import { mcpInstructions } from './mcp.instructions';
@@ -17,11 +14,8 @@ const { version } = JSON.parse(readFileSync(new URL('../../../package.json', imp
 
 const WEB_APP_URL = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
-const logger = log.lib.from('mcp/mcp.server');
-
-/** Methods whose result carries the instructions, and the one that ends onboarding. */
+/** Methods whose result carries the instructions. */
 const INSTRUCTION_METHODS = new Set(['initialize', 'server/discover']);
-const TOOL_CALL = 'tools/call';
 
 /**
  * An MCP OAuth access token is an opaque string, so a failed session check
@@ -94,39 +88,21 @@ async function rpcMethods(request: Request): Promise<string[]> {
   }
 }
 
-/**
- * Where this request should carry onboarding: the handshake's instructions, or
- * the result of the owner's first tool call. Onboarding lasts until that call,
- * so a client that probes the server more than once still sees it, and later
- * sessions don't.
- */
-async function firstConnection(request: Request, principal: McpPrincipal): Promise<'instructions' | 'result' | null> {
-  const methods = await rpcMethods(request);
-  const handshake = methods.some((method) => INSTRUCTION_METHODS.has(method));
-  const toolCall = methods.includes(TOOL_CALL);
-  if (!handshake && !toolCall) return null;
-  try {
-    if (await userService.isMcpOnboarded(principal.userId)) return null;
-    if (!toolCall) return 'instructions';
-    await userService.markMcpOnboarded(principal.userId);
-    return 'result';
-  } catch (error) {
-    // Onboarding is a nicety: a failed read must never break the connection.
-    logger.warn('MCP onboarding state unavailable', { userId: principal.userId, error: String(error) });
-    return null;
-  }
+/** Every handshake carries onboarding, whether or not the owner has seen it before. */
+async function isHandshake(request: Request): Promise<boolean> {
+  return (await rpcMethods(request)).some((method) => INSTRUCTION_METHODS.has(method));
 }
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
-function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions' | 'result' | null, cosign: Awaited<ReturnType<typeof cosignNetwork>>): McpServer {
+function createIndexMcpServer(principal: McpPrincipal, onboarding: boolean, cosign: Awaited<ReturnType<typeof cosignNetwork>>): McpServer {
   const server = new McpServer({
     name: 'index',
     title: 'Index',
     version,
     websiteUrl: WEB_APP_URL,
     icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
-  }, { instructions: mcpInstructions(onboarding === 'instructions', cosign?.networkId ?? null) });
-  registerMcpTools(server, { ...principal, cosign: Boolean(cosign), ...(onboarding === 'result' && { onboarding: true }) });
+  }, { instructions: mcpInstructions(onboarding, cosign?.networkId ?? null) });
+  registerMcpTools(server, { ...principal, cosign: Boolean(cosign) });
   if (cosign) registerCosignTools(server, principal, cosign);
   registerMcpEvents(server, principal);
   return server;
@@ -134,7 +110,7 @@ function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions
 
 /** Serve one stateless MCP request, in either protocol era, with no protocol session state. */
 export async function handleMcpRequest(request: Request, principal: McpPrincipal): Promise<Response> {
-  const [onboarding, cosign] = await Promise.all([firstConnection(request, principal), cosignNetwork(principal.userId)]);
+  const [onboarding, cosign] = await Promise.all([isHandshake(request), cosignNetwork(principal.userId)]);
   const handler = createMcpHandler(() => createIndexMcpServer(principal, onboarding, cosign));
   return handler.fetch(request);
 }

@@ -11,8 +11,6 @@ export interface McpPrincipal {
   authKind: 'api_key' | 'session';
   /** Absent for a web-app JWT, which names no revocable credential. */
   credential?: McpCredential;
-  /** Set on the owner's first tool call, whose result then carries onboarding. */
-  onboarding?: boolean;
   /** Owner is a Cosign member, so onboarding is Cosign's. */
   cosign?: boolean;
 }

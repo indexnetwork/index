@@ -7,7 +7,6 @@ import { log } from '../log';
 import { callNetworkTool } from '../network-mcp/network-mcp.client';
 
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
-import { MCP_COSIGN_ONBOARDING } from './mcp.instructions';
 import type { McpPrincipal } from './mcp.types';
 
 const logger = log.lib.from('mcp/mcp.cosign');
@@ -147,16 +146,6 @@ export function registerCosignTools(server: McpServer, principal: McpPrincipal, 
   );
   forward('cosign_get_my_profile', 'get_my_profile', 'Get my Cosign profile', 'Read the owner\'s own Cosign profile.', {});
   forward('cosign_search_lists', 'search_lists', 'Search Cosign lists', 'Search public Cosign lists, such as lists of people to watch in a field.', { term: z.string().trim().min(1), limit: z.number().int().min(1).max(25).optional() });
-
-  server.registerTool(
-    'show_onboarding',
-    {
-      description: 'Show the onboarding again: how Index works with Cosign, then three suggested intents to capture. Use when they ask for the onboarding or a fresh start.',
-      inputSchema: z.object({}).strict(),
-      annotations: readOnly('Show onboarding'),
-    },
-    () => Promise.resolve(mcpSuccess({ onboarding: MCP_COSIGN_ONBOARDING }, MCP_COSIGN_ONBOARDING)),
-  );
 
   server.registerTool(
     'cosign_create_cosign',

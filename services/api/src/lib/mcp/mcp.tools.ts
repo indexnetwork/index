@@ -178,16 +178,7 @@ function runTool(
   principal: McpPrincipal,
   operation: () => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
-  return operation()
-    .catch((error) => captureMcpToolFailure(error, name, principal))
-    .then((result) => (principal.onboarding ? withOnboarding(result, principal) : result));
-}
-
-/** Many hosts never show the model the initialize instructions, but every host shows it tool results. */
-function withOnboarding(result: CallToolResult, principal: McpPrincipal): CallToolResult {
-  const [first, ...rest] = result.content;
-  if (first?.type !== 'text') return result;
-  return { ...result, content: [{ ...first, text: `${first.text}\n\n${onboardingText(Boolean(principal.cosign))}` }, ...rest] };
+  return operation().catch((error) => captureMcpToolFailure(error, name, principal));
 }
 
 const conversationService = new ConversationService();
@@ -225,6 +216,18 @@ function inboxMessage(message: {
 
 /** Register the curated owner-only Index tool surface on a fresh MCP server. */
 export function registerMcpTools(server: McpServer, principal: McpPrincipal): void {
+  // Many hosts never show the model the initialize instructions, so the tool description asks for onboarding too.
+  const onboarding = onboardingText(Boolean(principal.cosign));
+  server.registerTool(
+    'show_onboarding',
+    {
+      description: 'Onboarding: how Index works, then three suggested intents to capture. Call it at the start of every new conversation, and whenever they ask for the onboarding or a fresh start.',
+      inputSchema: emptyInputSchema,
+      annotations: hints('Show onboarding', true, false, false, true),
+    },
+    () => Promise.resolve(mcpSuccess({ onboarding }, onboarding)),
+  );
+
   server.registerTool(
     'get_my_profile',
     {
