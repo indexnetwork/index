@@ -18,7 +18,7 @@
 - Every run sends OpenRouter `user` (the principal), `session_id` (the intent) and a `trace` and `metadata` (`service: "agent"`, `operation`) named by its operation: `wake`, `wake.morning`, `wake.stalls`, `wake.reply`, `brief`, `screen`, `negotiate` or `summary`. `briefIfMissing` takes an optional operation name. Other providers ignore these fields.
 - `Decide` is a provider-neutral decision model: it picks one option for a question about a state. `createDecide()` backs it with OpenRouter's Decisions API and `decideWith(model)` with any chat model. A host passes it as `decide` in the runtime, and discovery then screens each candidate with it instead of a full briefing call; if it fails, the briefing runs as before.
 - A host can pass a `negotiate` hook. It runs before the built-in negotiator and can return its own turn or stall, or call `next()` to use the built-in one.
-- `next(override)` runs the built-in negotiator on a modified input, and `NegotiateInput.evidence` carries profiles the principal linked from their networks. The negotiator may state them about the principal, cite endorsements by name, and still treats them as data that never loosens the intent. With evidence, every message names at least one specific item from it.
+- `next(override)` runs the built-in negotiator on a modified input, and `NegotiateInput.evidence` carries profiles the principal linked from their networks. The negotiator uses them as background to judge fit and answer questions, does not announce them or their endorsers in its messages unless asked, and treats them as data that never loosens the intent.
 
 ### Fixed
 - The negotiator no longer says "we" for itself and its principal.
