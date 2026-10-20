@@ -5,6 +5,9 @@ import * as schema from '../../schemas/database.schema';
 
 import { briefedOnLocalDate, type MorningClaim, type MorningOwner } from './morning';
 
+/** Members of this network get neither the morning wake nor its email. */
+const NO_MORNING_NETWORK = '1d50525b-bfbd-46d2-bc63-c853006aaea5';
+
 /** @returns Owners who left the seat to Index. */
 export async function listHostedOwners(): Promise<MorningOwner[]> {
   return db.select({
@@ -24,6 +27,12 @@ export async function listHostedOwners(): Promise<MorningOwner[]> {
       select 1 from ${schema.userNotificationSettings}
       where ${schema.userNotificationSettings.userId} = ${schema.users.id}
         and coalesce(${schema.userNotificationSettings.preferences}->>'morningBrief', 'true') = 'false'
+    )`,
+    sql`not exists (
+      select 1 from ${schema.networkMembers}
+      where ${schema.networkMembers.userId} = ${schema.users.id}
+        and ${schema.networkMembers.networkId} = ${NO_MORNING_NETWORK}
+        and ${schema.networkMembers.deletedAt} is null
     )`,
   ));
 }
@@ -47,9 +56,6 @@ export async function claimMorningBrief(userId: string, now: Date, timeZone: str
 
 /** Half an hour lets the morning's negotiators and summary wake finish first. */
 const EMAIL_DELAY_MINUTES = 30;
-
-/** Members of this network never get the morning email. */
-const NO_EMAIL_NETWORK = '1d50525b-bfbd-46d2-bc63-c853006aaea5';
 
 export interface MorningEmailClaim {
   id: string;
@@ -86,7 +92,7 @@ export async function claimMorningEmails(now: Date): Promise<MorningEmailClaim[]
         )
         OR EXISTS (
           SELECT 1 FROM ${schema.networkMembers} m
-          WHERE m.user_id = u.id AND m.network_id = ${NO_EMAIL_NETWORK} AND m.deleted_at IS NULL
+          WHERE m.user_id = u.id AND m.network_id = ${NO_MORNING_NETWORK} AND m.deleted_at IS NULL
         )
       ) AS off
   `) as unknown as Array<{ id: string; email: string; name: string; since: Date | string; off: boolean }>;
