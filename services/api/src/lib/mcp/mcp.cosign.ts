@@ -112,8 +112,8 @@ export function cosignLine(context: CosignContext | null): string {
   const [first] = context.cosignedBy;
   const parts = [
     first ? `${first.name} — “${first.quote}”` : null,
-    `${context.cosignedByCount} cosigns received`,
-    context.mutuals.length ? `${context.mutuals.length} mutuals` : null,
+    `${context.cosignedByCount} ${context.cosignedByCount === 1 ? 'cosign' : 'cosigns'} received`,
+    context.mutuals.length ? `${context.mutuals.length} ${context.mutuals.length === 1 ? 'mutual' : 'mutuals'}` : null,
   ].filter(Boolean);
   return `\n  Cosign: ${parts.join(' · ')}`;
 }
