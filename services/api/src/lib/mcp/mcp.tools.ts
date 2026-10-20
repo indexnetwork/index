@@ -15,7 +15,7 @@ import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { cosignEnricher, cosignLine } from './mcp.cosign';
-import { MCP_ONBOARDING } from './mcp.instructions';
+import { onboardingText } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
@@ -180,14 +180,14 @@ function runTool(
 ): Promise<CallToolResult> {
   return operation()
     .catch((error) => captureMcpToolFailure(error, name, principal))
-    .then((result) => (principal.onboarding ? withOnboarding(result) : result));
+    .then((result) => (principal.onboarding ? withOnboarding(result, principal) : result));
 }
 
 /** Many hosts never show the model the initialize instructions, but every host shows it tool results. */
-function withOnboarding(result: CallToolResult): CallToolResult {
+function withOnboarding(result: CallToolResult, principal: McpPrincipal): CallToolResult {
   const [first, ...rest] = result.content;
   if (first?.type !== 'text') return result;
-  return { ...result, content: [{ ...first, text: `${first.text}\n\n${MCP_ONBOARDING}` }, ...rest] };
+  return { ...result, content: [{ ...first, text: `${first.text}\n\n${onboardingText(Boolean(principal.cosign))}` }, ...rest] };
 }
 
 const conversationService = new ConversationService();

@@ -22,11 +22,22 @@ export const MCP_ONBOARDING = `This is the first time they've connected me, so o
 3. When they pick ("create 1 and 2"), call create_intent for each one right away. Their pick is the approval, so don't ask again.
 4. Then report what I'm doing, the way the Index agent does. Call get_intent_conversation once without an intentId and list_opportunities, and relay it in plain lines: "Warming up.", "Working out who to reach.", "Looking for <query>", "Discovered 12 people with compatible intentions, and decided to reach out to 4 promising ones", "Negotiating with <name>". A progress entry that is JSON carries plan, queries, discovered, and reached; turn it into those lines. Discovery runs in the background, so if nothing is there yet, say I'm warming up and check again in a minute or two before you report. `;
 
+/** Onboarding for Cosign members: Cosign's welcome first, then Index intent capture. */
+export const MCP_COSIGN_ONBOARDING = `This is the first time they've connected me, and they are on Cosign, so onboard them now:
+1. Call cosign_get_my_profile and greet them by name in two short lines: Cosign is where people vouch for each other, and I'm Index, which turns what they want into intents and has agents negotiate with the right people's agents. Mention how many cosigns they have if the profile shows any. Nobody is introduced until they say yes.
+2. Call get_my_profile and list_intents. Suggest three intents, numbered, one line each, in their voice, drawn from their Cosign profile, their work, and what you know of them. Mix what they might want (someone to learn from, hire or fund) with what they might offer, and skip any they already have. Always give three concrete suggestions and ask which to create; never ask an open question.
+3. When they pick ("create 1 and 2"), call create_intent for each right away, without networkIds so they reach the whole network. Their pick is the approval.
+4. Then call get_intent_conversation once without an intentId and list_opportunities and relay progress in plain lines: "Warming up.", "Looking for <query>", "Discovered 12 people, reaching out to 4", "Negotiating with <name>". Discovery runs in the background, so if nothing is there yet, say I'm warming up and check again in a minute. Show each match's cosign field when it has one.
+They can see this again any time with show_onboarding.`;
+
+/** Onboarding text for one owner. */
+export const onboardingText = (cosign: boolean) => (cosign ? MCP_COSIGN_ONBOARDING : MCP_ONBOARDING);
+
 /** Added for owners who joined the Cosign network. */
 export const mcpCosign = (networkId: string) => `They are on Cosign, where people vouch for each other, and their Cosign tools are mine too: cosign_search_people, cosign_get_person, cosign_get_my_profile, and cosign_search_lists. Their intents reach the Cosign network (${networkId}) by default, so create them without networkIds; never narrow them to Cosign alone, which has few members. When you present an opportunity, show its cosign field if it has one: a cosigner's name with their quote, how many cosigns, and mutuals. If asked whether you checked someone's cosigns, call cosign_get_person for them and say what it returned. cosign_create_cosign and introduce_people are mocks that save and send nothing: ask first, and tell them the result is only prepared.`;
 
 /** Instructions for one connection, with onboarding on the owner's first. */
 export function mcpInstructions(firstConnection: boolean, cosignNetworkId: string | null = null): string {
   const base = cosignNetworkId ? `${MCP_INSTRUCTIONS}\n\n${mcpCosign(cosignNetworkId)}` : MCP_INSTRUCTIONS;
-  return firstConnection ? `${base}\n\n${MCP_ONBOARDING}` : base;
+  return firstConnection ? `${base}\n\n${onboardingText(cosignNetworkId !== null)}` : base;
 }

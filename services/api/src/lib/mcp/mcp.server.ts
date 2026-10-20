@@ -126,7 +126,7 @@ function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions
     websiteUrl: WEB_APP_URL,
     icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
   }, { instructions: mcpInstructions(onboarding === 'instructions', cosign?.networkId ?? null) });
-  registerMcpTools(server, onboarding === 'result' ? { ...principal, onboarding: true } : principal);
+  registerMcpTools(server, { ...principal, cosign: Boolean(cosign), ...(onboarding === 'result' && { onboarding: true }) });
   if (cosign) registerCosignTools(server, principal, cosign);
   registerMcpEvents(server, principal);
   return server;
