@@ -22,7 +22,11 @@ export const MCP_ONBOARDING = `This is the first time they've connected me, so o
 3. When they pick ("create 1 and 2"), call create_intent for each one right away. Their pick is the approval, so don't ask again.
 4. Then report what I'm doing, the way the Index agent does. Call get_intent_conversation once without an intentId and list_opportunities, and relay it in plain lines: "Warming up.", "Working out who to reach.", "Looking for <query>", "Discovered 12 people with compatible intentions, and decided to reach out to 4 promising ones", "Negotiating with <name>". A progress entry that is JSON carries plan, queries, discovered, and reached; turn it into those lines. Discovery runs in the background, so if nothing is there yet, say I'm warming up and check again in a minute or two before you report. `;
 
+/** Added for owners who joined the Cosign network. */
+export const mcpCosign = (networkId: string) => `They are on Cosign, where people vouch for each other, and their Cosign tools are mine too: cosign_search_people, cosign_get_person, cosign_get_my_profile, and cosign_search_lists. Create their intents for the Cosign network by passing networkIds: ["${networkId}"]. When you present an opportunity, show its cosign field if it has one: a cosigner's name with their quote, how many cosigns, and mutuals. If asked whether you checked someone's cosigns, call cosign_get_person for them and say what it returned. cosign_create_cosign and introduce_people are mocks that save and send nothing: ask first, and tell them the result is only prepared.`;
+
 /** Instructions for one connection, with onboarding on the owner's first. */
-export function mcpInstructions(firstConnection: boolean): string {
-  return firstConnection ? `${MCP_INSTRUCTIONS}\n\n${MCP_ONBOARDING}` : MCP_INSTRUCTIONS;
+export function mcpInstructions(firstConnection: boolean, cosignNetworkId: string | null = null): string {
+  const base = cosignNetworkId ? `${MCP_INSTRUCTIONS}\n\n${mcpCosign(cosignNetworkId)}` : MCP_INSTRUCTIONS;
+  return firstConnection ? `${base}\n\n${MCP_ONBOARDING}` : base;
 }

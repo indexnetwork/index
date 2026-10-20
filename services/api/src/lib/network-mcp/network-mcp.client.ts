@@ -190,18 +190,41 @@ function published(text: string): string {
   }
 }
 
-async function readProfile(mcp: Mcp, token: string): Promise<string | null> {
+async function callTool(mcp: Mcp, token: string, tool: string, args: Record<string, unknown>): Promise<string> {
   const { url } = mcp;
   const init = await rpc(url, token, undefined, {
     id: 1, method: 'initialize',
     params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'index-network', version: '1' } },
   });
   await rpc(url, token, init.session, { method: 'notifications/initialized' });
-  const { result } = await rpc(url, token, init.session, { id: 2, method: 'tools/call', params: { name: mcp.profileTool, arguments: mcp.profileArgs ?? {} } });
-  // A tool that refuses its arguments answers with an error as text, which is not a profile.
+  const { result } = await rpc(url, token, init.session, { id: 2, method: 'tools/call', params: { name: tool, arguments: args } });
+  // A tool that refuses its arguments answers with an error as text, which is not data.
   if (result?.isError) throw new Error((result.content?.[0]?.text ?? 'Tool failed').slice(0, 200));
-  const text = (result?.content ?? []).filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim();
+  return (result?.content ?? []).filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim();
+}
+
+async function readProfile(mcp: Mcp, token: string): Promise<string | null> {
+  const text = await callTool(mcp, token, mcp.profileTool, mcp.profileArgs ?? {});
   return text ? published(text).slice(0, PROFILE_LIMIT) : null;
+}
+
+/**
+ * One tool call on a network's MCP server, as the member.
+ *
+ * @param network - The MCP network.
+ * @param userId - The member whose login is used.
+ * @param tool - The tool name on the network's server.
+ * @param args - The tool arguments.
+ * @returns The tool's text, or null when the member has no login there.
+ */
+export async function callNetworkTool(
+  network: { networkId: string; mcp: Mcp },
+  userId: string,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<string | null> {
+  const token = await accessToken(network.networkId, userId, network.mcp);
+  return token ? callTool(network.mcp, token, tool, args) : null;
 }
 
 /**

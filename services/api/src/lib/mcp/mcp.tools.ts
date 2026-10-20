@@ -14,6 +14,7 @@ import { RuntimeConflictError } from '../agent/runtime-errors';
 import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
+import { cosignEnricher, cosignLine } from './mcp.cosign';
 import { MCP_ONBOARDING } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
@@ -579,10 +580,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           cta: opportunity.cta,
         };
       });
-      const lines = opportunities.map((opportunity) =>
-        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity, opportunity.viewerCommitted)}`);
+      const enrich = await cosignEnricher(principal.userId);
+      const cosigns = await Promise.all(opportunities.map((opportunity, index) => (enrich && index < 10 ? enrich(opportunity.peer.userId) : null)));
+      const lines = opportunities.map((opportunity, index) =>
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity, opportunity.viewerCommitted)}${cosignLine(cosigns[index])}`);
       return mcpSuccess({
-        opportunities,
+        opportunities: opportunities.map((opportunity, index) => ({ ...opportunity, cosign: cosigns[index] })),
         pagination: {
           limit,
           offset,
@@ -612,6 +615,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const peer = { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) };
       const otherParties = opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) }));
       const people = otherParties.map((party) => mdLink(party.name, party.url)).join(', ');
+      const cosign = await (await cosignEnricher(principal.userId))?.(opportunity.peer.userId) ?? null;
       return mcpSuccess({
         opportunity: {
           ...opportunity,
@@ -620,9 +624,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           declineUrl,
           peer,
           otherParties,
+          cosign,
         },
         negotiation,
-      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}`);
+      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}${cosignLine(cosign)}`);
     }),
   );
 
