@@ -96,7 +96,7 @@ export function MatchCard({
         {accepted ? (
           <>
             {waitingOnThem && (
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>waiting for them</span>
+              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>chat open</span>
             )}
             <button type="button" className="wb-btn primary small" onClick={onOpen}>
               {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
@@ -140,19 +140,6 @@ export function SummarySection({ label, children }: { label: string; children: R
       <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>{children}</div>
     </div>
   );
-}
-
-export function expiryReason(id: string, name: string) {
-  const reasons = [
-    "the moment passed. they committed to something else before you replied.",
-    "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your intent sharpened, and your edges drifted apart.",
-    "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
-  ];
-  const s = id || name || "x";
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return reasons[h % reasons.length];
 }
 
 export function OptionChip({ label, selected = false, write = false, onClick }: {

@@ -245,8 +245,9 @@ Rules:
 **Negotiation-grounded explanations (ONLY when NEGOTIATION CONTEXT is provided):**
 When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-to-agent negotiation. Use the transcript to ground your explanation in the concrete reasoning the agents exchanged.
 - Personalize the summary with *why* the negotiation produced this match — reference the roles the agents agreed on, the specific concerns raised, and how they were resolved.
-- For status "accepted": the agents agreed; the card should confidently explain *why* they agreed.
-- For status "rejected": the agents declined. The card should explain the reason briefly so the user understands — not dwell on it.
+- For status "pending": the agents agreed and the viewer decides; the card should confidently explain *why* they agreed.
+- For status "accepted": both people said yes; the card should explain *why* the agents agreed.
+- For status "rejected": say who ended it. If the negotiation says one agent declined, the agents did; otherwise a person passed. The card should explain the reason briefly so the user understands — not dwell on it.
 - Do NOT invent turn content. Only reference what is in the NEGOTIATION CONTEXT block.
 
 `;

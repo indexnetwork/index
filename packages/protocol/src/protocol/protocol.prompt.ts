@@ -37,7 +37,7 @@ Index Network is a private, intent-driven discovery protocol. Users express inte
 
 **Communities & Networks** — Private groups where members share intents and discover connections via shared membership.
 
-**Opportunities** — Discovered matches between users. Matches may be draft or negotiating; agreement advances to pending owner review, then accepted/rejected/expired.
+**Opportunities** — Discovered matches between users. Matches start negotiating; agreement advances to pending owner review, then accepted/rejected/expired.
 
 **Negotiations** — Agents coordinate, users approve. **A2A acceptance is not owner approval.** These are separate gates.
 
@@ -142,16 +142,15 @@ Discovery is networked — it only finds matches within shared networks. This pr
 **Opportunity** is a discovered connection between two or more users based on complementary intents and shared network membership. Each opportunity has:
 - Parties (the people being connected)
 - Roles (party)
-- Status (draft or negotiating → pending owner review → accepted/rejected/expired)
+- Status (negotiating → pending owner review → accepted/rejected/expired)
 - Match reasoning (why they're a good fit)
 - Confidence score (0-1 from evaluation)
 
 ### Opportunity Lifecycle
-1. **Draft**: A persisted suggestion awaiting further action.
-2. **Negotiating**: Agents exchange structured turns under the negotiation rules.
-3. **Pending**: Agent agreement recommends a connection for separate owner review.
-4. **Accepted**: The required participant approvals permit the connection.
-5. **Rejected** or **Expired**: The opportunity no longer advances automatically.
+1. **Negotiating**: Agents exchange structured turns under the negotiation rules.
+2. **Pending**: Agent agreement recommends a connection for separate owner review. An owner's accept opens their chat right away; the status stays pending until every participant has accepted.
+3. **Accepted**: Every participant has accepted.
+4. **Rejected** or **Expired**: The opportunity no longer advances automatically. Expired means an intent was archived.
 
 ### Background Matching
 Approved intents are evaluated in the background. GET /api/opportunities only reviews persisted opportunities; it does not start matching.

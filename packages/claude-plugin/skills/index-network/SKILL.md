@@ -60,7 +60,7 @@ Every person, intent, and opportunity you name gets a link, on the name itself. 
 Lead every answer with the linked lines below, then any detail.
 
 - Intent: `[label](<web>/i/<id>) — 3 waiting`, adding `(paused)` or `(archived)` when not active.
-- Opportunity: `[Peer name](<web>/u/<userId>) — headline — state`, using "New match" when there is no headline. States: `pending` is "waiting on you", `negotiating` is "agents talking", `accepted` is "connected", `rejected` is "passed", `expired` is "expired".
+- Opportunity: `[Peer name](<web>/u/<userId>) — headline — state`, using "New match" when there is no headline. States: `pending` is "waiting on you", or "chat open" once the user has accepted, `negotiating` is "agents talking", `accepted` is "connected", `rejected` is "passed", `expired` is "expired".
 - After a write, name the entity and what happened: `[label](…) — created`, `— updated`, `— paused`, `— resumed`, `— archived`, and for opportunities `— accepted` or `— passed`.
 - Profile: `[Name](<web>/u/<user id>) — profile`, or `— updated`.
 

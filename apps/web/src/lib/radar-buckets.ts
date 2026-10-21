@@ -14,7 +14,7 @@ export const DEFAULT_RADAR_BUCKET: RadarBucket = "all";
 const EMPTY_RADAR: Record<Exclude<RadarBucket, "all">, string> = {
   "awaiting you": "nothing waiting on you right now.",
   negotiating: "no negotiations open. your agent starts one when it finds an overlap.",
-  accepted: "no one accepted yet.",
+  accepted: "no chats open yet.",
   closed: "nothing closed.",
 };
 

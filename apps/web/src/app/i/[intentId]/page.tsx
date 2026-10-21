@@ -21,7 +21,7 @@ import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/u
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
-import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
@@ -35,7 +35,7 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 const DISCOVERY_GIVE_UP_MS = 120_000;
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
-/** Same lifecycle set as the Mac radar. Rejected (failed) and expired (missed) both land in Closed. */
+/** Same lifecycle set as the Mac radar. Rejected (not a fit) and expired both land in Closed. */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "pending",
   "negotiating",
@@ -451,7 +451,7 @@ function IntentDetail() {
         onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
         stages={RADAR_STAGES.map((stage) => ({
           label: stage,
-          display: stage === "negotiating" ? "in talks" : stage,
+          display: stage === "negotiating" ? "in talks" : stage === "accepted" ? "chat open" : stage,
           count: bucketCounts[stage] ?? 0,
           accent: stage === "awaiting you" || stage === "accepted",
         }))}
@@ -489,7 +489,7 @@ function IntentDetail() {
         const peer = item.peer;
         const name = item.name || peer?.name || "unknown";
         const blurb = item.headline || item.mainText || "";
-        // "waiting for them" only while this viewer has said yes and
+        // "chat open" chip only while this viewer has said yes and
         // the other person has not. A mutual accept stays a plain
         // accepted row, same as the Mac card.
         const waitingOnThem = item.status === "pending" && (
@@ -897,7 +897,7 @@ function PersonPane({
         {profile?.location && (
           <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>{profile.location}</div>
         )}
-        {bucket === "closed" && <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>}
+        {bucket === "closed" && item.status === "expired" && <SummarySection label="why it closed">an intent was archived.</SummarySection>}
         {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
             ? <EmptyState tone="loading" align="start" />
