@@ -2,6 +2,7 @@ import './startup.env';
 import './bootstrap';
 
 import * as Sentry from '@sentry/bun';
+import cron from 'node-cron';
 
 import { createDecide, createModel } from '@indexnetwork/agent';
 
@@ -26,6 +27,11 @@ const morning = morningDisabled
       wake: (userId, intent, since) => hostedAgent.morningWake(userId, intent, since),
     });
 if (morningDisabled) logger.info('Morning brief disabled (DISABLE_MORNING_BRIEF)');
+const questionSweep = cron.schedule('*/15 * * * *', () => {
+  void hostedAgent.expireQuestions().catch((error: unknown) => {
+    logger.error('Question sweep failed', { error: error instanceof Error ? error.message : String(error) });
+  });
+});
 const mcpEventDispatcher = new McpEventDispatcher();
 mcpEventDispatcher.start();
 logger.info('Hosted agents running');
@@ -33,6 +39,7 @@ logger.info('Hosted agents running');
 const shutdown = async () => {
   logger.info('Shutting down...');
   morning.stop();
+  questionSweep.stop();
   mcpEventDispatcher.stop();
   await hostedAgent.stop();
   await Sentry.close(2000);
