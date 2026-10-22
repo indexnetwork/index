@@ -289,7 +289,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     <>
       {!embedded && (
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center" }}>
-          <UserAvatar avatar={userAvatar} id={userId} name={userName} size={34} />
+          <Link to={`/u/${userId}`} style={{ display: "flex" }}><UserAvatar avatar={userAvatar} id={userId} name={userName} size={34} /></Link>
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
             <Link to={`/u/${userId}`} style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600, color: "#000", textDecoration: "none" }}>{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (

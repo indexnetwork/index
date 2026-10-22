@@ -158,7 +158,7 @@ export class OpportunityService {
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
   /** Closes the negotiation underneath an opportunity the owner has ended. */
-  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities'> = negotiationDatabaseAdapter;
+  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities' | 'readNegotiationContext'> = negotiationDatabaseAdapter;
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
@@ -208,7 +208,8 @@ export class OpportunityService {
 
   /**
    * List opportunities with presenter output for the viewer. peerUserId
-   * switches to accepted pair scope (chat context).
+   * switches to pair scope: every opportunity in `statuses` whose agents
+   * exchanged a turn when given, otherwise accepted ones only (chat context).
    */
   async presentOpportunitiesForViewer(
     userId: string,
@@ -224,6 +225,14 @@ export class OpportunityService {
       presentation?: 'full' | 'skeleton';
     },
   ): Promise<PresentedOpportunityList | { error: string }> {
+    if (options?.peerUserId && options.statuses) {
+      const rows = await this.db.findOpportunitiesByActors([userId, options.peerUserId], { includeIntroducers: true, statuses: options.statuses });
+      const seen = rows.filter((opp) => canUserSeeOpportunity(opp.actors, opp.status, userId));
+      const turns = await Promise.all(seen.map((opp) => this.negotiations.readNegotiationContext(opp.id, userId)));
+      const visible = seen.filter((_, i) => (turns[i]?.turns.length ?? 0) > 0);
+      const opportunities = await Promise.all(visible.map((opp) => this.presentOpportunityForViewer(opp, userId)));
+      return { opportunities, meta: { totalOpportunities: opportunities.length } };
+    }
     if (options?.peerUserId) {
       const chat = await this.getChatContext(userId, options.peerUserId);
       return {

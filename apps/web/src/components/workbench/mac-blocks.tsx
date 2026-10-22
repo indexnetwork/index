@@ -60,11 +60,10 @@ export function MatchCard({
     e.stopPropagation();
     onProfile();
   };
-  const cardClickable = accepted || expired || ready || negotiating;
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      onClick={cardClickable ? onOpen : undefined}
+      onClick={onProfile}
       style={{
         textAlign: "left",
         display: "grid",
@@ -74,9 +73,9 @@ export function MatchCard({
         background: "#fff", color: "#000",
         border: "1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
-        transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
-        cursor: cardClickable ? "pointer" : "default",
+        boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
+        transform: hover ? "translate(-1px, -1px)" : "none",
+        cursor: "pointer",
         transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>

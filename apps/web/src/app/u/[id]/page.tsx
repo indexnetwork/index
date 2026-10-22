@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useUsers, useNetworks } from "@/contexts/APIContext";
+import { useUsers, useNetworks, useOpportunities } from "@/contexts/APIContext";
+import type { RadarCardItem } from "@/services/opportunities";
+import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import AppHandoff from "@/components/AppHandoff";
 import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
@@ -9,6 +11,7 @@ import { Link } from "react-router";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import NegotiationConversation from "@/components/NegotiationConversation";
 import { getPublicUserProfile } from "@/services/users";
 import { log } from "@/lib/logger";
 import { APIError, isNotFoundError } from "@/lib/api";
@@ -17,6 +20,8 @@ import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 
 const logger = log.page.from("u/[id]");
+
+const sectionLabel = { fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 } as const;
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -29,9 +34,12 @@ function UserProfile() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
   const networksService = useNetworks();
+  const opportunitiesService = useOpportunities();
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
+  const [sharedOpportunities, setSharedOpportunities] = useState<RadarCardItem[]>([]);
+  const [openOpportunityId, setOpenOpportunityId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<"notFound" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -70,6 +78,17 @@ function UserProfile() {
     };
     fetchData();
   }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService, reloadKey]);
+
+  useEffect(() => {
+    setSharedOpportunities([]);
+    if (!isOtherUser || !id) return;
+    let active = true;
+    opportunitiesService
+      .getRadarView({ peerUserId: id, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"] })
+      .then((res) => { if (active) setSharedOpportunities(res.items); })
+      .catch((err) => logger.error('Failed to fetch shared opportunities', { error: err }));
+    return () => { active = false; };
+  }, [id, isOtherUser, opportunitiesService]);
 
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
@@ -119,14 +138,14 @@ function UserProfile() {
 
           {profileData.intro && (
             <div>
-              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 5 }}>bio</div>
+              <h3 style={sectionLabel}>bio</h3>
               <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{profileData.intro}</p>
             </div>
           )}
 
           {socialLinks.length > 0 && (
             <div>
-              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>elsewhere</div>
+              <h3 style={sectionLabel}>elsewhere</h3>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {socialLinks.map((s) => (
                   <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
@@ -138,9 +157,10 @@ function UserProfile() {
             </div>
           )}
 
-          {sharedNetworks.length > 0 && (
+          {isAuthenticated && isOtherUser && (
             <div>
-              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>networks</div>
+              <h3 style={sectionLabel}>networks</h3>
+              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>no shared networks.</div>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {sharedNetworks.map((network) => (
                   <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
@@ -151,10 +171,41 @@ function UserProfile() {
             </div>
           )}
 
-          {/* Past Negotiations — only for authenticated users */}
-          {isAuthenticated && id && (
+          {sharedOpportunities.length > 0 && (
             <div>
-              <h3 style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 }}>agent log</h3>
+              <h3 style={sectionLabel}>opportunities</h3>
+              <div style={{ display: "grid", gap: 8 }}>
+                {sharedOpportunities.map((o) => {
+                  const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted);
+                  const open = openOpportunityId === o.opportunityId;
+                  const toggle = () => setOpenOpportunityId(open ? null : o.opportunityId);
+                  return (
+                    <div key={o.opportunityId} style={{ border: "1px solid #000", background: "#fff" }}>
+                      <div role="button" tabIndex={0} onClick={toggle}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
+                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "#F2F0EC" : "#fff" }}>
+                        <div style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{o.headline || o.mainText}</div>
+                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, whiteSpace: "nowrap" }}>
+                          {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
+                        </span>
+                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{open ? "▾" : "›"}</span>
+                      </div>
+                      {open && (
+                        <div style={{ borderTop: "1px solid #000" }}>
+                          <NegotiationConversation opportunityId={o.opportunityId} expanded onToggle={toggle} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Past Negotiations — only for authenticated users */}
+          {isAuthenticated && id && !isOtherUser && (
+            <div>
+              <h3 style={sectionLabel}>agent log</h3>
               <NegotiationHistory userId={id} />
             </div>
           )}

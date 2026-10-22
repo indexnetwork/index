@@ -805,6 +805,7 @@ function PersonPane({
   onAccept: () => void;
   onPass: () => void;
 }) {
+  const navigate = useNavigate();
   const name = item.name || "someone";
   const notOnIndex = item.peer?.emailVerified === false;
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
@@ -878,7 +879,7 @@ function PersonPane({
   const socials = resolveSocials(profile?.socials);
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
-      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} size={42} />
+      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} size={42} onOpenProfile={item.userId ? () => navigate(`/u/${item.userId}`) : undefined} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         {bio && <SummarySection label="bio">{bio}</SummarySection>}
         {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
