@@ -532,6 +532,8 @@ function IntentDetail() {
       onClose={() => setOpenPersonId(null)}
       onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId, { notOnIndex: openPerson.peer?.emailVerified === false })}
       onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
+      hasChat={!!(openPerson.userId || openPerson.peer?.userId) && chatPeers.has(openPerson.userId || openPerson.peer?.userId || "")}
+      onOpenChat={() => navigate(`/u/${openPerson.userId || openPerson.peer?.userId}/chat`)}
     />
   ) : null;
 
@@ -793,6 +795,8 @@ function PersonPane({
   onClose,
   onAccept,
   onPass,
+  hasChat = false,
+  onOpenChat,
 }: {
   item: RadarCardItem;
   bucket: ReturnType<typeof radarBucketForOpportunity>;
@@ -804,6 +808,8 @@ function PersonPane({
   onClose: () => void;
   onAccept: () => void;
   onPass: () => void;
+  hasChat?: boolean;
+  onOpenChat?: () => void;
 }) {
   const navigate = useNavigate();
   const name = item.name || "someone";
@@ -906,7 +912,11 @@ function PersonPane({
         )}
       </div>
       <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {bucket === "awaiting you" ? (
+        {/* Same as the radar card: a chat that already exists means there is
+            nothing left to accept, so offer the chat instead. */}
+        {(bucket === "awaiting you" || bucket === "accepted") && hasChat && !notOnIndex ? (
+          <Btn primary small onClick={onOpenChat}>open chat ›</Btn>
+        ) : bucket === "awaiting you" ? (
           <>
             <Btn primary small onClick={onAccept}>accept</Btn>
             <Btn small onClick={onPass}>pass</Btn>

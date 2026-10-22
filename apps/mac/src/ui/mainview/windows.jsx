@@ -63,6 +63,10 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
   const isClosed = status === "expired" || status === "passed" || status === "rejected";
   const merged = useCounterpartProfile(person);
   const { bio, note, socials, meta } = profileContent(merged);
+  // Same check as the radar card: if a chat with them already exists, the
+  // opportunity is effectively accepted, so offer the chat, not accept/pass.
+  const { peerChats, openConversation } = useIndexEnv();
+  const existingChatId = !person.notOnIndex && person.userId && peerChats[person.userId];
   return (
     <MacWindow title="profile" onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
@@ -141,7 +145,11 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
           display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:8,
         }}>
-          {isReady ? (
+          {isReady && existingChatId ? (
+            <button className="amiga-gadget primary"
+              onClick={() => openConversation(existingChatId)}
+              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>open chat ›</button>
+          ) : isReady ? (
             <div style={{ display:"flex", gap:8, alignItems:"center", flex:"0 0 auto" }}>
               <button className="amiga-gadget primary"
                 onClick={() => onAccept && onAccept(person.id)}
@@ -153,7 +161,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           ) : isAccepted ? (
             <button className="amiga-gadget primary"
               onClick={() => onOpenChat && onOpenChat(person.id)}
-              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>{person.notOnIndex ? "invite" : "send message"}</button>
+              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>{person.notOnIndex ? "invite" : existingChatId ? "open chat ›" : "send message"}</button>
           ) : isClosed ? (
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this intent closed.</span>
           ) : (
