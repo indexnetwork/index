@@ -102,7 +102,7 @@ export class NetworkRequestController {
     }
   }
 
-  /** Staff-only: approve or request changes on a request. */
+  /** Staff-only: approve, request changes on, or skip a request. */
   @Post('/:id/review')
   @UseGuards(AuthGuard)
   async review(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
@@ -110,8 +110,8 @@ export class NetworkRequestController {
       return Response.json({ error: 'Access denied' }, { status: 403 });
     }
     const body = (await req.json().catch(() => ({}))) as { decision?: string; reviewNote?: string };
-    if (body.decision !== 'approve' && body.decision !== 'needs_changes') {
-      return Response.json({ error: "decision must be 'approve' or 'needs_changes'" }, { status: 400 });
+    if (body.decision !== 'approve' && body.decision !== 'needs_changes' && body.decision !== 'skip') {
+      return Response.json({ error: "decision must be 'approve', 'needs_changes' or 'skip'" }, { status: 400 });
     }
     try {
       const request = await networkRequestService.reviewRequest(params.id, body.decision, body.reviewNote);

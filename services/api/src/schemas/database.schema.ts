@@ -56,6 +56,8 @@ export interface NetworkRequestDetails {
   reviewNote?: string;
   submittedAt: string;
   reviewedAt?: string;
+  // Set when staff skip the request: hidden from the review queue, requester not notified.
+  skippedAt?: string;
 }
 
 export type NetworkRequestStatus = 'pending' | 'needs_changes';

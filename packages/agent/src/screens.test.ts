@@ -29,20 +29,11 @@ describe("screens", () => {
     expect(await screens(input(async () => ({ choice: "skip" })), candidate)).toBe(false);
   });
 
-  test("an error is retried once, then reaches rather than dropping the person", async () => {
+  test("an error reaches rather than dropping the person, without a retry of its own", async () => {
     let calls = 0;
     const failing: Decide = async () => { calls++; throw new Error("429"); };
     expect(await screens(input(failing), candidate)).toBe(true);
-    expect(calls).toBe(2);
-  });
-
-  test("a retry that succeeds is used", async () => {
-    let calls = 0;
-    const flaky: Decide = async () => {
-      if (calls++ === 0) throw new Error("timeout");
-      return { choice: "skip", probabilities: { skip: 0.99 } };
-    };
-    expect(await screens(input(flaky), candidate)).toBe(false);
+    expect(calls).toBe(1);
   });
 
   test("with no decision model everyone is reached", async () => {

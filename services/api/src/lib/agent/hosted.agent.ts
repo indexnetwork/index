@@ -10,10 +10,11 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, encodeActions, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
-import { createRedisClient } from '../../adapters/cache.adapter';
+import { AgentSessionDatabaseAdapter } from '../../adapters/agent-session.database.adapter';
+import { createRedisClient, getRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
 import { log } from '../log';
 import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
@@ -27,6 +28,12 @@ const logger = log.agent.from('HostedAgent');
 const WAKE_GROUP = 'hosted-negotiator';
 /** Short enough that an owner's first-ever stream is picked up by the next scan. */
 const WAKE_BLOCK_MS = 2000;
+/** How long a question waits on its owner before the agent decides without it. */
+const QUESTION_TTL_HOURS = 72;
+/** Shorter than the sweep interval, so one replica takes each sweep and a dead one does not hold the next. */
+const QUESTION_SWEEP_LOCK_SEC = 600;
+/** Each released negotiation is a model run, so a backlog drains over several sweeps. */
+const QUESTION_SWEEP_INTENTS = 20;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
@@ -90,6 +97,30 @@ export class HostedAgent {
       ...(since ? { since: since.toISOString() } : {}),
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
+  }
+
+  /** Withdraw questions owners left unanswered past their time, and run the negotiations they held. */
+  async expireQuestions(): Promise<void> {
+    if (!this.running) return;
+    if (await getRedisClient().set('hosted:question-sweep', '1', 'EX', QUESTION_SWEEP_LOCK_SEC, 'NX') !== 'OK') return;
+    let taken = 0;
+    for (const { userId, intentId } of await AgentSessionDatabaseAdapter.listOverdueQuestions(QUESTION_TTL_HOURS)) {
+      if (taken >= QUESTION_SWEEP_INTENTS) break;
+      if (!await this.holdsSeat(userId)) continue;
+      const intent = await this.activeIntent(userId, intentId);
+      if (!intent) continue;
+      taken++;
+      try {
+        const index = new HostedIndex(userId);
+        const released = await expireUnanswered(index, intent, QUESTION_TTL_HOURS * 3_600_000);
+        if (!released.length) continue;
+        for (const opportunityId of (await owedWork(index, intent)).negotiate) {
+          if (released.includes(opportunityId)) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
+        }
+      } catch (error) {
+        logger.error('Question expiry failed', { userId, intentId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
   }
 
   /** Stop answering, cancel the runs in flight, and drop the reader. */

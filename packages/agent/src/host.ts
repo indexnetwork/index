@@ -374,7 +374,7 @@ export async function publishActions(
 }
 
 /** @param details - Every negotiation on this intent. @returns The match tag per opportunity. */
-function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReference> {
+function counterpartsOf(details: Negotiation[]): Map<string, MatchReference> {
   return new Map(details.map((detail) => [
     detail.opportunityId,
     { opportunityId: detail.opportunityId, counterparty: { id: detail.counterparty.userId, name: detail.counterparty.name } },
@@ -541,8 +541,8 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
  * @param message - One agent DM row.
  * @returns The principal entry stored on it, when this row is one.
  */
-function principalOf(message: ConversationMessage): { summary?: boolean; kind?: string; matches?: { opportunityId?: string }[] } | undefined {
-  const metadata = message.metadata as { principalMessage?: { summary?: boolean; kind?: string; matches?: { opportunityId?: string }[] } } | undefined;
+function principalOf(message: ConversationMessage): { summary?: boolean; kind?: string; questionId?: string; matches?: { opportunityId?: string }[] } | undefined {
+  const metadata = message.metadata as { principalMessage?: { summary?: boolean; kind?: string; questionId?: string; matches?: { opportunityId?: string }[] } } | undefined;
   return metadata?.principalMessage;
 }
 
@@ -766,4 +766,49 @@ export async function owedWork(client: Index, intent: Intent): Promise<{ wake: b
     }
   }
   return { wake, negotiate };
+}
+
+/**
+ * Withdraw every question the principal left unanswered for longer than
+ * `maxAgeMs`, and release the stalls it held. Withdrawing alone would leave
+ * each stall owed and asked again, so each one is resolved and its brief says
+ * the fact is not coming: the negotiator decides on what it has.
+ *
+ * @param client - Index for this owner.
+ * @param intent - The intent.
+ * @param maxAgeMs - How long a question may wait on the principal.
+ * @param now - The clock.
+ * @returns The opportunities released.
+ */
+export async function expireUnanswered(client: Index, intent: Intent, maxAgeMs: number, now = new Date()): Promise<string[]> {
+  const [negotiations, inbox] = await Promise.all([
+    client.listIntentNegotiations(intent.id),
+    client.principalInbox(intent.id),
+  ]);
+  const conversation = readConversation(inbox.messages);
+  const closed = new Set(conversation.flatMap((entry) =>
+    (entry.kind === "answer" || entry.kind === "expire") && entry.questionId ? [entry.questionId] : []));
+  const overdue = new Set(inbox.messages.flatMap((message) => {
+    const { kind, questionId } = principalOf(message) ?? {};
+    const old = now.getTime() - new Date(message.createdAt).getTime() > maxAgeMs;
+    return kind === "question" && questionId && !closed.has(questionId) && old ? [questionId] : [];
+  }));
+  if (!overdue.size) return [];
+
+  const questions = questionsAsked(conversation);
+  const carried = latestBriefs(conversation);
+  const actions: WakeAction[] = [...overdue].map((questionId) => ({ type: "expire", questionId }));
+  const released: string[] = [];
+  for (const negotiation of negotiations) {
+    const { stall, brief } = standing(carried.get(negotiation.opportunityId), negotiation);
+    if (!stall?.questionId || stall.answered || !overdue.has(stall.questionId)) continue;
+    const reason = `Your principal did not answer: ${questions.get(stall.questionId)} Do not wait on it; decide with what you know.`;
+    actions.push(
+      { type: "resolve", opportunityId: negotiation.opportunityId, stallId: stall.id, reason },
+      { type: "brief", opportunityId: negotiation.opportunityId, brief: brief ? `${brief}\n\n${reason}` : reason },
+    );
+    released.push(negotiation.opportunityId);
+  }
+  await publishActions(client, intent.id, actions, { counterparts: counterpartsOf(negotiations), questions });
+  return released;
 }

@@ -60,11 +60,10 @@ export function MatchCard({
     e.stopPropagation();
     onProfile();
   };
-  const cardClickable = accepted || expired || ready || negotiating;
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      onClick={cardClickable ? onOpen : undefined}
+      onClick={onProfile}
       style={{
         textAlign: "left",
         display: "grid",
@@ -74,9 +73,9 @@ export function MatchCard({
         background: "#fff", color: "#000",
         border: "1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
-        transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
-        cursor: cardClickable ? "pointer" : "default",
+        boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
+        transform: hover ? "translate(-1px, -1px)" : "none",
+        cursor: "pointer",
         transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
@@ -96,7 +95,7 @@ export function MatchCard({
         {accepted ? (
           <>
             {waitingOnThem && (
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>waiting for them</span>
+              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>chat open</span>
             )}
             <button type="button" className="wb-btn primary small" onClick={onOpen}>
               {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
@@ -140,19 +139,6 @@ export function SummarySection({ label, children }: { label: string; children: R
       <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>{children}</div>
     </div>
   );
-}
-
-export function expiryReason(id: string, name: string) {
-  const reasons = [
-    "the moment passed. they committed to something else before you replied.",
-    "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your intent sharpened, and your edges drifted apart.",
-    "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
-  ];
-  const s = id || name || "x";
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return reasons[h % reasons.length];
 }
 
 export function OptionChip({ label, selected = false, write = false, onClick }: {

@@ -31,8 +31,8 @@ flowchart LR
 
     Scope --> CandidateGeneration[Candidate generation]
     CandidateGeneration --> Evaluation[Evaluation]
-    Evaluation -->|plausible but uncertain| Opportunity[Draft or negotiating opportunity]
-    Evaluation -->|clear fit| Opportunity[Draft or pending opportunity]
+    Evaluation -->|plausible but uncertain| Opportunity[Negotiating opportunity]
+    Evaluation -->|clear fit| Opportunity[Pending opportunity]
     Opportunity -->|needs agent clarification| Negotiation[Bounded negotiation]
     Negotiation -->|fit established| Opportunity
     Negotiation -->|human judgment required| Questions[Structured questions]
@@ -238,11 +238,11 @@ Opportunity states are participant-facing as follows:
 
 | State | Participant-facing term | Meaning |
 |---|---|---|
-| **Draft** | Draft | The protocol found a plausible opportunity, but it has not been sent to the other side. |
-| **Sent** | Sent | One side has sent or received the opportunity and a response is pending. |
-| **Connected** | Connected | Required participants accepted and a conversation or introduction may proceed. |
-| **Declined** | Declined | A participant rejected the opportunity. |
-| **Expired** | Expired | The opportunity is no longer actionable. |
+| **negotiating** | Agents talking | The agents are negotiating whether the fit holds. |
+| **pending** | Waiting on you | The agents agreed and the participants decide. A participant who already accepted sees Chat open: the first accept opens the conversation, and the status stays pending until every participant has accepted. |
+| **accepted** | Connected | Every participant accepted. |
+| **rejected** | Passed | An agent declined or a participant rejected the opportunity. |
+| **expired** | Expired | An intent was archived. |
 
 A conforming agent MUST NOT present a received opportunity as **Connected** without explicit approval from the receiving participant. The reference implementation enforces actor authorization and valid source statuses for acceptance, while current-approval capture is handled by the agent or user-interface flow invoking the transition.
 
@@ -250,33 +250,26 @@ A conforming agent MUST NOT present a received opportunity as **Connected** with
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft: candidate promoted
-    Draft --> Sent: sender approves send
-    Draft --> Connected: direct acceptance or connection link
-    Draft --> Declined: sender declines
-    Draft --> Expired: TTL or invalidated
+    [*] --> negotiating: agent opens it
+    negotiating --> pending: agents agree
+    negotiating --> rejected: agent declines
+    negotiating --> expired: intent archived
 
-    Sent --> Connected: recipient explicitly accepts
-    Sent --> Declined: recipient declines
-    Sent --> Expired: TTL or invalidated
+    pending --> accepted: every participant accepts
+    pending --> rejected: participant rejects
+    pending --> expired: intent archived
 
-    Connected --> [*]
-    Declined --> [*]
-    Expired --> [*]
+    accepted --> [*]
+    rejected --> [*]
+    expired --> [*]
 
-    note right of Draft
-      Plausible but not sent.
-      Only visible under role and scope rules.
+    note right of pending
+      Waiting on the participants.
+      The first accept opens the chat.
     end note
 
-    note right of Sent
-      One side is waiting.
-      Acceptance requires participant approval.
-    end note
-
-    note right of Connected
-      Relationship boundary crossed.
-      Conversation or introduction may proceed.
+    note right of accepted
+      Every participant accepted.
     end note
 ```
 
@@ -300,11 +293,11 @@ sequenceDiagram
     PR->>PR: Generate candidates inside scope
     PR->>PR: Evaluate role fit and constraints
     alt Fit is clear
-        PR-->>A: Draft opportunity with explanation
+        PR-->>A: Pending opportunity with explanation
     else Fit is uncertain
         PR->>N: Start bounded negotiation
         N-->>PR: Propose, counter, accept, reject, or question
-        PR-->>A: Draft opportunity or structured question
+        PR-->>A: Pending opportunity or structured question
     end
     A->>P: Explain strongest reason and ask for approval
     P-->>A: Approve, decline, or refine intent

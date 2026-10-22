@@ -54,10 +54,10 @@ The agents settle first. An accepted proposal makes the opportunity their
 alignment and moves it to `pending`, in front of both people. A decline moves
 it to `rejected`.
 
-A person's accept is a separate act. It records their commitment and leaves the
-opportunity `pending` until every actor has committed. The commitment that
-completes the set makes the opportunity `accepted` and opens a direct
-conversation between the two people. One seat cannot accept for another.
+A person's accept is a separate act. It records their commitment and opens a
+direct conversation between the two people right away. The opportunity stays
+`pending` until every actor has committed. The commitment that completes the
+set makes it `accepted`. One seat cannot accept for another.
 Accepting a second time is refused. Rejecting or expiring stays available to
 either person while the opportunity is still open, and that decision ends its
 negotiation.
@@ -70,7 +70,7 @@ A later yes cannot override an earlier refusal.
 | --- | --- |
 | `negotiating` | Opened by an agent; the negotiation is running inside it. |
 | `pending` | The agents agreed; in front of both people, awaiting a decision. |
-| `accepted` | Every actor has committed; their conversation is open. |
+| `accepted` | Every actor has committed. |
 | `rejected` | An agent declined in the negotiation, or an actor rejected it. |
 | `expired` | One of its intents was archived. |
 

@@ -6,12 +6,12 @@ import type { NegotiationDetail } from "@/services/negotiations";
 
 /** Expand one Radar match's read-only A2A thread without affecting its runtime. */
 export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle }: {
-  intentId: string; opportunityId: string; expanded: boolean; onToggle(): void;
+  intentId?: string; opportunityId: string; expanded: boolean; onToggle(): void;
 }) {
   const { user } = useAuthContext();
   const service = useNegotiations();
   const { negotiations, isConnected } = useConversation();
-  const match = negotiations.find((entry) => entry.opportunityId === opportunityId && entry.intentId === intentId);
+  const match = negotiations.find((entry) => entry.opportunityId === opportunityId && (!intentId || entry.intentId === intentId));
   const [detail, setDetail] = useState<NegotiationDetail>();
   const [error, setError] = useState("");
   const history = useRef<HTMLDivElement>(null);
@@ -27,7 +27,7 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
       try {
         const record = await service.getNegotiation(opportunityId);
         if (!active) return;
-        if (record.intentId !== intentId) throw new Error("This conversation belongs to a different intent.");
+        if (intentId && record.intentId !== intentId) throw new Error("This conversation belongs to a different intent.");
         setDetail(record);
         setError("");
       } catch (failure) {

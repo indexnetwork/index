@@ -112,6 +112,8 @@ export interface RadarViewResponse {
 export interface GetRadarViewOptions {
   intentId?: string;
   networkId?: string;
+  /** Every opportunity shared with this user, in `statuses`. */
+  peerUserId?: string;
   limit?: number;
   noCache?: boolean;
   /** Explicit lifecycle filter — switches the radar view into lifecycle mode (intent radar). */
@@ -182,6 +184,7 @@ export const createOpportunitiesService = (
   ): Promise<RadarViewResponse> => {
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
+    if (options?.peerUserId) params.set('peerUserId', options.peerUserId);
     if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');

@@ -340,7 +340,7 @@ export default function OpportunityCard({
         )}
         {showWaiting && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[11px] text-gray-500">Waiting for {card.name || "them"}</span>
+            <span className="text-[11px] text-gray-500">Chat open</span>
             <button
               type="button"
               className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"

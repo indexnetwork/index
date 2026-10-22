@@ -53,8 +53,8 @@ export const createNetworkRequestsService = (api: ReturnType<typeof useAuthentic
     await api.delete(`/network-requests/${id}`);
   },
 
-  // Staff-only: approve or request changes on a request
-  review: async (id: string, decision: 'approve' | 'needs_changes', reviewNote?: string): Promise<NetworkRequest> => {
+  // Staff-only: approve, request changes on, or skip a request
+  review: async (id: string, decision: 'approve' | 'needs_changes' | 'skip', reviewNote?: string): Promise<NetworkRequest> => {
     const res = await api.post<{ request: NetworkRequest }>(`/network-requests/${id}/review`, { decision, reviewNote });
     return res.request;
   },

@@ -101,7 +101,7 @@ export default function NetworksPage() {
     }
   }, [networkRequestsService, error]);
 
-  const handleReview = useCallback(async (id: string, decision: 'approve' | 'needs_changes') => {
+  const handleReview = useCallback(async (id: string, decision: 'approve' | 'needs_changes' | 'skip') => {
     try {
       let reviewNote: string | undefined;
       if (decision === 'needs_changes') {
@@ -109,7 +109,7 @@ export default function NetworksPage() {
         if (!reviewNote) return;
       }
       await networkRequestsService.review(id, decision, reviewNote);
-      success(decision === 'approve' ? 'Network approved' : 'Sent back for changes');
+      success(decision === 'approve' ? 'Network approved' : decision === 'skip' ? 'Skipped' : 'Sent back for changes');
       await loadRequests();
     } catch (err) {
       logger.error('Error reviewing request', { error: err });
@@ -230,6 +230,7 @@ export default function NetworksPage() {
                           <div className="flex gap-2">
                             <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'approve')}>approve</button>
                             <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'needs_changes')}>needs changes</button>
+                            <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'skip')}>skip</button>
                           </div>
                         </div>
                       ))}
