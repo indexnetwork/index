@@ -1,4 +1,5 @@
-import { generateText, Output } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { experimental_decide, generateText, Output, type Experimental_DecisionModel, type JSONValue } from "ai";
 
 import type { Model } from "./model.ts";
 
@@ -22,7 +23,6 @@ export interface DecideClientOptions {
   headers?: Record<string, string>;
 }
 
-const ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
 const DEFAULT_MODEL = "typesafe/jev-1.14";
 /** A decision is one short call; a slow one is a failed one, and callers have a fallback. */
 const TIMEOUT_MS = 15_000;
@@ -40,18 +40,17 @@ const timeout = (signal?: AbortSignal) => AbortSignal.any([AbortSignal.timeout(T
 export function createDecide(options: DecideClientOptions = {}): Decide {
   const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OpenRouter API key missing. Pass `apiKey` or set OPENROUTER_API_KEY.");
+  const model = createOpenRouter({ apiKey, ...(options.headers ? { headers: options.headers } : {}) }).evaluationModel(options.model ?? DEFAULT_MODEL) as unknown as Experimental_DecisionModel; // The provider still types its input as the older evaluation model.
   return async ({ state, question, options: criteria, signal }) => {
-    const response = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", ...options.headers },
-      body: JSON.stringify({ model: options.model ?? DEFAULT_MODEL, state, questions: { choice: { type: "choice", instructions: question, criteria } } }),
-      signal: timeout(signal),
+    const { answers } = await experimental_decide({
+      model,
+      state: [{ type: "json", value: state as JSONValue }],
+      questions: { choice: { type: "choice", instructions: question, criteria } },
+      maxRetries: 1,
+      abortSignal: timeout(signal),
     });
-    const body = await response.json().catch(() => null) as { answers?: { choice?: { choice?: string; probabilities?: Record<string, number> } }; error?: { message?: string } } | null;
-    if (!response.ok) throw new Error(body?.error?.message ?? `Decision failed with ${response.status}`);
-    const answer = body?.answers?.choice;
-    if (!answer?.choice || !(answer.choice in criteria)) throw new Error("Decision returned no known option.");
-    return { choice: answer.choice, ...(answer.probabilities ? { probabilities: answer.probabilities } : {}) };
+    const { choice, probabilities } = answers.choice;
+    return { choice, ...(probabilities ? { probabilities } : {}) };
   };
 }
 
@@ -68,7 +67,7 @@ export function decideWith(model: Model): Decide {
       model,
       output: Output.choice({ options: Object.keys(options) }),
       prompt: `${question}\n\nOptions:\n${choices}\n\nState:\n${JSON.stringify(state)}`,
-      maxRetries: 0,
+      maxRetries: 1,
       abortSignal: timeout(signal),
     });
     return { choice: output };

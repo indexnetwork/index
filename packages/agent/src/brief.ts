@@ -151,7 +151,7 @@ const SKIP_CONFIDENCE = 0.8;
  *
  * @param input - The principal, the intent, their conversation, and the decision model.
  * @param candidate - The person to decide: a discovered counterparty or an incoming opportunity's.
- * @returns Whether to reach them. No decision model, or one that fails twice, reaches them.
+ * @returns Whether to reach them. No decision model, or one that fails, reaches them.
  */
 export async function screens(
   input: Omit<BriefInput, "opportunity">,
@@ -160,7 +160,7 @@ export async function screens(
   const { decide } = input;
   if (!decide) return true;
   const said = principalOnly(input.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text);
-  const ask = () => decide({
+  const answer = await decide({
     state: {
       principal_intent: input.intent.statement,
       principal_profile: principalFacts(input.user),
@@ -173,8 +173,7 @@ export async function screens(
       skip: "The candidate asks for something other than what this intent offers or seeks, or contradicts one of its requirements such as role, domain, stage or location.",
     },
     ...(input.signal ? { signal: input.signal } : {}),
-  });
-  const answer = await ask().catch(ask).catch(() => undefined);
+  }).catch(() => undefined);
   if (!answer) return true;
   return (answer.probabilities?.skip ?? (answer.choice === "skip" ? 1 : 0)) < SKIP_CONFIDENCE;
 }
