@@ -36892,7 +36892,7 @@ async function screens(input2, candidate) {
   if (!decide)
     return true;
   const said = principalOnly(input2.principalConversation).filter((entry) => entry.kind === "user" || entry.kind === "answer").map((entry) => entry.text);
-  const ask = () => decide({
+  const answer = await decide({
     state: {
       principal_intent: input2.intent.statement,
       principal_profile: principalFacts(input2.user),
@@ -36905,8 +36905,7 @@ async function screens(input2, candidate) {
       skip: "The candidate asks for something other than what this intent offers or seeks, or contradicts one of its requirements such as role, domain, stage or location."
     },
     ...input2.signal ? { signal: input2.signal } : {}
-  });
-  const answer = await ask().catch(ask).catch(() => {
+  }).catch(() => {
     return;
   });
   if (!answer)
