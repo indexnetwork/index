@@ -235,7 +235,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
               }}>ask about your matches, share a preference, or tell your agent what to look for.</div>
             ) : inboxFeed.map((it, index) => {
-              if (it.kind === "user") return <UserLine key={it.id} queued={waiting && index > firstWaiting}>{it.text}</UserLine>;
+              if (it.kind === "user") return <UserLine key={it.id} at={it.sentAt} queued={waiting && index > firstWaiting}>{it.text}</UserLine>;
               if (it.kind === "discovery") return (
                 <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items} loading={it.loading}/>
               );
@@ -461,7 +461,7 @@ function buildInboxFeed(messages) {
   questions.forEach((question, questionId) => {
     const answer = answers.get(questionId);
     if (!answer) return;
-    const entry = { ...question, kind:"answered-question", id:`answered-${questionId}`, answer:answer.text };
+    const entry = { ...question, kind:"answered-question", id:`answered-${questionId}`, answer:answer.text, answerAt:answer.sentAt };
     insertions.set(question.at, [...(insertions.get(question.at) || []), entry]);
   });
   const planIndexes = new Set();
@@ -797,7 +797,7 @@ function ProgressLine({ text }) {
 function AnsweredQuestion({ item }) {
   const asker = questionAsker(item);
   return (
-    <article className="fade-up" style={{ display:"flex", gap:12 }}>
+    <article className="fade-up mac-chat-row" style={{ display:"flex", gap:12 }}>
       {asker.owner
         ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
         : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
@@ -810,6 +810,7 @@ function AnsweredQuestion({ item }) {
           }}>
             <span style={{ color:"#2f7d4f", fontWeight:600 }}>✓ answered</span>
             <span style={{ color:"#8f8f88" }}>{asker.label}</span>
+            <FeedTime at={item.sentAt}/>
           </div>
           <div style={{
             maxWidth:"92%", background:"#fff",
@@ -817,7 +818,7 @@ function AnsweredQuestion({ item }) {
           }}>{item.text}</div>
         </div>
         <div style={{ display:"flex", justifyContent:"flex-end" }}>
-          <div style={{
+          <div title={item.answerAt ? new Date(item.answerAt).toLocaleString() : undefined} style={{
             maxWidth:"92%", padding:"11px 14px",
             background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
             fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
@@ -831,14 +832,18 @@ function AnsweredQuestion({ item }) {
 
 function AgentNote({ item }) {
   return (
-    <div className="fade-up" style={{ display:"flex", gap:12 }}>
+    <div className="fade-up mac-chat-row" style={{ display:"flex", gap:12 }}>
       <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
       <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
         <div>
           <div style={{
+            display:"flex", gap:8, alignItems:"center",
             marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
             color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
-          }}>your agent</div>
+          }}>
+            <span>your agent</span>
+            <FeedTime at={item.sentAt}/>
+          </div>
           <aside style={{
             maxWidth:"92%",
             background:"#fff",
@@ -860,7 +865,7 @@ function OpenQuestion({ item, cardRef, selections, setSelections, writing, setWr
   const own = options.indexOf(answer) < 0 && answer;
   const write = writing[id] || !options.length;
   return (
-    <article ref={cardRef} style={{ display:"flex", gap:12 }}>
+    <article ref={cardRef} className="mac-chat-row" style={{ display:"flex", gap:12 }}>
       {asker.owner
         ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
         : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
@@ -875,6 +880,7 @@ function OpenQuestion({ item, cardRef, selections, setSelections, writing, setWr
               fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
               textTransform:"uppercase", letterSpacing:"0.05em",
             }}>{asker.label}</span>
+            <FeedTime at={item.sentAt}/>
           </div>
           <div style={{
             maxWidth:"92%",
@@ -1203,13 +1209,6 @@ function NoteLine({ children }) {
     </div>
   );
 }
-function timeAgo(t) {
-  const s = Math.floor((Date.now() - t) / 1000);
-  if (s < 5) return "just now";
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  return `${m}m ago`;
-}
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 
@@ -1244,7 +1243,7 @@ function AgentLine({ children, pending, highlight, collective }) {
 // conversation reads like a chat: your words land at the bottom, distinct
 // from the questions coming in on the left. Your text goes through the same
 // markdown as the agent's, so a list you typed reads as a list.
-function UserLine({ children, queued = false }) {
+function UserLine({ children, queued = false, at }) {
   return (
     <div className="fade-up own-md" style={{ display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
       <div style={{
@@ -1252,9 +1251,22 @@ function UserLine({ children, queued = false }) {
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
         fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
         wordBreak:"break-word",
-      }}><AgentMarkdown text={children}/></div>
+      }} title={at ? new Date(at).toLocaleString() : undefined}><AgentMarkdown text={children}/></div>
       {queued && <span style={{ marginTop:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>queued</span>}
     </div>
+  );
+}
+
+// When a line in the agent feed was said, in its label row and only on hover
+// (inside a .mac-chat-row): "9:41 pm" today, "apr 27, 9:41 pm" before.
+function FeedTime({ at }) {
+  const text = at && chatTime(at);
+  if (!text) return null;
+  return (
+    <time className="mac-chat-time" dateTime={at} style={{
+      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+      letterSpacing:0.2, textTransform:"none", whiteSpace:"nowrap",
+    }}>{text}</time>
   );
 }
 

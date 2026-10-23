@@ -3,6 +3,7 @@ import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import type { NegotiationDetail } from "@/services/negotiations";
+import { formatChatClock } from "@/lib/utils";
 
 /** Expand one Radar match's read-only A2A thread without affecting its runtime. */
 export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle }: {
@@ -60,6 +61,7 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
         <div key={turn.turnIndex} style={{ display: "grid", gap: 4, justifyItems: own ? "end" : "start" }}>
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 0.5 }}>
             {own ? "your agent" : `${first}'s agent`} · {turn.action}
+            {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
           <div style={{
             maxWidth: "82%", border: "1px solid #000",

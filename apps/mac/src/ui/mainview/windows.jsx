@@ -524,7 +524,7 @@ function NegotiationWindow({ person, onClose }) {
             </div>
           </div>
 
-          <div ref={scrollRef} className="mac-scroll" style={{
+          <div ref={scrollRef} className="mac-scroll mac-chat-dated" style={{
             overflowY:"auto", padding:"14px 16px",
             display:"flex", flexDirection:"column", gap:10, background:"#fff",
           }}>

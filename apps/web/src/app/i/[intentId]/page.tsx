@@ -433,7 +433,10 @@ function IntentDetail() {
           </div>
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000" }}>
             {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6 }} />}
-            <span>{lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}</span>
+            <span>
+              {lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}
+              {intent?.createdAt && ` · created ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+            </span>
           </div>
         </>
       )}

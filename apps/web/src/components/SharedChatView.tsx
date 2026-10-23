@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import SiteLayout from "@/app/site/SiteLayout";
@@ -169,6 +169,7 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
               .map((msg) => (
                 <div key={msg.id}>
                   <div
+                    title={formatDate(msg.createdAt)}
                     className={cn(
                       "flex",
                       msg.role === "user" ? "justify-end" : "justify-start",
