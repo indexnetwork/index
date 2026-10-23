@@ -106,7 +106,8 @@ export interface MorningOwed {
   waiting: { opportunityId: string; userId: string; name: string; context: string | null; fresh: boolean }[];
   /** The agent's latest summary per intent since `since`. */
   notes: { text: string; intentId: string }[];
-  questions: { text: string; intentId: string }[];
+  /** Open questions. `counterpartyId` is the person asked about; `scope` is `intent` or `match`. */
+  questions: { text: string; intentId: string; counterpartyId: string | null; scope: string | null }[];
 }
 
 /** What the owner's agent has to tell them since `since`. */
@@ -144,8 +145,24 @@ export async function owedForEmail(userId: string, since: Date): Promise<Morning
       AND m.metadata->'principalMessage'->>'summary' = 'true'
     ORDER BY m.metadata->>'intentId', m.created_at DESC
   `) as unknown as MorningOwed['notes'];
+  // The person is the match tag when the agent stored one. Otherwise the
+  // opportunity id is resolved to the other seat: each intent has its own
+  // opportunity with that person, and the brief groups on the person.
   const questions = await db.execute(sql`
-    SELECT asked.parts->0->>'text' AS text, asked.metadata->>'intentId' AS "intentId"
+    SELECT asked.parts->0->>'text' AS text, asked.metadata->>'intentId' AS "intentId",
+      asked.metadata->'principalMessage'->>'scope' AS scope,
+      COALESCE(
+        NULLIF(asked.metadata->'principalMessage'->'matches'->0->'counterparty'->>'id', ''),
+        (
+          SELECT peer->>'userId'
+          FROM ${schema.opportunities} opp
+          CROSS JOIN LATERAL jsonb_array_elements(opp.actors) peer
+          WHERE opp.id = asked.metadata->'principalMessage'->'matches'->0->>'opportunityId'
+            AND peer->>'userId' IS NOT NULL
+            AND peer->>'userId' <> ${userId}
+          LIMIT 1
+        )
+      ) AS "counterpartyId"
     FROM ${schema.messages} asked
     INNER JOIN ${schema.conversations} dm ON dm.id = asked.conversation_id
     WHERE dm.dm_pair = ${dmPair}

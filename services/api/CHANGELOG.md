@@ -10,10 +10,12 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Fixed
+- The morning brief shows one question per counterpart and scope. The same ask rephrased across near-identical intents no longer fills all three question slots.
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
 - Counterparty discovery returns only intents whose owners verified their email.
 
 ### Changed
+- MCP clients follow the morning brief: once in the owner's 8am hour, and a minute or two after an intent is created or changed, and only when someone new is waiting or a question is open.
 - **BREAKING: `get_intent_conversation` reads every intent in one call.** `intentId` is optional; omitting it returns every non-archived intent's chat. The result is always `conversations`, each with `intentId`, `conversation`, `questions`, and `url`.
 - **MCP keeps the owner's intent chat.** `get_intent_conversation` reads one owned intent's chat. `principal_send_message` saves what the owner wrote, and a `questionId` marks an answer to that waiting question. The agent write tools stay off; the hosted negotiator writes that side. `principal.input` and `question.pending` stay off the public event list.
 - **MCP agent writes are one tool each.** `agent_send_message` is `agent_send_note`, `agent_send_reply`, `agent_send_progress`, `agent_ask`, and `agent_expire_question`. Expiring a question is marked destructive.
