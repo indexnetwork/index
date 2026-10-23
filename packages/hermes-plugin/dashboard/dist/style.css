@@ -3530,11 +3530,34 @@
   align-self: flex-end;
 }
 
+/* Message times sit in their existing slot and only show on hover. Held at
+   zero opacity, not removed, so revealing one never moves the message.
+   Negotiation turn times (a2a) stay visible. */
 .index-dashboard__msg-time {
   margin-top: 0.25rem;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.625rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.index-dashboard__msg-row:hover .index-dashboard__msg-time,
+.index-dashboard__msg-row:focus-within .index-dashboard__msg-time {
+  opacity: 1;
+}
+
+.index-dashboard__agent-time {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.625rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.index-dashboard__agent-line:hover .index-dashboard__agent-time,
+.index-dashboard__agent-line:focus-within .index-dashboard__agent-time {
+  opacity: 1;
 }
 
 .index-dashboard__msg-bubble {

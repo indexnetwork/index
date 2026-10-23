@@ -82,7 +82,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
     const failed = picked.length - saved.length;
     setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
     setCreated(saved);
-    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((p) => `· ${p.text}`).join("\n") }]);
+    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((p) => `· ${p.text}`).join("\n"), at: new Date().toISOString() }]);
     setStage("opening");
     setCalibrating(false);
   };
@@ -128,7 +128,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
   const submitOpening = (value) => {
     const answer = String(value ?? draft).trim();
     if (!answer) return;
-    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer }]);
+    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer, at: new Date().toISOString() }]);
     payloadRef.current = answer;
     if (!client) { setCalibrating(true); onDone({ intent: answer }, false, null); return; }
     void runPrepare();
@@ -211,7 +211,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
               marginRight:-28, paddingRight:28, paddingBottom:18,
             }}>
               {turns.map((t) => (
-                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer}/>
+                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer} at={t.at}/>
               ))}
 
               {thinking ? (
@@ -561,10 +561,10 @@ function WorkingDots({ size = 8 }) {
   );
 }
 
-function UserBubble({ children }) {
+function UserBubble({ children, at }) {
   return (
     <div style={{ display:"flex", justifyContent:"flex-end" }}>
-      <div style={{
+      <div title={at ? new Date(at).toLocaleString() : undefined} style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
         fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
@@ -574,11 +574,11 @@ function UserBubble({ children }) {
   );
 }
 
-function PastTurn({ step, answer }) {
+function PastTurn({ step, answer, at }) {
   return (
     <div style={{ display:"grid", gap:10 }}>
       <AgentBubble muted label={<TurnLabel/>}>{step.prompt}</AgentBubble>
-      <UserBubble>{answer}</UserBubble>
+      <UserBubble at={at}>{answer}</UserBubble>
     </div>
   );
 }

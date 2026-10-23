@@ -152,7 +152,7 @@ Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media e
 **[Seren Sandikci](https://x.com/serensandikci), Co-founder**
 Designed human–AI interaction for 10 years, including conversational systems. Founded [QNB Group](https://www.qnb.com/)'s design studio as first hire, serving 30M banking customers ($400B AUM).
 
-**[Ashish Uppala](https://ashishuppala.com/), Founding Engineer**
+**[Ashish Uppala](https://ashishuppala.com/), Founding Team Member**
 First hire and CTO of [scite.ai](https://scite.ai/) through its acquisition. Applied metascience at Portal Stargaze and a collective intelligence funding program at ARIA. Research background at the National Cancer Institute.
 
 **[Vicky Gu](https://www.linkedin.com/in/vickygu/), Brand & Narrative**

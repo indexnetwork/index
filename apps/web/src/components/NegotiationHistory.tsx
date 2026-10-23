@@ -6,6 +6,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import type { NegotiationHistoryEntry } from "@/services/users";
 import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiations";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { formatChatClock } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
 
@@ -22,19 +23,6 @@ const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: str
   closed: { label: "lost", className: "" },
 };
 
-function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
-
 function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolean; isLast: boolean }) {
   const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
 
@@ -48,6 +36,7 @@ function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolea
         <div className="flex items-center gap-2 mb-1">
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>
             {own ? "you.agent" : "their.agent"} · {actionInfo.label}
+            {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
         </div>
         <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{turn.message}</p>
@@ -152,6 +141,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         const isExpanded = expandedId === neg.id;
         const turns = turnsByOpportunity[neg.opportunityId];
         const outcomeInfo = neg.outcome ? OUTCOME_LABELS[neg.outcome] : null;
+        const lastAt = neg.updatedAt || neg.settledAt || neg.createdAt;
 
         return (
           <div key={neg.id} style={{ border: "1px solid #000", background: "#fff" }}>
@@ -196,7 +186,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                   {neg.turnCount > 0 && (
                     <span>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
                   )}
-                  <span className="ml-auto">{timeAgo(neg.createdAt)}</span>
+                  <time className="ml-auto" dateTime={lastAt} title={new Date(lastAt).toLocaleString()}>{formatChatClock(lastAt)}</time>
                 </div>
               </div>
 

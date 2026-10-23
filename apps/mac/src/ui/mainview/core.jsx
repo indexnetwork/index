@@ -291,6 +291,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           return {
             id: m.id,
             ...classified,
+            sentAt: m.createdAt,
             scope: provenance.scope,
             matches: provenance.matches,
             questionId: provenance.questionId,
@@ -339,7 +340,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (!client || !intentId || !text) return;
     const id = `pending-${Date.now()}`;
     const seen = agentMessages.filter((m) => m.kind === "user" && m.text === text).length;
-    setPending((prev) => [...prev, { id, kind: "user", text, seen }]);
+    setPending((prev) => [...prev, { id, kind: "user", text, seen, sentAt: new Date().toISOString() }]);
     const sent = client.conversations.sendMessage("agent", {
       parts: [{ kind: "text", text }],
       metadata: { intentId },
