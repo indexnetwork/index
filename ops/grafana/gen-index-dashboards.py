@@ -15,9 +15,11 @@ def target(sql, fmt):
     return {"refId": "A", "datasource": DS, "format": fmt, "rawQuery": True, "editorMode": "code", "rawSql": sql}
 
 
-def stat(i, title, sql, x, y, unit="short", w=4):
+def stat(i, title, sql, x, y, unit="short", w=4, decimals=None):
+    if decimals is None:
+        decimals = 1 if unit != "short" else 0
     return {"id": i, "type": "stat", "title": title, "datasource": DS, "gridPos": {"x": x, "y": y, "w": w, "h": 4},
-            "fieldConfig": {"defaults": {"unit": unit, "decimals": 1 if unit != "short" else 0}, "overrides": []},
+            "fieldConfig": {"defaults": {"unit": unit, "decimals": decimals}, "overrides": []},
             "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}, "colorMode": "none"},
             "targets": [target(sql, "table")]}
 
@@ -40,6 +42,11 @@ def bars(i, title, sql, x, y, w=12, h=8):
 def table(i, title, sql, x, y, w=12, h=8):
     return {"id": i, "type": "table", "title": title, "datasource": DS, "gridPos": {"x": x, "y": y, "w": w, "h": h},
             "fieldConfig": {"defaults": {}, "overrides": []}, "options": {}, "targets": [target(sql, "table")]}
+
+
+def row(i, title, y):
+    return {"id": i, "type": "row", "title": title, "collapsed": False,
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": y}, "panels": []}
 
 
 def dash(uid, title, panels, rng="now-30d"):
@@ -181,7 +188,145 @@ email = dash("index-email", "Index - Email", [
 from analytics.email_events where $__timeFilter(at) group by 1 order by sent desc""", 0, 49, 24, 8),
 ])
 
-DASHES = {"activation": activation, "opportunity": opportunity, "negotiation": negotiation, "retention": retention, "supply": supply, "email": email}
+# People, not volume. Counts only: the board never lists a user id.
+SENT_USERS = """s as (
+  select user_id,
+    count(*) filter (where type = 'sent') as sent,
+    count(distinct email_id) filter (where type = 'clicked') as clicks,
+    count(distinct email_id) filter (where type = 'opened') as opens
+  from analytics.email_events
+  where user_id is not null and $__timeFilter(at)
+  group by 1
+  having count(*) filter (where type = 'sent') > 0
+)"""
+
+health = dash("index-email-health", "Index - Email health", [
+    row(100, "Too much mail", 0),
+    described(stat(1, "Users sent 5 or more", "with " + SENT_USERS + " select count(*) as value from s where sent >= 5", 0, 1, w=5),
+              "Five tracked emails to one person in the selected range."),
+    described(stat(2, "Extra morning brief on one day", """with d as (
+  select user_id, date_trunc('day', at) as day, count(*) as n
+  from analytics.email_events
+  where type = 'sent' and kind = 'morning_brief' and user_id is not null and $__timeFilter(at)
+  group by 1, 2
+) select count(distinct user_id) as value from d where n > 1""", 5, 1, w=5),
+              "A morning brief is one a day. This counts users sent more than one on the same UTC day."),
+    described(stat(3, "3 or more message emails on one day", """with d as (
+  select user_id, date_trunc('day', at) as day, count(*) as n
+  from analytics.email_events
+  where type = 'sent' and kind = 'message' and user_id is not null and $__timeFilter(at)
+  group by 1, 2
+) select count(distinct user_id) as value from d where n >= 3""", 10, 1, w=5),
+              "Message mail waits one minute after the latest message, then sends. Three in a day is three separate bursts."),
+    stat(4, "Most emails to one user", """select coalesce(max(n), 0) as value from (
+  select count(*) as n from analytics.email_events
+  where type = 'sent' and user_id is not null and $__timeFilter(at) group by user_id
+) s""", 15, 1, w=4),
+    stat(5, "Median emails per user", """select coalesce(percentile_cont(0.5) within group (order by n), 0) as value from (
+  select count(*) as n from analytics.email_events
+  where type = 'sent' and user_id is not null and $__timeFilter(at) group by user_id
+) s""", 19, 1, w=5, decimals=1),
+    bars(6, "Users by emails received", """select bucket, users from (
+  with """ + SENT_USERS + """
+  select '1 one' as bucket, count(*) as users from s where sent = 1
+  union all select '2 two', count(*) from s where sent = 2
+  union all select '3 three or four', count(*) from s where sent between 3 and 4
+  union all select '4 five to nine', count(*) from s where sent between 5 and 9
+  union all select '5 ten or more', count(*) from s where sent >= 10
+) b order by bucket""", 0, 5, 12, 8),
+    described(ts(7, "Heavy days", """select day as time,
+  count(*) filter (where briefs > 1) as extra_morning_brief,
+  count(*) filter (where messages >= 3) as message_bursts
+from (
+  select user_id, date_trunc('day', at) as day,
+    count(*) filter (where kind = 'morning_brief') as briefs,
+    count(*) filter (where kind = 'message') as messages
+  from analytics.email_events
+  where type = 'sent' and user_id is not null and $__timeFilter(at)
+  group by 1, 2
+) d group by day order by day""", 12, 5, 12, 8),
+              "Users that day who got a second morning brief, or three or more message emails."),
+    table(8, "Volume by email type", """select coalesce(kind, 'untagged') as email_type,
+  count(*) filter (where type = 'sent') as sent,
+  count(distinct user_id) filter (where type = 'sent') as users,
+  count(*) filter (where type = 'sent')::float / nullif(count(distinct user_id) filter (where type = 'sent'), 0) as emails_per_user,
+  count(distinct user_id) filter (where type = 'clicked') as users_who_clicked
+from analytics.email_events where $__timeFilter(at) group by 1 order by sent desc""", 0, 13, 24, 8),
+    row(101, "Not engaging", 21),
+    described(stat(9, "Emailed users with no click", "with " + SENT_USERS + " select count(*) filter (where clicks = 0)::float / nullif(count(*), 0) as value from s", 0, 22, "percentunit", 5),
+              "Clicks are the reliable signal. Opens include automatic privacy fetches."),
+    described(stat(10, "3 or more emails, no click", "with " + SENT_USERS + " select count(*) as value from s where sent >= 3 and clicks = 0", 5, 22, w=5),
+              "Sent at least three tracked emails in the range and never clicked one."),
+    described(stat(11, "3 or more emails, no open", "with " + SENT_USERS + " select count(*) as value from s where sent >= 3 and opens = 0", 10, 22, w=5),
+              "Open tracking misses people who block images, so this undercounts readers."),
+    described(stat(12, "Morning brief, never clicked", """with s as (
+  select user_id,
+    count(*) filter (where type = 'sent' and kind = 'morning_brief') as sent,
+    count(distinct email_id) filter (where type = 'clicked' and kind = 'morning_brief') as clicks
+  from analytics.email_events where user_id is not null and $__timeFilter(at)
+  group by 1
+  having count(*) filter (where type = 'sent' and kind = 'morning_brief') > 0
+) select count(*) as value from s where clicks = 0""", 15, 22, w=5),
+              "Users sent a morning brief in the range who never clicked one."),
+    described(stat(13, "Message email, never clicked", """with s as (
+  select user_id,
+    count(*) filter (where type = 'sent' and kind = 'message') as sent,
+    count(distinct email_id) filter (where type = 'clicked' and kind = 'message') as clicks
+  from analytics.email_events where user_id is not null and $__timeFilter(at)
+  group by 1
+  having count(*) filter (where type = 'sent' and kind = 'message') > 0
+) select count(*) as value from s where clicks = 0""", 20, 22, w=4),
+              "Users sent a message email in the range who never clicked one."),
+    bars(14, "Emailed users by clicks", """select bucket, users from (
+  with """ + SENT_USERS + """
+  select '1 none' as bucket, count(*) as users from s where clicks = 0
+  union all select '2 one', count(*) from s where clicks = 1
+  union all select '3 two or more', count(*) from s where clicks >= 2
+) b order by bucket""", 0, 26, 12, 8),
+    described(ts(15, "Emailed that day, no click in the range", """with clicks as (
+  select distinct user_id from analytics.email_events
+  where type = 'clicked' and user_id is not null and $__timeFilter(at)
+)
+select date_trunc('day', at) as time,
+  count(distinct user_id) as emailed,
+  count(distinct user_id) filter (where user_id not in (select user_id from clicks)) as no_click
+from analytics.email_events
+where type = 'sent' and user_id is not null and $__timeFilter(at)
+group by 1 order by 1""", 12, 26, 12, 8),
+              "No click means no click anywhere in the selected range, not only on that day."),
+    table(16, "Engagement by email type", """select coalesce(kind, 'untagged') as email_type,
+  count(distinct user_id) filter (where type = 'sent') as users_emailed,
+  count(distinct user_id) filter (where type = 'clicked') as users_clicked,
+  count(distinct user_id) filter (where type = 'opened') as users_opened,
+  count(distinct user_id) filter (where type = 'clicked')::float / nullif(count(distinct user_id) filter (where type = 'sent'), 0) as click_share
+from analytics.email_events where $__timeFilter(at) group by 1 order by users_emailed desc""", 0, 34, 24, 8),
+    row(102, "Mail that should have stopped", 42),
+    stat(17, "Users who bounced", "select count(distinct user_id) as value from analytics.email_events where type = 'bounced' and $__timeFilter(at)", 0, 43, w=5),
+    stat(18, "Users who marked mail as spam", "select count(distinct user_id) as value from analytics.email_events where type = 'complained' and $__timeFilter(at)", 5, 43, w=5),
+    described(stat(19, "Emailed after a bounce", """with b as (
+  select user_id, min(at) as first_at from analytics.email_events
+  where type = 'bounced' and user_id is not null and $__timeFilter(at) group by 1
+) select count(distinct e.user_id) as value from analytics.email_events e
+  join b on b.user_id = e.user_id
+  where e.type = 'sent' and e.at > b.first_at and $__timeFilter(e.at)""", 10, 43, w=5),
+              "A send in the range after that user's first bounce in the range."),
+    described(stat(20, "Emailed after a spam report", """with b as (
+  select user_id, min(at) as first_at from analytics.email_events
+  where type = 'complained' and user_id is not null and $__timeFilter(at) group by 1
+) select count(distinct e.user_id) as value from analytics.email_events e
+  join b on b.user_id = e.user_id
+  where e.type = 'sent' and e.at > b.first_at and $__timeFilter(e.at)""", 15, 43, w=5),
+              "A send in the range after that user's first spam report in the range."),
+    stat(21, "Failed sends", mail("failed"), 20, 43, w=4),
+    ts(22, "Users who bounced or reported spam", """select $__timeGroupAlias(at,'1d'),
+  count(distinct user_id) filter (where type = 'bounced') as bounced,
+  count(distinct user_id) filter (where type = 'complained') as spam
+from analytics.email_events
+where type in ('bounced', 'complained') and $__timeFilter(at)
+group by 1 order by 1""", 0, 47, 24, 8),
+])
+
+DASHES = {"activation": activation, "opportunity": opportunity, "negotiation": negotiation, "retention": retention, "supply": supply, "email": email, "email-health": health}
 out = sys.argv[1]
 os.makedirs(out + "/var/lib/grafana-dashboards", exist_ok=True)
 for k, d in DASHES.items():
@@ -190,6 +335,8 @@ for k, d in DASHES.items():
 queries = []
 for k, d in DASHES.items():
     for p in d["panels"]:
+        if not p.get("targets"):
+            continue
         queries.append({"d": k, "p": p["title"], "sql": p["targets"][0]["rawSql"]})
 rng = "between now() - interval '30 days' and now()"
 

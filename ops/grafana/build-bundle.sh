@@ -12,6 +12,8 @@ mkdir -p "$root/etc/grafana/provisioning/datasources" "$root/etc/grafana/provisi
 cp "$here"/provisioning/datasources/*.yaml "$root/etc/grafana/provisioning/datasources/"
 cp "$here"/provisioning/dashboards/*.yaml "$root/etc/grafana/provisioning/dashboards/"
 cp "$here"/dashboards/*.json "$root/var/lib/grafana-dashboards/"
+cp "$here"/import-dashboards.sh "$root/etc/grafana/import-dashboards.sh"
+chmod 755 "$root/etc/grafana/import-dashboards.sh"
 
 tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$root" . | gzip -n -9 > "$out/bundle.tgz"
 base64 -w0 "$out/bundle.tgz" > "$out/bundle.b64"
@@ -28,4 +30,6 @@ prev_sha="e7d7fd23d5df8134d0f2a9bcbbe2b4478a52e1d208cc0fbf5b54b8a8bd3c0851"
 prev_refs="$(for n in 00 01 02 03 04 05 06 07 08 09 10; do printf '$IDX_%s' "$n"; done)"
 unpack() { printf 'printf %%s "%s" | base64 -d > /tmp/b.tgz && echo "%s  /tmp/b.tgz" | sha256sum -c - && tar xzf /tmp/b.tgz -C /' "$1" "$2"; }
 echo "start command:"
-echo "sh -c '{ $(unpack "$refs" "$sha"); } || { echo bundle-check-failed-using-previous; $(unpack "$prev_refs" "$prev_sha"); }; exec /run.sh'"
+# Grafana stays a child so the import script can run in the foreground. A background
+# script is not kept across exec /run.sh, and its log lines never show up.
+echo "sh -c '{ $(unpack "$refs" "$sha"); } || { echo bundle-check-failed-using-previous; $(unpack "$prev_refs" "$prev_sha"); }; /run.sh & grafana_pid=\$!; trap \"kill \$grafana_pid\" TERM INT; if [ -x /etc/grafana/import-dashboards.sh ]; then /etc/grafana/import-dashboards.sh; fi; wait \$grafana_pid'"
