@@ -152,8 +152,8 @@ Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media e
 **[Seren Sandikci](https://x.com/serensandikci), Co-founder**
 Designed human–AI interaction for 10 years, including conversational systems. Founded [QNB Group](https://www.qnb.com/)'s design studio as first hire, serving 30M banking customers ($400B AUM).
 
-**[Yanki Ekin Yuksel](https://www.linkedin.com/in/yanekyuk/), Founding Engineer**
-Led engineering as CTO of digital media platform [Aposto](https://aposto.com/) (1M readership). Expertise in computational linguistics - matching on meaning, not keywords.
+**[Ashish Uppala](https://ashishuppala.com/), Founding Engineer**
+First hire and CTO of [scite.ai](https://scite.ai/) through its acquisition. Applied metascience at Portal Stargaze and a collective intelligence funding program at ARIA. Research background at the National Cancer Institute.
 
 **[Vicky Gu](https://www.linkedin.com/in/vickygu/), Brand & Narrative**
 Defined the narrative attracting top technical talent for $3B social discovery platform Grindr. Led category narrative at NewtonX ($47M raised), elevating B2B research from service to strategy.

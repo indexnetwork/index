@@ -241,6 +241,8 @@ function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first intent, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
+  // Only onboarding opens the new intent on the agent's picks; the hub's "new intent" never does.
+  const [onboardingPicks, setOnboardingPicks] = useState(false);
   const [profile, setProfile] = useState({});
   // First run, in order: the name confirmed on the card, then what the
   // public-research lookup made of it. Both feed the getting-started review.
@@ -672,7 +674,7 @@ function App() {
   const findIntent = (id) => (id ? (INTENTS || []).find((i) => i.id === id) || null : null);
   // Resume an intent and say what to open inside it once the session mounts.
   const openIntentOn = (intent, focus) => { pickExistingIntent(intent); setPendingFocus(focus); };
-  const goNewIntent = () => setScreen("new-intent");
+  const goNewIntent = () => { setOnboardingPicks(false); setScreen("new-intent"); };
   // Onboarding's last intent lands on the hub with everything it created.
   const finishOnboarding = (intentId) => {
     setFreshUser(false);
@@ -756,7 +758,7 @@ function App() {
                                        onNew={goNewIntent}
                                        onOpenView={(view, tab) => setOverlay({ view, tab })}
                                        onSignOut={signOut}/>}
-        {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")} onHome={finishOnboarding} suggest={freshUser}/>}
+        {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")} onHome={finishOnboarding} suggest={onboardingPicks}/>}
         {/* First run, in three screens: confirm the name, look the person up
             behind the loader, then review what came back. The review is what
             PATCHes profile + confirm-profile; a short how-it-works follows, and
@@ -782,7 +784,7 @@ function App() {
                                        onDone={() => setScreen("how-it-works")}/>}
         {screen === "how-it-works" && <HowItWorks
                                        onSignOut={signOut}
-                                       onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
+                                       onDone={() => { const fresh = (INTENTS || []).length === 0; setFreshUser(fresh); setOnboardingPicks(fresh); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link
             can land on the hub, where the radar's selection state doesn't
             exist. */}

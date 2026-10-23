@@ -6,7 +6,7 @@ const TEAM: Person[] = [
   { name: "Seref Yarar", href: "https://x.com/hyperseref" },
   { name: "Seren Sandikci", href: "https://x.com/serensandikci" },
   { name: "Vicky Gu", href: "https://linkedin.com/in/vickygu" },
-  { name: "Yanki Ekin Yuksel", href: "https://linkedin.com/in/yanekyuk" },
+  { name: "Ashish Uppala", href: "https://ashishuppala.com/" },
 ];
 
 const BACKERS: Person[] = [
