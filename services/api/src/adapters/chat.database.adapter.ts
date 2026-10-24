@@ -1725,8 +1725,23 @@ export class ChatDatabaseAdapter {
     await db
       .delete(networkMembers)
       .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)));
+    await this.unlinkMemberIntents(networkId, userId);
 
     return { success: true };
+  }
+
+  /**
+   * Drop a departed member's intents from the network. Discovery already
+   * requires a live membership, but a stale `intent_networks` row still seats
+   * the intent in negotiations and misreports the network's intents.
+   */
+  private async unlinkMemberIntents(networkId: string, userId: string): Promise<void> {
+    await db.execute(sql`
+      delete from ${intentNetworks} using ${intents}
+      where ${intents.id} = ${intentNetworks.intentId}
+        and ${intentNetworks.networkId} = ${networkId}
+        and ${intents.userId} = ${userId}
+    `);
   }
 
   // user_profiles was dropped in WS8 (IND-365); there is no separate profile row to
@@ -2297,6 +2312,7 @@ export class ChatDatabaseAdapter {
     if (deleted.length === 0) {
       throw new Error('Member not found');
     }
+    await this.unlinkMemberIntents(networkId, memberUserId);
   }
 
   /**
@@ -2339,6 +2355,7 @@ export class ChatDatabaseAdapter {
     if (deleted.length === 0) {
       throw new Error('You are not a member of this network');
     }
+    await this.unlinkMemberIntents(networkId, userId);
   }
 
   /**
