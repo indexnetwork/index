@@ -85,13 +85,22 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
               ))}
             </div>
             <div style={{ flex: "0 0 auto", borderTop: "1px solid #000", padding: "14px 26px 18px", display: "grid", gap: 12 }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "#000" }}>
-                <input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} style={{ marginTop: 2 }} />
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "#000" }}>
+                <input id="consent-privacy" type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} style={{ marginTop: 2 }} />
                 <span>
-                  I have read and agree to Index Network&apos;s{" "}
-                  <a href="/pages/privacy-policy" target="_blank" rel="noreferrer" style={{ color: "#000" }}>Privacy Policy</a>.
+                  <label htmlFor="consent-privacy" style={{ cursor: "pointer" }}>
+                    I have read and agree to Index Network&apos;s
+                  </label>{" "}
+                  <a
+                    href="https://index.network/pages/privacy-policy"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "#000", textDecoration: "underline" }}
+                  >
+                    Privacy Policy
+                  </a>.
                 </span>
-              </label>
+              </div>
               <label style={{ display: "grid", gap: 6, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#000" }}>
                 Signature
                 <input

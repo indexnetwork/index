@@ -31,7 +31,10 @@ describe("ConsentGate", () => {
     const submit = screen.getByRole("button", { name: "I agree" });
     expect(submit).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /Privacy Policy/ }));
+    const policy = screen.getByRole("link", { name: "Privacy Policy" });
+    expect(policy).toHaveAttribute("href", "https://index.network/pages/privacy-policy");
+    expect(policy).toHaveAttribute("target", "_blank");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Index Network/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Signature" }), { target: { value: "Ada Lovelace" } });
     expect(submit).toBeDisabled();
 
