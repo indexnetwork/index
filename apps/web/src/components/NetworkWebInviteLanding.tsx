@@ -46,7 +46,7 @@ type JoinOutcome = "pending" | "declined";
 export default function NetworkWebInviteLanding() {
   const { code } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, isReady, user } = useAuthContext();
+  const { isAuthenticated, isReady, user, refetchUser } = useAuthContext();
   const networkService = useNetworkService();
 
   const [previewStep, setPreviewStep] = useState<PreviewStep>(code ? "loading" : "error");
@@ -172,6 +172,8 @@ export default function NetworkWebInviteLanding() {
         setJoinOutcome("pending");
         return;
       }
+      // Membership now exists, so /auth/me can report a pending consent before we leave this page.
+      await refetchUser();
       setJoinedNetworkId(result.network.id);
     } catch (err) {
       setJoining(false);
@@ -183,7 +185,7 @@ export default function NetworkWebInviteLanding() {
       setJoinError(isInviteRejected(err) ? JOIN_EXPIRED : JOIN_FAILED);
       logger.error("Failed to accept invitation", { error: err });
     }
-  }, [code, navigate, networkService]);
+  }, [code, navigate, networkService, refetchUser]);
 
   useEffect(() => {
     if (previewStep !== "ready" || !isReady || linkSentTo) return;
