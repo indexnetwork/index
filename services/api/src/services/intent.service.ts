@@ -479,7 +479,7 @@ export class IntentService {
   async discover(
     intentId: string,
     userId: string,
-    input: { query: string; limit?: number; since?: Date },
+    input: { query: string; limit?: number; since?: Date; peerUserId?: string },
   ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
@@ -496,6 +496,7 @@ export class IntentService {
     const candidates = await this.embedder.searchIntentCandidates(embedding, {
       networkScope,
       excludeUserId: userId,
+      ...(input.peerUserId ? { userId: input.peerUserId } : {}),
       limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
       minScore: 0,
       ...(input.since ? { since: input.since } : {}),
@@ -529,9 +530,30 @@ export class IntentService {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
+    if (!input.peerUserId) await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
 
     return { kind: 'ok', counterparties };
+  }
+
+  /**
+   * Open every discoverable intent pair between the caller and one peer: each
+   * of the caller's active intents is discovered against the peer alone, so
+   * eligibility is discovery's own. Idempotent on each pair.
+   *
+   * @param userId - Authenticated owner.
+   * @param peerUserId - The member to pair with.
+   * @returns The opportunities that now exist, or `no_pair` when nothing was discoverable.
+   */
+  async pairWithUser(userId: string, peerUserId: string): Promise<{ kind: 'ok'; opportunityIds: string[] } | { kind: 'no_pair' }> {
+    if (userId === peerUserId) return { kind: 'no_pair' };
+    const opportunityIds: string[] = [];
+    for (const intent of await chatDatabaseAdapter.getActiveIntents(userId)) {
+      const found = await this.discover(intent.id, userId, { query: intent.payload, peerUserId, limit: CREATE_OPPORTUNITIES_LIMIT });
+      if (found.kind !== 'ok' || found.counterparties.length === 0) continue;
+      const created = await this.createOpportunities(intent.id, userId, found.counterparties);
+      if (created.kind === 'ok') opportunityIds.push(...created.opportunities.map((o) => o.opportunityId));
+    }
+    return opportunityIds.length ? { kind: 'ok', opportunityIds } : { kind: 'no_pair' };
   }
 
   /**

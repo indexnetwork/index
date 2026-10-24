@@ -7,8 +7,8 @@
  */
 export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   intentInferrer: "google/gemini-3.7-flash",
-  intentVerifier: "google/gemini-3.7-flash",
-  intentClarifier: "google/gemini-3.7-flash",
+  intentVerifier: "google/gemini-2.5-flash",
+  intentClarifier: "google/gemini-2.5-flash",
   profileGenerator: "google/gemini-3.7-flash",
   opportunityPresenter: "google/gemini-3.7-flash",
   negotiator: "google/gemini-3.7-flash",

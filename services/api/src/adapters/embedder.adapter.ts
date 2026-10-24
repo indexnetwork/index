@@ -17,7 +17,10 @@ export interface IntentCandidate {
   type: 'intent'; id: string; userId: string; score: number; networkId: string;
 }
 export interface IntentSearchOptions {
-  networkScope: string[]; excludeUserId?: string; limit: number;
+  networkScope: string[]; excludeUserId?: string;
+  /** Only intents owned by this user. */
+  userId?: string;
+  limit: number;
   /** Similarity cutoff, 0..1. Zero searches without one, for a caller that wants a top-N. */
   minScore: number;
   /** Only intents created, or shared into the community, after this. */
@@ -188,6 +191,7 @@ export class EmbedderAdapter {
     const conditions = [
       inArray(intentNetworks.networkId, filter.networkScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
+      ...(filter.userId ? [eq(intents.userId, filter.userId)] : []),
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'active')),
       isNull(schema.users.deletedAt),

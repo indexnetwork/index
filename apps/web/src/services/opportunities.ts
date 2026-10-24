@@ -233,6 +233,11 @@ export const createOpportunitiesService = (
     return request;
   },
 
+  /** Open every discoverable intent pair with a peer. Rejects when none exist. */
+  pairWith: async (peerUserId: string): Promise<{ opportunityIds: string[] }> => {
+    return api.post<{ opportunityIds: string[] }>('/opportunities/pair', { peerUserId });
+  },
+
   updateStatus: async (
     opportunityId: string,
     status: OpportunityStatus,

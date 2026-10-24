@@ -2,8 +2,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
 export type EmptyStateAction =
-  | { label: string; onClick: () => void; primary?: boolean }
-  | { label: string; to: string; primary?: boolean };
+  | { label: string; onClick: () => void; primary?: boolean; large?: boolean }
+  | { label: string; to: string; primary?: boolean; large?: boolean };
 
 export interface EmptyStateProps {
   /** loading, error or empty. Error is announced to assistive tech. */
@@ -61,7 +61,7 @@ export function EmptyState({
       {actions.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: centred ? "center" : "flex-start" }}>
           {actions.map((a) => {
-            const cls = `wb-btn small${a.primary ? " primary" : ""}`;
+            const cls = `wb-btn${a.large ? "" : " small"}${a.primary ? " primary" : ""}`;
             return "to" in a ? (
               <Link key={a.label} to={a.to} className={cls} style={{ textDecoration: "none" }}>
                 {a.label}

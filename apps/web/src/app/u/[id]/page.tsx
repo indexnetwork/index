@@ -31,7 +31,7 @@ export default function UserProfilePage() {
 function UserProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const usersService = useUsers();
   const networksService = useNetworks();
   const opportunitiesService = useOpportunities();
@@ -43,52 +43,77 @@ function UserProfile() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<"notFound" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [oppKey, setOppKey] = useState(0);
+  const [oppsLoaded, setOppsLoaded] = useState(false);
+  const [pairing, setPairing] = useState(false);
+  const [pairError, setPairError] = useState(false);
 
   const isOtherUser = !!user?.id && user.id !== id;
 
   useEffect(() => {
+    // /u/ is a public route, so authLoading clears before /auth/me resolves; wait for the viewer too.
+    if (authLoading || (isAuthenticated && !user?.id)) return;
+    let active = true;
     const fetchData = async () => {
-      if (authLoading) return;
       try {
         setIsLoading(true);
         setError(null);
         const profile = isAuthenticated
           ? await usersService.getUserProfile(id)
           : await getPublicUserProfile(id!);
+        if (!active) return;
         setProfileData(profile);
 
+        let networks: typeof sharedNetworks = [];
         if (isAuthenticated && user?.id && user.id !== id) {
           try {
-            const networks = await networksService.getSharedNetworks(id!);
-            setSharedNetworks(networks);
+            networks = await networksService.getSharedNetworks(id!);
           } catch (err) {
             logger.error('Failed to fetch shared networks', { error: err });
-            setSharedNetworks([]);
           }
-        } else {
-          setSharedNetworks([]);
         }
+        if (active) setSharedNetworks(networks);
       } catch (err) {
+        if (!active) return;
         logger.error('Failed to fetch profile', { error: err });
         // A 200 without a user throws a plain Error: that is "missing" too.
         setError(isNotFoundError(err) || !(err instanceof APIError) ? "notFound" : "failed");
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
     fetchData();
+    return () => { active = false; };
   }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService, reloadKey]);
 
   useEffect(() => {
     setSharedOpportunities([]);
+    setOppsLoaded(false);
     if (!isOtherUser || !id) return;
     let active = true;
     opportunitiesService
-      .getRadarView({ peerUserId: id, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"] })
+      .getRadarView({ peerUserId: id, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: oppKey > 0 })
       .then((res) => { if (active) setSharedOpportunities(res.items); })
-      .catch((err) => logger.error('Failed to fetch shared opportunities', { error: err }));
+      .catch((err) => logger.error('Failed to fetch shared opportunities', { error: err }))
+      .finally(() => { if (active) setOppsLoaded(true); });
     return () => { active = false; };
-  }, [id, isOtherUser, opportunitiesService]);
+  }, [id, isOtherUser, opportunitiesService, oppKey]);
+
+  const pair = async () => {
+    if (!id || pairing) return;
+    // Signed-out viewers pair after login; sign-in lands them in the default network.
+    if (!isAuthenticated) return openLoginModal();
+    setPairing(true);
+    setPairError(false);
+    try {
+      await opportunitiesService.pairWith(id);
+      setOppKey((k) => k + 1);
+    } catch {
+      setPairError(true);
+    } finally {
+      setPairing(false);
+    }
+  };
 
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
@@ -168,6 +193,22 @@ function UserProfile() {
                   </Link>
                 ))}
               </div>
+            </div>
+          )}
+
+          {(!isAuthenticated || (isOtherUser && oppsLoaded && sharedOpportunities.length === 0)) && (
+            <div>
+              <h3 style={sectionLabel}>opportunities</h3>
+              <EmptyState
+                framed
+                message={
+                  <>
+                    Pair your agent with mine. They'll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.
+                    {pairError && <div>no discoverable intents in a shared network.</div>}
+                  </>
+                }
+                action={{ label: pairing ? "pairing…" : "pair agents", onClick: pair, primary: true, large: true }}
+              />
             </div>
           )}
 

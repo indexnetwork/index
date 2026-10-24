@@ -100,6 +100,19 @@ export class OpportunityController {
     return Response.json({ opportunityId: result.opportunityId });
   }
 
+  /** POST /opportunities/pair — open every discoverable intent pair between the caller and a peer. */
+  @Post('/pair')
+  @UseGuards(AuthGuard)
+  async pair(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
+    const parsed = z.object({ peerUserId: z.string().uuid() }).strict().safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    const result = await intentService.pairWithUser(user.id, parsed.data.peerUserId);
+    if (result.kind !== 'ok') return Response.json({ error: 'No discoverable intents in a shared network' }, { status: 404 });
+    return Response.json({ opportunityIds: result.opportunityIds });
+  }
+
   /**
    * POST /opportunities/:id/link-action — accept or decline from a signed link.
    * No session. The signature is the credential. A 409 means the action already landed.
