@@ -118,7 +118,8 @@ export class Intents {
    *
    * Fold recovery answers into the draft, then apply creation admission. A
    * ready result authorizes final review; needs_revision returns admission
-   * feedback and a dynamic recovery form.
+   * feedback and a dynamic recovery form. Turn 2, or any call that includes
+   * answers, is measured and admitted.
    * @returns The admitted draft or repairable feedback and recovery fields.
    * @throws On model failure; the host must expose a retryable failure.
    *
