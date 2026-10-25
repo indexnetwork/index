@@ -5,7 +5,7 @@ import { isBotUserAgent } from '../lib/bot-agent';
 import { opportunityService } from '../services/opportunity.service';
 import { intentService } from '../services/intent.service';
 import { userService } from '../services/user.service';
-import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
+import { negotiationService, negotiationTurnSchema as submitTurnSchema, type NegotiationResumeRejection, type SubmitTurnRejection } from '../services/negotiation.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -40,9 +40,17 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   accept_without_offer: { status: 400, error: 'accept needs a standing propose from the other seat; answer a counter by proposing again' },
   propose_over_offer: { status: 400, error: 'a proposal from the other seat is already standing; counter, accept or decline it' },
   intent_inactive: { status: 409, error: 'An intent in this negotiation is paused or removed' },
-  turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
+};
+
+/** How each refusal to resume reads on the wire. */
+const RESUME_REJECTION_RESPONSES: Record<NegotiationResumeRejection, { status: number; error: string }> = {
+  not_found: REJECTION_RESPONSES.not_found,
+  not_a_seat: REJECTION_RESPONSES.not_a_seat,
+  already_settled: REJECTION_RESPONSES.already_settled,
+  intent_inactive: REJECTION_RESPONSES.intent_inactive,
+  not_paused: { status: 409, error: 'This negotiation is not paused; a seat already has the turn' },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -328,6 +336,48 @@ export class OpportunityController {
     const negotiation = await negotiationService.read(resolved.id, user.id);
     if (!negotiation) return Response.json({ error: 'No negotiation for this opportunity' }, { status: 404 });
     return Response.json({ negotiation });
+  }
+
+  /**
+   * POST /opportunities/:id/negotiation/resume — take the first turn of a new
+   * round on a negotiation paused with nobody to move. The seat's executor
+   * calls it when its owner's new context bears on this pair.
+   */
+  @Post('/:id/negotiation/resume')
+  @UseGuards(AuthGuard)
+  async resumeNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const agentId = new URL(req.url).searchParams.get('agentId');
+    if (agentId !== null && !uuidQuerySchema.safeParse(agentId).success) {
+      return Response.json({ error: 'agentId must be a UUID' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    let result;
+    try {
+      result = await negotiationService.resume(resolved.id, user.id, agentId ? { userId: user.id, agentId } : undefined);
+    } catch (error) {
+      if (error instanceof RuntimeConflictError) {
+        return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });
+      }
+      throw error;
+    }
+    if ('rejection' in result) {
+      const response = RESUME_REJECTION_RESPONSES[result.rejection];
+      logger.verbose('Resume refused', { userId: user.id, opportunityId: resolved.id, rejection: result.rejection });
+      return Response.json({ error: response.error }, { status: response.status });
+    }
+
+    logger.info('Negotiation resumed', { userId: user.id, opportunityId: resolved.id });
+    return Response.json({ negotiation: result });
   }
 
   /**

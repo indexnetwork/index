@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- A pair stays in talks until its agents agree. `decideNegotiationTurn` settles only on `accept`: a `decline`, or the last turn of a round, ends the round with nobody to move and the opportunity still `negotiating`. `NegotiationDecision.outcome` is `'agreed' | null`, `opportunityStatus` is `'negotiating' | 'pending'`, and `blockedReason` is replaced by `roundEnded` (`'declined' | 'turn_limit' | null`).
+- `NEGOTIATION_MAX_TURNS` limits a round, not the whole negotiation. The `turn_limit` rejection is removed; between rounds both seats are refused as `not_your_turn`.
+- `NegotiationDatabase` requires `commitNegotiationResume`.
+
 ### Added
 
+- `decideNegotiationResume(state, userId)` lets a seat take the first turn of a new round on a negotiation paused with nobody to move, refusing with `not_paused` while a seat has the turn; `Negotiations.resume` applies it. Nothing resumes on its own: a seat resumes when its owner's new context bears on the pair.
+- `currentRound(turns)` returns the turns of the round in progress, and `observeNegotiation` returns `remainingTurns` for it.
 - `OpportunityCard` gains `priorOpportunity` (an earlier accepted opportunity, or a pending one the viewer already said yes to) and `peerChat` (the viewer's existing direct chat with the counterpart), two separate facts. The card presenter gets the prior opportunity and no longer words a known contact as new. Types `PriorOpportunity` and `PeerChat` are exported.
 - `OpportunityCardsDatabase` and `OpportunityControllerDatabase` require `findPriorOpportunities(viewerId, peerIds, excludeOpportunityIds?)` and `findPeerChats(viewerId, peerIds)`, both batched and read-only.
 - `OpportunityDetection.source` gains `'introducer'`, stamped on opportunities a third party opens.

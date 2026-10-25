@@ -24,7 +24,7 @@ export async function publishOpeningTurns(
           intentId: opening.initiatorIntentId,
           turnIndex: 0,
           outcome: null,
-          blockedReason: null,
+          roundEnded: null,
         },
       });
     } catch (error) {

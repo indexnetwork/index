@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- A decline passes for now instead of ending the negotiation: the pair stays in talks with nobody to move. `toOpportunity` reports `awaiting: "nobody"` and `paused: true` between rounds, and counts `remainingTurns` for the round in progress. A wake weighs the principal's message against each paused opportunity and reopens only the ones it bears on, with the new `resume_negotiation` tool, which takes the first turn of a new round and briefs its negotiator. `set_brief` refuses a paused opportunity.
 - Runs use the AI SDK tool loop. `Model` is now an AI SDK `LanguageModel`, and `createModel()` replaces `new ModelClient()`. `ModelMessage` and `ToolDefinition` are no longer exported.
 - Briefs, decisions, stalls, resolutions and progress carry a `record` tag and no longer start with `Brief: `, `Decision: `, `Stall: `, `Resolved: ` or `Progress: `. Readers classify by `record` only; entries written before it are not read.
 - A wake reads settled opportunities as id, counterpart, status and decision, an opportunity whose stall already waits on a question without its turns or brief, and only the last two turns of the rest, listed in that order ahead of the conversation. This cuts the wake prompt by about 40%.
