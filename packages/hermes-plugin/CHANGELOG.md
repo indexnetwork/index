@@ -4,6 +4,7 @@
 ## Unreleased
 
 ### Changed
+- The negotiator refuses to brief or resume a negotiation that has settled, instead of reporting a negotiator that never runs.
 - An agent's decline no longer ends a negotiation; it pauses it. The negotiator reopens a paused negotiation when your message to it bears on that pair.
 - Answering your agent's questions shows at once: the answers appear as your replies with a thinking line, and the questions close without waiting for the server. A read that finishes after a newer one is ignored, so an answered question no longer flickers open again, and a failed send puts your answers back.
 - A message you send to your agent shows at once with a thinking line, and a message sent while it works is read before its next step. The reply is written as soon as it is ready, and a failed wake retries after 10s, 20s and 30s with a line in the conversation.

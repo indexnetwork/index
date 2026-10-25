@@ -28,6 +28,8 @@ const WAKE_PROMPT = [
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the intent, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
+  "An opportunity whose status is agreed, declined or closed has settled for good, unlike a paused one: neither set_brief nor resume_negotiation reopens it, and nothing can start a new one with the same person on this intent. When your principal asks to reopen one, tell them it has ended.",
+  "Tell your principal only what a tool has already returned on this wake: act first, then reply. Never say something happened that no tool confirmed.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
@@ -40,6 +42,21 @@ const STALL_PASSES = 3;
 
 /** How many of a negotiation's latest turns a wake reads. */
 const TURNS_READ = 2;
+
+/** Statuses of a negotiation that will never take another turn. */
+const SETTLED = new Set(["agreed", "declined", "closed"]);
+
+/**
+ * A settled negotiation never takes another turn, so recording a brief on it
+ * would let the wake tell its principal it resumed when nothing will run it.
+ *
+ * @param opportunity - The opportunity a tool was called on.
+ * @throws When it is agreed, declined or closed.
+ */
+function refuseSettled(opportunity: Opportunity): void {
+  if (!SETTLED.has(opportunity.status)) return;
+  throw new Error(`The negotiation with ${opportunity.counterpart || "this counterpart"} is ${opportunity.status} and cannot be reopened. Nothing was recorded.`);
+}
 
 /**
  * What a wake reads of its opportunities: only as much as it can act on, with
@@ -57,7 +74,7 @@ function view(opportunities: Opportunity[]): Partial<Opportunity>[] {
   const rest: Partial<Opportunity>[] = [];
   for (const opportunity of opportunities) {
     const { id, counterpart, status, decision, stall, turns } = opportunity;
-    if (["agreed", "declined", "closed"].includes(status)) settled.push({ id, counterpart, status, ...(decision ? { decision } : {}) });
+    if (SETTLED.has(status)) settled.push({ id, counterpart, status, ...(decision ? { decision } : {}) });
     else if (stall?.questionId && !stall.answered) waiting.push({ id, counterpart, status, stall });
     else rest.push(turns ? { ...opportunity, turns: turns.slice(-TURNS_READ) } : opportunity);
   }
@@ -217,7 +234,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "set_brief",
       description:
-        "Decide one opportunity and brief its negotiator. Its negotiator starts as soon as you call this. The brief text is required when that opportunity has none yet, and otherwise replaces the standing one.",
+        "Decide one opportunity that is still negotiating and brief its negotiator. Its negotiator starts as soon as you call this. An agreed, declined or closed one cannot be briefed or reopened. The brief text is required when that opportunity has none yet, and otherwise replaces the standing one.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -233,6 +250,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!opportunity) {
           throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
         }
+        refuseSettled(opportunity);
         if (opportunity.paused) {
           throw new Error("This negotiation is paused, so a decision alone moves nothing. Use resume_negotiation if your principal's new context bears on this pair; otherwise leave it.");
         }
@@ -269,6 +287,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!opportunity) {
           throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
         }
+        refuseSettled(opportunity);
         if (!opportunity.paused) throw new Error("This negotiation is not paused. Use set_brief to change how its negotiator proceeds.");
         const decided = recordBrief(opportunity, decision, brief);
         // The seat takes the turn before the decision is published, so the
