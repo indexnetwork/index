@@ -176,6 +176,8 @@ export interface NegotiateInput {
   intent: Intent;
   brief: string;
   opportunity: Opportunity;
+  /** The principal's other private intents. Weighed, never revealed. */
+  privateContext?: string[];
   model: Model;
   now?: () => Date;
   signal?: AbortSignal;

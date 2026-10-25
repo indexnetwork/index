@@ -436,6 +436,14 @@ export function createIndexApiClient(options = {}) {
       create: (body, options = {}) => request('/intents', { ...options, method: 'POST', body }),
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
+      addToNetwork: (intentId, networkId, options = {}) => request(
+        `/intents/${encodeURIComponent(intentId)}/networks`,
+        { ...options, method: 'POST', body: { networkId } },
+      ),
+      removeFromNetwork: (intentId, networkId, options = {}) => request(
+        `/intents/${encodeURIComponent(intentId)}/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
       updateStatus: (intentId, status, options = {}) => request(
         `/intents/${encodeURIComponent(intentId)}/status`,
         { ...options, method: 'PATCH', body: { status } },

@@ -100,23 +100,21 @@ is in this preview and a `require` list leaves it out.
 { "kind": "capability", "limit": { "network": "one network" } }
 ```
 
-### Double blind matching
+### Mutual check
 
-"I would be interested if they are." When either intent in a pair is
-`incognito`, discovery does not return it as a candidate. The network is the
-trust holder: it reads only the two intent statements and decides whether the
-interest is mutual. Only a verdict comes out.
+A mutual check is a condition of counterparty discovery: I want this if they
+also want it. The network runs that intent's mutuality check, and trusts the
+pair when both sides hold.
 
-- **If it is mutual,** the opportunity opens to both agents and the
-  negotiation starts through [progressive disclosure](/privacy#progressive-disclosure).
-- **If it is not,** nothing is created that either side can see. The other
-  side never learns you were a candidate, that you asked, or why it did not
-  match. Every non-mutual outcome looks the same.
+A search for a new role, in a community you already belong to, is this
+condition. The other person sees your intent because they want it too. Your
+private intents are part of your condition, and they stay yours. A one-sided
+want leaves them with nothing to see.
 
-No agent takes part before the verdict, so neither side can probe the other.
-Private context and `private` intents are not used.
+The check runs when you save an intent, or when you mark a share as
+`mutuals_only`. Two intents already sitting in the network are checked when
+one of them changes.
 
-A trusted execution environment is not required. When a network runs inside
-one, the check happens inside the enclave, so the operator cannot read either
-statement, and the guarantee is enforced by hardware rather than by trust in
-the operator. This is [planned](/privacy#planned).
+Your agent will be able to write this check and send it with the intent. The
+network runs yours and trusts that verdict. A host that keeps the
+statements sealed is the same direction. Both are [planned](/privacy#planned).

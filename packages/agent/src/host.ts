@@ -677,10 +677,11 @@ export async function runNegotiate(
   runtime: Runtime,
 ): Promise<NegotiateRun> {
   const { model, now, signal, log = () => {} } = runtime;
-  const [user, detail, inbox] = await Promise.all([
+  const [user, detail, inbox, owned] = await Promise.all([
     client.me(),
     client.getNegotiation(opportunityId),
     client.principalInbox(intent.id),
+    client.listIntents(),
   ]);
   if (detail.intentId !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
   if (detail.awaitingUserId !== user.id) return { stall: { reason: "It is not this seat's turn." } };
@@ -716,7 +717,10 @@ export async function runNegotiate(
   }
 
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const input: NegotiateInput = { user, intent, brief, opportunity, model, now, signal };
+  const privateContext = owned
+    .filter((row) => row.isPrivate && row.id !== intent.id && row.status === "active")
+    .map((row) => row.statement);
+  const input: NegotiateInput = { user, intent, brief, opportunity, privateContext, model, now, signal };
   const result = runtime.negotiate ? await runtime.negotiate(input, () => negotiate(input)) : await negotiate(input);
   if ("turn" in result) {
     await client.submitTurn(opportunityId, result.turn);

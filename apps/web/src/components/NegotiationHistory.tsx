@@ -23,7 +23,7 @@ const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: str
   closed: { label: "lost", className: "" },
 };
 
-function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolean; isLast: boolean }) {
+function TurnMessage({ turn, own, isLast, theirId }: { turn: NegotiationTurn; own: boolean; isLast: boolean; theirId: string }) {
   const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
 
   return (
@@ -35,7 +35,7 @@ function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolea
       <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>
-            {own ? "you.agent" : "their.agent"} · {actionInfo.label}
+            {own ? "you.agent" : <Link to={`/u/${theirId}`} title="view profile" style={{ color: "#000", textDecoration: "underline" }}>their.agent</Link>} · {actionInfo.label}
             {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
         </div>
@@ -208,6 +208,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                           key={`${neg.id}-${turn.turnIndex}`}
                           turn={turn}
                           own={turn.seatUserId === viewer?.id}
+                          theirId={neg.counterparty.id}
                           isLast={i === turns.length - 1}
                         />
                       ))}

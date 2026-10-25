@@ -3,6 +3,7 @@ import type { IntentFollowUp } from '@indexnetwork/protocol';
 
 import { background } from '../background';
 import { intentDatabaseAdapter } from '../../adapters/database.adapter';
+import { scheduleMutualCheck } from './mutual-check';
 
 /**
  * The host side of {@link IntentFollowUp}.
@@ -29,8 +30,9 @@ export class IntentIndexing implements IntentFollowUp {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. A saved intent is searched on demand, not on write. */
-  onIntentSaved(): Promise<unknown> {
+  /** Schedule the network's mutual check. A failure here does not undo the save. */
+  onIntentSaved(data: { intentId: string }): Promise<unknown> {
+    scheduleMutualCheck(data.intentId);
     return Promise.resolve();
   }
 

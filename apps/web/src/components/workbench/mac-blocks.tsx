@@ -1,4 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
@@ -240,7 +241,11 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{negoFirstName(th)}</button>
         )}
-        <span style={{ fontWeight: 700, flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
+        {!you && th.counterparty?.userId ? (
+          <Link to={`/u/${th.counterparty.userId}`} title="view profile" style={{ fontWeight: 700, flex: "0 0 auto", color: "#000", textDecoration: "underline" }}>{negoFirstName(th)}.agent</Link>
+        ) : (
+          <span style={{ fontWeight: 700, flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
+        )}
         <span style={{ flex: "0 0 auto" }}>{you ? "→" : "←"}</span>
         <span style={{
           flex: "0 0 auto", textTransform: "uppercase", letterSpacing: 1,

@@ -1,6 +1,10 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 
 import { useCompact } from "@/hooks/useCompact";
+import { atHistoryEntry, backLandsHome } from "@/hooks/useBack";
+import { isTabRoot } from "@/components/workbench/MobileTabBar";
+import { HomeGlyph } from "@/components/workbench/nav-glyphs";
 
 const windowStack: Array<{ get: () => (() => void) | undefined }> = [];
 let escapeBound = false;
@@ -81,11 +85,19 @@ export function Window({
     };
   }, []);
 
+  // Compact: a screen with nothing behind it (a deep link, or no back box and
+  // no tab bar) gets a home box in the back box's place. Onboarding stays put.
+  // Read off window.location: Window also renders outside the router (ConsentGate).
+  const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
+  const home = compact && (onClose
+    ? backLandsHome(onClose)
+    : !isTabRoot(pathname) && !pathname.startsWith("/onboarding"));
+
   return (
     <div className="amiga-window" style={{ height: "100%", ...style }}>
       <div className="mac-titlebar">
         {/* Compact: the close box reads as back, and tab roots (no onClose) drop it. */}
-        {compact && !onClose ? null : <span
+        {home ? <HomeBox onClose={onClose} /> : compact && !onClose ? null : <span
           className={compact ? "mac-close mac-back" : dismiss ? "mac-close mac-dismiss" : "mac-close"}
           role="button"
           tabIndex={0}
@@ -103,6 +115,29 @@ export function Window({
       </div>
       <div className="wb-body">{children}</div>
     </div>
+  );
+}
+
+function HomeBox({ onClose }: { onClose?: () => void }) {
+  const navigate = useNavigate();
+  const goHome = onClose ?? (() => navigate("/", { replace: atHistoryEntry() }));
+  return (
+    <span
+      className="mac-close mac-home"
+      role="button"
+      tabIndex={0}
+      title="home"
+      aria-label="home"
+      onClick={goHome}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          goHome();
+        }
+      }}
+    >
+      <HomeGlyph />
+    </span>
   );
 }
 

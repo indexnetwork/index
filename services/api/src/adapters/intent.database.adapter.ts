@@ -101,7 +101,7 @@ export class IntentDatabaseAdapter {
           payload: data.payload,
           summary: data.summary ?? null,
           embedding: data.embedding,
-          isIncognito: data.isIncognito ?? false,
+          isPrivate: data.isPrivate ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
           // Null means unmeasured; only omitted fields may use database defaults.
@@ -117,7 +117,7 @@ export class IntentDatabaseAdapter {
           id: schema.intents.id,
           payload: schema.intents.payload,
           summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
+          isPrivate: schema.intents.isPrivate,
           createdAt: schema.intents.createdAt,
           updatedAt: schema.intents.updatedAt,
           userId: schema.intents.userId,
@@ -156,7 +156,7 @@ export class IntentDatabaseAdapter {
       if (data.payload !== undefined) updateData.payload = data.payload;
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
-      if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.isPrivate !== undefined) updateData.isPrivate = data.isPrivate;
       if (data.sourceType !== undefined) updateData.sourceType = data.sourceType;
       if (data.sourceId !== undefined) updateData.sourceId = data.sourceId;
       if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
@@ -189,7 +189,7 @@ export class IntentDatabaseAdapter {
             id: schema.intents.id,
             payload: schema.intents.payload,
             summary: schema.intents.summary,
-            isIncognito: schema.intents.isIncognito,
+            isPrivate: schema.intents.isPrivate,
             createdAt: schema.intents.createdAt,
             updatedAt: schema.intents.updatedAt,
             userId: schema.intents.userId,
@@ -503,7 +503,9 @@ export class IntentDatabaseAdapter {
         .where(
           and(
             eq(schema.intentNetworks.networkId, networkId),
+            eq(schema.intentNetworks.visibility, 'networks_only'),
             eq(schema.intents.userId, userId),
+            eq(schema.intents.isPrivate, false),
             isNull(schema.intents.archivedAt),
             activeIntentLifecycleWhere(),
           )
@@ -537,7 +539,7 @@ export class IntentDatabaseAdapter {
         payload: schema.intents.payload,
         summary: schema.intents.summary,
         status: schema.intents.status,
-        isIncognito: schema.intents.isIncognito,
+        isPrivate: schema.intents.isPrivate,
         createdAt: schema.intents.createdAt,
         updatedAt: schema.intents.updatedAt,
         archivedAt: schema.intents.archivedAt,
@@ -607,14 +609,15 @@ export class IntentDatabaseAdapter {
    * Group each intent's registered networks (excluding soft-deleted networks)
    * into a map, in a single query.
    */
-  private async networksByIntent(intentIds: string[]): Promise<Map<string, { id: string; title: string }[]>> {
-    const byIntent = new Map<string, { id: string; title: string }[]>();
+  private async networksByIntent(intentIds: string[]): Promise<Map<string, { id: string; title: string; visibility: 'networks_only' | 'mutuals_only' }[]>> {
+    const byIntent = new Map<string, { id: string; title: string; visibility: 'networks_only' | 'mutuals_only' }[]>();
     if (intentIds.length === 0) return byIntent;
     const memberships = await db
       .select({
         intentId: schema.intentNetworks.intentId,
         networkId: schema.networks.id,
         title: schema.networks.title,
+        visibility: schema.intentNetworks.visibility,
       })
       .from(schema.intentNetworks)
       .innerJoin(schema.networks, eq(schema.intentNetworks.networkId, schema.networks.id))
@@ -624,7 +627,7 @@ export class IntentDatabaseAdapter {
       ));
     for (const m of memberships) {
       const list = byIntent.get(m.intentId) ?? [];
-      list.push({ id: m.networkId, title: m.title });
+      list.push({ id: m.networkId, title: m.title, visibility: m.visibility });
       byIntent.set(m.intentId, list);
     }
     return byIntent;
@@ -726,13 +729,32 @@ export class IntentDatabaseAdapter {
     return byIntent;
   }
 
+  /** @returns Whether the owned intent now excludes that person. */
+  async excludeUser(intentId: string, userId: string, excludedUserId: string): Promise<boolean> {
+    const owned = await this.getIntentById(intentId, userId);
+    if (!owned) return false;
+    await db.insert(schema.intentExclusions).values({ intentId, excludedUserId }).onConflictDoNothing();
+    return true;
+  }
+
+  /** @returns Whether the owned intent no longer excludes that person. */
+  async unexcludeUser(intentId: string, userId: string, excludedUserId: string): Promise<boolean> {
+    const owned = await this.getIntentById(intentId, userId);
+    if (!owned) return false;
+    await db.delete(schema.intentExclusions).where(and(
+      eq(schema.intentExclusions.intentId, intentId),
+      eq(schema.intentExclusions.excludedUserId, excludedUserId),
+    ));
+    return true;
+  }
+
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
     const row = await db.select({
       id: schema.intents.id,
       payload: schema.intents.payload,
       summary: schema.intents.summary,
       status: schema.intents.status,
-      isIncognito: schema.intents.isIncognito,
+      isPrivate: schema.intents.isPrivate,
       createdAt: schema.intents.createdAt,
       updatedAt: schema.intents.updatedAt,
       archivedAt: schema.intents.archivedAt,
@@ -824,6 +846,7 @@ export class IntentDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<void> {
     await db.insert(schema.intentNetworks)
       .values({
@@ -831,12 +854,14 @@ export class IntentDatabaseAdapter {
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
         ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+        ...(visibility !== undefined ? { visibility } : {}),
       })
       .onConflictDoUpdate({
         target: [schema.intentNetworks.intentId, schema.intentNetworks.networkId],
         set: {
           relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
           ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+          ...(visibility !== undefined ? { visibility } : {}),
         },
       });
   }
@@ -857,6 +882,7 @@ export class IntentDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
     return db.transaction(async (tx) => {
       const [intent] = await tx
@@ -903,6 +929,12 @@ export class IntentDatabaseAdapter {
         ))
         .limit(1);
       if (existing) {
+        if (visibility) {
+          await tx.update(schema.intentNetworks).set({ visibility }).where(and(
+            eq(schema.intentNetworks.intentId, intentId),
+            eq(schema.intentNetworks.networkId, networkId),
+          ));
+        }
         return { kind: 'already_assigned' } as const;
       }
 
@@ -911,6 +943,7 @@ export class IntentDatabaseAdapter {
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
         ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+        ...(visibility !== undefined ? { visibility } : {}),
       });
       return { kind: 'assigned' } as const;
     });
@@ -998,6 +1031,8 @@ export class IntentDatabaseAdapter {
       .where(
         and(
           eq(schema.intentNetworks.networkId, networkId),
+          eq(schema.intentNetworks.visibility, 'networks_only'),
+          eq(schema.intents.isPrivate, false),
           isNull(schema.intents.archivedAt),
           activeIntentLifecycleWhere(),
         )

@@ -97,6 +97,7 @@ export type {
   PreparedIntent,
 } from "./capabilities/intents.js";
 export { IntentSuggester } from "./internal/intents/intent.suggester.js";
+export { sideIsInterested, type MutualitySide } from "./internal/intents/intent.mutuality.js";
 export type { IntentSuggestion, IntentSuggestionInput, IntentSuggestions } from "./internal/intents/intent.suggester.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

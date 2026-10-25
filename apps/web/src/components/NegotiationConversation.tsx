@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -46,6 +47,7 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
 
   const name = detail?.counterparty.name || match?.counterparty?.name || "them";
   const first = name.split(" ")[0];
+  const theirId = detail?.counterparty.userId || match?.counterparty?.userId;
 
   if (!expanded) return null;
 
@@ -60,7 +62,9 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
       return (
         <div key={turn.turnIndex} style={{ display: "grid", gap: 4, justifyItems: own ? "end" : "start" }}>
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 0.5 }}>
-            {own ? "your agent" : `${first}'s agent`} · {turn.action}
+            {own ? "your agent" : theirId
+              ? <Link to={`/u/${theirId}`} title="view profile" style={{ color: "inherit", textDecoration: "underline" }}>{first}&apos;s agent</Link>
+              : `${first}'s agent`} · {turn.action}
             {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
           <div style={{

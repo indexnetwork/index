@@ -110,6 +110,7 @@ function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listInten
     description: intent.payload,
     summary: intent.summary,
     status: intent.status,
+    private: intent.isPrivate,
     archived: intent.archivedAt !== null,
     archivedAt: intent.archivedAt,
     createdAt: intent.createdAt,
@@ -346,12 +347,25 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
+        visibility: z.enum(['networks_only', 'mutuals_only']).optional(),
+        private: z.boolean().optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
       annotations: hints('Create intent', false, false, false, false),
     },
-    ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+    ({ description, networkIds, visibility, private: isPrivate, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+      if (isPrivate) {
+        try {
+          const created = await intentService.create(principal.userId, description, networkIds ?? [], undefined, { sourceType, sourceId }, { isPrivate: true });
+          const url = appLink('i', created.id);
+          return mcpSuccess({ intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId }, `${mdLink(intentLabel(description), url)} — created`);
+        } catch (error) {
+          if (error instanceof IntentCreateRejectedError) return mcpError(error.code, error.message);
+          if (error instanceof IntentNetworkMembershipError) return mcpError(error.code, error.message, { networkId: error.networkId });
+          throw error;
+        }
+      }
       let prepared;
       try {
         prepared = await intentService.prepare(principal.userId, { payload: description });
@@ -376,6 +390,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           networkIds ?? [],
           prepared.preparationReceipt,
           { sourceType, sourceId },
+          { visibility, isPrivate },
         );
         const url = appLink('i', created.id);
         const label = intentLabel(prepared.payload);
@@ -408,18 +423,19 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         description: z.string().trim().min(1).max(65_536).optional(),
+        private: z.literal(true).optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
       annotations: hints('Update intent', false, true, false, true),
     },
-    ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
-      if (description === undefined && sourceType === undefined && sourceId === undefined) {
-        return mcpError('invalid_input', 'description, sourceType, or sourceId is required.');
+    ({ intentId, description, private: isPrivate, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
+      if (description === undefined && isPrivate === undefined && sourceType === undefined && sourceId === undefined) {
+        return mcpError('invalid_input', 'description, private, sourceType, or sourceId is required.');
       }
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
-      const outcome = await intentService.update(resolved.id, principal.userId, description, { sourceType, sourceId });
+      const outcome = await intentService.update(resolved.id, principal.userId, description, { sourceType, sourceId }, { isPrivate });
       if (outcome.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
       if (outcome.kind === 'archived') return mcpError('intent_archived', 'Archived intents cannot be updated.');
       if (outcome.kind === 'rejected') return mcpError('intent_rejected', outcome.detail);

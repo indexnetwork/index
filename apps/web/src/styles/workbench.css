@@ -560,6 +560,17 @@
   .mac-titlebar .mac-close {
     width: 44px;
   }
+  .mac-titlebar .mac-home {
+    display: grid;
+    place-items: center;
+  }
+  .mac-titlebar .mac-home::before,
+  .mac-titlebar .mac-home::after {
+    content: none;
+  }
+  .mac-titlebar .mac-home:active {
+    background: var(--amiga-accent);
+  }
   .mac-titlebar .mac-back::before {
     width: 20px;
     height: 20px;

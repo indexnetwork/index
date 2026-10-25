@@ -7,7 +7,7 @@ An intent is what you are looking for or can offer, in your own words. These rou
 | Method | Path | Body or query |
 | --- | --- | --- |
 | `POST` | `/api/intents/prepare` | `payload`, optional `answers` |
-| `POST` | `/api/intents` | `description`, optional `networkIds`, `preparationReceipt`, `sourceType`, `sourceId` |
+| `POST` | `/api/intents` | `description`, optional `networkIds`, `visibility` (`networks_only` or `mutuals_only`), `private`, `preparationReceipt`, `sourceType`, `sourceId` |
 | `POST` | `/api/intents/list` | optional `q`, `limit`, `page`, `archived`, `sourceType` |
 | `GET` | `/api/intents/:id` | |
 | `PATCH` | `/api/intents/:id` | one or more of `description`, `sourceType`, `sourceId` |
@@ -67,6 +67,10 @@ A draft that still needs a fact:
 ```
 
 Omit `networkIds`, or send `[]`, to share the new intent in every network you belong to. Send network UUIDs to share it only in those.
+
+`visibility` is `networks_only` or `mutuals_only`, and it applies to every network this create assigns. Send `private: true` when only your agent should read the intent. A private intent skips admission, and it is shared only into the networks you name.
+
+`POST /api/intents/:id/networks` takes the same `visibility`, including when the intent is already in that network. `POST /api/intents/:id/exclusions` with `{ "userId" }` names a person this intent should not meet.
 
 `POST /api/intents` returns `{ "intentId", "networkIds", "sourceType", "sourceId" }`. You can create from a description alone; the server prepares it. A receipt authorizes the draft you already reviewed.
 

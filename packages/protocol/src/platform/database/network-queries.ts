@@ -64,6 +64,7 @@ export interface DatabaseNetworkQueries {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: NetworkAssignmentMetadata,
+    visibility?: 'networks_only' | 'mutuals_only',
   ): Promise<void>;
 
   /**
@@ -77,6 +78,7 @@ export interface DatabaseNetworkQueries {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: NetworkAssignmentMetadata,
+    visibility?: 'networks_only' | 'mutuals_only',
   ): Promise<IntentNetworkFinalAssignmentResult>;
 
   /**

@@ -50,6 +50,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             inferenceType: 'explicit',
             sourceType: state.sourceType ?? null,
             sourceId: state.sourceId ?? null,
+            isPrivate: state.isPrivate ?? false,
             embedding: flatEmbedding,
             semanticEntropy: metadata?.semanticEntropy ?? null,
             referentialAnchor: metadata?.referentialAnchor ?? null,
@@ -274,6 +275,7 @@ async function linkIntentToNetworks(
       networkId,
       metadata.finalScore,
       metadata.metadata,
+      state.visibility,
     );
     if (outcome.kind === 'assigned' || outcome.kind === 'already_assigned') {
       linked.push(networkId);

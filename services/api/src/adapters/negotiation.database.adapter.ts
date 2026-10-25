@@ -219,7 +219,11 @@ export class NegotiationDatabaseAdapter {
    * @param networkId - The network the negotiation would sit in.
    * @returns The intent with its owner, or null when it is not seated there.
    */
-  async seatedIntent(intentId: string, networkId: string): Promise<SeatedIntent | null> {
+  async seatedIntent(
+    intentId: string,
+    networkId: string,
+    options: { visible?: boolean; otherUserId?: string; otherIntentId?: string } = {},
+  ): Promise<SeatedIntent | null> {
     const [row] = await db
       .select({ intentId: intents.id, userId: intents.userId })
       .from(intents)
@@ -229,6 +233,12 @@ export class NegotiationDatabaseAdapter {
         eq(intentNetworks.networkId, networkId),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
+        ...(options.visible ? [eq(intents.isPrivate, false), eq(intentNetworks.visibility, 'networks_only' as const)] : []),
+        ...(options.otherUserId && options.otherIntentId ? [sql`not exists (
+          select 1 from ${schema.intentExclusions}
+          where (${schema.intentExclusions.intentId} = ${intentId} and ${schema.intentExclusions.excludedUserId} = ${options.otherUserId})
+             or (${schema.intentExclusions.intentId} = ${options.otherIntentId} and ${schema.intentExclusions.excludedUserId} = ${intents.userId})
+        )`] : []),
       ))
       .limit(1);
     return row ?? null;
