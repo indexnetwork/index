@@ -10,6 +10,7 @@
 ### Added
 
 - `currentRound(turns)` returns the turns of the round in progress, and `observeNegotiation` returns `remainingTurns` for it.
+- `NegotiationContextRecord.paused` (optional) marks a negotiation in talks with nobody to move. The card for a paused pair reads "In talks, paused" instead of "Agents are talking".
 
 - `OpportunityCard` gains `priorOpportunity` (an earlier accepted opportunity, or a pending one the viewer already said yes to) and `peerChat` (the viewer's existing direct chat with the counterpart), two separate facts. The card presenter gets the prior opportunity and no longer words a known contact as new. Types `PriorOpportunity` and `PeerChat` are exported.
 - `OpportunityCardsDatabase` and `OpportunityControllerDatabase` require `findPriorOpportunities(viewerId, peerIds, excludeOpportunityIds?)` and `findPeerChats(viewerId, peerIds)`, both batched and read-only.

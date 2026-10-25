@@ -18,6 +18,8 @@ export interface NegotiationContext {
   turnCount: number;
   turns: NegotiationContextTurn[];
   outcome?: NegotiationContextOutcome;
+  /** In talks with nobody to move, until an owner adds context. */
+  paused?: boolean;
 }
 
 const STATUSES_WITH_NO_NEGOTIATION: ReadonlyArray<OpportunityStatus> = ['expired'];
@@ -52,5 +54,6 @@ export async function loadNegotiationContext(
     turnCount: record.turns.length,
     turns: record.turns,
     ...(record.outcome ? { outcome: record.outcome } : {}),
+    ...(record.paused ? { paused: true } : {}),
   };
 }

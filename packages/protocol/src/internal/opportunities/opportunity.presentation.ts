@@ -485,13 +485,20 @@ ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turn
  */
 function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   const turnCount = input.negotiationContext?.turnCount ?? 0;
-  const narratorRemark = `In talks · turn ${turnCount}`;
+  const paused = input.negotiationContext?.paused === true;
 
   return {
-    headline: "Agents are talking",
-    personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
-    suggestedAction: "Your agents are still working out the fit",
-    narratorRemark,
+    ...(paused ? {
+      headline: "In talks, paused",
+      personalizedSummary: "The agents paused this one without agreeing. It stays open: anything new you tell your agent about this intent picks it back up.",
+      suggestedAction: "Tell your agent more to pick it back up",
+      narratorRemark: `In talks · paused after ${turnCount} turns`,
+    } : {
+      headline: "Agents are talking",
+      personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
+      suggestedAction: "Your agents are still working out the fit",
+      narratorRemark: `In talks · turn ${turnCount}`,
+    }),
     mutualIntentsLabel: input.mutualIntentCount && input.mutualIntentCount > 0
       ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
       : "Shared interests",

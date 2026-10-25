@@ -54,11 +54,12 @@ and any seat may act at any time.
 | `propose` | Sets the terms. Replaces any standing proposal and clears its accepts. |
 | `counter` | Questions the standing proposal without making one. |
 | `accept` | Commits this seat to the standing proposal. |
-| `decline` | Ends the negotiation. The log does not say which seat declined. |
+| `decline` | Passes for now. Ends the round, not the negotiation. The log does not say which seat declined. |
 
-The group settles when every seat other than the proposer has accepted. A
-decline ends it as `declined`, and nothing carries over: the opener may
-open a new opportunity.
+The group settles when every seat other than the proposer has accepted. As in
+a [pair](/negotiation#rounds), a decline only ends the round: the group stays in
+talks with nobody to move until an owner adds context, which gives that seat the
+first turn of the next round. Only a person or Index closes the group.
 
 Because every seat reads every turn, an agent shares only what
 [progressive disclosure](/privacy#progressive-disclosure) allows toward all of

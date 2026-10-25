@@ -73,14 +73,16 @@ activation = dash("index-activation", "Index - Activation funnel", [
     ts(4, "Time from signup to first intent (median hours, by signup week)", "select date_trunc('week', u.created_at) as time, percentile_cont(0.5) within group (order by extract(epoch from (f.first_at - u.created_at))/3600) as median_hours from analytics.users u join (select user_id, min(created_at) as first_at from analytics.intents group by 1) f on f.user_id = u.id where $__timeFilter(u.created_at) group by 1 order by 1", 0, 16, 24),
 ])
 
+REJECTED = "A person passed. An agent's decline no longer rejects an opportunity: the pair stays in talks. Before that change this also counted agent declines; agent passes are on Index - Negotiation health."
+
 opportunity = dash("index-opportunity", "Index - Opportunity quality", [
     stat(1, "Opened", ev("opened"), 0, 0), stat(2, "Agreed by negotiators", ev("agreed"), 4, 0),
     stat(3, "Committed (any side)", ev("committed"), 8, 0),
     stat(4, "Mutual (both sides committed)", "select count(*) as value from (select opportunity_id from analytics.opportunity_events where type = 'committed' and $__timeFilter(at) group by 1 having count(distinct actor_user_id) >= 2) m", 12, 0),
-    stat(5, "Declined", ev("declined"), 16, 0), stat(6, "Expired", ev("expired"), 20, 0),
+    described(stat(5, "Rejected", ev("declined"), 16, 0), REJECTED), stat(6, "Expired", ev("expired"), 20, 0),
     stat(7, "Commit rate (committed / agreed)", "select count(distinct opportunity_id) filter (where type = 'committed')::float / nullif(count(distinct opportunity_id) filter (where type = 'agreed'), 0) as value from analytics.opportunity_events where $__timeFilter(at)", 0, 4, "percentunit", 8),
     stat(8, "Median hours from opened to first commit", "select percentile_cont(0.5) within group (order by extract(epoch from (c.t - o.at))/3600) as value from (select opportunity_id, at from analytics.opportunity_events where type = 'opened' and $__timeFilter(at)) o join (select opportunity_id, min(at) as t from analytics.opportunity_events where type = 'committed' group by 1) c using (opportunity_id)", 8, 4, "h", 8),
-    stat(9, "Decline rate (declined / opened)", "select count(distinct opportunity_id) filter (where type = 'declined')::float / nullif(count(distinct opportunity_id) filter (where type = 'opened'), 0) as value from analytics.opportunity_events where $__timeFilter(at)", 16, 4, "percentunit", 8),
+    described(stat(9, "Rejection rate (rejected / opened)", "select count(distinct opportunity_id) filter (where type = 'declined')::float / nullif(count(distinct opportunity_id) filter (where type = 'opened'), 0) as value from analytics.opportunity_events where $__timeFilter(at)", 16, 4, "percentunit", 8), REJECTED),
     ts(10, "Opportunity events per day", "select $__timeGroupAlias(at,'1d'), type as metric, count(*) as value from analytics.opportunity_events where $__timeFilter(at) group by 1,2 order by 1", 0, 8, 24, 9, stack=True),
     ts(11, "Daily commit rate (committed / agreed)", "select $__timeGroupAlias(at,'1d'), count(distinct opportunity_id) filter (where type = 'committed')::float / nullif(count(distinct opportunity_id) filter (where type = 'agreed'), 0) as commit_rate from analytics.opportunity_events where $__timeFilter(at) group by 1 order by 1", 0, 17, 24, unit="percentunit"),
 ])
@@ -88,12 +90,17 @@ opportunity = dash("index-opportunity", "Index - Opportunity quality", [
 negotiation = dash("index-negotiation", "Index - Negotiation health", [
     stat(1, "Negotiations started", "select count(*) as value from analytics.negotiations where $__timeFilter(created_at)", 0, 0, w=6),
     stat(2, "Agreement rate (agreed / settled)", "select count(*) filter (where outcome = 'agreed')::float / nullif(count(*) filter (where outcome is not null), 0) as value from analytics.negotiations where $__timeFilter(created_at)", 6, 0, "percentunit", 6),
-    stat(3, "Open now (awaiting a seat)", "select count(*) as value from analytics.negotiations where outcome is null", 12, 0, w=6),
-    stat(4, "Open for more than 24h", "select count(*) as value from analytics.negotiations where outcome is null and created_at < now() - interval '24 hours'", 18, 0, w=6),
-    ts(5, "Negotiations started per day by outcome", "select $__timeGroupAlias(created_at,'1d'), coalesce(outcome, 'in progress') as metric, count(*) as value from analytics.negotiations where $__timeFilter(created_at) group by 1,2 order by 1", 0, 4, 24, 9, stack=True),
+    described(stat(3, "In talks now", "select count(*) as value from analytics.negotiations where outcome is null", 12, 0, w=6),
+              "Every negotiation the agents have not agreed on and nobody has closed, including ones paused after a decline or a full round."),
+    stat(4, "In talks for more than 24h", "select count(*) as value from analytics.negotiations where outcome is null and created_at < now() - interval '24 hours'", 18, 0, w=6),
+    ts(5, "Negotiations started per day by outcome", "select $__timeGroupAlias(created_at,'1d'), coalesce(outcome, 'in talks') as metric, count(*) as value from analytics.negotiations where $__timeFilter(created_at) group by 1,2 order by 1", 0, 4, 24, 9, stack=True),
     stat(6, "Median turns per negotiation", "select percentile_cont(0.5) within group (order by n) as value from (select t.negotiation_id, count(*) as n from analytics.negotiation_turns t join analytics.negotiations g on g.id = t.negotiation_id where $__timeFilter(g.created_at) group by 1) x", 0, 13, w=6),
     stat(7, "Median hours to settle", "select percentile_cont(0.5) within group (order by extract(epoch from (settled_at - created_at))/3600) as value from analytics.negotiations where settled_at is not null and $__timeFilter(created_at)", 6, 13, "h", 6),
     bars(8, "Turns by action", "select action, count(*) as turns from analytics.negotiation_turns where $__timeFilter(created_at) group by 1 order by 2 desc", 12, 13, 12, 8),
+    described(stat(9, "Agent passes (decline turns)", "select count(*) as value from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at)", 0, 17, w=6),
+              "A decline pauses the pair rather than ending it, so it is counted as a turn, not as an outcome."),
+    described(stat(10, "Pass rate (decline turns / negotiations started)", "select (select count(*) from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at))::float / nullif((select count(*) from analytics.negotiations where $__timeFilter(created_at)), 0) as value", 6, 17, "percentunit", 6),
+              "Can pass 100%: a pair resumed by new context can be passed on again."),
 ])
 
 retention = dash("index-retention", "Index - Retention", [

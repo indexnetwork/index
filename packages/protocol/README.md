@@ -41,7 +41,7 @@ flowchart LR
 
     Opportunity --> Consent{Participant consent?}
     Consent -->|yes| Connection[Connection]
-    Consent -->|no| Terminal[Declined or expired]
+    Consent -->|no| Terminal[Rejected or expired]
 ```
 
 The graph is intentionally consent-centered: agents can construct context, discover candidates, evaluate fit, and negotiate constraints, but relationship-forming transitions require participant approval before a connection is opened.
@@ -238,11 +238,11 @@ Opportunity states are participant-facing as follows:
 
 | State | Participant-facing term | Meaning |
 |---|---|---|
-| **negotiating** | Agents talking | The agents are negotiating whether the fit holds. |
+| **negotiating** | In talks | The agents are negotiating whether the fit holds. An agent's decline, or a full round of turns, pauses the talks until an owner adds context; it never ends them. |
 | **pending** | Waiting on you | The agents agreed and the participants decide. A participant who already accepted sees Chat open: the first accept opens the conversation, and the status stays pending until every participant has accepted. |
 | **accepted** | Connected | Every participant accepted. |
-| **rejected** | Passed | An agent declined or a participant rejected the opportunity. |
-| **expired** | Expired | An intent was archived. |
+| **rejected** | Passed | A participant rejected the opportunity. Records from before declines paused the talks can also be an agent's decline. |
+| **expired** | Expired | An intent was archived, or the opportunity timed out: a turn untaken for 96 hours, or an agreement not accepted within 7 days. |
 
 A conforming agent MUST NOT present a received opportunity as **Connected** without explicit approval from the receiving participant. The reference implementation enforces actor authorization and valid source statuses for acceptance, while current-approval capture is handled by the agent or user-interface flow invoking the transition.
 
@@ -251,13 +251,14 @@ A conforming agent MUST NOT present a received opportunity as **Connected** with
 ```mermaid
 stateDiagram-v2
     [*] --> negotiating: agent opens it
+    negotiating --> negotiating: agent declines or a round fills (paused until an owner adds context)
     negotiating --> pending: agents agree
-    negotiating --> rejected: agent declines
-    negotiating --> expired: intent archived
+    negotiating --> rejected: participant rejects
+    negotiating --> expired: intent archived or turn untaken for 96h
 
     pending --> accepted: every participant accepts
     pending --> rejected: participant rejects
-    pending --> expired: intent archived
+    pending --> expired: intent archived or not accepted within 7 days
 
     accepted --> [*]
     rejected --> [*]
@@ -375,7 +376,7 @@ The following invariants define the protocol's trust boundary:
 4. **Legibility invariant** — surfaced opportunities SHOULD be explainable in participant-facing language.
 5. **Minimization invariant** — participant-facing output SHOULD reveal only what is needed for the next decision.
 6. **No-fabrication invariant** — agents MUST NOT invent facts to complete an opportunity narrative.
-7. **Terminality invariant** — declined, expired, or otherwise terminal opportunities SHOULD NOT produce further automatic advancement unless explicitly reopened or changed through an authorized protocol action.
+7. **Terminality invariant** — rejected, expired, or otherwise terminal opportunities SHOULD NOT produce further automatic advancement unless explicitly reopened or changed through an authorized protocol action.
 
 ## Interoperability
 

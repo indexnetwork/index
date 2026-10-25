@@ -652,7 +652,7 @@ export class NegotiationDatabaseAdapter {
   async readNegotiationContext(
     opportunityId: string,
     viewerUserId: string,
-  ): Promise<{ outcome: NegotiationOutcome | null; turns: Array<{ action: NegotiationTurnAction; message: string; own: boolean }> } | null> {
+  ): Promise<{ outcome: NegotiationOutcome | null; paused: boolean; turns: Array<{ action: NegotiationTurnAction; message: string; own: boolean }> } | null> {
     const [negotiation] = await db.select().from(negotiations)
       .where(eq(negotiations.opportunityId, opportunityId)).limit(1);
     if (!negotiation) return null;
@@ -664,6 +664,7 @@ export class NegotiationDatabaseAdapter {
 
     return {
       outcome: negotiation.outcome,
+      paused: negotiation.outcome === null && negotiation.awaitingUserId === null,
       turns: turns.map((turn) => ({
         action: turn.action,
         message: turn.message,

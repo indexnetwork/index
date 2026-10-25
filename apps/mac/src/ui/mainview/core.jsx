@@ -384,7 +384,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const by = (s) => visiblePeople.filter(p => opportunityBucket(p) === s).length;
     return [
       { label:"awaiting you", count: by("awaiting you"), accent:true },
-      { label:"negotiating",  count: by("negotiating") },
+      // The key stays "negotiating", which the feed filters on; people read "in talks".
+      { label:"negotiating",  display:"in talks", count: by("negotiating") },
       { label:"accepted",     count: by("accepted"), accent:true },
       { label:"closed",       count: by("closed") },
     ];

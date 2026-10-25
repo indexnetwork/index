@@ -29,6 +29,8 @@ export type NegotiationContextOutcome = 'agreed' | 'declined' | 'closed';
 export interface NegotiationContextRecord {
   outcome: NegotiationContextOutcome | null;
   turns: NegotiationContextTurn[];
+  /** In talks with nobody to move: a decline or a full round paused it until an owner adds context. */
+  paused?: boolean;
 }
 
 /** The one thing a host must do for negotiation-grounded presentation. */

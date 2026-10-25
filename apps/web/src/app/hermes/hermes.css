@@ -189,8 +189,8 @@
   color: var(--wire-muted);
 }
 .wire-event b { font-weight: 700; }
-.wire-event--won { color: var(--wire-fg); }
-.wire-event--open { color: #FF8A00; }
+.wire-event--opportunity { color: var(--wire-fg); }
+.wire-event--in_talks { color: #FF8A00; }
 .wire-rule { flex: 1; border-top: 1px dashed currentColor; opacity: .5; }
 .wire-cursor { color: #FF8A00; opacity: .35; animation: site-blink 1s step-end infinite; }
 .wire-foot {

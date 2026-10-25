@@ -196,7 +196,7 @@
   {
    "id": 5,
    "type": "stat",
-   "title": "Declined",
+   "title": "Rejected",
    "datasource": {
     "type": "grafana-postgresql-datasource",
     "uid": "index-pg"
@@ -236,7 +236,8 @@
      "editorMode": "code",
      "rawSql": "select count(distinct opportunity_id) as value from analytics.opportunity_events where type = 'declined' and $__timeFilter(at)"
     }
-   ]
+   ],
+   "description": "A person passed. An agent's decline no longer rejects an opportunity: the pair stays in talks. Before that change this also counted agent declines; agent passes are on Index - Negotiation health."
   },
   {
    "id": 6,
@@ -376,7 +377,7 @@
   {
    "id": 9,
    "type": "stat",
-   "title": "Decline rate (declined / opened)",
+   "title": "Rejection rate (rejected / opened)",
    "datasource": {
     "type": "grafana-postgresql-datasource",
     "uid": "index-pg"
@@ -416,7 +417,8 @@
      "editorMode": "code",
      "rawSql": "select count(distinct opportunity_id) filter (where type = 'declined')::float / nullif(count(distinct opportunity_id) filter (where type = 'opened'), 0) as value from analytics.opportunity_events where $__timeFilter(at)"
     }
-   ]
+   ],
+   "description": "A person passed. An agent's decline no longer rejects an opportunity: the pair stays in talks. Before that change this also counted agent declines; agent passes are on Index - Negotiation health."
   },
   {
    "id": 10,

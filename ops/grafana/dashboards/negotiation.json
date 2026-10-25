@@ -106,7 +106,7 @@
   {
    "id": 3,
    "type": "stat",
-   "title": "Open now (awaiting a seat)",
+   "title": "In talks now",
    "datasource": {
     "type": "grafana-postgresql-datasource",
     "uid": "index-pg"
@@ -146,12 +146,13 @@
      "editorMode": "code",
      "rawSql": "select count(*) as value from analytics.negotiations where outcome is null"
     }
-   ]
+   ],
+   "description": "Every negotiation the agents have not agreed on and nobody has closed, including ones paused after a decline or a full round."
   },
   {
    "id": 4,
    "type": "stat",
-   "title": "Open for more than 24h",
+   "title": "In talks for more than 24h",
    "datasource": {
     "type": "grafana-postgresql-datasource",
     "uid": "index-pg"
@@ -236,7 +237,7 @@
      "format": "time_series",
      "rawQuery": true,
      "editorMode": "code",
-     "rawSql": "select $__timeGroupAlias(created_at,'1d'), coalesce(outcome, 'in progress') as metric, count(*) as value from analytics.negotiations where $__timeFilter(created_at) group by 1,2 order by 1"
+     "rawSql": "select $__timeGroupAlias(created_at,'1d'), coalesce(outcome, 'in talks') as metric, count(*) as value from analytics.negotiations where $__timeFilter(created_at) group by 1,2 order by 1"
     }
    ]
   },
@@ -372,6 +373,98 @@
      "rawSql": "select action, count(*) as turns from analytics.negotiation_turns where $__timeFilter(created_at) group by 1 order by 2 desc"
     }
    ]
+  },
+  {
+   "id": 9,
+   "type": "stat",
+   "title": "Agent passes (decline turns)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 17,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select count(*) as value from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at)"
+    }
+   ],
+   "description": "A decline pauses the pair rather than ending it, so it is counted as a turn, not as an outcome."
+  },
+  {
+   "id": 10,
+   "type": "stat",
+   "title": "Pass rate (decline turns / negotiations started)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "index-pg"
+   },
+   "gridPos": {
+    "x": 6,
+    "y": 17,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "none"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "index-pg"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code",
+     "rawSql": "select (select count(*) from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at))::float / nullif((select count(*) from analytics.negotiations where $__timeFilter(created_at)), 0) as value"
+    }
+   ],
+   "description": "Can pass 100%: a pair resumed by new context can be passed on again."
   }
  ],
  "templating": {
