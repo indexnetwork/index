@@ -353,12 +353,15 @@ export const opportunities = pgTable('opportunities', {
 export const opportunityEvents = pgTable('opportunity_events', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
-  type: text('type').$type<'opened' | 'agreed' | 'committed' | 'declined' | 'expired'>().notNull(),
+  /** A lifecycle type the status fold reads, or any type a client records (e.g. `met`, `survey`). */
+  type: text('type').notNull(),
   actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
   at: timestamp('at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  /** Free-form context a client sent with its event. Null on lifecycle events. */
+  data: jsonb('data').$type<Record<string, unknown>>(),
 }, (table) => ({
   opportunityIdx: index('opportunity_events_opportunity_idx').on(table.opportunityId),
-  oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} <> 'committed'`),
+  oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} in ('opened', 'agreed', 'declined', 'expired')`),
   oneCommit: uniqueIndex('opportunity_events_one_commit').on(table.opportunityId, table.actorUserId).where(sql`${table.type} = 'committed'`),
 }));
 
