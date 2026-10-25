@@ -27,6 +27,7 @@ const PrepareSchema = z.object({
     prompt: z.string().trim().min(1),
     answer: z.string().trim().min(1),
   })).default([]),
+  turn: z.number().int().min(1).max(2).optional().default(1),
 }).strict();
 const StatusSchema = z.object({
   status: z.enum(['active', 'paused']),

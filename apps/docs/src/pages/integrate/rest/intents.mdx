@@ -32,7 +32,7 @@ An intent id in the path accepts a UUID or the 8-character short id. `networkId`
 { "payload": "Looking for a CTO", "answers": [] }
 ```
 
-Each answer is `{ "prompt", "answer" }`. `prompt` is the `label` of a recovery field from the previous response.
+Each answer is `{ "prompt", "answer" }`. `prompt` is the `label` of a recovery field from the previous response. A second call — `turn: 2`, or any call that includes answers — is admitted. Those answers are folded into the draft, and the result is `ready` with a receipt.
 
 A draft that can be saved:
 

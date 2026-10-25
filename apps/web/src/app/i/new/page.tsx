@@ -52,10 +52,10 @@ export default function NewIntentPage() {
   const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const runPrepare = async (text: string, answers: PrepareAnswer[] = []) => {
+  const runPrepare = async (text: string, answers: PrepareAnswer[] = [], turn = 1) => {
     setThinking(true);
     try {
-      const result = await intentService.prepare(text, answers);
+      const result = await intentService.prepare(text, answers, turn);
       setPayload(result.payload);
       if (result.status === "ready") {
         setPreparationReceipt(result.preparationReceipt);
@@ -177,7 +177,7 @@ export default function NewIntentPage() {
                       />
                     </div>
                   ) : stage === "recovery" ? (
-                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers)} />
+                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers, 2)} />
                   ) : stage === "picks" ? (
                     <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
                   ) : (
