@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { parseListOpportunitiesQuery } from '../services/opportunity.list-query';
+import { parseClientEvent } from '../lib/opportunity/opportunity-event.policy';
 
 const logger = log.controller.from('opportunity');
 
@@ -267,6 +268,43 @@ export class OpportunityController {
         { status: result.status },
       );
     }
+    return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities/:id/events — record a client event, e.g. `{ type: 'met' }` or
+   * `{ type: 'survey', data: { question, answer } }`. Any non-lifecycle type, any status;
+   * the opportunity's status never changes.
+   */
+  @Post('/:id/events')
+  @UseGuards(AuthGuard)
+  async recordEvent(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const parsed = parseClientEvent(body);
+    if (!parsed.ok) {
+      return Response.json({ error: parsed.error }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await opportunityService.recordEvent(resolved.id, user.id, parsed.event);
+    if ('error' in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+    logger.verbose('Opportunity event recorded', { userId: user.id, opportunityId: resolved.id, type: parsed.event.type });
     return Response.json(result);
   }
 

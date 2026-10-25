@@ -3,7 +3,8 @@ import { log } from '../lib/log';
 import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { appendClientOpportunityEvent, recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import type { ClientEvent } from '../lib/opportunity/opportunity-event.policy';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
@@ -204,6 +205,23 @@ export class OpportunityService {
 
   async getStoredOpportunity(opportunityId: string): Promise<Opportunity | null> {
     return this.db.getOpportunity(opportunityId);
+  }
+
+  /**
+   * Record a client event (survey answer, "we met", ...) on an opportunity the caller is part of.
+   * Any status is fine; the event never changes it.
+   *
+   * @param opportunityId - Resolved opportunity id.
+   * @param userId - Caller; must be one of the opportunity's actors.
+   * @param event - Validated by `parseClientEvent`.
+   * @returns The new event's id, or 404 when the caller isn't on the opportunity.
+   */
+  async recordEvent(opportunityId: string, userId: string, event: ClientEvent): Promise<{ id: string } | { error: string; status: number }> {
+    const opportunity = await this.db.getOpportunity(opportunityId);
+    if (!opportunity?.actors.some((actor) => actor.userId === userId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+    return { id: await appendClientOpportunityEvent(opportunityId, userId, event) };
   }
 
   /**

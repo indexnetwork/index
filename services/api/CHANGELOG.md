@@ -9,6 +9,9 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- **`POST /opportunities/:id/events` records client events on an opportunity.** The body is `{ type, data? }`: any type of up to 64 characters except the lifecycle types (`opened`, `agreed`, `committed`, `declined`, `expired`), and an optional free-form `data` object. Any actor on the opportunity may record any number of events at any status; they never change it. Returns `{ id }`. Migration `0017` adds a nullable `data` jsonb column to `opportunity_events` and limits the one-per-opportunity index to `opened`, `agreed`, `declined` and `expired`.
+
 ### Fixed
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
 - Counterparty discovery returns only intents whose owners verified their email.

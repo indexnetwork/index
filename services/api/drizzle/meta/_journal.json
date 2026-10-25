@@ -120,6 +120,13 @@
       "when": 1792883722593,
       "tag": "0016_intent_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792949131996,
+      "tag": "0017_opportunity_event_data",
+      "breakpoints": true
     }
   ]
 }
