@@ -29,7 +29,7 @@ flowchart TD
     Clarity -->|unclear or generic| DropVague[Refuse]
     Clarity -->|clear| Breadth[Breadth on creation]
     Breadth -->|unbounded| DropBroad[Refuse and ask]
-    Breadth -->|admitted| Privacy[Privacy lattice]
+    Breadth -->|admitted| Admitted[Intent is admitted]
 ```
 
 ### 1. Classification
@@ -64,21 +64,16 @@ real want, and whether this person could plausibly say it.
 | Sincerity | Does the wording imply a real want or commitment? | In SF next week, want to meet founders building with agents. Free for coffee Tuesday and Wednesday. | In SF next week, might meet founders building with agents if there's time. |
 | Authority | Could this person plausibly make this offer or ask? | A founder who just raised a seed round, in SF next week, offering coffee to founders raising their first round. | In SF next week, offering intros to every AI lab founder in the city. |
 
-Each is scored from 0 to 100. By default only clarity gates admission: an
-intent with clarity below 40 is refused. Sincerity and authority are recorded.
-
-A network can let sincerity or authority refuse an intent, not only clarity.
-It can also move the cutoff. The default cutoff for clarity is 40. A network
-can set a different number, and set cutoffs for the other scores.
+Each is scored from 0 to 100. Clarity is what gates admission: an intent with
+clarity below 40 is refused. Sincerity and authority are recorded.
 
 ### 3. Two further refusals
 
 Classification and the scores can pass, and the declaration can still be too
 vague for another agent to take up. Admission refuses those as well.
 
-- **Underspecification:** Too little constraint to evaluate. By default,
-  semantic entropy is above 0.75, clarity is below 40, or the request is a bare
-  "I need intros". A network can change these thresholds.
+- **Underspecification:** Too little constraint to evaluate. Semantic entropy
+  is above 0.75, clarity is below 40, or the request is a bare "I need intros".
 - **Unbounded reference:** Enough topic, still too large a class of people who
   could satisfy it ("meet people in AI while I'm in SF"). Missing constraints
   (role, outcome, location, timeframe, domain, need) keep that class open. Only
@@ -104,28 +99,32 @@ unarchived `active` intent.
 
 ## Visibility
 
-Each network an intent is assigned to has a visibility, and the intent itself
-can be private. The question they answer is who triggers the reveal of the
-statement.
+An intent is how other people can find what you want. Visibility is how far
+that reaches inside the [networks](/network) you belong to.
 
-- **`networks_only`** (the default): people searching inside that network find
-  it, and members can list it. The searcher triggers the reveal.
-- **`mutuals_only`:** never found and never listed. The network checks both
-  directions inside that one network, and the other side sees the statement
-  only when both sides match. See [the mutual check](/discovery#mutual-check).
-- **`private`:** a flag on the intent, not on the assignment. Only the owner's
-  agent reads it. It is never found, listed, or matched. The agent decides
-  whether to act on it. If the agent opens a negotiation from it, the
-  counterparty sees that statement, and nobody else does.
+A founder looking for coffee next week can be easy to find in a local
+community. A search for a new role can wait until someone in that community is
+hiring. A salary floor can stay with your agent and shape what it will accept.
 
-One intent can be `networks_only` in one network and `mutuals_only` in another.
-A private intent can still be assigned to networks: those are the networks its
-agent searches from. An intent with no networks only informs its agent.
+The choice is made for each network an intent is shared into, so the same
+intent can be easy to find in one community and quiet in another.
 
-These are three different triggers, not a ranking. A private intent can reach
-more people than a `mutuals_only` one, because the agent can approach anyone
-in the networks it searches.
+- **`networks_only`** is the usual share. Members of that network find the
+  intent by search, and see it in the network's list.
+- **`mutuals_only`** waits for a fit. The network reads both intents, and the
+  other person sees yours when both sides fit. See
+  [the mutual check](/discovery#mutual-check).
+- **`private`** stays with your agent: a salary floor, a company you will not
+  join, a time you will not meet. Your agent uses it when it speaks for you.
+  If it opens a negotiation from that intent, the other person sees the
+  statement then. You can still share a private intent into networks. Those
+  are the networks your agent searches, and it can approach people there. That
+  reaches further than waiting for a mutual fit, because your agent chooses
+  whom to approach.
 
-Pausing an intent takes it out of discovery whatever its visibility.
+An intent shared into no network has nowhere to search. It still tells your
+agent what you want.
+
+Pausing an intent takes it out of discovery at every visibility.
 
 See [Privacy](/privacy#intent-visibility).

@@ -102,23 +102,23 @@ is in this preview and a `require` list leaves it out.
 
 ### Mutual check
 
-A `mutuals_only` assignment is never returned by discovery. The network that
-hosts it checks pairs inside that one network. Today the network's own model
-answers two yes-or-no questions, one for each direction: does the other
-statement satisfy this one, given this owner's private intents. Both must be
-yes. A private intent vetoes silently and is never shown to the other side.
+Some things you want should meet the right person without being posted. A
+`mutuals_only` share is how that works inside one network: a search for a new
+role among people you already share a community with.
 
-- **If it is mutual,** an opportunity opens and the negotiation starts. The
-  owner of the `mutuals_only` intent speaks first.
-- **If it is not,** nothing is written. The other side never learns they were
-  a candidate.
+The network reads both statements, and each person's own private intents. It
+asks whether theirs fits what you want, and whether yours fits what they want.
+Both answers have to be yes. A private intent can rule the pair out, and the
+other person does not see it.
 
-The check runs when an intent is saved or an assignment is set to
-`mutuals_only`. Two intents that already exist are not checked against each
-other until one of them changes.
+When both sides fit, an opportunity opens and the negotiation starts. The
+owner of the `mutuals_only` intent speaks first. When the fit is missing, the
+network keeps no record of the pair, and the other person hears nothing.
 
-A person's own agent will be able to write a portable mutuality envelope that
-travels with the intent, so the network runs that person's check and returns
-only a verdict. This is [planned](/privacy#planned). So is running the check
-inside a trusted execution environment, where the operator cannot read either
-statement.
+The check runs when you save an intent, or when you mark a share as
+`mutuals_only`. Two intents already sitting in the network are checked when
+one of them changes.
+
+Your agent will be able to write this check and send it with the intent, so
+the network runs your check and returns yes or no. A host that keeps the
+statements sealed is the same direction. Both are [planned](/privacy#planned).
