@@ -18,6 +18,7 @@ import { APIError, isNotFoundError } from "@/lib/api";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
+import { useBack } from "@/hooks/useBack";
 
 const logger = log.page.from("u/[id]");
 
@@ -31,6 +32,7 @@ export default function UserProfilePage() {
 function UserProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const back = useBack("/");
   const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const usersService = useUsers();
   const networksService = useNetworks();
@@ -119,7 +121,7 @@ function UserProfile() {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
     return (
       <Stage width={480}>
-        <Window title="profile" onClose={() => navigate(-1)}>
+        <Window title="profile" onClose={back}>
           <div style={{ padding: "36px 24px" }}>
             {authLoading || isLoading ? (
               <EmptyState tone="loading" />
@@ -130,7 +132,7 @@ function UserProfile() {
                 action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
               />
             ) : (
-              <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: () => (window.history.length > 1 ? navigate(-1) : navigate("/")) }} />
+              <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: back }} />
             )}
           </div>
         </Window>
@@ -145,7 +147,7 @@ function UserProfile() {
 
   return (
       <Stage width={720} height="min(720px, calc(100vh - 112px))">
-      <Window title="profile" onClose={() => navigate(-1)} style={{ height: "100%" }}>
+      <Window title="profile" onClose={back} style={{ height: "100%" }}>
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
 
           {/* Avatar, Name, Location, Socials */}

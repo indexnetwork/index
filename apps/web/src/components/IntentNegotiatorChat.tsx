@@ -147,6 +147,26 @@ function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch
   return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
 }
 
+/**
+ * Scrolls the question being answered to the top of its feed once the
+ * keyboard has opened, so the question and its field both stay in view.
+ */
+function revealQuestion(field: HTMLElement) {
+  const reveal = () => {
+    const pane = field.closest(".mac-scroll");
+    if (!(pane instanceof HTMLElement)) return;
+    const paneTop = pane.getBoundingClientRect().top;
+    const cardTop = (field.closest("article") ?? field).getBoundingClientRect().top - paneTop;
+    const fieldBottom = field.getBoundingClientRect().bottom - paneTop;
+    // The field wins when the whole card doesn't fit above the keyboard.
+    let shift = cardTop - 12;
+    if (fieldBottom - shift > pane.clientHeight) shift = fieldBottom - pane.clientHeight + 12;
+    if (Math.abs(shift) > 2) pane.scrollBy({ top: shift, behavior: "smooth" });
+  };
+  window.visualViewport?.addEventListener("resize", reveal, { once: true });
+  window.setTimeout(reveal, 350);
+}
+
 function OpenQuestion({ question, at, selections, setSelections, writing, setWriting, onSelectMatch }: {
   question: QuestionCard;
   at?: string;
@@ -188,6 +208,7 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
               autoFocus={options.length > 0}
               value={own ? answer : ""}
               onChange={(event) => setSelections((current) => ({ ...current, [id]: event.target.value }))}
+              onFocus={(event) => revealQuestion(event.currentTarget)}
               onBlur={(event) => { if (!event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               onKeyDown={(event) => { if (event.key === "Escape" && !event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               placeholder="write your own"
