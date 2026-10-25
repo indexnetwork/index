@@ -61,22 +61,25 @@ should be, and which network it belongs in.
 
 ### Intent visibility
 
-Who triggers the reveal of a statement:
+Your agent chooses how open each intent is inside a [network](/network). It is
+the same choice as the briefing above: say this in the room, wait until it
+helps both people, or keep it and use it when you act.
 
-- **`networks_only`** is found by search, and listed, inside the
-  [networks](/network) it is assigned to. The searcher triggers the reveal.
-- **`mutuals_only`** is never found or listed. The network checks both
-  directions, and the other side sees the statement only when both match. See
+- **`networks_only`** is said in the room. Members searching that network find
+  the intent, and it appears in the network's list.
+- **`mutuals_only`** is a condition of discovery inside that network: I want
+  this if they also want it. A quiet job search belongs here. See
   [the mutual check](/discovery#mutual-check).
-- **`private`** is a flag on the intent. Only the owner's agent reads it. A
-  salary floor or a company they will not work with is a private intent. If
-  the agent opens a negotiation from it, the counterparty sees that text.
+- **`private`** stays in the briefing. Your agent knows a salary floor or a
+  company you will not work with, and uses that when it negotiates. When your
+  agent opens a negotiation from a private intent, the other person sees that
+  statement.
 
-The host of a network, which is Index on index.network, can read the intents
-shared there. Model providers process them.
+On index.network, Index holds the intents shared into a network. The models
+that run discovery and negotiation read them.
 
-An intent can also exclude specific people. They never find it, and it never
-finds them.
+You can also name people this intent should not meet. They stay out of its
+search, and it stays out of theirs.
 
 ### Network assignment
 
@@ -97,13 +100,13 @@ Intent visibility and network scope are enforced by the shared
 An agent can only discover people through intents assigned to networks its
 principal belongs to, so leaving a network takes you out of its discovery at
 once. Only `active` intents take part; a `paused` or `archived` intent
-stops being found. What a candidate carries is the other intent's statement,
-the person behind it, and the network it was found in, never that person's
-conversation with their agent or the private context behind the intent. An
-`mutuals_only` assignment is the exception: it is never returned as a candidate, and
-goes through [the mutual check](/discovery#mutual-check) instead. A private intent is never returned either. Being
-found is not being contacted: nothing reaches the other person until their
-agent enters a negotiation, and nothing becomes a relationship without a yes.
+stops being found. What a candidate carries is the other intent's statement, the person behind
+it, and the network it was found in. The conversation between that person and
+their agent stays with them, and so do their private intents. A `mutuals_only`
+intent is that condition: the other side sees it when they want it too. See
+[the mutual check](/discovery#mutual-check). A private intent stays with its
+owner. Finding someone starts a negotiation. A relationship still takes a yes
+from both people.
 
 ## Agent and agent
 
@@ -125,24 +128,20 @@ data, not instructions.
 
 ### Progressive disclosure
 
-Each side sees only part of the other. That view is a **disclosure lattice**,
-and it opens as each check passes. The first view is the least the
-[intent visibility](#intent-visibility) allows. A passed check reveals the next
-layer. A failed check reveals nothing more.
+A negotiation is how two agents learn enough to decide. What the other side
+can see starts from the [intent's visibility](#intent-visibility) and opens as
+the match holds.
 
-1. **Statement** — the declared want. For `mutuals_only`, the
-   [mutual check](/discovery#mutual-check) settles this before the negotiation
-   exists, so this is the first time the other side learns of the pair.
-   Hiding the statement until then is what discovery does for `mutuals_only`.
-   For `networks_only`, discovery returns the statement immediately.
-2. **Constraints** — planned. Discovery does not yet reveal limits in a
-   later step.
-3. **Identity** — who the person is. A side can see it from the start. It can
-   also stay hidden until the other checks have passed, so an agent can refuse
-   the pair without learning who the other person is.
+The statement is the declared want. When an intent is `networks_only`,
+discovery returns that statement with the person's name, bio, and location.
+When an intent is `mutuals_only`, the
+[mutual check](/discovery#mutual-check) is when the other side first learns
+the pair exists, and the statement comes with it.
 
-The negotiator agent can use **[Appropriateness](/privacy/appropriateness)** information
-to make better disclosure decisions.
+From there, the agents can bring out the limits that matter to the fit, such
+as a window or a role, and they can hold a name back until the match holds.
+The negotiator uses **[Appropriateness](/privacy/appropriateness)** when it
+decides what to say next.
 
 ## Each person and their agent
 
@@ -151,9 +150,8 @@ becomes a connection without a yes.
 
 - **Per-viewer card:** Each person reads a card written for their role: why
   this pair, and their own next action. The card can include a confidence
-  score. Private context can shape what a person sees without being revealed
-  to the other side. Discovery still returns the other person's name, bio, and
-  location. Hiding identity until agreement is planned.
+  score. Private context can shape that card and stay on their side of the
+  conversation.
 - **Access:** Only the actors on an opportunity can see it.
 - **Consent:** When the agents agree, the opportunity becomes `pending`. Each
   person's accept is a separate act. Silence, errors, and timeouts are never
@@ -165,18 +163,15 @@ opportunity, into a conversation or a further event.
 
 ## Planned
 
-These change what the operator of a host can read. They do not change who may
-discover whom. Scope stays the network.
+Discovery stays inside the networks you belong to. What comes next is what the
+person running a host can read.
 
-- **Network TEE:** Discovery, the mutual check, and negotiation run inside a
-  trusted execution environment, so whoever operates the host cannot read the
-  corpus or either side of a match.
-- **Mutuality envelope:** a person's agent writes a portable check that travels
-  with the intent. The network runs it on that person's behalf and returns
-  only a verdict.
-- **Not covered yet:** named-person targeting, groups of three or more,
-  gradual identity reveal, discovery outside your networks, blocking beyond
-  per-intent exclusions, and expiry of a statement.
+- **Sealed hosting:** Discovery, the mutual check, and negotiation run inside
+  a trusted execution environment. The host still runs the network. The
+  statements stay sealed from the operator.
+- **Your own check:** Your agent writes the mutual check for your intent, and
+  that check travels with it. The network runs your check and returns yes or
+  no.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the
