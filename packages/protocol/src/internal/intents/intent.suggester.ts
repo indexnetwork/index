@@ -68,6 +68,8 @@ RULES:
   details that go stale (stage, round, team size, dates). Do not invent facts.
 - One line each, at most 90 characters, lowercase, no trailing period, no emoji, no em dashes.
 - Skip anything that repeats one of their existing intents.
+- Each suggestion must reach a different kind of person. Never give two that the same people would
+  answer, like "seed investors" and "angels in ai"; fold them into one.
 - If the profile says little, still give three plausible, specific starting points.
 
 EXAMPLES:
