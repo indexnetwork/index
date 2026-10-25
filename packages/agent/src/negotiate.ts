@@ -77,12 +77,17 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
-    instructions: user.emailVerified === false ? `${SYSTEM_PROMPT}\n\n${UNVERIFIED_PROMPT}` : SYSTEM_PROMPT,
+    instructions: [
+      SYSTEM_PROMPT,
+      user.emailVerified === false && UNVERIFIED_PROMPT,
+      input.privateContext?.length && "Your principal's private intents are listed below. Weigh them as context. Decline when the counterpart plainly breaks one. Never quote, paraphrase, or hint that they exist.",
+    ].filter(Boolean).join("\n\n"),
     prompt:
       "Take this negotiation's next turn, or stall.\nYour brief:\n" +
       brief +
       "\n\nYour principal (null when unconfirmed):\n" +
       JSON.stringify(principalFacts(user)) +
+      (input.privateContext?.length ? "\n\nYour principal's private intents:\n" + input.privateContext.map((text) => "- " + text).join("\n") : "") +
       "\n\nThis negotiation:\n" +
       JSON.stringify(opportunity),
     tools,

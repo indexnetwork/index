@@ -79,6 +79,15 @@ INDEX_CREATE_INTENT = {
                 "items": {"type": "string"},
                 "description": "Optional network UUIDs to share the intent in.",
             },
+            "visibility": {
+                "type": "string",
+                "enum": ["networks_only", "mutuals_only"],
+                "description": "How each named network reveals this intent. Omitted means networks_only.",
+            },
+            "private": {
+                "type": "boolean",
+                "description": "Only the owner's agent reads this intent. It is never found or listed.",
+            },
         },
         "required": ["description"],
     },
@@ -95,6 +104,7 @@ INDEX_UPDATE_INTENT = {
         "properties": {
             "intentId": {"type": "string", "description": "The intent's UUID."},
             "description": {"type": "string", "description": "The rewritten intent text."},
+            "private": {"type": "boolean", "description": "Make this intent private. It cannot be undone."},
         },
         "required": ["intentId", "description"],
     },

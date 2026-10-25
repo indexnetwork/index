@@ -215,8 +215,8 @@ export function intentCard(intent: Intent): void {
   if (intent.semanticEntropy !== undefined) {
     console.log(`  ${BOLD}Entropy${RESET}       ${intent.semanticEntropy.toFixed(2)}`);
   }
-  if (intent.isIncognito) {
-    console.log(`  ${BOLD}Incognito${RESET}     ${YELLOW}Yes${RESET}`);
+  if (intent.isPrivate) {
+    console.log(`  ${BOLD}Private${RESET}       ${YELLOW}Yes${RESET}`);
   }
 
   console.log();
@@ -231,7 +231,8 @@ export function intentCard(intent: Intent): void {
     console.log(`  ${BOLD}Networks${RESET}`);
     for (const idx of intent.networks) {
       const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
-      console.log(`  ${CYAN}*${RESET} ${idx.title}${GRAY}${score}${RESET}`);
+      const mode = idx.visibility === "mutuals_only" ? ` ${YELLOW}[mutuals_only]${RESET}` : "";
+      console.log(`  ${CYAN}*${RESET} ${idx.title}${GRAY}${score}${RESET}${mode}`);
     }
   }
 

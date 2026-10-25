@@ -100,6 +100,7 @@ export interface UserDatabase {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: NetworkAssignmentMetadata,
+    visibility?: 'networks_only' | 'mutuals_only',
   ): Promise<void>;
 
   /** Unassign an intent from a network. */

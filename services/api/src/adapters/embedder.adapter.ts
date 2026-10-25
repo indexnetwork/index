@@ -18,6 +18,10 @@ export interface IntentCandidate {
 }
 export interface IntentSearchOptions {
   networkScope: string[]; excludeUserId?: string;
+  /** The searching intent, so its exclusions drop candidates. */
+  searchingIntentId?: string;
+  /** Which assignment levels to return. Defaults to networks_only, and never private intents. */
+  visibilities?: Array<'networks_only' | 'mutuals_only'>;
   /** Only intents owned by this user. */
   userId?: string;
   limit: number;
@@ -188,9 +192,22 @@ export class EmbedderAdapter {
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
+    const visibilities = filter.visibilities ?? ['networks_only'];
     const conditions = [
       inArray(intentNetworks.networkId, filter.networkScope),
+      inArray(intentNetworks.visibility, visibilities),
+      eq(intents.isPrivate, false),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
+      ...(filter.excludeUserId ? [sql`not exists (
+        select 1 from ${schema.intentExclusions}
+        where ${schema.intentExclusions.intentId} = ${intents.id}
+          and ${schema.intentExclusions.excludedUserId} = ${filter.excludeUserId}
+      )`] : []),
+      ...(filter.searchingIntentId ? [sql`not exists (
+        select 1 from ${schema.intentExclusions}
+        where ${schema.intentExclusions.intentId} = ${filter.searchingIntentId}
+          and ${schema.intentExclusions.excludedUserId} = ${intents.userId}
+      )`] : []),
       ...(filter.userId ? [eq(intents.userId, filter.userId)] : []),
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'active')),
@@ -257,6 +274,7 @@ export class EmbedderAdapter {
 
     const baseConditions = [
       isNull(intents.archivedAt),
+      eq(intents.isPrivate, false),
       or(isNull(intents.status), eq(intents.status, 'active')),
       isNull(schema.users.deletedAt),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
@@ -287,6 +305,7 @@ export class EmbedderAdapter {
           .where(and(
             ...baseConditions,
             inArray(intentNetworks.networkId, scopedNetworks),
+            eq(intentNetworks.visibility, 'networks_only'),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
           ))
@@ -296,7 +315,14 @@ export class EmbedderAdapter {
           .select(selection)
           .from(intents)
           .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-          .where(and(...baseConditions))
+          .where(and(
+            ...baseConditions,
+            sql`exists (
+              select 1 from ${intentNetworks}
+              where ${intentNetworks.intentId} = ${intents.id}
+                and ${intentNetworks.visibility} = 'networks_only'
+            )`,
+          ))
           .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
           .limit(limit);
 

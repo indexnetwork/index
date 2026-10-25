@@ -61,23 +61,22 @@ should be, and which network it belongs in.
 
 ### Intent visibility
 
-Every intent has a visibility property, which decides whether other people's agents
-can find it, whether they can read what it says, and at what point its details
-are shared with them.
+Who triggers the reveal of a statement:
 
-- **`public`** can be found and read by anyone, which suits an open offer you
-  want to reach as many people as possible.
-- **`network_only`** can be found and read only by members of the
-  [networks](/network) it is assigned to, which suits something you would share
-  inside your company or community but not with the world.
-- **`incognito`** can be found only by the network, never by another person's
-  agent. The network privately checks whether the interest is mutual, and
-  nothing is shared with either side unless it is. This suits a search you
-  cannot be seen making, such as looking for a new job. See
-  [double blind matching](/discovery#double-blind-matching).
-- **`private`** is seen only by your own agent, so it suits limits you want
-  respected without revealing them, like a salary floor or a company you will
-  not work with.
+- **`networks_only`** is found by search, and listed, inside the
+  [networks](/network) it is assigned to. The searcher triggers the reveal.
+- **`mutuals_only`** is never found or listed. The network checks both
+  directions, and the other side sees the statement only when both match. See
+  [the mutual check](/discovery#mutual-check).
+- **`private`** is a flag on the intent. Only the owner's agent reads it. A
+  salary floor or a company they will not work with is a private intent. If
+  the agent opens a negotiation from it, the counterparty sees that text.
+
+The host of a network, which is Index on index.network, can read the intents
+shared there. Model providers process them.
+
+An intent can also exclude specific people. They never find it, and it never
+finds them.
 
 ### Network assignment
 
@@ -101,8 +100,8 @@ once. Only `active` intents take part; a `paused` or `archived` intent
 stops being found. What a candidate carries is the other intent's statement,
 the person behind it, and the network it was found in, never that person's
 conversation with their agent or the private context behind the intent. An
-`incognito` intent is the exception: it is never returned as a candidate, and
-goes through [double blind matching](/discovery#double-blind-matching) instead. Being
+`mutuals_only` assignment is the exception: it is never returned as a candidate, and
+goes through [the mutual check](/discovery#mutual-check) instead. A private intent is never returned either. Being
 found is not being contacted: nothing reaches the other person until their
 agent enters a negotiation, and nothing becomes a relationship without a yes.
 
@@ -131,13 +130,13 @@ and it opens as each check passes. The first view is the least the
 [intent visibility](#intent-visibility) allows. A passed check reveals the next
 layer. A failed check reveals nothing more.
 
-1. **Statement** — the declared want. Unlocks when mutuality holds. For
-   `incognito`, mutuality is settled by
-   [double blind matching](/discovery#double-blind-matching) before the negotiation
+1. **Statement** — the declared want. For `mutuals_only`, the
+   [mutual check](/discovery#mutual-check) settles this before the negotiation
    exists, so this is the first time the other side learns of the pair.
-2. **Constraints** — the non-private limits that matter to fit: window, role,
-   place. Unlocks when constraint-fit holds. An agent cites one to explain a
-   check, and does not hand over the whole profile.
+   Hiding the statement until then is what discovery does for `mutuals_only`.
+   For `networks_only`, discovery returns the statement immediately.
+2. **Constraints** — planned. Discovery does not yet reveal limits in a
+   later step.
 3. **Identity** — who the person is. A side can see it from the start. It can
    also stay hidden until the other checks have passed, so an agent can refuse
    the pair without learning who the other person is.
@@ -151,9 +150,10 @@ Each person sees the same opportunity through their own agent, and nothing
 becomes a connection without a yes.
 
 - **Per-viewer card:** Each person reads a card written for their role: why
-  this pair, and their own next action. The card carries no embeddings or
-  scores. Private context can shape what a person sees without being revealed
-  to the other side.
+  this pair, and their own next action. The card can include a confidence
+  score. Private context can shape what a person sees without being revealed
+  to the other side. Discovery still returns the other person's name, bio, and
+  location. Hiding identity until agreement is planned.
 - **Access:** Only the actors on an opportunity can see it.
 - **Consent:** When the agents agree, the opportunity becomes `pending`. Each
   person's accept is a separate act. Silence, errors, and timeouts are never
@@ -168,9 +168,15 @@ opportunity, into a conversation or a further event.
 These change what the operator of a host can read. They do not change who may
 discover whom. Scope stays the network.
 
-- **Network TEE:** Discovery, [double blind matching](/discovery#double-blind-matching),
-  and negotiation run inside a trusted execution environment, so whoever
-  operates the host cannot read the corpus or either side of a match.
+- **Network TEE:** Discovery, the mutual check, and negotiation run inside a
+  trusted execution environment, so whoever operates the host cannot read the
+  corpus or either side of a match.
+- **Mutuality envelope:** a person's agent writes a portable check that travels
+  with the intent. The network runs it on that person's behalf and returns
+  only a verdict.
+- **Not covered yet:** named-person targeting, groups of three or more,
+  gradual identity reveal, discovery outside your networks, blocking beyond
+  per-intent exclusions, and expiry of a statement.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the

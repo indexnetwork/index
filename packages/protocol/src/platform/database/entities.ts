@@ -86,7 +86,7 @@ export interface UserSocial {
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer' | 'mutual_check';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -170,8 +170,8 @@ export interface CreateIntentData {
   summary?: string | null;
   /** Pre-computed embedding vector (optional, will be generated if not provided) */
   embedding?: number[];
-  /** Whether the intent should be hidden from public views */
-  isIncognito?: boolean;
+  /** Only the owner's agent reads this intent. */
+  isPrivate?: boolean;
   /** Network IDs to associate with (optional, uses dynamic scoping if empty) */
   networkIds?: string[];
   /** Client-owned label, stored and returned unchanged */
@@ -209,8 +209,8 @@ export interface UpdateIntentData {
   summary?: string | null;
   /** Updated embedding vector */
   embedding?: number[];
-  /** Updated incognito status */
-  isIncognito?: boolean;
+  /** Updated privacy. A private intent cannot be made public again. */
+  isPrivate?: boolean;
   /** Client-owned label; null clears it */
   sourceType?: string | null;
   /** Client-owned reference; null clears it */
@@ -252,8 +252,8 @@ export interface CreatedIntent {
   payload: string;
   /** Generated or provided summary */
   summary: string | null;
-  /** Incognito status */
-  isIncognito: boolean;
+  /** Whether only the owner's agent reads this intent. */
+  isPrivate: boolean;
   /** Creation timestamp */
   createdAt: Date;
   /** Last update timestamp */

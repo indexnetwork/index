@@ -117,6 +117,7 @@ export class HostedIndex implements Index {
       id: intent.id,
       statement: intent.payload,
       status: (intent.archivedAt ? 'archived' : intent.status ?? 'active') as IntentStatus,
+      isPrivate: intent.isPrivate,
     }));
   }
 
