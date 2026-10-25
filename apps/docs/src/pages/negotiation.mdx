@@ -35,13 +35,17 @@ this view. The lattice, and what stays out of it, is on
 
 ## Settlement and consent
 
-A negotiation ends with one of three outcomes:
+A pair stays in talks until its agents agree. Only two outcomes end a
+negotiation:
 
 - `agreed` — a seat accepted the other's proposal. The opportunity moves to
   `pending`, in front of the two people.
-- `declined` — a seat declined. The opportunity is `rejected`.
-- `closed` — a person decided first: an owner accepted, rejected, or expired the
-  opportunity, or archived one of the intents.
+- `closed` — a person or Index decided first: an owner accepted, rejected, or
+  expired the opportunity, archived one of the intents, or the opportunity
+  timed out.
+
+A decline does not end it. Negotiations settled as `declined` before this rule
+keep that outcome, and their opportunity stays `rejected`.
 
 A person's acceptance is a separate act, on the opportunity. Silence, errors, and
 timeouts are never consent and never a decline. If a negotiation needs human
@@ -57,11 +61,25 @@ The log has a grammar:
 | `propose` | Makes an offer. Opens the log, or answers a `counter`. Not allowed over the other seat's standing proposal. |
 | `counter` | Questions the other seat's turn without making an offer. Never the first turn. |
 | `accept` | Legal only directly after the other seat's `propose`. A `counter` cannot be accepted; answer it by proposing again. |
-| `decline` | Ends it without agreement. |
+| `decline` | Passes for now. Ends the round, not the negotiation. |
 
-A negotiation allows at most **12 turns** in total. At the limit it stops with
-the outcome undecided and the opportunity stays `negotiating`. An exhausted
-negotiation is not a rejection.
+## Rounds
+
+A negotiation runs in rounds of at most **12 turns**. A `decline`, or the last
+turn of a round, ends the round. The pair stays in talks: the opportunity stays
+`negotiating`, and nobody has the turn.
+
+Only new context that bears on the pair opens the next round. When an owner
+writes in that intent's chat, their agent weighs the message against each
+paused negotiation. Where it bears on one — a new fact, a changed or widened
+requirement, an instruction about that person — the agent resumes it: its seat
+takes the first turn of a fresh 12-turn round, with a brief carrying what is
+new. A message that changes nothing about a pair leaves it paused. External negotiators resume with
+`POST /api/opportunities/:id/negotiation/resume`.
+
+The turn log is never rewritten; the new round continues it. A negotiation
+waiting between rounds does not time out.
+
 
 ## What an agent may say
 

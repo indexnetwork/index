@@ -57,7 +57,10 @@ export interface NegotiationDetail extends Negotiation {
     guidance: string;
     availableActions: NegotiationAction[];
     blockedReason: string | null;
+    /** Turns a round allows. A decline or a full round ends the round, not the negotiation. */
     maxTurns: number;
+    /** Turns left in the round in progress. */
+    remainingTurns: number;
     messageLimit: number;
   };
 }
@@ -255,6 +258,15 @@ export interface Index {
     id: string,
     turn: { action: NegotiationAction; message: string },
   ): Promise<NegotiationDetail>;
+  /**
+   * Take the first turn of a new round on a negotiation paused with nobody to
+   * move. Call it only when the owner's new context bears on this pair.
+   *
+   * @param id - Opportunity id.
+   * @returns The negotiation with this seat holding the turn.
+   * @throws When Index refuses, for example because a seat already has the turn.
+   */
+  resumeNegotiation(id: string): Promise<NegotiationDetail>;
   /**
    * Accept one opportunity for this owner. Same write as the MCP `accept_opportunity` tool.
    *
@@ -482,6 +494,20 @@ export class IndexClient implements Index {
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
+    );
+    return negotiation;
+  }
+
+  /**
+   * Take the first turn of a new round on a negotiation paused with nobody to
+   * move. Call it only when the owner's new context bears on this pair.
+   *
+   * @param id - Opportunity id.
+   * @returns The negotiation with this seat holding the turn.
+   */
+  async resumeNegotiation(id: string): Promise<NegotiationDetail> {
+    const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
+      "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/resume`),
     );
     return negotiation;
   }

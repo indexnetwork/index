@@ -1106,9 +1106,13 @@ export class OpportunityDatabaseAdapter {
   }
 
   /**
-   * Append `expired` for opportunities past their expires_at, negotiations with
-   * no turn for NEGOTIATION_IDLE, and agreements nobody finished accepting
-   * within PENDING_TTL. Skips terminal statuses.
+   * Append `expired` for opportunities past their expires_at, negotiations
+   * whose turn went untaken for NEGOTIATION_IDLE, and agreements nobody
+   * finished accepting within PENDING_TTL. Skips terminal statuses.
+   *
+   * A negotiation with nobody to move is paused between rounds, waiting on a
+   * seat to resume it rather than on an agent, so idling never expires it. Its
+   * idle clock restarts when a seat resumes it.
    */
   async expireStaleOpportunities(): Promise<number> {
     const due = await db
@@ -1120,7 +1124,8 @@ export class OpportunityDatabaseAdapter {
           and(isNotNull(opportunities.expiresAt), lte(opportunities.expiresAt, new Date())),
           and(eq(opportunities.status, 'negotiating'), sql`exists (
             select 1 from negotiations n where n.opportunity_id = ${opportunities.id} and n.settled_at is null
-              and greatest(n.created_at, (select max(t.created_at) from negotiation_turns t where t.negotiation_id = n.id))
+              and n.awaiting_user_id is not null
+              and greatest(n.created_at, n.updated_at, (select max(t.created_at) from negotiation_turns t where t.negotiation_id = n.id))
                 < now() - ${NEGOTIATION_IDLE}::interval)`),
           and(eq(opportunities.status, 'pending'), sql`exists (
             select 1 from opportunity_events e where e.opportunity_id = ${opportunities.id} and e.type = 'agreed'
