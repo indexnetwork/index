@@ -51,7 +51,7 @@ class FakeIntentHost {
         userId: data.userId,
         payload: data.payload,
         summary: null,
-        isIncognito: false,
+        isPrivate: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         archivedAt: null,

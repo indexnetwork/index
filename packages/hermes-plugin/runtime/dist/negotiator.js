@@ -25112,7 +25112,8 @@ class IndexClient {
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
-      status: intent.archivedAt ? "archived" : intent.status ?? "active"
+      status: intent.archivedAt ? "archived" : intent.status ?? "active",
+      isPrivate: intent.isPrivate === true
     }));
   }
   async discover(intentId, query, limit, since) {
@@ -36980,15 +36981,23 @@ async function negotiate(input2) {
     operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
-    instructions: user.emailVerified === false ? `${SYSTEM_PROMPT}
+    instructions: [
+      SYSTEM_PROMPT,
+      user.emailVerified === false && UNVERIFIED_PROMPT,
+      input2.privateContext?.length && "Your principal's private intents are listed below. Weigh them as context. Decline when the counterpart plainly breaks one. Never quote, paraphrase, or hint that they exist."
+    ].filter(Boolean).join(`
 
-${UNVERIFIED_PROMPT}` : SYSTEM_PROMPT,
+`),
     prompt: `Take this negotiation's next turn, or stall.
 Your brief:
 ` + brief + `
 
 Your principal (null when unconfirmed):
-` + JSON.stringify(principalFacts(user)) + `
+` + JSON.stringify(principalFacts(user)) + (input2.privateContext?.length ? `
+
+Your principal's private intents:
+` + input2.privateContext.map((text2) => "- " + text2).join(`
+`) : "") + `
 
 This negotiation:
 ` + JSON.stringify(opportunity),
@@ -37902,10 +37911,11 @@ async function closeInitiation(client, intent, runtime) {
 }
 async function runNegotiate(client, opportunityId, intent, runtime) {
   const { model, now: now2, signal, log = () => {} } = runtime;
-  const [user, detail, inbox] = await Promise.all([
+  const [user, detail, inbox, owned] = await Promise.all([
     client.me(),
     client.getNegotiation(opportunityId),
-    client.principalInbox(intent.id)
+    client.principalInbox(intent.id),
+    client.listIntents()
   ]);
   if (detail.intentId !== intent.id)
     return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
@@ -37941,7 +37951,8 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     return { stall: { reason: `Nothing this seat may do now carries out the standing decision to ${decision}.` } };
   }
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const input2 = { user, intent, brief, opportunity, model, now: now2, signal };
+  const privateContext = owned.filter((row) => row.isPrivate && row.id !== intent.id && row.status === "active").map((row) => row.statement);
+  const input2 = { user, intent, brief, opportunity, privateContext, model, now: now2, signal };
   const result = runtime.negotiate ? await runtime.negotiate(input2, () => negotiate(input2)) : await negotiate(input2);
   if ("turn" in result) {
     await client.submitTurn(opportunityId, result.turn);

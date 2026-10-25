@@ -102,11 +102,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       networkId: string,
       relevancyScore?: number,
       assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+      visibility?: 'networks_only' | 'mutuals_only',
     ) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.assignIntentToNetwork(intentId, networkId, relevancyScore, assignmentMetadata);
+      return db.assignIntentToNetwork(intentId, networkId, relevancyScore, assignmentMetadata, visibility);
     },
     assignIntentToNetworkIfMember: (
       userId: string,
@@ -114,6 +115,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       networkId: string,
       relevancyScore?: number,
       assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+      visibility?: 'networks_only' | 'mutuals_only',
     ) => userId === authUserId
       ? intentDatabaseAdapter.assignIntentToNetworkIfMember(
           userId,
@@ -121,6 +123,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
           networkId,
           relevancyScore,
           assignmentMetadata,
+          visibility,
         )
       : Promise.resolve({ kind: 'intent_not_owned_or_not_found' } as const),
     unassignIntentFromNetwork: async (intentId: string, networkId: string) => {
@@ -300,7 +303,7 @@ export function createSystemDatabase(
           payload: intent.payload,
           summary: intent.summary ?? null,
           userId: intent.userId,
-          isIncognito: intent.isIncognito ?? false,
+          isPrivate: intent.isPrivate ?? false,
           createdAt: intent.createdAt,
           updatedAt: intent.updatedAt,
           archivedAt: intent.archivedAt ?? null,

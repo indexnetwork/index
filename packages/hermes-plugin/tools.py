@@ -354,6 +354,10 @@ def index_create_intent(args: dict, **kwargs) -> str:
     network_ids = args.get("networkIds")
     if isinstance(network_ids, list) and network_ids:
         body["networkIds"] = [str(item) for item in network_ids]
+    if args.get("visibility") in ("networks_only", "mutuals_only"):
+        body["visibility"] = args["visibility"]
+    if args.get("private") is True:
+        body["private"] = True
     return _api_result("POST", "/intents", body)
 
 
@@ -368,7 +372,10 @@ def index_update_intent(args: dict, **kwargs) -> str:
     description = _clean_string(args.get("description"))
     if description is None:
         return _error("description is required.")
-    return _api_result("PATCH", f"/intents/{urllib.parse.quote(intent_id)}", {"description": description})
+    body: dict[str, Any] = {"description": description}
+    if args.get("private") is True:
+        body["private"] = True
+    return _api_result("PATCH", f"/intents/{urllib.parse.quote(intent_id)}", body)
 
 
 def index_list_intent_networks(args: dict, **kwargs) -> str:

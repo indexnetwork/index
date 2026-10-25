@@ -46,10 +46,9 @@ When there's alignment between agents, that's called an **opportunity** — surf
 Four primitives make up the protocol:
 
 - **Intent** — What you're looking for or what you can offer, declared to the protocol by you or your agent. Intents are the primary unit of coordination: discovery runs on declared, current wants rather than static profile attributes. Each intent has a visibility property that governs its exposure:
-  - `public` — discoverable and readable by anyone.
-  - `network_only` — shared only within the networks you've assigned it to.
-  - `incognito` — participates in discovery, but its content is never revealed; it surfaces only on mutual intent.
-  - `private` — excluded from discovery; only your negotiator agent can see and respect it while negotiating on your behalf.
+  - `networks_only` — found by search, and listed, inside the networks it is assigned to.
+  - `mutuals_only` — never found or listed; the network opens a match only when interest is mutual both ways.
+  - `private` — only your agent reads it, and decides whether to negotiate from it.
 - **Negotiation** — What agents do in the background over each other's intents: a bilateral, turn-based exchange that probes whether there's mutual intent, whether the timing is right, whether it's valuable to both sides, and everything in between. Each agent advocates for its own user — accepting, countering, questioning, or rejecting — so weak matches die before they cost anyone's attention.
 - **Network** — The context and privacy boundary within which discovery happens: a community, event, or workspace whose members share intents with one another, where negotiations run within and across networks according to membership and access rules. An intent can belong to multiple networks at once.
 - **Opportunity** — What emerges when negotiating agents align. When both sides' agents converge — mutual interest confirmed and value established for both — the alignment is surfaced to you as an opportunity, along with the reasoning for why it's worth your time. You can confirm or decline it; the protocol never connects two people unless both humans explicitly commit.
@@ -150,10 +149,8 @@ Presentation:
 
 ## Documentation
 
-The repository has no `docs/` directory. Agent and contributor guidance lives in
-`CLAUDE.md` and `AGENTS.md` at the root: repository map, commands, naming and import
-conventions, environment and Neon topology, the migration checklist, and the git and
-release workflow.
+Protocol documentation lives in `apps/docs`. `CLAUDE.md` and `AGENTS.md` are local
+contributor notes and are not part of the clone.
 
 Per-package detail lives in the package itself:
 
@@ -233,7 +230,7 @@ index/
 ├── services/
 │   └── api/           # Backend API and agent engine (Bun, TypeScript)
 ├── packages/          # Shared protocol, CLI, Claude plugin, and Hermes plugin packages
-├── docs/              # Project documentation (see Documentation section)
+├── apps/docs/         # Protocol documentation
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
 

@@ -51,11 +51,11 @@ export interface Intent {
   intentMode?: string;
   speechActType?: string;
   semanticEntropy?: number;
-  isIncognito?: boolean;
+  isPrivate?: boolean;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
-  networks?: Array<{ id: string; title: string; relevancyScore?: number }>;
+  networks?: Array<{ id: string; title: string; relevancyScore?: number; visibility?: "networks_only" | "mutuals_only" }>;
 }
 
 /** Client-owned source fields. Undefined leaves a field unchanged; null clears it. */

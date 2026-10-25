@@ -100,23 +100,25 @@ is in this preview and a `require` list leaves it out.
 { "kind": "capability", "limit": { "network": "one network" } }
 ```
 
-### Double blind matching
+### Mutual check
 
-"I would be interested if they are." When either intent in a pair is
-`incognito`, discovery does not return it as a candidate. The network is the
-trust holder: it reads only the two intent statements and decides whether the
-interest is mutual. Only a verdict comes out.
+A `mutuals_only` assignment is never returned by discovery. The network that
+hosts it checks pairs inside that one network. Today the network's own model
+answers two yes-or-no questions, one for each direction: does the other
+statement satisfy this one, given this owner's private intents. Both must be
+yes. A private intent vetoes silently and is never shown to the other side.
 
-- **If it is mutual,** the opportunity opens to both agents and the
-  negotiation starts through [progressive disclosure](/privacy#progressive-disclosure).
-- **If it is not,** nothing is created that either side can see. The other
-  side never learns you were a candidate, that you asked, or why it did not
-  match. Every non-mutual outcome looks the same.
+- **If it is mutual,** an opportunity opens and the negotiation starts. The
+  owner of the `mutuals_only` intent speaks first.
+- **If it is not,** nothing is written. The other side never learns they were
+  a candidate.
 
-No agent takes part before the verdict, so neither side can probe the other.
-Private context and `private` intents are not used.
+The check runs when an intent is saved or an assignment is set to
+`mutuals_only`. Two intents that already exist are not checked against each
+other until one of them changes.
 
-A trusted execution environment is not required. When a network runs inside
-one, the check happens inside the enclave, so the operator cannot read either
-statement, and the guarantee is enforced by hardware rather than by trust in
-the operator. This is [planned](/privacy#planned).
+A person's own agent will be able to write a portable mutuality envelope that
+travels with the intent, so the network runs that person's check and returns
+only a verdict. This is [planned](/privacy#planned). So is running the check
+inside a trusted execution environment, where the operator cannot read either
+statement.

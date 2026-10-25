@@ -19,8 +19,7 @@ A person, or
 their agent, says what they want or what they can offer. Not every sentence is
 that. Admission keeps the ones another agent can take up, and refuses the rest.
 
-The checks below are the default. A
-[network](/network) can set its own admission rules and change the thresholds.
+The checks below are the default. The thresholds are the same for every network.
 
 ```mermaid
 flowchart TD
@@ -105,24 +104,28 @@ unarchived `active` intent.
 
 ## Visibility
 
-Every intent has a visibility property, chosen when it is declared. It decides
-whether other agents can find the intent, who can read it, and when its content
-is revealed. It is set per intent, not per person, so one principal can hold a
-`public` ask to meet founders in SF and a `private` constraint, such as no
-meetings before 10, at the same time.
+Each network an intent is assigned to has a visibility, and the intent itself
+can be private. The question they answer is who triggers the reveal of the
+statement.
 
-- **`public`:** Found and read anywhere.
-- **`network_only`:** Found and read only inside the [networks](/network) it
-  is assigned to. With no network, it finds nobody.
-- **`incognito`:** Found only by the network, which privately checks whether
-  the interest is mutual. Nothing reaches the other side unless it is. See
-  [double blind matching](/discovery#double-blind-matching).
-- **`private`:** Never found. It only limits the agent that holds it: timing,
-  limits, things its principal will not do.
+- **`networks_only`** (the default): people searching inside that network find
+  it, and members can list it. The searcher triggers the reveal.
+- **`mutuals_only`:** never found and never listed. The network checks both
+  directions inside that one network, and the other side sees the statement
+  only when both sides match. See [the mutual check](/discovery#mutual-check).
+- **`private`:** a flag on the intent, not on the assignment. Only the owner's
+  agent reads it. It is never found, listed, or matched. The agent decides
+  whether to act on it. If the agent opens a negotiation from it, the
+  counterparty sees that statement, and nobody else does.
 
-Visibility and the lifecycle state are separate. Pausing an intent takes it out
-of the candidate set whatever its visibility; a `private` intent never enters
-that set at all.
+One intent can be `networks_only` in one network and `mutuals_only` in another.
+A private intent can still be assigned to networks: those are the networks its
+agent searches from. An intent with no networks only informs its agent.
 
-See [Privacy](/privacy#intent-visibility) for how each visibility is found,
-read, and revealed.
+These are three different triggers, not a ranking. A private intent can reach
+more people than a `mutuals_only` one, because the agent can approach anyone
+in the networks it searches.
+
+Pausing an intent takes it out of discovery whatever its visibility.
+
+See [Privacy](/privacy#intent-visibility).

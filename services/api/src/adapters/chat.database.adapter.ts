@@ -176,7 +176,9 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             eq(schema.intentNetworks.networkId, networkId),
+            eq(schema.intentNetworks.visibility, 'networks_only'),
             eq(schema.intents.userId, userId),
+            eq(schema.intents.isPrivate, false),
             isNull(schema.intents.archivedAt),
             activeIntentLifecycleWhere(),
           )
@@ -226,7 +228,7 @@ export class ChatDatabaseAdapter {
           payload: data.payload,
           summary: data.summary ?? null,
           embedding: data.embedding,
-          isIncognito: data.isIncognito ?? false,
+          isPrivate: data.isPrivate ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
           // Null means unmeasured; only omitted fields may use database defaults.
@@ -242,7 +244,7 @@ export class ChatDatabaseAdapter {
           id: schema.intents.id,
           payload: schema.intents.payload,
           summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
+          isPrivate: schema.intents.isPrivate,
           createdAt: schema.intents.createdAt,
           updatedAt: schema.intents.updatedAt,
           userId: schema.intents.userId,
@@ -262,7 +264,7 @@ export class ChatDatabaseAdapter {
       if (data.payload !== undefined) updateData.payload = data.payload;
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
-      if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.isPrivate !== undefined) updateData.isPrivate = data.isPrivate;
       if (data.sourceType !== undefined) updateData.sourceType = data.sourceType;
       if (data.sourceId !== undefined) updateData.sourceId = data.sourceId;
       if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
@@ -295,7 +297,7 @@ export class ChatDatabaseAdapter {
             id: schema.intents.id,
             payload: schema.intents.payload,
             summary: schema.intents.summary,
-            isIncognito: schema.intents.isIncognito,
+            isPrivate: schema.intents.isPrivate,
             createdAt: schema.intents.createdAt,
             updatedAt: schema.intents.updatedAt,
             userId: schema.intents.userId,
@@ -737,7 +739,7 @@ export class ChatDatabaseAdapter {
         id: intents.id,
         payload: intents.payload,
         summary: intents.summary,
-        isIncognito: intents.isIncognito,
+        isPrivate: intents.isPrivate,
         createdAt: intents.createdAt,
         updatedAt: intents.updatedAt,
         userId: intents.userId,
@@ -765,7 +767,7 @@ export class ChatDatabaseAdapter {
       id: row.id,
       payload: row.payload,
       summary: row.summary,
-      isIncognito: row.isIncognito,
+      isPrivate: row.isPrivate,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       userId: row.userId,
@@ -898,8 +900,9 @@ export class ChatDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<void> {
-    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
+    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata, visibility);
   }
 
   async assignIntentToNetworkIfMember(
@@ -908,6 +911,7 @@ export class ChatDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
     return this.intentAdapter.assignIntentToNetworkIfMember(
       userId,
@@ -915,6 +919,7 @@ export class ChatDatabaseAdapter {
       networkId,
       relevancyScore,
       assignmentMetadata,
+      visibility,
     );
   }
 
@@ -1009,7 +1014,7 @@ export class ChatDatabaseAdapter {
       ownerRows.map(async (row) => {
         const [memberCountResult, intentCountResult] = await Promise.all([
           db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, row.networkId), isNull(networkMembers.deletedAt))),
-          db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, row.networkId)),
+          db.select({ count: count() }).from(intentNetworks).innerJoin(intents, eq(intentNetworks.intentId, intents.id)).where(this.liveIntentWhere(row.networkId)),
         ]);
         const perms = toPublicNetworkPermissions(row.permissions);
         const memberCount = Number(memberCountResult[0]?.count ?? 0);
@@ -1066,7 +1071,9 @@ export class ChatDatabaseAdapter {
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
           .where(and(
             eq(intentNetworks.networkId, networkId),
+            eq(intentNetworks.visibility, 'networks_only'),
             eq(intents.userId, m.userId),
+            eq(intents.isPrivate, false),
             isNull(intents.archivedAt),
             activeIntentLifecycleWhere(),
           ));
@@ -1132,10 +1139,8 @@ export class ChatDatabaseAdapter {
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
           .where(and(
-            eq(intentNetworks.networkId, networkId),
+            this.liveIntentWhere(networkId),
             inArray(intents.userId, memberUserIds),
-            isNull(intents.archivedAt),
-            activeIntentLifecycleWhere(),
           ))
           .groupBy(intents.userId)
       : [];
@@ -1272,6 +1277,8 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
         eq(intentNetworks.networkId, networkId),
+        eq(intentNetworks.visibility, 'networks_only'),
+        eq(intents.isPrivate, false),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
       ))
@@ -1358,6 +1365,8 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
         eq(intentNetworks.networkId, networkId),
+        eq(intentNetworks.visibility, 'networks_only'),
+        eq(intents.isPrivate, false),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
       ))
@@ -1542,7 +1551,7 @@ export class ChatDatabaseAdapter {
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
-      db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
+      db.select({ count: count() }).from(intentNetworks).innerJoin(intents, eq(intentNetworks.intentId, intents.id)).where(this.liveIntentWhere(networkId)),
     ]);
     const permissions = toPublicNetworkPermissions(updatedRow.permissions);
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
@@ -1875,15 +1884,16 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Live, public intents tagged to this network whose owner is still a member.
+   * Live networks_only intents tagged to this network whose owner is still a member.
    * Leaving keeps the tag, so without the member check ex-members kept counting.
-   * Incognito and inactive ones never count.
+   * Private, mutuals_only, and inactive ones never count.
    */
   private liveIntentWhere(networkId: string) {
     return and(
       eq(intentNetworks.networkId, networkId),
       isNull(intents.archivedAt),
-      eq(intents.isIncognito, false),
+      eq(intents.isPrivate, false),
+      eq(intentNetworks.visibility, 'networks_only'),
       activeIntentLifecycleWhere(),
       sql`EXISTS (
         SELECT 1 FROM ${networkMembers}

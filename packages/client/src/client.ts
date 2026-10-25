@@ -69,6 +69,8 @@ export interface IntentSummary {
   id: string;
   statement: string;
   status: IntentStatus;
+  /** Only the owner's agent reads this intent. */
+  isPrivate?: boolean;
 }
 
 /** One counterparty a search surfaced, as an agent judging it needs to see it. */
@@ -393,12 +395,13 @@ export class IndexClient implements Index {
    */
   async listIntents(limit = 100): Promise<IntentSummary[]> {
     const { intents } = await this.request<{
-      intents: { id: string; payload: string; status: string | null; archivedAt: string | null }[];
+      intents: { id: string; payload: string; status: string | null; archivedAt: string | null; isPrivate?: boolean }[];
     }>("POST", "/intents/list", { limit });
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
       status: (intent.archivedAt ? "archived" : intent.status ?? "active") as IntentStatus,
+      isPrivate: intent.isPrivate === true,
     }));
   }
 

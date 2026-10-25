@@ -15,7 +15,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete" | "pause" | "resume" | "prepare" | "start-chat" | "answer" | "discover" | "requests" | "request-update" | "request-dismiss";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "exclude" | "search" | "add" | "remove" | "import" | "complete" | "pause" | "resume" | "prepare" | "start-chat" | "answer" | "discover" | "requests" | "request-update" | "request-dismiss";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -49,6 +49,10 @@ export interface ParsedCommand {
   receipt?: string;
   sourceType?: string;
   sourceId?: string;
+  visibility?: "networks_only" | "mutuals_only";
+  /** Create or update the intent as private. */
+  isPrivate?: boolean;
+  excludeUserId?: string;
   name?: string;
   intro?: string;
   location?: string;
@@ -137,7 +141,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     if (["--api-url", "--app-url", "--status", "--limit", "--prompt", "-p", "--objective", "--title"].includes(arg)
       && (!args[i + 1] || args[i + 1].startsWith("--"))) throw new Error(`Missing value for ${arg}`);
 
-    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--receipt", "--source-type", "--source-id", "--name", "--intro", "--location", "--statuses", "--answer", "--social"].includes(arg)) {
+    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--receipt", "--source-type", "--source-id", "--visibility", "--exclude", "--name", "--intro", "--location", "--statuses", "--answer", "--social"].includes(arg)) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
       switch (arg) {
@@ -150,6 +154,11 @@ export function parseArgs(args: string[]): ParsedCommand {
         case "--receipt": result.receipt = value; break;
         case "--source-type": result.sourceType = value; break;
         case "--source-id": result.sourceId = value; break;
+        case "--visibility":
+          if (value !== "networks_only" && value !== "mutuals_only") throw new Error("--visibility is networks_only or mutuals_only");
+          result.visibility = value;
+          break;
+        case "--exclude": result.excludeUserId = value; break;
         case "--name": result.name = value; break;
         case "--intro": result.intro = value; break;
         case "--location": result.location = value; break;
@@ -165,6 +174,9 @@ export function parseArgs(args: string[]): ParsedCommand {
         }
       }
       i += 2;
+    } else if (arg === "--private") {
+      result.isPrivate = true;
+      i += 1;
     } else if (arg === "--api-url") {
       result.apiUrl = args[i + 1];
       i += 2;
@@ -324,7 +336,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "prepare", "archive", "pause", "resume", "update", "networks", "add-to-network", "remove-from-network"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "prepare", "archive", "pause", "resume", "update", "networks", "add-to-network", "remove-from-network", "exclude"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -365,6 +377,10 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
     case "remove-from-network":
       result.intentId = rest[0];
       result.targetId = rest[1]; // networkId
+      break;
+    case "exclude":
+      result.intentId = rest[0];
+      result.excludeUserId = rest[1] ?? result.excludeUserId;
       break;
   }
 }
