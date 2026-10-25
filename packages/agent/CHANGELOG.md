@@ -22,5 +22,6 @@
 - A host can pass a `negotiate` hook. It runs before the built-in negotiator and can return its own turn or stall, or call `next()` to use the built-in one.
 
 ### Fixed
+- A wake no longer tells its principal it reopened an agreed, declined or closed negotiation. `set_brief` and `resume_negotiation` refuse a settled opportunity and record nothing; `set_brief` used to answer that the negotiator was starting while the host never ran it. A paused opportunity still resumes. The wake prompt says a settled negotiation cannot be reopened, and that a reply reports only what a tool already returned.
 - The negotiator no longer says "we" for itself and its principal.
 - Brief and negotiate runs require a tool call on their first step, so a prose reply cannot drop the brief or the turn.
