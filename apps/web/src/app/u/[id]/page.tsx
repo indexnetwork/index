@@ -229,7 +229,7 @@ function UserProfile() {
                         style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "#F2F0EC" : "#fff" }}>
                         <div style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{o.headline || o.mainText}</div>
                         <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, whiteSpace: "nowrap" }}>
-                          {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
+                          {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in talks" : bucket}
                         </span>
                         <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{open ? "▾" : "›"}</span>
                       </div>

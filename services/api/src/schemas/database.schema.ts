@@ -380,7 +380,7 @@ export const negotiations = pgTable('negotiations', {
   initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
   responderUserId: text('responder_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   responderIntentId: text('responder_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  /** The seat whose turn it is. Null once settled; never a third value. */
+  /** The seat whose turn it is. Null once settled, and between rounds while the pair is still in talks; never a third value. */
   awaitingUserId: text('awaiting_user_id').references(() => users.id, { onDelete: 'set null' }),
   outcome: negotiationOutcomeEnum('outcome'),
   settledAt: timestamp('settled_at', { withTimezone: true }),

@@ -25,7 +25,7 @@ export interface NegotiationState {
   turns: { seatUserId: string; action: NegotiationAction; message: string }[];
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive'
-  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
+  | 'not_your_turn' | 'raced' | 'invalid_turn'
   | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
   userA: string;
@@ -39,10 +39,28 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   ok: true;
   turnIndex: number;
   awaitingUserId: string | null;
-  outcome: 'agreed' | 'declined' | null;
-  opportunityStatus: 'negotiating' | 'pending' | 'rejected';
-  blockedReason: 'turn_limit' | null;
+  outcome: 'agreed' | null;
+  opportunityStatus: 'negotiating' | 'pending';
+  /** Why this turn ended its round, leaving nobody to move until an owner adds context. */
+  roundEnded: 'declined' | 'turn_limit' | null;
 };
+
+/**
+ * The turns of the round in progress. A round ends at a decline or after
+ * {@link NEGOTIATION_MAX_TURNS} turns; neither ends the negotiation, which
+ * stays in talks with nobody to move until an owner's new context opens the
+ * next round.
+ *
+ * @param turns - The whole turn log, oldest first.
+ * @returns The turns since the last round ended.
+ */
+export function currentRound<T extends { action: NegotiationAction }>(turns: T[]): T[] {
+  let start = 0;
+  turns.forEach((turn, index) => {
+    if (turn.action === 'decline' || index + 1 - start >= NEGOTIATION_MAX_TURNS) start = index + 1;
+  });
+  return turns.slice(start);
+}
 
 /** @param pair - Current membership and intent eligibility. @returns The permitted opening, or null. */
 export function decideNegotiationOpening(pair: NegotiationOpening): NegotiationOpeningDecision {
@@ -55,7 +73,6 @@ export function negotiationBlockedReason(state: NegotiationState, userId: string
   if (userId !== state.initiatorUserId && userId !== state.responderUserId) return 'not_a_seat';
   if (state.settled) return 'already_settled';
   if (!state.eligible) return 'intent_inactive';
-  if (state.turns.length >= NEGOTIATION_MAX_TURNS) return 'turn_limit';
   if (state.awaitingUserId !== userId) return 'not_your_turn';
   return null;
 }
@@ -67,30 +84,37 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
   if (rejection) return { ok: false, rejection };
   const turnIndex = state.turns.length;
   if (!negotiationTurnSchema.safeParse(turn).success) return { ok: false, rejection: 'invalid_turn' };
-  if (turn.action === 'counter' && turnIndex === 0) return { ok: false, rejection: 'counter_is_first' };
-  const previous = state.turns[state.turns.length - 1];
+  const round = currentRound(state.turns);
+  if (turn.action === 'counter' && round.length === 0) return { ok: false, rejection: 'counter_is_first' };
+  const previous = round[round.length - 1];
   // A counter questions an offer without making one, so only a propose stands
   // to be accepted: answering a counter means proposing again.
   if (turn.action === 'accept' && (!previous || previous.seatUserId === userId || previous.action !== 'propose')) return { ok: false, rejection: 'accept_without_offer' };
   // The other seat's offer is already on the table. Restating it as your own
   // settles nothing and spends a turn, so it is answered rather than repeated.
   if (turn.action === 'propose' && previous && previous.seatUserId !== userId && previous.action === 'propose') return { ok: false, rejection: 'propose_over_offer' };
-  const outcome = turn.action === 'accept' ? 'agreed' : turn.action === 'decline' ? 'declined' : null;
-  const blockedReason = !outcome && turnIndex + 1 >= NEGOTIATION_MAX_TURNS ? 'turn_limit' : null;
+  // Only agreement settles. A decline or a full round leaves the pair in talks
+  // with nobody to move: an owner's new context starts the next round.
+  const outcome = turn.action === 'accept' ? 'agreed' : null;
+  const roundEnded = outcome ? null : turn.action === 'decline' ? 'declined' : round.length + 1 >= NEGOTIATION_MAX_TURNS ? 'turn_limit' : null;
   return {
-    ok: true, turnIndex, outcome, blockedReason,
-    awaitingUserId: outcome || blockedReason ? null : userId === state.initiatorUserId ? state.responderUserId : state.initiatorUserId,
-    opportunityStatus: outcome === 'agreed' ? 'pending' : outcome === 'declined' ? 'rejected' : 'negotiating',
+    ok: true, turnIndex, outcome, roundEnded,
+    awaitingUserId: outcome || roundEnded ? null : userId === state.initiatorUserId ? state.responderUserId : state.initiatorUserId,
+    opportunityStatus: outcome ? 'pending' : 'negotiating',
   };
 }
 
 /** @param state - Current authoritative state. @param userId - Reading principal. @returns Guidance and actions available to that seat now. */
 export function observeNegotiation(state: NegotiationState, userId: string) {
   const blockedReason = negotiationBlockedReason(state, userId);
-  const previous = state.turns[state.turns.length - 1];
+  const round = currentRound(state.turns);
+  const previous = round[round.length - 1];
   const availableActions: NegotiationAction[] = blockedReason ? []
     : !previous ? ['propose', 'decline']
       : previous.action === 'propose' ? ['counter', 'accept', 'decline']
         : ['propose', 'counter', 'decline'];
-  return { guidance: NEGOTIATION_GUIDANCE, availableActions, blockedReason, maxTurns: NEGOTIATION_MAX_TURNS, messageLimit: NEGOTIATION_MESSAGE_LIMIT };
+  return {
+    guidance: NEGOTIATION_GUIDANCE, availableActions, blockedReason, maxTurns: NEGOTIATION_MAX_TURNS,
+    remainingTurns: NEGOTIATION_MAX_TURNS - round.length, messageLimit: NEGOTIATION_MESSAGE_LIMIT,
+  };
 }

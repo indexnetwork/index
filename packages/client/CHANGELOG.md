@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `NegotiationDetail.protocol.remainingTurns` counts the turns left in the round in progress. `maxTurns` now limits a round, not the whole negotiation.
 - `createOpportunity({ networkId, intents, context })` opens an opportunity
   between two intents the caller owns neither of.
 - `Negotiation.introducer` (`userId`, `name`, `context`) names the third party

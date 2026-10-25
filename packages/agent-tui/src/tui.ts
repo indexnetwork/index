@@ -348,7 +348,7 @@ export async function runTui(owner: Owner): Promise<void> {
       renderedRadar = radar;
       clear(radarPane.history);
       people.forEach((person, index) => {
-        const stage = person.status === "passed" || person.status === "rejected" ? "not a fit" : person.status;
+        const stage = person.status === "passed" || person.status === "rejected" ? "not a fit" : person.status === "negotiating" ? "in talks" : person.status;
         line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${stage}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}\n  [Negotiation ›]`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`, () => openNegotiation(person.id));
       });
       if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : intent?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);
@@ -361,7 +361,8 @@ export async function runTui(owner: Owner): Promise<void> {
       const person = detailPerson();
       if (person) line(negotiationPane.history, `Your agent ↔ ${person.name.split(" ")[0]}'s agent\n${person.detail || person.blurb}`, colors.focus);
       for (const turn of negotiation?.turns || []) line(negotiationPane.history, `${turn.seatUserId === owner.userId ? "your agent" : `${person?.name || "their"}'s agent`} · ${turn.action}\n${turn.message}`);
-      if (negotiation?.outcome) line(negotiationPane.history, `Outcome: ${negotiation.outcome}`, colors.question);
+      // In talks until the agents agree; older records settled as declined read as closed.
+      if (negotiation?.outcome) line(negotiationPane.history, negotiation.outcome === "agreed" ? "Opportunity: the agents agreed" : "Closed", colors.question);
       else if (!negotiation?.turns.length) line(negotiationPane.history, negotiationLoading ? "Loading negotiation…" : negotiationFailed ? "Could not load negotiation. Retrying…" : "No negotiation turns yet.", colors.muted);
     }
     let idleStatus = ` ● ${inbox.questions.length} questions · ${people.length} opportunities · ${activePerson()?.name || "no match selected"}`;

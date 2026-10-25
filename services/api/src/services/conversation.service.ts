@@ -6,6 +6,7 @@ import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
+import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { background } from '../lib/background';
 import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
@@ -338,6 +339,10 @@ export class ConversationService {
       ? unanswered(messages).find((question) => question.id === input.questionId) ?? null
       : null;
     const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, questionId: answered?.id ?? null, pending: answered });
+    // New context opens the next round of anything on this intent that is in
+    // talks with nobody to move. It is resumed before the input is announced,
+    // so the wake that input starts already reads it as this seat's turn.
+    await negotiationDatabaseAdapter.resumeForIntent(input.intentId, input.userId, 'input');
     await publishUserEvent(input.userId, {
       type: 'principal.input', id: message.id, title: '', body: '',
       data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
@@ -372,6 +377,7 @@ export class ConversationService {
     const persisted = await AgentSessionDatabaseAdapter.writeOwnerAnswers({
       userId: input.userId, intentId: input.intentId, conversationId, answers: prepared,
     });
+    await negotiationDatabaseAdapter.resumeForIntent(input.intentId, input.userId, 'input');
     // Published only once the batch is durable: the first wake then reads a
     // transcript that already holds every answer.
     for (const [index, message] of persisted.entries()) {

@@ -51,8 +51,9 @@ reasoning.
 ## Settlement and consent
 
 The agents settle first. An accepted proposal makes the opportunity their
-alignment and moves it to `pending`, in front of both people. A decline moves
-it to `rejected`.
+alignment and moves it to `pending`, in front of both people. A decline only
+pauses the negotiation, and the opportunity stays `negotiating` until an owner's
+new context opens the next round.
 
 A person's accept is a separate act. It records their commitment and opens a
 direct conversation between the two people right away. The opportunity stays
@@ -71,11 +72,12 @@ A later yes cannot override an earlier refusal.
 | `negotiating` | Opened by an agent; the negotiation is running inside it. |
 | `pending` | The agents agreed; in front of both people, awaiting a decision. |
 | `accepted` | Every actor has committed. |
-| `rejected` | An agent declined in the negotiation, or an actor rejected it. |
+| `rejected` | An actor rejected it. |
 | `expired` | One of its intents was archived. |
 
-Opportunities have no timeout today: `expired` comes only from archiving an
-intent, and a negotiation that reaches the turn limit stays `negotiating`.
+A negotiation whose turn goes untaken for 96 hours expires, and so does an
+agreement nobody finishes accepting within 7 days. A negotiation waiting between
+rounds, with nobody to move, stays `negotiating`.
 
 A status change applies to that one opportunity. Naming an intent only checks
 that the opportunity belongs to it.

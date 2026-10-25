@@ -35,7 +35,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     tool({
       name: "submit_turn",
       description:
-        "Take this negotiation's next turn: propose puts the reason on the table or answers a counter, counter questions or answers the standing proposal without making an offer, accept takes the counterpart's standing proposal, decline ends it. Only a proposal can be accepted. One turn only.",
+        "Take this negotiation's next turn: propose puts the reason on the table or answers a counter, counter questions or answers the standing proposal without making an offer, accept takes the counterpart's standing proposal, decline passes for now and leaves the pair in talks until an owner adds context. Only a proposal can be accepted. One turn only.",
       parameters: {
         type: "object",
         additionalProperties: false,

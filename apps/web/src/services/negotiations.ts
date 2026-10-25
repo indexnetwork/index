@@ -19,7 +19,7 @@ export interface NegotiationSummary {
   opportunityId: string;
   /** The viewer's own intent behind this negotiation. */
   intentId: string;
-  /** The seat whose turn it is; null once settled. */
+  /** The seat whose turn it is; null once settled, and between rounds while still in talks. */
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
   settledAt: string | null;
@@ -41,6 +41,7 @@ export interface NegotiationDetail extends NegotiationSummary {
     availableActions: NegotiationTurnAction[];
     blockedReason: string | null;
     maxTurns: number;
+    remainingTurns: number;
     messageLimit: number;
   };
 }

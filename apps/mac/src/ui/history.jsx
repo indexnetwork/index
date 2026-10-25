@@ -6,21 +6,28 @@
 // counterparties at once. "grouped" slides in a thread drawer on the left and
 // narrows the log to the selected thread, the master/detail view.
 //
-// The list is GET /users/:id/negotiations: counterparty, outcome
-// ("agreed" | "declined" | "closed" | null), and a turn count. Turn text is a
+// The list is GET /users/:id/negotiations: counterparty, whose turn it is,
+// outcome ("agreed" | "declined" | "closed" | null), and a turn count. Turn text is a
 // second read, GET /opportunities/:id/negotiation. No demo fallback; signed
 // out, the wire is simply empty.
 
-// A thread's result bucket: won (agreed), lost, or still open.
+// A thread's result bucket. A pair is in talks until its agents agree; only a
+// person or Index closes one. Older records settled as declined read as closed.
 function negoResult(th) {
-  if (th.outcome === "agreed") return "won";
-  if (th.outcome === "declined" || th.outcome === "closed") return "lost";
-  return "open";
+  if (th.outcome === "agreed") return "opportunity";
+  if (th.outcome) return "closed";
+  return "in_talks";
 }
 function negoDetail(th) {
   if (th.outcome === "agreed") return "opportunity";
-  if (th.outcome === "declined") return "declined";
-  return "no opportunity";
+  if (th.outcome === "declined") return "closed · declined";
+  return "closed";
+}
+// Whose move it is while in talks. Nobody moves between rounds: an agent passed
+// or the round ran out, and new context from either owner resumes it.
+function negoMove(th, myId) {
+  if (!th.awaitingUserId) return "paused";
+  return th.awaitingUserId === myId ? "your move" : "their move";
 }
 function negoFirstName(th) {
   return ((th.counterparty && th.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
@@ -47,9 +54,9 @@ function negoRoles(suggestedRoles) {
 }
 
 const NEGO_RESULT_GLYPH = {
-  won:  { g: "✓", color: "#000" },
-  lost: { g: "✕", color: "var(--ink-warn)" },
-  open: { g: "●", color: "#FF8A00" },
+  opportunity: { g: "✓", color: "#000" },
+  closed:      { g: "✕", color: "var(--ink-warn)" },
+  in_talks:    { g: "●", color: "#FF8A00" },
 };
 
 /* ---------- log lines ---------- */
@@ -106,20 +113,20 @@ function NegoClosedLine({ th, withTag }) {
     <div className="fade-up" style={{
       display:"flex", alignItems:"center", gap:8,
       fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.5,
-      color: r === "won" ? "#000" : "var(--ink-2)",
+      color: r === "opportunity" ? "#000" : "var(--ink-2)",
     }}>
       <span style={{ color:"var(--ink-4)" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
       <span style={{ flex:"0 0 auto" }}>───</span>
       <span style={{ fontWeight:700 }}>
-        {withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}
+        {withTag ? `${negoFirstName(th)} · ` : ""}{g} {negoDetail(th)}
       </span>
       <span style={{ flex:1, borderTop:"1px dashed var(--ink-4)" }}/>
     </div>
   );
 }
 
-// An open thread has no settlement line. Mark it so it still shows in the log.
-function NegoOpenLine({ th, withTag }) {
+// A thread in talks has no settlement line. Mark it so it still shows in the log.
+function NegoOpenLine({ th, withTag, myId }) {
   return (
     <div className="fade-up" style={{
       display:"flex", alignItems:"center", gap:8,
@@ -128,7 +135,7 @@ function NegoOpenLine({ th, withTag }) {
       <span style={{ color:"var(--ink-4)" }}>{negoClock(th.updatedAt)}</span>
       <span style={{ flex:"0 0 auto" }}>───</span>
       <span style={{ fontWeight:700 }}>
-        {withTag ? `${negoFirstName(th)} · ` : ""}open ● {th.turnCount || 0}t
+        {withTag ? `${negoFirstName(th)} · ` : ""}in talks ● {negoMove(th, myId)} · {th.turnCount || 0}t
       </span>
       <span style={{ flex:1, borderTop:"1px dashed var(--ink-4)" }}/>
     </div>
@@ -221,9 +228,9 @@ function NegotiationHistory({ onClose }) {
 
   const all = threads || [];
   const counts = useMemo(() => ({
-    won:  all.filter((t) => negoResult(t) === "won").length,
-    lost: all.filter((t) => negoResult(t) === "lost").length,
-    open: all.filter((t) => negoResult(t) === "open").length,
+    opportunity: all.filter((t) => negoResult(t) === "opportunity").length,
+    inTalks:     all.filter((t) => negoResult(t) === "in_talks").length,
+    closed:      all.filter((t) => negoResult(t) === "closed").length,
   }), [all]);
   const filtered = useMemo(
     () => filter === "all" ? all : all.filter((t) => negoResult(t) === filter),
@@ -296,7 +303,7 @@ function NegotiationHistory({ onClose }) {
             ev.kind === "closed"
               ? <NegoClosedLine key={`c-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"}/>
               : ev.kind === "open"
-                ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"}/>
+                ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} myId={myId}/>
                 : <NegoTurnLine key={`t-${ev.th.id}-${ev.turn.turnIndex}-${i}`} th={ev.th} turn={ev.turn}
                     you={isYou(ev.turn)} withTag={mode === "stream"} onTag={openGrouped}/>
           )}
@@ -334,15 +341,15 @@ function NegotiationHistory({ onClose }) {
               display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
             }}>
               <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#000" }}>
-                <b>{all.length}</b> sessions · <b>{counts.won}</b> ✓ · <b>{counts.lost}</b> ✕ · <b>{counts.open}</b> open
+                <b>{all.length}</b> sessions · <b>{counts.opportunity}</b> ✓ · <b>{counts.inTalks}</b> in talks · <b>{counts.closed}</b> ✕
               </span>
               <div style={{ flex:1 }}/>
               <MacSegmented value={mode} onChange={setMode} options={[
                 { value:"stream", label:"stream" }, { value:"grouped", label:"grouped" },
               ]}/>
               <MacSegmented value={filter} onChange={(f) => { setFilter(f); setSelectedId(null); }} options={[
-                { value:"all", label:"all" }, { value:"won", label:"won" },
-                { value:"lost", label:"lost" }, { value:"open", label:"open" },
+                { value:"all", label:"all" }, { value:"opportunity", label:"opportunity" },
+                { value:"in_talks", label:"in talks" }, { value:"closed", label:"closed" },
               ]}/>
             </div>
 

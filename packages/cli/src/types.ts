@@ -350,6 +350,7 @@ export interface NegotiationDetail extends Negotiation {
     availableActions: NegotiationTurnAction[];
     blockedReason: string | null;
     maxTurns: number;
+    remainingTurns: number;
     messageLimit: number;
   };
 }

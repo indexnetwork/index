@@ -61,8 +61,12 @@ export interface Opportunity {
   awaiting?: string;
   turnCount?: number;
   turns?: NegotiationTurn[];
+  /** Turns one round allows. */
   maxTurns?: number;
+  /** Turns left in the round in progress. */
   remainingTurns?: number;
+  /** This seat's turn on the first turn of a new round, because the principal added context after a decline or a full round. */
+  resumed?: boolean;
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };

@@ -117,7 +117,7 @@ export interface NegotiationState {
   turns: { seatUserId: string; action: NegotiationTurnAction; message: string }[];
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive'
-  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
+  | 'not_your_turn' | 'raced' | 'invalid_turn'
   | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
   userA: string;
@@ -131,10 +131,13 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   ok: true;
   turnIndex: number;
   awaitingUserId: string | null;
-  outcome: 'agreed' | 'declined' | null;
-  opportunityStatus: 'negotiating' | 'pending' | 'rejected';
-  blockedReason: 'turn_limit' | null;
+  outcome: 'agreed' | null;
+  opportunityStatus: 'negotiating' | 'pending';
+  roundEnded: 'declined' | 'turn_limit' | null;
 };
+
+/** What gave an owner's seat the turn back: a message in the intent's chat, or an edit to the intent. */
+export type ResumeCause = 'input' | 'intent';
 
 export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
 export type SubmitTurnRejection = NegotiationRejection;
@@ -522,11 +525,8 @@ export class NegotiationDatabaseAdapter {
           awaitingUserId: decision.awaitingUserId, outcome: decision.outcome,
           settledAt: decision.outcome ? now : null, updatedAt: now,
         }).where(eq(negotiations.id, negotiation.id));
-        if (decision.opportunityStatus === 'pending' || decision.opportunityStatus === 'rejected') {
-          const applied = await applyOpportunityEvent(tx, opportunityId, {
-            type: decision.opportunityStatus === 'pending' ? 'agreed' : 'declined',
-            actorUserId: null,
-          });
+        if (decision.opportunityStatus === 'pending') {
+          const applied = await applyOpportunityEvent(tx, opportunityId, { type: 'agreed', actorUserId: null });
           if (!applied.ok) throw new Error(applied.error);
         }
         return decision;
@@ -534,6 +534,77 @@ export class NegotiationDatabaseAdapter {
     } catch (error) {
       if (isUniqueViolation(error)) return { ok: false, rejection: 'raced' };
       throw error;
+    }
+  }
+
+  /**
+   * Give one owner's seat the turn on every negotiation of theirs that is in
+   * talks with nobody to move, because a decline or a full round ended its
+   * last round. Their new context is what the next round is for.
+   *
+   * Only records still in talks move: nothing settled or closed, nothing
+   * whose opportunity left `negotiating`, and nothing whose pair has a paused
+   * or removed intent, which could not take the turn anyway.
+   *
+   * Both seats refresh, and the owner's seat gets a `negotiation.turn` frame
+   * marked `resumed` with its cause. An external negotiator acts on it like
+   * any turn. The hosted agent does not run a negotiator straight from it: the
+   * new context goes through a wake first, so the turn is decided on what the
+   * owner just said rather than on the decision that ended the last round.
+   *
+   * NEVER THROWS. The owner's message or edit is already saved, and a resume
+   * that fails must not undo it.
+   *
+   * @param intentId - The owner's intent that gained context.
+   * @param userId - Its owner, who takes the turn.
+   * @param cause - What gave the intent new context.
+   * @returns How many negotiations resumed.
+   */
+  async resumeForIntent(intentId: string, userId: string, cause: ResumeCause): Promise<number> {
+    try {
+      const live = db.select({ id: intents.id }).from(intents).where(liveIntentWhere());
+      const rows = await db.update(negotiations)
+        .set({ awaitingUserId: userId, updatedAt: new Date() })
+        .where(and(
+          or(
+            and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
+            and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
+          ),
+          isNull(negotiations.awaitingUserId),
+          isNull(negotiations.settledAt),
+          isNull(negotiations.outcome),
+          inArray(negotiations.initiatorIntentId, live),
+          inArray(negotiations.responderIntentId, live),
+          inArray(negotiations.opportunityId, db.select({ id: opportunities.id }).from(opportunities)
+            .where(eq(opportunities.status, 'negotiating'))),
+        ))
+        .returning();
+      if (rows.length === 0) return 0;
+      const turnCounts = await db.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
+        .from(negotiationTurns)
+        .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
+        .groupBy(negotiationTurns.negotiationId);
+      const turnCountById = new Map(turnCounts.map((row) => [row.negotiationId, row.count]));
+      for (const row of rows) {
+        const turnCount = turnCountById.get(row.id) ?? 0;
+        await publishNegotiationChange([
+          { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+          { userId: row.responderUserId, intentId: row.responderIntentId },
+        ], row.opportunityId);
+        await publishUserEvent(userId, {
+          type: 'negotiation.turn',
+          id: `${row.opportunityId}:${turnCount}:resumed`,
+          title: 'Your turn',
+          body: 'New context resumed a negotiation that was in talks.',
+          data: { opportunityId: row.opportunityId, intentId, resumed: cause, turnIndex: turnCount },
+        }).catch((error: unknown) => {
+          logger.error('Failed to publish resumed negotiation turn', { opportunityId: row.opportunityId, error: String(error) });
+        });
+      }
+      return rows.length;
+    } catch (error: unknown) {
+      logger.error('Failed to resume negotiations', { intentId, userId, cause, error: String(error) });
+      return 0;
     }
   }
 

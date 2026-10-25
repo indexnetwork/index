@@ -4574,7 +4574,7 @@ div.index-dashboard__wire-note p {
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
-.index-dashboard__wire-event--won { color: var(--color-foreground, inherit); }
+.index-dashboard__wire-event--opportunity { color: var(--color-foreground, inherit); }
 .index-dashboard__wire-event--open { color: #ff8a00; }
 
 .index-dashboard__wire-rule {

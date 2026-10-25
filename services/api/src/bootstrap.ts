@@ -1,6 +1,8 @@
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 
+import { negotiationDatabaseAdapter } from './adapters/negotiation.database.adapter';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
+import { IntentEvents } from './events/intent.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { log, sanitizeForLog } from './lib/log';
 import { requestContext as hostRequestContext } from './lib/request-context';
@@ -40,3 +42,7 @@ const opportunityEventService = new OpportunityEventService({
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 OpportunityEvents.onTransition = (payload) => opportunityEventService.publishOpportunityStatus(payload);
+// An edited intent is new context for every negotiation of its owner's that is in talks with nobody to move.
+IntentEvents.onMaterialUpdated = async ({ intentId, userId }) => {
+  await negotiationDatabaseAdapter.resumeForIntent(intentId, userId, 'intent');
+};

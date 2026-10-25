@@ -17,10 +17,12 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   decline: { label: "decline", color: "" },
 };
 
+// A pair is in talks until its agents agree; only a person or Index closes one.
+// Older records settled as declined read as closed.
 const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: string }> = {
-  agreed: { label: "won", className: "" },
-  declined: { label: "lost", className: "" },
-  closed: { label: "lost", className: "" },
+  agreed: { label: "opportunity", className: "" },
+  declined: { label: "closed", className: "" },
+  closed: { label: "closed", className: "" },
 };
 
 function TurnMessage({ turn, own, isLast, theirId }: { turn: NegotiationTurn; own: boolean; isLast: boolean; theirId: string }) {
@@ -175,11 +177,11 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                     {neg.counterparty.name}
                   </Link>
                   {outcomeInfo ? (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "opportunity" ? "#1FA463" : "var(--ink-warn)" }}>
                       {outcomeInfo.label}
                     </span>
                   ) : (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>in talks</span>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>

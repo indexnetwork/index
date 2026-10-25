@@ -647,18 +647,24 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     ...view,
     url: appLink('o', view.opportunityId),
     yourTurn: view.awaitingUserId === principal.userId,
+    // Everything short of agreement is in talks; older records settled as declined read as closed.
+    stage: view.outcome === 'agreed' ? 'opportunity' as const : view.outcome ? 'closed' as const : 'in_talks' as const,
     counterparty: { ...view.counterparty, url: appLink('u', view.counterparty.userId) },
   });
 
   const negotiationLine = (view: ReturnType<typeof negotiationView>): string => {
-    const status = view.outcome ?? (view.yourTurn ? 'your agent\'s turn' : 'their turn');
+    const status = view.stage === 'opportunity' ? 'opportunity'
+      : view.stage === 'closed' ? 'closed'
+        : view.yourTurn ? 'in talks, your agent\'s turn'
+          : view.awaitingUserId ? 'in talks, their turn'
+            : 'in talks, paused until either owner adds context';
     return `${mdLink(view.counterparty.name || 'Someone', view.url)} — ${status} — ${view.turnCount} turns`;
   };
 
   server.registerTool(
     'list_negotiations',
     {
-      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the stage: in talks until the agents agree (opportunity), or closed by a person or Index. A pair in talks with nobody\'s turn is paused until either owner adds context. Filter by state: open (in talks) or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         state: z.enum(['open', 'settled']).optional(),

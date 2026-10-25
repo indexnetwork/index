@@ -658,7 +658,7 @@ function StatusBadge({ status, inv }) {
   const map = {
     accepted:    "accepted",
     ready:       "ready · intro",
-    negotiating: "negotiating",
+    negotiating: "in talks",
     warm:        "discovered · warm",
     considering: "discovered",
     expired:     "missed",

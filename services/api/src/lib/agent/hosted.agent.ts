@@ -37,7 +37,7 @@ const QUESTION_SWEEP_INTENTS = 20;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string };
+  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string; resumed?: 'input' | 'intent' };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -211,11 +211,18 @@ export class HostedAgent {
   private dispatch({ userId, data }: UserEventRecord): void {
     let frame: WakeFrame;
     try { frame = JSON.parse(data) as WakeFrame; } catch { return; }
-    const { intentId, opportunityId, status } = frame.data ?? {};
+    const { intentId, opportunityId, status, resumed } = frame.data ?? {};
 
     switch (frame.type) {
       case 'negotiation.turn':
-        if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
+        // A resumed negotiation ended its last round on a decision the owner's
+        // new context may change, so a wake re-decides it before a negotiator
+        // runs. A message already wakes on its own `principal.input`.
+        if (resumed) {
+          if (resumed === 'intent' && intentId) this.session.run(this.session.wake(userId, intentId));
+        } else if (intentId && opportunityId) {
+          this.session.run(this.session.negotiate(userId, intentId, opportunityId));
+        }
         break;
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the

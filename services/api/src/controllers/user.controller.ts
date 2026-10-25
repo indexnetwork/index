@@ -26,6 +26,7 @@ function toHistoryEntry(negotiation: NegotiationView) {
       name: negotiation.counterparty.name ?? 'Unknown user',
       avatar: negotiation.counterparty.avatar,
     },
+    awaitingUserId: negotiation.awaitingUserId,
     outcome: negotiation.outcome,
     settledAt: negotiation.settledAt?.toISOString() ?? null,
     turnCount: negotiation.turnCount,

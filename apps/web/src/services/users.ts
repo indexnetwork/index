@@ -12,6 +12,8 @@ export interface NegotiationHistoryEntry {
   id: string;
   opportunityId: string;
   counterparty: { id: string; name: string; avatar: string | null };
+  /** The seat whose turn it is; null once settled, and between rounds while still in talks. */
+  awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
   settledAt: string | null;
   turnCount: number;

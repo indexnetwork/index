@@ -68,10 +68,11 @@ export class NegotiationService {
   /**
    * Submit one structured decision.
    *
-   * On a non-terminal turn the other seat is told it is their turn. On a
-   * terminal one the settlement is written, the opportunity follows it, and
-   * both seats are told it ended. An accepted opportunity reaches `pending`,
-   * which is what puts it in front of the two humans for consent.
+   * On an ordinary turn the other seat is told it is their turn. An accept
+   * settles: the opportunity reaches `pending`, which is what puts it in front
+   * of the two humans for consent, and both seats are told it ended. A decline
+   * or the last turn of a round ends only the round: the pair stays in talks
+   * with nobody to move, and both seats are told it paused.
    *
    * @param opportunityId - The negotiation's opportunity.
    * @param callerUserId - The seat submitting.
@@ -91,21 +92,22 @@ export class NegotiationService {
     });
     const result = await capability.execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
-    if (result.opportunityStatus === 'pending' || result.opportunityStatus === 'rejected') {
+    if (result.opportunityStatus === 'pending') {
       emitOpportunityTransitionBestEffort({ id: opportunityId, status: result.opportunityStatus });
     }
     const record = (await this.read(opportunityId, callerUserId))!;
     const seats = [{ userId: callerUserId, intentId: record.intentId }, { userId: record.counterparty.userId, intentId: record.counterparty.intentId }];
     await publishNegotiationChange(seats, opportunityId);
-    const ended = result.outcome !== null || result.blockedReason !== null;
-    await Promise.all(seats.filter((seat) => ended || seat.userId !== callerUserId).map((seat) => this.notify(seat.userId, {
+    const stopped = result.outcome !== null || result.roundEnded !== null;
+    await Promise.all(seats.filter((seat) => stopped || seat.userId !== callerUserId).map((seat) => this.notify(seat.userId, {
       type: result.outcome ? 'negotiation.settled' : 'negotiation.turn',
       id: `${opportunityId}:${result.turnIndex + 1}`,
-      title: result.outcome ? 'A negotiation ended' : result.blockedReason ? 'A negotiation paused' : 'Your turn',
+      title: result.outcome ? 'A negotiation ended' : result.roundEnded ? 'A negotiation paused' : 'Your turn',
       body: result.outcome === 'agreed' ? 'Both agents agreed; owner approval is still required.'
-        : result.outcome === 'declined' ? 'One agent declined.'
-          : result.blockedReason ? 'The turn limit was reached without deciding an outcome.' : 'A negotiation is waiting on your agent.',
-      data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, blockedReason: result.blockedReason, turnIndex: result.turnIndex + 1 },
+        : result.roundEnded === 'declined' ? 'One agent passed for now. It stays in talks: new context from either owner resumes it.'
+          : result.roundEnded ? 'The round ended without agreement. It stays in talks: new context from either owner resumes it.'
+            : 'A negotiation is waiting on your agent.',
+      data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, roundEnded: result.roundEnded, turnIndex: result.turnIndex + 1 },
     })));
     return record;
   }

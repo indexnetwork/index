@@ -1077,14 +1077,7 @@ export class OpportunityDatabaseAdapter {
       .select({ id: opportunities.id })
       .from(opportunities)
       .where(sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`);
-    let expired = 0;
-    for (const row of rows) {
-      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
-      if (!applied.ok) continue;
-      emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-      expired += 1;
-    }
-    return expired;
+    return this.expireAndClose(rows.map((row) => row.id));
   }
 
   async expireOpportunitiesForRemovedMember(networkId: string, userId: string): Promise<number> {
@@ -1095,20 +1088,35 @@ export class OpportunityDatabaseAdapter {
         sql`${opportunities.context}->>'networkId' = ${networkId}`,
         sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
       ));
-    let expired = 0;
-    for (const row of rows) {
-      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
-      if (!applied.ok) continue;
-      emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-      expired += 1;
-    }
-    return expired;
+    return this.expireAndClose(rows.map((row) => row.id));
   }
 
   /**
-   * Append `expired` for opportunities past their expires_at, negotiations with
-   * no turn for NEGOTIATION_IDLE, and agreements nobody finished accepting
-   * within PENDING_TTL. Skips terminal statuses.
+   * Expire each opportunity and close the negotiation under it, so an expired
+   * pair is never left looking open and blocked.
+   *
+   * @param ids - Opportunities to expire; ones already terminal are skipped.
+   * @returns How many expired.
+   */
+  private async expireAndClose(ids: string[]): Promise<number> {
+    const expiredIds: string[] = [];
+    for (const id of ids) {
+      const applied = await recordOpportunityEvent(id, { type: 'expired', actorUserId: null });
+      if (applied.ok) expiredIds.push(id);
+    }
+    await negotiationDatabaseAdapter.closeForOpportunities(expiredIds);
+    for (const id of expiredIds) emitOpportunityTransitionBestEffort({ id, status: 'expired' });
+    return expiredIds.length;
+  }
+
+  /**
+   * Append `expired` for opportunities past their expires_at, negotiations
+   * whose turn went untaken for NEGOTIATION_IDLE, and agreements nobody
+   * finished accepting within PENDING_TTL. Skips terminal statuses.
+   *
+   * A negotiation with nobody to move is in talks between rounds, waiting on
+   * an owner's new context rather than on an agent, so idling never expires it.
+   * Its idle clock restarts when a resume hands a seat the turn.
    */
   async expireStaleOpportunities(): Promise<number> {
     const due = await db
@@ -1120,7 +1128,8 @@ export class OpportunityDatabaseAdapter {
           and(isNotNull(opportunities.expiresAt), lte(opportunities.expiresAt, new Date())),
           and(eq(opportunities.status, 'negotiating'), sql`exists (
             select 1 from negotiations n where n.opportunity_id = ${opportunities.id} and n.settled_at is null
-              and greatest(n.created_at, (select max(t.created_at) from negotiation_turns t where t.negotiation_id = n.id))
+              and n.awaiting_user_id is not null
+              and greatest(n.created_at, n.updated_at, (select max(t.created_at) from negotiation_turns t where t.negotiation_id = n.id))
                 < now() - ${NEGOTIATION_IDLE}::interval)`),
           and(eq(opportunities.status, 'pending'), sql`exists (
             select 1 from opportunity_events e where e.opportunity_id = ${opportunities.id} and e.type = 'agreed'

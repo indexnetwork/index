@@ -22,13 +22,15 @@ export interface NegotiationInboxGroups {
 }
 
 const OUTCOME_PRESENTATION = {
-  agreed: { label: 'Agreed', chipClass: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  declined: { label: 'Declined', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' },
+  agreed: { label: 'Opportunity', chipClass: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  // Only older records settle as declined; a decline now pauses the talks.
+  declined: { label: 'Closed', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' },
   closed: { label: 'Closed', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' },
 } as const;
 
-const YOUR_MOVE = { label: 'Your agent’s turn', chipClass: 'border-[#041729] bg-[#041729] text-white' };
-const THEIR_MOVE = { label: 'Their agent’s turn', chipClass: 'border-amber-200 bg-amber-50 text-amber-700' };
+const YOUR_MOVE = { label: 'In talks · your agent’s turn', chipClass: 'border-[#041729] bg-[#041729] text-white' };
+const THEIR_MOVE = { label: 'In talks · their agent’s turn', chipClass: 'border-amber-200 bg-amber-50 text-amber-700' };
+const PAUSED = { label: 'In talks · paused until new context', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' };
 
 function formatTimeAgo(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
@@ -46,7 +48,8 @@ function formatTimeAgo(timestamp: number, now: number): string {
  * Groups the viewer's negotiations by whose turn it is.
  *
  * The record carries the whole state: `awaitingUserId` is the seat that owes a
- * turn, and `outcome` is set exactly once, when it settles.
+ * turn, and `outcome` is set exactly once, when it settles. Nobody owes a turn
+ * between rounds, so those stay in progress, paused until new context.
  *
  * @param negotiations - The viewer's negotiations, as `/negotiations` returns them.
  * @param viewerUserId - The authenticated seat owner.
@@ -61,10 +64,11 @@ export function deriveNegotiationInbox(
   const items = negotiations.map<NegotiationInboxItem>((negotiation) => {
     const presentation = negotiation.outcome
       ? OUTCOME_PRESENTATION[negotiation.outcome]
-      : negotiation.awaitingUserId === viewerUserId ? YOUR_MOVE : THEIR_MOVE;
+      : !negotiation.awaitingUserId ? PAUSED
+        : negotiation.awaitingUserId === viewerUserId ? YOUR_MOVE : THEIR_MOVE;
     const group: NegotiationInboxGroup = negotiation.outcome
       ? 'resolved'
-      : negotiation.awaitingUserId === viewerUserId ? 'your_move' : 'in_progress';
+      : negotiation.awaitingUserId && negotiation.awaitingUserId === viewerUserId ? 'your_move' : 'in_progress';
     const timestamp = new Date(negotiation.updatedAt).getTime();
 
     return {

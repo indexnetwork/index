@@ -39,7 +39,6 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   accept_without_offer: { status: 400, error: 'accept needs a standing propose from the other seat; answer a counter by proposing again' },
   propose_over_offer: { status: 400, error: 'a proposal from the other seat is already standing; counter, accept or decline it' },
   intent_inactive: { status: 409, error: 'An intent in this negotiation is paused or removed' },
-  turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
 };

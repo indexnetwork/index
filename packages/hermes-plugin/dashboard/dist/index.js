@@ -1421,7 +1421,7 @@
             )
           : props.onOpenNegotiation && bucket === "negotiating"
             ? React.createElement("div", { className: "index-dashboard__opp-btns", style: { flexDirection: "column", alignItems: "flex-end" } },
-              React.createElement("span", { className: "index-dashboard__opp-status" }, "in progress"),
+              React.createElement("span", { className: "index-dashboard__opp-status" }, "in talks"),
               React.createElement("button", {
                 type: "button",
                 className: "index-dashboard__opp-negotiating",
@@ -2726,14 +2726,26 @@
     );
   }
 
-  // A thread's result bucket, as the mac app's negotiation history reads it.
+  // A thread's result bucket, as the mac app's negotiation history reads it. A
+  // pair is in talks until its agents agree; only a person or Index closes one.
+  // Older records settled as declined read as closed.
   function negoResult(thread) {
-    if (thread.outcome === "agreed") return "won";
-    if (thread.outcome === "declined" || thread.outcome === "closed") return "lost";
-    return "open";
+    if (thread.outcome === "agreed") return "opportunity";
+    if (thread.outcome) return "closed";
+    return "in_talks";
   }
-  const NEGO_GLYPH = { won: "✓", lost: "✕", open: "●" };
-  const NEGO_DETAIL = { won: "opportunity", lost: "no opportunity" };
+  const NEGO_GLYPH = { opportunity: "✓", closed: "✕", in_talks: "●" };
+  // Whose move it is while in talks. Nobody moves between rounds: an agent
+  // passed or the round ran out, and new context from either owner resumes it.
+  function negoMove(thread, userId) {
+    if (!thread.awaitingUserId) return "paused";
+    return thread.awaitingUserId === userId ? "your move" : "their move";
+  }
+  function negoDetail(thread) {
+    if (thread.outcome === "agreed") return "opportunity";
+    if (thread.outcome === "declined") return "closed · declined";
+    return "closed";
+  }
 
   function negoFirstName(thread) {
     return ((thread.counterparty && thread.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
@@ -2822,7 +2834,7 @@
     }, [threads]);
 
     const all = threads || [];
-    const counts = { won: 0, lost: 0, open: 0 };
+    const counts = { opportunity: 0, closed: 0, in_talks: 0 };
     all.forEach(function (thread) { counts[negoResult(thread)] += 1; });
 
     const events = [];
@@ -2859,8 +2871,8 @@
       if (ev.kind !== "turn") {
         const result = negoResult(thread);
         const label = ev.kind === "open"
-          ? who + " · open ● " + (thread.turnCount || 0) + "t"
-          : who + " · closed " + NEGO_GLYPH[result] + " " + NEGO_DETAIL[result];
+          ? who + " · in talks ● " + negoMove(thread, userId) + " · " + (thread.turnCount || 0) + "t"
+          : who + " · " + NEGO_GLYPH[result] + " " + negoDetail(thread);
         return React.createElement("div", { key: ev.kind + thread.id + i, className: "index-dashboard__wire-event index-dashboard__wire-event--" + (ev.kind === "open" ? "open" : result) },
           React.createElement("span", { className: "index-dashboard__wire-clock" }, negoClock(ev.at)),
           React.createElement("span", null, "───"),
@@ -2888,9 +2900,9 @@
         all.length
           ? React.createElement("span", { className: "index-dashboard__wire-counts" },
             React.createElement("b", null, all.length), all.length === 1 ? " session · " : " sessions · ",
-            React.createElement("b", null, counts.won), " ✓ · ",
-            React.createElement("b", null, counts.lost), " ✕ · ",
-            React.createElement("b", null, counts.open), " open")
+            React.createElement("b", null, counts.opportunity), " ✓ · ",
+            React.createElement("b", null, counts.in_talks), " in talks · ",
+            React.createElement("b", null, counts.closed), " ✕")
           : null),
       React.createElement("div", { className: "index-dashboard__wire-log-wrap" },
         React.createElement("div", { ref: scrollRef, onScroll: onScroll, className: "index-dashboard__wire-log" },
@@ -2916,7 +2928,7 @@
         React.createElement("span", { className: "index-dashboard__live-dot", "aria-hidden": "true" }),
         React.createElement("span", null, away ? "paused · scrolled into history" : "following"),
         React.createElement("span", null, "·"),
-        React.createElement("span", null, counts.open + " open session" + (counts.open === 1 ? "" : "s"))));
+        React.createElement("span", null, counts.in_talks + " in talks")));
   }
 
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button

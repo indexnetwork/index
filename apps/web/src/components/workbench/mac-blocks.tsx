@@ -112,7 +112,7 @@ export function MatchCard({
           </div>
         ) : negotiating ? (
           <>
-            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>in progress</span>
+            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>in talks</span>
             <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
               <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
               agent log ›
@@ -198,15 +198,25 @@ export const CALIBRATING_LINES = [
   "coming back around",
 ];
 
-function negoResult(th: NegotiationSummary): "won" | "lost" | "open" {
-  if (th.outcome === "agreed") return "won";
-  if (th.outcome === "declined" || th.outcome === "closed") return "lost";
-  return "open";
+export type NegoResult = "opportunity" | "in_talks" | "closed";
+
+// A pair is in talks until its agents agree. Only a person or Index closes one;
+// older records settled as declined read as closed too.
+function negoResult(th: NegotiationSummary): NegoResult {
+  if (th.outcome === "agreed") return "opportunity";
+  if (th.outcome) return "closed";
+  return "in_talks";
 }
 function negoDetail(th: NegotiationSummary) {
   if (th.outcome === "agreed") return "opportunity";
-  if (th.outcome === "declined") return "declined";
-  return "no opportunity";
+  if (th.outcome === "declined") return "closed · declined";
+  return "closed";
+}
+// Whose move it is while in talks. Nobody moves between rounds: an agent passed
+// or the round ran out, and new context from either owner resumes it.
+function negoMove(th: NegotiationSummary, viewerId: string | undefined) {
+  if (!th.awaitingUserId) return "paused";
+  return th.awaitingUserId === viewerId ? "your move" : "their move";
 }
 function negoFirstName(th: NegotiationSummary) {
   return (th.counterparty?.name || "unknown").split(/\s+/)[0].toLowerCase();
@@ -220,10 +230,10 @@ function negoClock(iso: string | null | undefined) {
   return `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const NEGO_RESULT_GLYPH = {
-  won: { g: "✓", color: "#000" },
-  lost: { g: "✕", color: "var(--ink-warn)" },
-  open: { g: "●", color: "#FF8A00" },
+const NEGO_RESULT_GLYPH: Record<NegoResult, { g: string; color: string }> = {
+  opportunity: { g: "✓", color: "#000" },
+  closed: { g: "✕", color: "var(--ink-warn)" },
+  in_talks: { g: "●", color: "#FF8A00" },
 };
 
 export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
@@ -271,17 +281,17 @@ export function NegoClosedLine({ th, withTag }: { th: NegotiationSummary; withTa
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
       fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.5,
-      color: r === "won" ? "#000" : "var(--ink-2)",
+      color: r === "opportunity" ? "#000" : "var(--ink-2)",
     }}>
       <span style={{ color: "var(--ink-4)" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
       <span style={{ flex: "0 0 auto" }}>───</span>
-      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}</span>
+      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}{g} {negoDetail(th)}</span>
       <span style={{ flex: 1, borderTop: "1px dashed var(--ink-4)" }} />
     </div>
   );
 }
 
-export function NegoOpenLine({ th, withTag }: { th: NegotiationSummary; withTag: boolean }) {
+export function NegoOpenLine({ th, withTag, viewerId }: { th: NegotiationSummary; withTag: boolean; viewerId: string | undefined }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
@@ -289,7 +299,7 @@ export function NegoOpenLine({ th, withTag }: { th: NegotiationSummary; withTag:
     }}>
       <span style={{ color: "var(--ink-4)" }}>{negoClock(th.updatedAt)}</span>
       <span style={{ flex: "0 0 auto" }}>───</span>
-      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}open ● {th.turnCount || 0}t</span>
+      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}in talks ● {negoMove(th, viewerId)} · {th.turnCount || 0}t</span>
       <span style={{ flex: 1, borderTop: "1px dashed var(--ink-4)" }} />
     </div>
   );

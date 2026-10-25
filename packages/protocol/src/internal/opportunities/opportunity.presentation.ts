@@ -485,7 +485,7 @@ ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turn
  */
 function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   const turnCount = input.negotiationContext?.turnCount ?? 0;
-  const narratorRemark = `Currently negotiating · turn ${turnCount}`;
+  const narratorRemark = `In talks · turn ${turnCount}`;
 
   return {
     headline: "Agents are talking",

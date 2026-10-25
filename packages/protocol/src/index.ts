@@ -67,7 +67,7 @@ export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT } from './protocol/neg
 export { NEGOTIATION_GUIDANCE } from './protocol/protocol.prompt.js';
 export { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from './protocol/protocol.prompt.js';
 export type { CanonicalGuidanceTopic } from './protocol/protocol.prompt.js';
-export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema } from './protocol/negotiation.rules.js';
+export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema, currentRound } from './protocol/negotiation.rules.js';
 export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
 export type { NegotiationDatabase } from './platform/database/negotiation.js';
 

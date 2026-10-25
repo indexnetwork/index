@@ -4,6 +4,7 @@
 ## Unreleased
 
 ### Changed
+- The agent log counts negotiations as opportunity, in talks, or closed instead of won, lost, or open. A decline no longer counts as lost: the pair stays in talks, and its line says your move, their move, or paused.
 - Answering your agent's questions shows at once: the answers appear as your replies with a thinking line, and the questions close without waiting for the server. A read that finishes after a newer one is ignored, so an answered question no longer flickers open again, and a failed send puts your answers back.
 - A message you send to your agent shows at once with a thinking line, and a message sent while it works is read before its next step. The reply is written as soon as it is ready, and a failed wake retries after 10s, 20s and 30s with a line in the conversation.
 - The bridge serves OpenAI chat completions at `/v1/chat/completions` instead of `/complete`, and the negotiator reaches it through the AI SDK's OpenAI-compatible provider.

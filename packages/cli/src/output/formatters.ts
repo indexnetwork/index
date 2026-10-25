@@ -393,21 +393,23 @@ function shortDateTime(iso: string): string {
   });
 }
 
-/** The colored outcome; a negotiation that has not settled is "open". */
+/**
+ * The colored stage. A pair is in talks until its agents agree; only a person
+ * or Index closes one. Older records settled as declined read as closed.
+ */
 function outcomeLabel(outcome: NegotiationOutcome | null): string {
   switch (outcome) {
     case "agreed":
-      return `${GREEN}agreed${RESET}`;
+      return `${GREEN}opportunity${RESET}`;
     case "declined":
-      return `${RED}declined${RESET}`;
     case "closed":
       return `${GRAY}closed${RESET}`;
     case null:
-      return `${YELLOW}open${RESET}`;
+      return `${YELLOW}in talks${RESET}`;
   }
 }
 
-/** Whose move it is from the viewer's seat; nobody's once settled. */
+/** Whose move it is from the viewer's seat; nobody's once settled, or between rounds while in talks. */
 function whoseTurn(negotiation: Negotiation): "you" | "them" | "nobody" {
   if (negotiation.awaitingUserId === null) return "nobody";
   return negotiation.awaitingUserId === negotiation.counterparty.userId ? "them" : "you";
@@ -432,11 +434,11 @@ export function negotiationTable(negotiations: Negotiation[]): void {
   const nameW = 22;
   const turnsW = 5;
   const turnW = 10;
-  const outcomeW = 8;
+  const outcomeW = 11;
   const dateW = 12;
 
   console.log(
-    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Turns".padEnd(turnsW)}  ${"Whose turn".padEnd(turnW)}  ${"Outcome".padEnd(outcomeW)}  ${"Updated".padEnd(dateW)}${RESET}`,
+    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Turns".padEnd(turnsW)}  ${"Whose turn".padEnd(turnW)}  ${"Stage".padEnd(outcomeW)}  ${"Updated".padEnd(dateW)}${RESET}`,
   );
   console.log(
     `  ${GRAY}${"-".repeat(idW)}  ${"-".repeat(nameW)}  ${"-".repeat(turnsW)}  ${"-".repeat(turnW)}  ${"-".repeat(outcomeW)}  ${"-".repeat(dateW)}${RESET}`,
@@ -450,6 +452,7 @@ export function negotiationTable(negotiations: Negotiation[]): void {
     let turnCell = `${GRAY}${"\u2014".padEnd(turnW)}${RESET}`;
     if (turn === "you") turnCell = `${YELLOW}${BOLD}${"you".padEnd(turnW)}${RESET}`;
     if (turn === "them") turnCell = `${GRAY}${"them".padEnd(turnW)}${RESET}`;
+    if (turn === "nobody" && !negotiation.outcome) turnCell = `${GRAY}${"paused".padEnd(turnW)}${RESET}`;
     const outcome = outcomeLabel(negotiation.outcome);
     const date = new Date(negotiation.updatedAt).toLocaleDateString("en-US", {
       year: "numeric",
@@ -473,7 +476,9 @@ export function negotiationCard(negotiation: NegotiationDetail): void {
   const name = counterpartyName(negotiation);
   const rule = `  ${GRAY}${"\u2500".repeat(60)}${RESET}`;
 
-  let turnLabel = `${GRAY}\u2014 settled${RESET}`;
+  let turnLabel = negotiation.outcome
+    ? `${GRAY}\u2014 settled${RESET}`
+    : `${GRAY}nobody: paused until either owner adds context${RESET}`;
   if (whoseTurn(negotiation) === "you") turnLabel = `${YELLOW}${BOLD}you${RESET}`;
   if (whoseTurn(negotiation) === "them") turnLabel = name;
 
@@ -481,8 +486,8 @@ export function negotiationCard(negotiation: NegotiationDetail): void {
   console.log(`  ${BOLD}${CYAN}Negotiation with ${name}${RESET}`);
   console.log(rule);
   console.log(`  ${BOLD}Opportunity${RESET}   ${GRAY}${negotiation.opportunityId}${RESET}`);
-  console.log(`  ${BOLD}Outcome${RESET}       ${outcomeLabel(negotiation.outcome)}`);
-  console.log(`  ${BOLD}Turn${RESET}          ${negotiation.turnCount} of ${negotiation.protocol.maxTurns}`);
+  console.log(`  ${BOLD}Stage${RESET}         ${outcomeLabel(negotiation.outcome)}`);
+  console.log(`  ${BOLD}Turns${RESET}         ${negotiation.turnCount}, ${negotiation.protocol.remainingTurns} left in this round`);
   console.log(`  ${BOLD}Whose turn${RESET}    ${turnLabel}`);
   const [firstLine, ...moreLines] = wordWrap(negotiation.counterparty.statement, 58);
   console.log(`  ${BOLD}Their intent${RESET}  ${firstLine}`);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { Segmented, Stage, Window } from "@/components/workbench/Workbench";
-import { NegoClosedLine, NegoOpenLine, NegoThreadRow, NegoTurnLine, negoResult } from "@/components/workbench/mac-blocks";
+import { NegoClosedLine, NegoOpenLine, NegoThreadRow, NegoTurnLine, negoResult, type NegoResult } from "@/components/workbench/mac-blocks";
 import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -13,7 +13,7 @@ import { useBack } from "@/hooks/useBack";
 
 const emptyBox = { borderColor: "#000", padding: "18px 16px" } as const;
 
-type HistoryFilter = "all" | "won" | "lost" | "open";
+type HistoryFilter = "all" | NegoResult;
 type HistoryMode = "stream" | "grouped";
 
 export default function NegotiationsPage() {
@@ -34,9 +34,9 @@ export default function NegotiationsPage() {
 
   const threads = negotiations;
   const counts = useMemo(() => ({
-    won: threads.filter((th) => negoResult(th) === "won").length,
-    lost: threads.filter((th) => negoResult(th) === "lost").length,
-    open: threads.filter((th) => negoResult(th) === "open").length,
+    opportunity: threads.filter((th) => negoResult(th) === "opportunity").length,
+    inTalks: threads.filter((th) => negoResult(th) === "in_talks").length,
+    closed: threads.filter((th) => negoResult(th) === "closed").length,
   }), [threads]);
   const filtered = filter === "all" ? threads : threads.filter((th) => negoResult(th) === filter);
   const selected = filtered.find((th) => th.id === selectedId) || filtered[0] || null;
@@ -109,7 +109,7 @@ export default function NegotiationsPage() {
           ev.kind === "closed"
             ? <NegoClosedLine key={`c-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} />
             : ev.kind === "open"
-              ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} />
+              ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} viewerId={user?.id} />
               : <NegoTurnLine key={`t-${ev.th.id}-${ev.turn?.turnIndex}-${i}`} th={ev.th} turn={ev.turn!} you={ev.turn?.seatUserId === user?.id} withTag={mode === "stream"} onTag={openGrouped} />
         )}
         <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#FF8A00", animation: "mac-blink 1s steps(2) infinite" }}>▌</span>
@@ -127,12 +127,12 @@ export default function NegotiationsPage() {
             display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
           }}>
             <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000" }}>
-              <b>{threads.length}</b> sessions · <b>{counts.won}</b> ✓ · <b>{counts.lost}</b> ✕ · <b>{counts.open}</b> open
+              <b>{threads.length}</b> sessions · <b>{counts.opportunity}</b> ✓ · <b>{counts.inTalks}</b> in talks · <b>{counts.closed}</b> ✕
             </span>
             <div style={{ flex: 1 }} />
             <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: "stream" }, { value: "grouped", label: "grouped" }]} />
             <Segmented value={filter} onChange={(f) => { setFilter(f); setSelectedId(null); }} options={[
-              { value: "all", label: "all" }, { value: "won", label: "won" }, { value: "lost", label: "lost" }, { value: "open", label: "open" },
+              { value: "all", label: "all" }, { value: "opportunity", label: "opportunity" }, { value: "in_talks", label: "in talks" }, { value: "closed", label: "closed" },
             ]} />
           </div>
           {mode === "stream" ? log : compact ? (

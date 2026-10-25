@@ -219,9 +219,9 @@ export class HostedSession {
     const intent = await this.io.activeIntent(userId, intentId);
     if (!intent) return;
 
-    // A turn that hit the limit without settling is still a `negotiation.turn`
-    // frame with nobody awaiting. Reading first is what keeps that from reaching
-    // the negotiator, which would stall and ask for a wake over nothing.
+    // A turn that ended its round is still a `negotiation.turn` frame with
+    // nobody awaiting. Reading first is what keeps that from reaching the
+    // negotiator, which would stall and ask for a wake over nothing.
     const record = await this.io.getNegotiation(userId, opportunityId);
     if (!record || record.settledAt || record.awaitingUserId !== userId) return;
 

@@ -277,7 +277,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           </div>
         ) : negotiating ? (
           <React.Fragment>
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>in progress</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>in talks</span>
             <button
               className="amiga-gadget"
               title={`see what your agent and ${person.name}'s agent are saying`}

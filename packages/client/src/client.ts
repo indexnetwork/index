@@ -57,7 +57,10 @@ export interface NegotiationDetail extends Negotiation {
     guidance: string;
     availableActions: NegotiationAction[];
     blockedReason: string | null;
+    /** Turns a round allows. A decline or a full round ends the round, not the negotiation. */
     maxTurns: number;
+    /** Turns left in the round in progress. */
+    remainingTurns: number;
     messageLimit: number;
   };
 }
