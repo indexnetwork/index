@@ -5,6 +5,7 @@ import { ensureSiteFonts } from "@/app/site/SiteLayout";
 import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { mcpInvitePrompt } from "@/lib/agent-prompt";
 import "@/app/site/site.css";
+import "@/app/site/flow.css";
 import "./SiteSignIn.css";
 import "./NetworkInviteBoard.css";
 
@@ -75,7 +76,7 @@ function HermesInstall() {
           <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />
           Hermes desktop
         </h3>
-        <a className="site-btn" href={HERMES_INSTALL_URL}>Install plugin</a>
+        <a className="site-btn site-btn--secondary" href={HERMES_INSTALL_URL}>Install plugin</a>
       </div>
       <div className="invite-hermes__way">
         <h3 className="invite-hermes__title">
@@ -157,13 +158,13 @@ function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string
   );
 }
 
-/** An app window: black frame, striped title bar, same chrome as the workbench. */
+/** A panel with a caps header bar; `mark` puts the accent square before the label. */
 function Window({ label, children, mark = false }: { label: string; children: ReactNode; mark?: boolean }) {
   return (
     <section className="invite-window" aria-label={label}>
       <div className="invite-bar">
         {mark && <span className="invite-bar__mark" aria-hidden="true" />}
-        <span className="invite-bar__title"><span>{label.toLowerCase()}</span></span>
+        <span className="invite-bar__title">{label}</span>
       </div>
       {children}
     </section>
@@ -206,7 +207,7 @@ function LiveNumber({ value }: { value: number }) {
 }
 
 /**
- * The invite page's ready state, in the public site's language (site.css):
+ * The invite page's ready state, in the app's quiet look (flow.css):
  * an "invite" card with the network and a summary of what members are after (written
  * on the server, so no single intent shows), and a "join" window with three ways
  * in through the same actions as the landing page, drawn larger.

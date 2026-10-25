@@ -4,15 +4,17 @@ import { AppsShell } from "@/app/download/page";
 import AuthForm from "@/components/AuthForm";
 import "./SiteSignIn.css";
 
-/** Public sign-in shell: logo bar, centred intro, then the page's card or status. */
-export function SiteSignInPage({ kicker, title, meta, children }: {
+/** Public sign-in shell: logo row, intro, then the page's card or status. */
+export function SiteSignInPage({ bar = "sign in", kicker, title, meta, children }: {
+  /** The panel's caps label. */
+  bar?: string;
   kicker?: ReactNode;
   title?: ReactNode;
   meta?: ReactNode;
   children?: ReactNode;
 }) {
   return (
-    <AppsShell bar="sign in" narrow>
+    <AppsShell bar={bar} narrow>
       <div className="signin">
         {(kicker || title || meta) && (
           <div className="signin-intro">
@@ -24,6 +26,27 @@ export function SiteSignInPage({ kicker, title, meta, children }: {
         {children}
       </div>
     </AppsShell>
+  );
+}
+
+/**
+ * A screen that only reports: not found, a failed load, a step in progress.
+ * Same shell as sign-in, so every page outside the app reads as one family.
+ */
+export function StatusPage({ bar, title, message, children }: {
+  bar: string;
+  title: ReactNode;
+  message?: ReactNode;
+  /** Actions, as `.site-btn` buttons or links. */
+  children?: ReactNode;
+}) {
+  return (
+    <SiteSignInPage bar={bar} title={title}>
+      <div className="signin-status">
+        {message && <p className="site-p">{message}</p>}
+        {children && <div className="site-btn-row">{children}</div>}
+      </div>
+    </SiteSignInPage>
   );
 }
 

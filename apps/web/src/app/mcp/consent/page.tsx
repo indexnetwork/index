@@ -34,7 +34,7 @@ function McpConsentPage() {
 
   return (
     // A request that can't be loaded asks nothing, so it doesn't get the question as its title.
-    <SiteSignInPage title={error && !client ? "Request unavailable" : "Allow this client to access your Index account?"}>
+    <SiteSignInPage bar="MCP access request" title={error && !client ? "Request unavailable" : "Allow this client to access your Index account?"}>
       <SiteSignInPanel bar="MCP access request" wide>
         {client ? (
           <>

@@ -112,10 +112,10 @@ function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; o
     <div className="wb-sheet-scrim" onClick={onClose}>
       <div className="wb-sheet" role="menu" aria-label="you" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
-          <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={38} />
+          <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--mac-mono)", fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "you"}</div>
-            {user?.email && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>}
+            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "you"}</div>
+            {user?.email && <div style={{ marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>}
           </div>
           <button type="button" className="wb-btn small" onClick={onClose}>done</button>
         </div>

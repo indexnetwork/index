@@ -93,7 +93,7 @@ export default function IntentList<T extends BaseIntent>({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 0,
         overflowY: shelf ? "auto" : undefined,
         minHeight: 0,
         ...style,
@@ -113,13 +113,13 @@ export default function IntentList<T extends BaseIntent>({
             style={{ opacity: status === "paused" ? 0.62 : 1 }}
             onClick={onIntentClick ? () => onIntentClick(intent) : undefined}
           >
-            <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 4, textAlign: "left" }}>
+            <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 3, textAlign: "left" }}>
               <span style={{
                 fontFamily: "var(--amiga-title)",
-                fontSize: 15.5,
+                fontSize: 14,
                 fontWeight: 500,
-                letterSpacing: -0.1,
-                lineHeight: 1.2,
+                color: "var(--ink)",
+                lineHeight: 1.3,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -130,12 +130,11 @@ export default function IntentList<T extends BaseIntent>({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                fontFamily: "var(--mac-mono)",
-                fontSize: 10,
+                fontFamily: "var(--mac-sans)",
+                fontSize: 12,
                 color: "var(--ink-2)",
-                letterSpacing: 1,
               }}>
-                {running && <span className="wb-live" style={{ width: 6, height: 6 }} />}
+                <span aria-hidden className={running ? "wb-live" : undefined} style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", flex: "0 0 auto", background: running ? undefined : "#ccc" }} />
                 {label}
               </span>
             </span>

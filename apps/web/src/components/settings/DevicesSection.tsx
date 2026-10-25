@@ -7,21 +7,21 @@ import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const th: CSSProperties = {
-  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
-  fontFamily: "var(--mac-mono)", fontSize: 9, fontWeight: 700,
-  textTransform: "uppercase", letterSpacing: 0.5, color: "var(--ink-2)",
+  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--wb-hairline)",
+  fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400,
+  textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-2)",
 };
 const td: CSSProperties = {
-  padding: "7px 10px", borderBottom: "1px solid rgba(0,0,0,0.12)",
-  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", whiteSpace: "nowrap",
+  padding: "7px 10px", borderBottom: "1px solid var(--wb-divider)",
+  fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", whiteSpace: "nowrap",
 };
 const note: CSSProperties = {
   margin: "0 0 10px", maxWidth: 520,
   fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)",
 };
 const heading: CSSProperties = {
-  margin: 0, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700,
-  textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-2)",
+  margin: 0, fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400,
+  textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-2)",
 };
 
 interface DeviceSession {
@@ -58,10 +58,9 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
       onBlur={() => setArmed(false)}
       disabled={busy}
       style={{
-        fontFamily: "var(--mac-mono)", fontSize: 11, padding: "3px 10px",
-        border: "1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
-        color: armed ? "#fff" : "var(--ink-warn)",
-        boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
+        fontFamily: "var(--mac-sans)", fontSize: 11, padding: "3px 10px",
+        border: "1px solid var(--wb-control)", borderRadius: 3, background: armed ? "var(--wb-selected)" : "#fff",
+        color: "var(--ink-warn)", cursor: busy ? "default" : "pointer",
       }}
     >{armed ? "sure?" : "revoke"}</button>
   );
@@ -156,8 +155,8 @@ export default function DevicesSection() {
       ) : sessions.length === 0 ? (
         <p style={note}>no active devices.</p>
       ) : (
-        <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
             <thead>
               <tr>
                 <th style={th}>device</th>
@@ -172,7 +171,7 @@ export default function DevicesSection() {
                   <td style={td}>
                     {describeDevice(session.userAgent)}
                     {session.token === currentToken && (
-                      <span style={{ marginLeft: 6, fontSize: 10, color: "var(--ink-2)" }}>this browser</span>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: "var(--ink-3)" }}>this browser</span>
                     )}
                   </td>
                   <td style={td}>{accessDay(session.createdAt)}</td>

@@ -58,7 +58,7 @@ function BoringFallback({ id, name, size, className, blur }: Omit<UserAvatarProp
   return (
     <div
       className={`overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
-      style={{ width: size, height: size, borderRadius: 0 }}
+      style={{ width: size, height: size, borderRadius: 3 }}
     >
       <div className={blur ? 'blur-[3px]' : undefined}>
         <SquareFace seed={id || name || 'default'} size={size} />
@@ -77,7 +77,7 @@ export default function UserAvatar({ id, name, avatar, size, className, blur }: 
   return (
     <div
       className={`overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
-      style={{ width: size, height: size, borderRadius: 0 }}
+      style={{ width: size, height: size, borderRadius: 3 }}
     >
       <img
         src={resolveAvatarSrc(avatar)}
@@ -86,7 +86,7 @@ export default function UserAvatar({ id, name, avatar, size, className, blur }: 
         height={size}
         loading="lazy"
         className={`w-full h-full object-cover${blur ? ' blur-[3px]' : ''}`}
-        style={{ borderRadius: 0, display: "block" }}
+        style={{ borderRadius: 3, display: "block" }}
         onError={() => setImgError(true)}
       />
     </div>

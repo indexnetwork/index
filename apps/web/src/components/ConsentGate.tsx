@@ -72,20 +72,20 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
             style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
           >
             <div style={{ overflow: "auto", padding: "22px 26px 8px", flex: 1 }}>
-              <h1 style={{ fontFamily: "var(--amiga-mono)", fontWeight: 700, fontSize: 16, lineHeight: 1.3, margin: 0, color: "#000" }}>
+              <h1 style={{ fontFamily: "var(--mac-sans)", fontWeight: 500, fontSize: 16, lineHeight: 1.3, margin: 0, color: "var(--ink)" }}>
                 ZAMM 2026 Agent Village Participation — Consent Form
               </h1>
               <p style={{ margin: "10px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45, color: "var(--ink-2)" }}>
                 Required to continue in {current.networkTitle}.
               </p>
               {FORM.map((paragraph) => (
-                <p key={paragraph.slice(0, 24)} style={{ margin: "12px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>
+                <p key={paragraph.slice(0, 24)} style={{ margin: "12px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink)" }}>
                   {paragraph}
                 </p>
               ))}
             </div>
-            <div style={{ flex: "0 0 auto", borderTop: "1px solid #000", padding: "14px 26px 18px", display: "grid", gap: 12 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "#000" }}>
+            <div style={{ flex: "0 0 auto", borderTop: "1px solid var(--wb-hairline)", padding: "14px 26px 18px", display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "var(--ink)" }}>
                 <input id="consent-privacy" type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} style={{ marginTop: 2 }} />
                 <span>
                   <label htmlFor="consent-privacy" style={{ cursor: "pointer" }}>
@@ -95,13 +95,13 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
                     href="https://index.network/pages/privacy-policy"
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: "#000", textDecoration: "underline" }}
+                    style={{ color: "var(--ink)", textDecoration: "underline" }}
                   >
                     Privacy Policy
                   </a>.
                 </span>
               </div>
-              <label style={{ display: "grid", gap: 6, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#000" }}>
+              <label style={{ display: "grid", gap: 6, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)" }}>
                 Signature
                 <input
                   value={signature}
@@ -111,17 +111,17 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
                   autoComplete="name"
                   style={{
                     width: "100%", padding: "6px 0", background: "transparent",
-                    border: "none", borderBottom: "1px solid #000", borderRadius: 0,
-                    outline: "none", fontFamily: "var(--mac-sans)", fontSize: 16, color: "#000",
+                    border: "none", borderBottom: "1px solid var(--wb-control)", borderRadius: 0,
+                    outline: "none", fontFamily: "var(--mac-sans)", fontSize: 16, color: "var(--ink)",
                   }}
                 />
               </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "#000" }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, color: "var(--ink)" }}>
                 <input type="checkbox" checked={participation} onChange={(e) => setParticipation(e.target.checked)} style={{ marginTop: 2 }} />
                 <span>I agree and wish to participate.</span>
               </label>
               {error && (
-                <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#000" }}>{error}</p>
+                <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>{error}</p>
               )}
               <Btn primary type="submit" disabled={!ready}>{submitting ? "saving…" : "I agree"}</Btn>
             </div>

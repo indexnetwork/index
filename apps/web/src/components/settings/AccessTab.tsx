@@ -15,8 +15,8 @@ import { useCompact } from "@/hooks/useCompact";
 const logger = log.ui.from('AccessTab');
 const MEMBERS_PAGE_SIZE = 10;
 const act: React.CSSProperties = {
-  flex: "0 0 auto", cursor: "pointer", padding: "2px 8px", border: "1px solid #000", background: "#fff",
-  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000",
+  flex: "0 0 auto", cursor: "pointer", padding: "2px 8px", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff",
+  fontFamily: "var(--mac-sans)", fontSize: 11, color: "var(--ink-2)",
 };
 
 interface AccessTabProps {
@@ -305,8 +305,8 @@ export default function AccessTab({
 
       <div>
         <RuleLabel>Invitation link</RuleLabel>
-        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #000", background: "#F2F0EC" }}>
-          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "no invitation link yet."}</code>
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "var(--wb-hover)" }}>
+          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "no invitation link yet."}</code>
           {!shareUrl && (
             <button type="button" className="wb-btn small" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()}>
               {isRegeneratingLink ? "creating…" : "create link"}
@@ -314,17 +314,17 @@ export default function AccessTab({
           )}
           {shareUrl && (
             <>
-              <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title="Regenerate invitation link" aria-label="Regenerate invitation link" style={{ ...act, padding: "4px 10px", background: showRegenerateConfirm ? "#000" : "#fff", color: showRegenerateConfirm ? "#fff" : "#000", boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", opacity: isRegeneratingLink ? 0.5 : 1 }}>↻</button>
-              <button type="button" onClick={() => void handleCopyLink()} title={isCopied ? "Copied" : "Copy link"} style={{ ...act, padding: "4px 10px", background: isCopied ? "#000" : "#fff", color: isCopied ? "#fff" : "#000", boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>{isCopied ? "copied" : "copy"}</button>
+              <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title="Regenerate invitation link" aria-label="Regenerate invitation link" style={{ ...act, padding: "4px 10px", background: showRegenerateConfirm ? "var(--wb-selected)" : "#fff", color: showRegenerateConfirm ? "var(--ink)" : "var(--ink-2)", opacity: isRegeneratingLink ? 0.5 : 1 }}>↻</button>
+              <button type="button" onClick={() => void handleCopyLink()} title={isCopied ? "Copied" : "Copy link"} style={{ ...act, padding: "4px 10px", background: isCopied ? "var(--wb-selected)" : "#fff", color: isCopied ? "var(--ink)" : "var(--ink-2)" }}>{isCopied ? "copied" : "copy"}</button>
             </>
           )}
         </div>
         {showRegenerateConfirm && shareUrl && (
-          <div style={{ marginTop: 8, padding: 12, border: "1px solid #000", background: "#FFF5F5", display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#8A0000" }}>The current link stops working immediately. Regenerate?</p>
+          <div style={{ marginTop: 8, padding: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", display: "grid", gap: 10 }}>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>The current link stops working immediately. Regenerate?</p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 14px", border: "1px solid #000", background: "#fff", cursor: "pointer" }}>Cancel</button>
-              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 14px", border: "1px solid #000", background: "#000", color: "#fff", cursor: "pointer" }}>{isRegeneratingLink ? "Regenerating…" : "Regenerate"}</button>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)} className="wb-btn">Cancel</button>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} className="wb-btn" style={{ color: "var(--ink-warn)" }}>{isRegeneratingLink ? "Regenerating…" : "Regenerate"}</button>
             </div>
           </div>
         )}
@@ -333,13 +333,13 @@ export default function AccessTab({
       {isGated && joinRequests.length > 0 && (
         <div>
           <RuleLabel>Pending ({joinRequests.length})</RuleLabel>
-          <div style={{ marginTop: 12, border: "1px solid #000", background: "#fff" }}>
+          <div style={{ marginTop: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff" }}>
             {joinRequests.map((request) => (
               <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
                 <UserAvatar id={request.id} name={request.name} avatar={request.avatar} size={28} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.name}</span>
-                  <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.email}</span>
+                  <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.email}</span>
                 </span>
                 <button type="button" title="Approve" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'approve')} style={act}>approve</button>
                 <button type="button" title="Decline" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'decline')} style={{ ...act, color: "var(--ink-warn)" }}>decline</button>
@@ -357,25 +357,25 @@ export default function AccessTab({
             onChange={(e) => { setMemberSearchQuery(e.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
             placeholder="Search by name or add by email…"
-            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 12 }}
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#fff", fontFamily: "var(--mac-sans)", fontSize: 13 }}
           />
           {showSuggestions && memberSearchQuery.trim() && filteredSuggestions.length > 0 && (
-            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid #000", background: "#fff", maxHeight: 160, overflowY: "auto", boxShadow: "2px 2px 0 rgba(0,0,0,0.2)" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", maxHeight: 160, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}>
               {filteredSuggestions.map((person) => (
                 <button key={person.id} type="button" onClick={() => void handleAddMember(person)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
                   <UserAvatar id={person.id} name={person.name} avatar={person.avatar} size={24} />
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{person.name}</span>
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>Add</span>
+                  <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>Add</span>
                 </button>
               ))}
             </div>
           )}
           {noResults && (
-            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.2)" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}>
               {memberSearchQuery.includes('@') ? (
                 <button type="button" disabled={isAddingMember} onClick={() => void handleInviteMember(memberSearchQuery.trim())} style={{ width: "100%", padding: "10px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>Invite &quot;{memberSearchQuery.trim()}&quot;</button>
               ) : (
-                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>no one found. enter a full email to invite them.</div>
+                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-3)" }}>no one found. enter a full email to invite them.</div>
               )}
             </div>
           )}
@@ -408,7 +408,7 @@ export default function AccessTab({
                     {unverified && <NotOnIndexTag />}
                   </span>
                 </button>
-                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", background: isOwner ? "#000" : "#E8E6E1", color: isOwner ? "#fff" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-sans)", fontSize: 11, padding: "2px 6px", borderRadius: 2, background: "var(--wb-selected)", color: isOwner ? "var(--ink)" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>
                 {!isOwner && member.permissions.includes('member') && !isSelf && (
                   <button type="button" title="Promote to owner" disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'owner')} style={act}>↑</button>
                 )}
@@ -424,7 +424,7 @@ export default function AccessTab({
         </div>
 
         {totalPages > 1 && (
-          <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #ddd", paddingTop: 10, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--wb-divider)", paddingTop: 10, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>
             <span>{(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}</span>
             <span style={{ display: "flex", gap: 6 }}>
               <button type="button" disabled={safePage <= 1} onClick={() => setMembersPage(safePage - 1)} style={act}>prev</button>
@@ -439,10 +439,10 @@ export default function AccessTab({
 
 function ChoiceCard({ title, sub, selected, onClick }: { title: string; sub: string; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={selected} style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%", textAlign: "left", padding: "10px 12px", cursor: "pointer", border: "1px solid #000", background: selected ? "#F2EFE6" : "#fff", boxShadow: selected ? "inset 1px 1px 0 rgba(0,0,0,0.25)" : "1px 1px 0 rgba(0,0,0,0.2)" }}>
-      <span style={{ flex: "0 0 auto", width: 13, height: 13, marginTop: 2, border: "1px solid #000", background: selected ? "#FF8A00" : "#fff", boxShadow: selected ? "inset 1px 1px 0 rgba(0,0,0,0.3)" : "none" }} />
+    <button type="button" onClick={onClick} aria-pressed={selected} style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%", textAlign: "left", padding: "10px 12px", cursor: "pointer", border: "1px solid var(--wb-hairline)", borderRadius: 3, background: selected ? "var(--wb-selected)" : "#fff" }}>
+      <span style={{ flex: "0 0 auto", width: 13, height: 13, marginTop: 2, boxSizing: "border-box", borderRadius: "50%", border: selected ? "4px solid var(--ink)" : "1px solid var(--wb-control)", background: "#fff" }} />
       <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
-        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 600 }}>{title}</span>
+        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{title}</span>
         <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>{sub}</span>
       </span>
     </button>
@@ -451,10 +451,10 @@ function ChoiceCard({ title, sub, selected, onClick }: { title: string; sub: str
 
 function Toggle({ on, onClick, title, blurb }: { on: boolean; onClick: () => void; title: string; blurb: string }) {
   return (
-    <button type="button" onClick={onClick} role="switch" aria-checked={on} style={{ display: "flex", gap: 11, alignItems: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px", cursor: "pointer", border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
-      <span style={{ flex: "0 0 auto", width: 16, height: 16, marginTop: 1, border: "1px solid #000", background: on ? "#FF8A00" : "#EDEAE1", boxShadow: on ? "inset 1px 1px 0 #8A4500, inset -1px -1px 0 #FFD7A0" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700 }}>{on ? "✓" : ""}</span>
+    <button type="button" onClick={onClick} role="switch" aria-checked={on} style={{ display: "flex", gap: 11, alignItems: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px", cursor: "pointer", border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff" }}>
+      <span style={{ flex: "0 0 auto", width: 16, height: 16, marginTop: 1, boxSizing: "border-box", borderRadius: 3, border: "1px solid var(--wb-control)", background: on ? "var(--wb-selected)" : "#fff", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 500 }}>{on ? "✓" : ""}</span>
       <span>
-        <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600 }}>{title}</span>
+        <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{title}</span>
         <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>{blurb}</span>
       </span>
     </button>

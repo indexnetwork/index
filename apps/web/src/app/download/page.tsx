@@ -4,11 +4,11 @@ import { ensureSiteFonts } from "@/app/site/SiteLayout";
 import CopyPromptButton from "@/app/site/CopyPromptButton";
 import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import "@/app/site/site.css";
+import "@/app/site/flow.css";
 import "./download.css";
 
 /**
- * Single-viewport shell for the install pages: logo bar, a vertically centred
- * `main` that scrolls on its own when the window is short, and the footer.
+ * Single-viewport shell for the install pages: a vertically centred `main` that scrolls on its own when the window is short.
  * `overlay` covers the chrome of a route that renders it in place.
  */
 export function AppsShell({ overlay, bar = "index", narrow = false, framed = true, children }: {

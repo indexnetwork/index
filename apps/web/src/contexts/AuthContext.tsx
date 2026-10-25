@@ -4,7 +4,7 @@ import { authClient, clearJwtToken } from '@/lib/auth-client';
 import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
-import SiteLayout from '@/app/site/SiteLayout';
+import { StatusPage } from '@/components/SiteSignIn';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
@@ -208,15 +208,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           </video>
         </div>
       ) : error ? (
-        <SiteLayout>
-          <section className="site-hero">
-            <h1 className="site-h1">Something went wrong</h1>
-            <p className="site-p">{error}</p>
-            <button type="button" className="site-btn" onClick={() => window.location.reload()}>
-              Refresh
-            </button>
-          </section>
-        </SiteLayout>
+        <StatusPage bar="error" title="Something went wrong" message={error}>
+          <button type="button" className="site-btn" onClick={() => window.location.reload()}>
+            Refresh
+          </button>
+        </StatusPage>
       ) : (
         children
       )}

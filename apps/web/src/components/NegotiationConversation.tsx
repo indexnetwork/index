@@ -54,24 +54,24 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
   return <div data-testid="negotiation-conversation" id={`a2a-${opportunityId}`} className="mac-scroll" ref={history}
     onScroll={() => { const pane = history.current; if (pane) follow.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80; }}
     style={{ minHeight: 0, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
-    {error && <p role="alert" style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>couldn&apos;t load this agent log.</p>}
-    {!detail && !error && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>loading…</p>}
-    {detail && detail.turns.length === 0 && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>no turns yet.</p>}
+    {error && <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>couldn&apos;t load this agent log.</p>}
+    {!detail && !error && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>loading…</p>}
+    {detail && detail.turns.length === 0 && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>no turns yet.</p>}
     {detail?.turns.map((turn) => {
       const own = turn.seatUserId === user?.id;
       return (
-        <div key={turn.turnIndex} style={{ display: "grid", gap: 4, justifyItems: own ? "end" : "start" }}>
-          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 0.5 }}>
+        <div key={turn.turnIndex} style={{ display: "grid", gap: 4, justifyItems: "stretch" }}>
+          <span style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
             {own ? "your agent" : theirId
               ? <Link to={`/u/${theirId}`} title="view profile" style={{ color: "inherit", textDecoration: "underline" }}>{first}&apos;s agent</Link>
               : `${first}'s agent`} · {turn.action}
             {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
+          {/* Agent text reads in mono: theirs on the selected fill, yours on white. */}
           <div style={{
-            maxWidth: "82%", border: "1px solid #000",
-            background: own ? "#000" : "#fff", color: own ? "#fff" : "#000",
-            padding: "8px 11px", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap",
-            boxShadow: own ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
+            border: own ? "1px solid var(--wb-hairline)" : "1px solid transparent",
+            background: own ? "#fff" : "var(--wb-selected)", color: "var(--ink)",
+            padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word",
           }}>{turn.message}</div>
         </div>
       );

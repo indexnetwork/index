@@ -4,7 +4,6 @@ import { Navigate, useNavigate } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
-import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
 import { intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 import { APIError } from "@/lib/api";
@@ -127,78 +126,73 @@ export default function NewIntentPage() {
   const stepCount = steps.length + 1;
 
   return (
-    <div className="workbench mac-desktop wb-viewport">
+    // A page in the app shell: beside the rail on desktop, the screen on a phone.
+    <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {creating || (thinking && recoveryUsed) ? (
         <Calibrating />
       ) : (
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: compact ? "stretch" : "center", padding: compact ? 0 : "56px 40px", overflow: "auto" }}>
-          <div style={compact ? { display: "flex", flexDirection: "column", minHeight: 0 } : {
-            width: 980, maxWidth: "100%",
-            display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 18,
-            height: "min(720px, calc(100dvh - 128px))",
-          }}>
-            <Window title="calibrating" onClose={() => navigate("/")} style={compact ? { flex: 1, border: "none", boxShadow: "none" } : undefined}>
-              <div style={{ padding: compact ? "14px 16px 10px" : "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                  <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>← back</button>
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}>
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", letterSpacing: "0.05em", flex: "0 0 auto" }}>step {stepIdx} of {stepCount}</span>
-                  <div style={{ flex: 1, display: "flex", gap: 3 }}>
-                    {Array.from({ length: stepCount }, (_, i) => (
-                      <div key={i} style={{
-                        flex: 1, height: 8, border: "1px solid #000",
-                        background: i < stepIdx - 1 ? "#000" : i === stepIdx - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
-                      }} />
-                    ))}
-                  </div>
-                </div>
-                <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: compact ? -16 : -28, paddingRight: compact ? 16 : 28, paddingBottom: 18 }}>
-                  {turns.map((turn) => (
-                    <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} at={turn.at} />
+        <div style={compact ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 } : {
+          flex: 1, minHeight: 0,
+          display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+        }}>
+          <Window title="new intent" onClose={() => navigate("/")} style={compact ? { flex: 1 } : { borderLeft: "none" }}>
+            <div style={{ padding: compact ? "14px 16px 10px" : "20px 32px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 24 }}>
+                <span style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", flex: "0 0 auto" }}>step {stepIdx} of {stepCount}</span>
+                <div style={{ flex: 1, display: "flex", gap: 4 }}>
+                  {Array.from({ length: stepCount }, (_, i) => (
+                    <div key={i} style={{
+                      flex: 1, height: 3, borderRadius: 2,
+                      background: i < stepIdx - 1 ? "var(--ink)" : i === stepIdx - 1 ? "var(--amiga-accent)" : "var(--wb-hairline)",
+                    }} />
                   ))}
-                  {thinking ? (
-                    <div className="fade-up"><AgentLine><WorkingDots /></AgentLine></div>
-                  ) : stage === "retry" ? (
-                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine>couldn&apos;t reach your agent.</AgentLine>
-                      <div style={{ marginLeft: 36 }}><Btn primary onClick={() => void runPrepare(payload)}>try again</Btn></div>
-                    </div>
-                  ) : stage === "summary" ? (
-                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine>Here&apos;s your intent.</AgentLine>
-                      <IntentSummary
-                        description={payload}
-                        note={preparationReceipt ? "" : feedback}
-                        canCreate={Boolean(preparationReceipt)}
-                        onChange={setPayload}
-                        onCreate={() => void create()}
-                        onRecheck={() => void runPrepare(payload)}
-                      />
-                    </div>
-                  ) : stage === "recovery" ? (
-                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers, 2)} />
-                  ) : stage === "picks" ? (
-                    <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
-                  ) : (
-                    <Opening
-                      prompt={openingPrompt}
-                      note={picksNote}
-                      examples={examples.length ? examples : OPENING_OPTIONS}
-                      onSubmit={submitOpening}
-                      onDone={createdIds.length ? () => navigate("/") : undefined}
-                    />
-                  )}
                 </div>
               </div>
+              <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: compact ? -16 : -32, paddingRight: compact ? 16 : 32, paddingBottom: 18 }}>
+                {turns.map((turn) => (
+                  <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} at={turn.at} />
+                ))}
+                {thinking ? (
+                  <div className="fade-up"><AgentLine><WorkingDots /></AgentLine></div>
+                ) : stage === "retry" ? (
+                  <div className="fade-up" style={{ display: "grid", gap: 12 }}>
+                    <AgentLine>couldn&apos;t reach your agent.</AgentLine>
+                    <div style={{ marginLeft: 36 }}><Btn primary onClick={() => void runPrepare(payload)}>try again</Btn></div>
+                  </div>
+                ) : stage === "summary" ? (
+                  <div className="fade-up" style={{ display: "grid", gap: 12 }}>
+                    <AgentLine>Here&apos;s your intent.</AgentLine>
+                    <IntentSummary
+                      description={payload}
+                      note={preparationReceipt ? "" : feedback}
+                      canCreate={Boolean(preparationReceipt)}
+                      onChange={setPayload}
+                      onCreate={() => void create()}
+                      onRecheck={() => void runPrepare(payload)}
+                    />
+                  </div>
+                ) : stage === "recovery" ? (
+                  <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers, 2)} />
+                ) : stage === "picks" ? (
+                  <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
+                ) : (
+                  <Opening
+                    prompt={openingPrompt}
+                    note={picksNote}
+                    examples={examples.length ? examples : OPENING_OPTIONS}
+                    onSubmit={submitOpening}
+                    onDone={createdIds.length ? () => navigate("/") : undefined}
+                  />
+                )}
+              </div>
+            </div>
+          </Window>
+          {/* The live preview is a side panel; a phone has no side. */}
+          {!compact && (
+            <Window title="warming up" style={{ borderLeft: "none", borderRight: "none" }}>
+              <FieldPreview turns={turns} refining={stepIdx === stepCount} />
             </Window>
-            {/* The live preview is a side panel; a phone has no side. */}
-            {!compact && (
-              <Window title="warming up">
-                <FieldPreview turns={turns} refining={stepIdx === stepCount} />
-              </Window>
-            )}
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -217,9 +211,9 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
   return (
     <div className="fade-up" style={{ display: "grid", gap: 10 }}>
       <AgentLine>{prompt}</AgentLine>
-      <div style={{ marginLeft: 42, display: "grid", gap: 10 }}>
-        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", color: "var(--ink-2)" }}>{note}</div>}
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "grid", gap: 10 }}>
+        {note && <div style={{ fontSize: 12, color: "var(--ink-2)" }}>{note}</div>}
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", display: "flex", flexDirection: "column" }}>
           <textarea
             autoFocus
             value={draft}
@@ -227,7 +221,7 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
             rows={3}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={OPENING_PLACEHOLDER}
-            style={{ background: "transparent", border: "none", outline: "none", color: "#111", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.45, resize: "vertical", padding: "11px 14px 4px" }}
+            style={{ background: "transparent", border: "none", outline: "none", color: "var(--ink)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, resize: "vertical", padding: "10px 12px 4px" }}
           />
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
             <Btn primary small type="submit" disabled={!draft.trim()}>send →</Btn>
@@ -262,7 +256,7 @@ function Picks({ suggestions, onCreate, onSkip }: {
   return (
     <div className="fade-up" style={{ display: "grid", gap: 10 }}>
       <AgentLine>{PICKS_PROMPT}</AgentLine>
-      <div style={{ marginLeft: 42, display: "grid", gap: 8, justifyItems: "start" }}>
+      <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
         {suggestions.map((s, i) => (
           <SuggestionChip key={s.text} suggestion={s} selected={picked.includes(i)} onClick={() => toggle(i)} />
         ))}
@@ -270,7 +264,7 @@ function Picks({ suggestions, onCreate, onSkip }: {
           <Btn primary disabled={!picked.length} onClick={() => onCreate(picked.sort().map((i) => suggestions[i]))}>
             {picked.length > 1 ? `create these ${picked.length}` : "create this"} →
           </Btn>
-          <button type="button" onClick={onSkip} style={{ fontFamily: "var(--mac-mono)", fontSize: 11, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}>
+          <button type="button" onClick={onSkip} style={{ fontSize: 11, fontWeight: 500, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
             none of these, i&apos;ll write my own
           </button>
         </div>
@@ -304,12 +298,13 @@ function SuggestionChip({ suggestion, selected, onClick }: {
   return (
     <button type="button" onClick={onClick} aria-pressed={selected}
       style={{
-        display: "inline-flex", alignItems: "baseline", gap: 10, minHeight: 36, maxWidth: 620,
-        padding: "8px 14px", cursor: "pointer", textAlign: "left",
-        background: selected ? "#111" : "#fff", color: selected ? "#fff" : "#111", border: "1px solid #000",
+        display: "inline-flex", alignItems: "baseline", gap: 10, minHeight: 32, maxWidth: 620,
+        padding: "6px 12px", cursor: "pointer", textAlign: "left", borderRadius: 3,
+        background: selected ? "var(--wb-selected)" : "#fff", color: selected ? "var(--ink)" : "var(--ink-2)",
+        border: `1px solid ${selected ? "#ccc" : "var(--wb-control)"}`,
       }}>
-      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 12 }}>{selected ? "[x]" : "[ ]"}</span>
-      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5 }}>{suggestion.text}</span>
+      <span style={{ flex: "0 0 auto", width: 12, fontSize: 12, color: "var(--ink)" }}>{selected ? "✓" : ""}</span>
+      <span style={{ fontFamily: "var(--wb-code)", fontSize: 12.5 }}>{suggestion.text}</span>
     </button>
   );
 }
@@ -319,12 +314,10 @@ function AgentLine({ children, muted = false }: {
   muted?: boolean;
 }) {
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
-        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
-      </div>
+    // The agent column's message: caps meta line, then a grey monospace block.
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 620 }}>
+      <div style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>YOUR AGENT</div>
+      <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: muted ? "var(--ink-2)" : "var(--ink)" }}>{children}</div>
     </div>
   );
 }
@@ -333,7 +326,7 @@ function WorkingDots() {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
       {[0, 1, 2].map((i) => (
-        <span key={i} style={{ width: 8, height: 8, background: "#000", animation: "mac-blink 1.05s steps(2) infinite", animationDelay: `${i * 0.35}s` }} />
+        <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--ink-3)", animation: "mac-blink 1.05s steps(2) infinite", animationDelay: `${i * 0.35}s` }} />
       ))}
     </span>
   );
@@ -347,8 +340,9 @@ function PastTurn({ prompt, answer, at }: {
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <AgentLine muted>{prompt}</AgentLine>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div title={new Date(at).toLocaleString()} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 620 }}>
+        <div style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>YOU</div>
+        <div title={new Date(at).toLocaleString()} style={{ padding: "10px 12px", background: "#fff", border: "1px solid var(--wb-hairline)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
       </div>
     </div>
   );
@@ -363,17 +357,17 @@ function IntentSummary({ description, note, canCreate, onChange, onCreate, onRec
   onRecheck: () => void;
 }) {
   return (
-    <div style={{ marginLeft: 36, maxWidth: 560, display: "grid", gap: 14 }}>
-      <div style={{ borderLeft: "2px solid #000", paddingLeft: 14, display: "grid", gap: 8 }}>
+    <div style={{ maxWidth: 620, display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gap: 8 }}>
         <textarea
           aria-label="Intent description"
           value={description}
           onChange={(event) => onChange(event.target.value)}
           maxLength={65_536}
           rows={6}
-          style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 16, fontWeight: 500, lineHeight: 1.4, color: "#000", background: "#fff", resize: "vertical" }}
+          style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid var(--wb-control)", borderRadius: 3, fontSize: 14, fontWeight: 500, lineHeight: 1.5, color: "var(--ink)", background: "#fff", resize: "vertical" }}
         />
-        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", lineHeight: 1.5, color: "var(--ink-2)" }}>{note}</div>}
+        {note && <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>{note}</div>}
       </div>
       <div>
         {canCreate ? (
@@ -395,12 +389,12 @@ function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean })
   ].filter((line): line is string => Boolean(line));
 
   return (
-    <div style={{ padding: "20px 26px 18px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0 }}>
-      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
+    <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0, background: "var(--wb-hover)" }}>
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
         {lines.map((line, i) => (
           <div key={line} className="fade-up" style={{ animationDelay: `${i * 60}ms`, display: "flex", gap: 8, alignItems: "baseline" }}>
-            <span style={{ color: "#FF8A00", fontWeight: 700 }}>·</span>
-            <span style={{ fontWeight: i === lines.length - 1 ? 700 : 400 }}>{line}</span>
+            <span style={{ color: "var(--ink-3)" }}>·</span>
+            <span style={{ color: i === lines.length - 1 ? "var(--ink)" : undefined }}>{line}</span>
           </div>
         ))}
         {turns.length > 0 && <FieldGlyph />}
@@ -416,15 +410,15 @@ function truncate(value: string, n: number) {
 function FieldGlyph() {
   return (
     <div style={{ position: "relative", height: 150, marginTop: 12 }}>
-      <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, marginLeft: -5, marginTop: -5, background: "#000" }} />
+      <div style={{ position: "absolute", left: "50%", top: "50%", width: 8, height: 8, marginLeft: -4, marginTop: -4, background: "var(--wb-live)" }} />
       {[36, 56, 78].map((r, i) => (
         <div key={r} style={{
           position: "absolute", left: "50%", top: "50%",
           width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r,
-          border: "1px dashed #000", borderRadius: 999,
+          border: "1px dashed #ccc", borderRadius: 999,
           animation: `mac-orbit ${22 + i * 8}s linear infinite`,
         }}>
-          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 6, height: 6, background: "#000" }} />
+          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 5, height: 5, borderRadius: "50%", background: "var(--ink-3)" }} />
         </div>
       ))}
     </div>
@@ -434,23 +428,22 @@ function FieldGlyph() {
 function Calibrating() {
   return (
     <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto" }}>
-        <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
-            <span className="wb-live" style={{ width: 9, height: 9 }} />
-            <span style={{ fontFamily: "var(--mac-mono)", letterSpacing: 3, fontSize: 13, textTransform: "uppercase" }}>index</span>
+      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto", flex: "none", border: "1px solid var(--wb-hairline)", borderRadius: 3 }}>
+        <div style={{ padding: "24px", textAlign: "left" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, fontSize: 12, color: "var(--ink-2)" }}>
+            <span className="wb-live" style={{ width: 8, height: 8 }} />
+            <span>your agent is setting up</span>
           </div>
-          <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
-            <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
+          <div style={{ height: 3, borderRadius: 2, overflow: "hidden", margin: "0 0 16px", background: "var(--wb-hairline)" }}>
+            <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(90deg, var(--amiga-accent) 0, var(--amiga-accent) 12px, transparent 12px, transparent 24px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 3px" }} />
           </div>
           {CALIBRATING_LINES.map((line, i) => (
             <div key={line} className="fade-up" style={{
-              animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 15,
-              color: i === CALIBRATING_LINES.length - 1 ? "#000" : "var(--ink-2)",
-              letterSpacing: 0.2, padding: "4px 0",
-              fontWeight: i === CALIBRATING_LINES.length - 1 ? 700 : 400,
+              animationDelay: `${i * 350}ms`, fontFamily: "var(--wb-code)", fontSize: 12.5,
+              color: i === CALIBRATING_LINES.length - 1 ? "var(--ink)" : "var(--ink-2)",
+              padding: "3px 0",
             }}>
-              <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{line}
+              <span style={{ marginRight: 8, color: "var(--ink-3)" }}>·</span>{line}
             </div>
           ))}
         </div>

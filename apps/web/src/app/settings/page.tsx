@@ -194,7 +194,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   if (authLoading) {
     return (
       <>
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+        <p style={{ padding: 24, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
       </>
     );
   }
@@ -210,7 +210,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
           style={{ height: "100%" }}
         >
         {firstRun && (
-          <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "2px solid #000", fontFamily: "var(--mac-sans)", fontSize: 13, color: "#000", flex: "0 0 auto" }}>
+          <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "1px solid var(--wb-hairline)", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", flex: "0 0 auto" }}>
             {lookupFoundNothing(firstRun.lookup)
               ? "i couldn't find anything public about you, so fill this in yourself. it's what your agent works from."
               : "here's what i pulled together. make sure it's right."}
@@ -236,7 +236,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               onPick={() => fileInputRef.current?.click()}
             />
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-            {avatarError && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{avatarError}</p>}
+            {avatarError && <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>{avatarError}</p>}
 
             <div className="space-y-4 pt-2">
 
@@ -247,15 +247,15 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               </div>
 
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
                   <span>introduction</span>
                   {firstRun && !lookupFoundNothing(firstRun.lookup) && (
-                    <button type="button" onClick={writeOwnIntro} style={{ padding: 0, border: "none", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 400, color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer" }}>
+                    <button type="button" onClick={writeOwnIntro} style={{ padding: 0, border: "none", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 400, color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}>
                       not you? write your own
                     </button>
                   )}
                 </div>
-                <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "8px 10px" }}>
+                <div style={{ border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", padding: "8px 10px" }}>
                   <textarea id="intro" value={intro} rows={4} onChange={(e) => { setIntro(e.target.value); mark(); }} style={{ width: "100%", border: "none", outline: "none", resize: "vertical", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }} />
                 </div>
               </div>
@@ -263,9 +263,9 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
 
             {/* Socials */}
             <div style={{ marginTop: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 12px", fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 12px", fontFamily: "var(--mac-sans)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 400, color: "var(--ink-2)" }}>
                 <span>socials</span>
-                <span style={{ flex: 1, height: 1, background: "#000" }} />
+                <span style={{ flex: 1, height: 1, background: "var(--wb-hairline)" }} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "9px 14px" }}>
                 {[
@@ -274,8 +274,8 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   { prefix: "github.com/", label: "github", value: getSocial("github") },
                   { prefix: "t.me/", label: "telegram", value: getSocial("telegram") },
                 ].map(({ prefix, label, value }) => (
-                  <label key={label} style={{ display: "flex", alignItems: "center", border: "1px solid #000", background: "#fff", minWidth: 0 }}>
-                    <span style={{ padding: "8px 8px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", borderRight: "1px solid #000", whiteSpace: "nowrap" }}>{prefix}</span>
+                  <label key={label} style={{ display: "flex", alignItems: "center", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", minWidth: 0, overflow: "hidden" }}>
+                    <span style={{ padding: "8px 8px", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)", background: "var(--wb-hover)", borderRight: "1px solid var(--wb-control)", whiteSpace: "nowrap" }}>{prefix}</span>
                     <input
                       value={value}
                       placeholder="username"
@@ -290,7 +290,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   </label>
                 ))}
                 {customSocials.map((social, index) => (
-                  <label key={index} style={{ display: "flex", alignItems: "center", border: "1px solid #000", background: "#fff", minWidth: 0 }}>
+                  <label key={index} style={{ display: "flex", alignItems: "center", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", minWidth: 0, overflow: "hidden" }}>
                     <input
                       value={social.value}
                       placeholder="https://"
@@ -300,28 +300,28 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                       }}
                       style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13, background: "transparent" }}
                     />
-                    <button type="button" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }} style={{ border: "none", borderLeft: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "8px 10px", cursor: "pointer" }}>remove</button>
+                    <button type="button" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }} style={{ border: "none", borderLeft: "1px solid var(--wb-control)", background: "#fff", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", padding: "8px 10px", cursor: "pointer" }}>remove</button>
                   </label>
                 ))}
                 {customSocials.length < 3 && (
-                  <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} style={{ justifySelf: "start", padding: "9px 14px", border: "1px dashed #000", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", cursor: "pointer" }}>+ add website</button>
+                  <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} className="wb-btn" style={{ justifySelf: "start" }}>+ add website</button>
                 )}
               </div>
             </div>
 
             {/* Danger Zone: settings only, not first-run setup */}
             {!firstRun && <div style={{ marginTop: 26 }}>
-              <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: "var(--ink-warn)", textTransform: "uppercase" }}>
+              <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400, letterSpacing: "0.1em", color: "var(--ink-warn)", textTransform: "uppercase" }}>
                 <span style={{ display: "inline-block", transform: isDangerZoneExpanded ? "rotate(90deg)" : "none" }}>›</span>
                 danger zone
               </button>
               {isDangerZoneExpanded && (
-                <div style={{ marginTop: 10, padding: "11px 12px", border: "1px solid var(--ink-warn)", background: "#FFF3F3", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ marginTop: 10, padding: "11px 12px", border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div>
-                    <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink-warn)" }}>delete account</div>
+                    <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink-warn)" }}>delete account</div>
                     <div style={{ marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>index stops immediately and every intent closes. connections you&apos;ve already made stay with the other person.</div>
                   </div>
-                  <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "6px 15px", border: "1px solid var(--ink-warn)", background: "var(--ink-warn)", color: "#fff", cursor: "pointer" }}>delete</button>
+                  <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} className="wb-btn" style={{ color: "var(--ink-warn)" }}>delete</button>
                 </div>
               )}
             </div>}
@@ -344,36 +344,36 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)", marginBottom: 14 }}>
                     index works in the background. choose what&apos;s worth interrupting you for.
                   </p>
-                  <label htmlFor="timezone" style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>timezone</label>
-                  <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }} style={{ width: "100%", border: "1px solid #000", background: "#fff", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
+                  <label htmlFor="timezone" style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>timezone</label>
+                  <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }} style={{ width: "100%", background: "#fff", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
                     {Intl.supportedValuesOf("timeZone").map((tz) => (
                       <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
                     ))}
                   </select>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
                     <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an opportunity surfaces</span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>an opportunity surfaces</span>
                       <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent found someone who meets your intents and wants you to review.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.opportunity !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, opportunity: e.target.checked })); mark(); }} />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
                     <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an intro is accepted</span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>an intro is accepted</span>
                       <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>both of you said yes, and the chat opens on both sides.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.accepted !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, accepted: e.target.checked })); mark(); }} />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
                     <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>a message arrives</span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>a message arrives</span>
                       <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>a connection wrote to you; emailed if unread after a minute.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.messages !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, messages: e.target.checked })); mark(); }} />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
                     <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>daily brief</span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>daily brief</span>
                       <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent looks again at 08:00, and emails you only when it needs you.</span>
                     </span>
                     <input type="checkbox" checked={notificationPreferences.morningBrief !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, morningBrief: e.target.checked })); mark(); }} />
@@ -384,38 +384,25 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
 
         </div>
         <div style={{
-          borderTop: "2px solid #000", padding: "11px 24px",
+          borderTop: "1px solid var(--wb-hairline)", padding: "11px 24px",
           display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
           flex: "0 0 auto", background: "#fff",
         }}>
           {/* First run, as on the Mac: reset restores the prefill, sign out
               leaves without committing, "looks good" is the only commit. */}
           {firstRun && isDirty && (
-            <button type="button" onClick={() => resetForm(user)} disabled={saving} style={{
-              marginRight: "auto", fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
-              border: "1px solid #000", background: "#fff", color: "var(--ink-2)",
-              boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: "pointer",
-            }}>reset</button>
+            <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn" style={{ marginRight: "auto" }}>reset</button>
           )}
           {firstRun ? (
             <button type="button" onClick={() => void signOut()} disabled={saving} style={{
-              fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 10px",
-              border: "none", background: "transparent", color: "var(--ink-2)",
-              textDecoration: "underline", cursor: "pointer", opacity: 0.7,
+              fontFamily: "var(--mac-sans)", fontSize: 12, padding: "7px 10px",
+              border: "none", background: "transparent", color: "var(--ink-3)",
+              textDecoration: "underline", cursor: "pointer",
             }}>sign out</button>
           ) : (
-            <button type="button" onClick={() => navigate("/")} disabled={saving} style={{
-              fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
-              border: "1px solid #000", background: "#fff", color: "#000",
-              boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
-            }}>cancel</button>
+            <button type="button" onClick={() => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
           )}
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} style={{
-            fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 19px",
-            border: "1px solid #000", background: "#000", color: "#fff",
-            boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: "pointer", fontWeight: 700,
-            opacity: saving || avatarError || confirmBlocked ? 0.5 : 1,
-          }}>{saving ? "saving…" : firstRun ? "looks good →" : "save changes"}</button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} className="wb-btn primary">{saving ? "saving…" : firstRun ? "looks good →" : "save changes"}</button>
         </div>
         </Window>
         </Stage>
@@ -429,7 +416,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
           onCancel={() => { if (!isDeletingAccount) setShowDeleteConfirmation(false); }}
           onConfirm={() => void handleDeleteAccount()}
         >
-          <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} style={{ width: "100%", border: "1px solid #000", padding: "8px 10px" }} />
+          <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} style={{ width: "100%", padding: "8px 10px" }} />
         </ConfirmWindow>
       )}
       </>
@@ -461,18 +448,18 @@ function PhotoPicker({ name, preview, userId, userName, avatar, onPick }: {
         style={{ position: "relative", width: 54, height: 54, flex: "0 0 auto", display: "block", cursor: "pointer", outline: "none" }}
       >
         {preview ? (
-          <img src={preview} alt="" width={54} height={54} style={{ width: 54, height: 54, objectFit: "cover", display: "block", borderRadius: 0 }} />
+          <img src={preview} alt="" width={54} height={54} style={{ width: 54, height: 54, objectFit: "cover", display: "block", borderRadius: 3 }} />
         ) : (
           <UserAvatar id={userId} name={userName} avatar={avatar} size={54} />
         )}
         <span aria-hidden style={{
           position: "absolute", right: -1, bottom: -1, width: 16, height: 16,
-          border: "1px solid #000", background: hot ? "#FF8A00" : "#000", color: hot ? "#000" : "#fff",
+          border: "1px solid var(--wb-control)", background: hot ? "var(--wb-hover-2)" : "#fff", color: hot ? "var(--ink)" : "var(--ink-2)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, lineHeight: 1, pointerEvents: "none", borderRadius: 0,
+          fontSize: 10, lineHeight: 1, pointerEvents: "none", borderRadius: 3,
         }}>✎</span>
       </span>
-      <div style={{ fontFamily: "var(--mac-mono)", fontSize: 17, fontWeight: 700 }}>{name}</div>
+      <div style={{ fontFamily: "var(--mac-sans)", fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{name}</div>
     </div>
   );
 }
@@ -504,7 +491,7 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
     <div>
       <RuleLabel>protocol server</RuleLabel>
       <p style={{ margin: "12px 0", maxWidth: 520, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
-        requests go to <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{active}</span>.
+        requests go to <span style={{ fontFamily: "var(--wb-code)", fontSize: 12 }}>{active}</span>.
         switching signs you out. a session belongs to the server it was made on.
       </p>
       <Segmented
@@ -518,8 +505,8 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
       />
       {choice === "custom" && (
         <div style={{ marginTop: 12, maxWidth: 360 }}>
-          <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>origin</div>
-          <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px" }}>
+          <div style={{ marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>origin</div>
+          <div style={{ border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", padding: "7px 10px" }}>
             <input
               value={custom}
               placeholder="https://protocol.example.com"
@@ -540,20 +527,20 @@ function MacField({ label, value, onChange, disabled, required }: {
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
-        {label}{required && <span style={{ color: "#FF8A00", marginLeft: 4 }}>*</span>}
+      <div style={{ marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
+        {label}{required && <span style={{ color: "var(--ink-3)", marginLeft: 4 }}>*</span>}
       </div>
       <div style={{
-        border: "1px solid #000",
-        background: disabled ? "#EDEAE1" : "#fff",
-        boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
+        border: "1px solid var(--wb-control)",
+        borderRadius: 3,
+        background: disabled ? "var(--wb-hover)" : "#fff",
         padding: "7px 10px",
       }}>
         <input
           value={value}
           disabled={disabled}
           onChange={(e) => onChange?.(e.target.value)}
-          style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, color: disabled ? "var(--ink-2)" : "#000" }}
+          style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, color: disabled ? "var(--ink-3)" : "var(--ink)" }}
         />
       </div>
     </div>

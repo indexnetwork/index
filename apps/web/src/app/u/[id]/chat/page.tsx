@@ -81,7 +81,7 @@ export default function ChatPage() {
   if (authLoading || !isAuthenticated) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#aaa]" />
       </div>
     );
   }
@@ -94,7 +94,7 @@ export default function ChatPage() {
       <Window title="conversations" onClose={leave} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
           {!compact && (
-            <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>
+            <div style={{ borderRight: "1px solid var(--wb-hairline)", minHeight: 0, overflow: "hidden" }}>
               <ChatSidebar />
             </div>
           )}

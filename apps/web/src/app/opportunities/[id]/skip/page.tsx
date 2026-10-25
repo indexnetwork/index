@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
-import SiteLayout from "@/app/site/SiteLayout";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { StatusPage } from "@/components/SiteSignIn";
 
 export default function SkipOpportunityPage() {
   const { id } = useParams();
@@ -47,23 +47,15 @@ export default function SkipOpportunityPage() {
 
   if (error) {
     return (
-      <SiteLayout>
-        <section className="site-hero">
-          <h1 className="site-h1">Couldn’t skip that</h1>
-          <p className="site-p">{error}</p>
-          <button type="button" className="site-btn" onClick={() => navigate("/")}>
-            Go home
-          </button>
-        </section>
-      </SiteLayout>
+      <StatusPage bar="opportunity" title="Couldn’t skip that" message={error}>
+        <button type="button" className="site-btn" onClick={() => navigate("/")}>
+          Go home
+        </button>
+      </StatusPage>
     );
   }
 
-  return (
-    <SiteLayout>
-      <p className="site-p">Skipping…</p>
-    </SiteLayout>
-  );
+  return <StatusPage bar="opportunity" title="Skipping…" />;
 }
 
 export const Component = SkipOpportunityPage;

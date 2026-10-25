@@ -78,11 +78,11 @@ function getStatusMessage(status?: string): string | null {
 function getCardWrapperClass(status?: string): string {
   switch (status) {
     case "rejected":
-      return "border border-red-200";
+      return "border border-[#e3e3e0]";
     case "expired":
-      return "border border-amber-200";
+      return "border border-[#e3e3e0]";
     default:
-      return "border border-gray-200";
+      return "border border-[#e3e3e0]";
   }
 }
 
@@ -90,11 +90,11 @@ function getCardWrapperClass(status?: string): string {
 function getNarratorChipClass(status?: string): string {
   switch (status) {
     case "rejected":
-      return "bg-red-100/60 border border-red-200";
+      return "bg-[#f0f0ed] border border-[#e3e3e0]";
     case "expired":
-      return "bg-amber-100/80 border border-amber-200";
+      return "bg-[#f0f0ed] border border-[#e3e3e0]";
     default:
-      return "bg-[#F0F0F0] border border-gray-200";
+      return "bg-[#f0f0ed] border border-[#e3e3e0]";
   }
 }
 
@@ -102,11 +102,11 @@ function getNarratorChipClass(status?: string): string {
 function getNarratorHoverClass(status?: string): string {
   switch (status) {
     case "rejected":
-      return "hover:bg-red-200/40";
+      return "hover:bg-[#ededea]";
     case "expired":
-      return "hover:bg-amber-200/50";
+      return "hover:bg-[#ededea]";
     default:
-      return "hover:bg-[#E8E8E8]";
+      return "hover:bg-[#ededea]";
   }
 }
 
@@ -142,31 +142,31 @@ interface OpportunityCardProps {
  */
 export function OpportunitySkeleton() {
   return (
-    <div className="bg-[#F8F8F8] rounded-md p-4 animate-pulse">
+    <div className="bg-[#f7f7f5] rounded-[3px] p-4 animate-pulse">
       {/* Header Skeleton */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 bg-gray-200 shrink-0" />
+          <div className="w-8 h-8 bg-[#ededea] shrink-0" />
           <div className="space-y-1.5">
-            <div className="h-4 w-24 bg-gray-200 rounded-sm" />
-            <div className="h-3 w-32 bg-gray-200 rounded-sm" />
+            <div className="h-4 w-24 bg-[#ededea] rounded-sm" />
+            <div className="h-3 w-32 bg-[#ededea] rounded-sm" />
           </div>
         </div>
         <div className="flex gap-1.5 shrink-0">
-          <div className="h-7 w-20 bg-gray-200 rounded-sm" />
-          <div className="h-7 w-12 bg-gray-200 rounded-sm" />
+          <div className="h-7 w-20 bg-[#ededea] rounded-sm" />
+          <div className="h-7 w-12 bg-[#ededea] rounded-sm" />
         </div>
       </div>
 
       {/* Body Skeleton */}
       <div className="space-y-2">
-        <div className="h-4 w-full bg-gray-200 rounded-sm" />
-        <div className="h-4 w-[90%] bg-gray-200 rounded-sm" />
-        <div className="h-4 w-[40%] bg-gray-200 rounded-sm" />
+        <div className="h-4 w-full bg-[#ededea] rounded-sm" />
+        <div className="h-4 w-[90%] bg-[#ededea] rounded-sm" />
+        <div className="h-4 w-[40%] bg-[#ededea] rounded-sm" />
       </div>
 
       {/* Narrator Skeleton */}
-      <div className="mt-4 h-8 w-48 bg-gray-200 rounded-md" />
+      <div className="mt-4 h-8 w-48 bg-[#ededea] rounded-[3px]" />
     </div>
   );
 }
@@ -253,12 +253,12 @@ export default function OpportunityCard({
   // If primary action failed, show error and retry
   if (actionError) {
     return (
-      <div className="bg-gray-50 rounded-lg p-4 my-2 text-center text-sm">
-        <p className="text-red-600 mb-2">Something went wrong. Please try again.</p>
+      <div className="bg-[#f7f7f5] rounded-[3px] p-4 my-2 text-center text-[13px]">
+        <p className="text-[#b3261e] mb-2">Something went wrong. Please try again.</p>
         <button
           type="button"
           onClick={() => setActionError(false)}
-          className="text-[#041729] font-medium hover:underline"
+          className="text-[#141414] font-medium hover:underline"
         >
           Retry
         </button>
@@ -274,7 +274,7 @@ export default function OpportunityCard({
   const showResolvedStatus = !showWaiting && actionTaken !== "rejected" && !canTakeAction && !!statusMessage;
 
   return (
-    <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
+    <div className={cn("rounded-[3px] p-4", getCardWrapperClass(effectiveStatus))}>
       {/* Header: Avatar, Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
           <div
@@ -298,10 +298,10 @@ export default function OpportunityCard({
               className="shrink-0"
             />
             <div className="min-w-0">
-              <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
+              <h4 className="font-medium text-[#141414] text-[13px] hover:underline flex items-center gap-1.5">
                 {card.name || "Someone"}
               </h4>
-              <p className="text-[11px] text-[#3D3D3D]">
+              <p className="text-[12px] text-[#666]">
                 {card.mutualIntentsLabel || "Potential connection"}
               </p>
             </div>
@@ -312,7 +312,7 @@ export default function OpportunityCard({
               <button
                 type="button"
                 disabled={isLoading}
-                className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="bg-[#e8700a] text-white px-3 py-1.5 rounded-[3px] text-xs font-medium hover:bg-[#f28a2a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handlePrimaryAction}
               >
                 {isLoading
@@ -324,7 +324,7 @@ export default function OpportunityCard({
               <button
                 type="button"
                 disabled={isLoading}
-                className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="bg-transparent border border-[#ddd] text-[#141414] px-3 py-1.5 rounded-[3px] text-xs font-medium hover:bg-[#f7f7f5] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handleSecondaryAction}
               >
                 {card.secondaryActionLabel || "Skip"}
@@ -333,17 +333,17 @@ export default function OpportunityCard({
           </div>
         )}
         {actionTaken === "rejected" && (
-          <div className="flex items-center gap-1.5 shrink-0 text-sm text-gray-500">
-            <Check className="w-4 h-4 text-green-600 shrink-0" />
+          <div className="flex items-center gap-1.5 shrink-0 text-[13px] text-[#777]">
+            <Check className="w-4 h-4 text-[#3b7a57] shrink-0" />
             <span>Dismissed</span>
           </div>
         )}
         {showWaiting && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[11px] text-gray-500">Chat open</span>
+            <span className="text-[11px] text-[#777]">Chat open</span>
             <button
               type="button"
-              className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
+              className="bg-transparent border border-[#ddd] text-[#141414] px-3 py-1.5 rounded-[3px] text-xs font-medium hover:bg-[#f7f7f5] transition-colors"
               onClick={openChat}
             >
               Open chat
@@ -354,13 +354,13 @@ export default function OpportunityCard({
           <div className="shrink-0">
             {effectiveStatus === "accepted" && (
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1.5 text-green-600 text-xs font-semibold font-mono">
+                <span className="inline-flex items-center gap-1.5 text-[#3b7a57] text-xs font-medium">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                   Connected
                 </span>
                 <button
                   type="button"
-                  className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
+                  className="bg-transparent border border-[#ddd] text-[#141414] px-3 py-1.5 rounded-[3px] text-xs font-medium hover:bg-[#f7f7f5] transition-colors"
                   onClick={openChat}
                 >
                   Open chat
@@ -368,13 +368,13 @@ export default function OpportunityCard({
               </span>
             )}
             {effectiveStatus === "rejected" && (
-              <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium">
+              <span className="inline-flex items-center gap-1 text-[#b3261e] text-xs font-medium">
                 <X className="w-3 h-3" />
                 Declined
               </span>
             )}
             {effectiveStatus === "expired" && (
-              <span className="inline-flex items-center gap-1 text-amber-500 text-xs font-medium">
+              <span className="inline-flex items-center gap-1 text-[#777] text-xs font-medium">
                 <Clock className="w-3 h-3" />
                 Expired
               </span>
@@ -383,16 +383,16 @@ export default function OpportunityCard({
         )}
       </div>
 
-      {/* Main Text (Personalized Summary) — shimmer while the presenter text is
+      {/* Main Text (Personalized Summary): shimmer while the presenter text is
           still being generated. */}
       {card.presentationPending ? (
         <div className="space-y-2 animate-pulse" aria-hidden="true">
-          <div className="h-4 w-full bg-gray-200 rounded-sm" />
-          <div className="h-4 w-[85%] bg-gray-200 rounded-sm" />
-          <div className="h-4 w-[55%] bg-gray-200 rounded-sm" />
+          <div className="h-4 w-full bg-[#ededea] rounded-sm" />
+          <div className="h-4 w-[85%] bg-[#ededea] rounded-sm" />
+          <div className="h-4 w-[55%] bg-[#ededea] rounded-sm" />
         </div>
       ) : (
-        <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
+        <div className="text-[13px] text-[#555] leading-relaxed [&_a]:text-[#141414] [&_a]:underline [&_a]:underline-offset-1">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -408,13 +408,13 @@ export default function OpportunityCard({
         </div>
       )}
 
-      {/* Narrator Chip — only shown for human-introduced opportunities */}
+      {/* Narrator Chip: only shown for human-introduced opportunities */}
       {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}
       {card.narratorChip && card.narratorChip.name !== "Index" && (
         <div className="mt-3">
           <div
             className={cn(
-              "inline-flex items-center gap-2.5 px-3 py-1 rounded-md",
+              "inline-flex items-center gap-2.5 px-3 py-1 rounded-[3px]",
               getNarratorChipClass(effectiveStatus),
               card.narratorChip.userId && "cursor-pointer transition-colors",
               card.narratorChip.userId && getNarratorHoverClass(effectiveStatus),
@@ -441,10 +441,10 @@ export default function OpportunityCard({
                 size={28}
               />
             </div>
-            <span className="text-[13px] text-[#3D3D3D]">
+            <span className="text-[13px] text-[#555]">
               <span
                 className={cn(
-                  "font-semibold",
+                  "font-medium text-[#141414]",
                   card.narratorChip.userId && "hover:underline",
                 )}
               >
@@ -458,7 +458,7 @@ export default function OpportunityCard({
 
       {/* Match score (subtle indicator, optional) */}
       {showScore && typeof card.score === "number" && card.score > 0 && (
-        <div className="mt-2 text-xs text-gray-400">
+        <div className="mt-2 text-xs text-[#777]">
           {Math.round(card.score * 100)}% match
         </div>
       )}

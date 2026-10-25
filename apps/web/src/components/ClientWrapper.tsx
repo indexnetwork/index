@@ -8,10 +8,12 @@ import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import MobileTabBar, { isTabRoot } from "@/components/workbench/MobileTabBar";
 import ConsentGate from "@/components/ConsentGate";
+import AppFrame from "@/components/intents-home/AppFrame";
+import { IntentsDataProvider } from "@/contexts/IntentsDataContext";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/onboarding'];
 // /l is the chrome-free web invite join.
-const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
+const bareRoutes = ['/', '/l', '/login', '/download', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -33,10 +35,17 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }, [pathname]);
 
   const showAppShell = isAppRoute && !isBareRoute;
+  // Desktop, signed in: every app page sits beside the intents rail. Onboarding
+  // comes before there is anything to put in it.
+  const framed = showAppShell && isAuthenticated && !compact && !pathname.startsWith('/onboarding');
   useVisualViewport(showAppShell);
 
   if (isBareRoute) {
-    return <NetworksProvider>{children}</NetworksProvider>;
+    return (
+      <NetworksProvider>
+        {children}
+      </NetworksProvider>
+    );
   }
 
   return (
@@ -69,7 +78,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               {showAppShell ? (
                 <div className="workbench mac-desktop wb-viewport overflow-hidden flex flex-col">
                   <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                    {children}
+                    {framed ? (
+                      <IntentsDataProvider>
+                        <AppFrame>{children}</AppFrame>
+                      </IntentsDataProvider>
+                    ) : children}
                   </main>
                   {compact && isAuthenticated && isTabRoot(pathname) && <MobileTabBar />}
                 </div>

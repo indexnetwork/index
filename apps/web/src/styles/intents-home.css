@@ -1,0 +1,657 @@
+/* The intents screen (rail + people + agent). Quiet hairline layout; orange only on accept. */
+.ih {
+  --ih-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --ih-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --ih-ink: #141414;
+  --ih-text-2: #555;
+  --ih-text-3: #666;
+  --ih-muted: #777;
+  --ih-faint: #aaa;
+  --ih-disabled: #999;
+  --ih-agent-bg: #fbfbfa;
+  --ih-selected: #f0f0ed;
+  --ih-hover: #f7f7f5;
+  --ih-hover-2: #f3f3f1;
+  --ih-avatar: #ededea;
+  --ih-hairline: #e3e3e0;
+  --ih-divider: #eeeeec;
+  --ih-control: #ddd;
+  --ih-accent: #e8700a;
+  --ih-accent-hover: #f28a2a;
+  --ih-live: #3b7a57;
+  --ih-chat: #6b8bc4;
+  --ih-closed: #ccc;
+
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+  background: #fff;
+  color: var(--ih-ink);
+  font-family: var(--ih-sans);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.ih button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.ih button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* rail */
+.ih-rail {
+  width: 280px;
+  flex: none;
+  border-right: 1px solid var(--ih-hairline);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+}
+.ih-rail-label {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--ih-text-2);
+  padding: 0 10px 12px;
+}
+.ih .ih-new {
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+  font-size: 14px;
+  border-radius: 3px 3px 0 0;
+  border-bottom: 1px solid var(--ih-hairline);
+  margin-bottom: 8px;
+}
+.ih .ih-intent {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  font-size: 14px;
+  border-radius: 3px;
+  color: var(--ih-text-2);
+}
+.ih-intent .ih-intent-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ih-intent .ih-n {
+  color: var(--ih-faint);
+}
+.ih .ih-intent.on {
+  background: var(--ih-selected);
+  color: var(--ih-ink);
+}
+.ih-intent.on .ih-n {
+  color: var(--ih-muted);
+}
+.ih-intent.paused .ih-intent-label {
+  color: var(--ih-faint);
+}
+.ih-menu {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--ih-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+.ih .ih-menu-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  color: var(--ih-text-2);
+  border-radius: 3px;
+}
+.ih-menu-row .ih-n {
+  color: var(--ih-faint);
+}
+.ih .ih-new:hover,
+.ih .ih-intent:not(.on):hover,
+.ih .ih-profile:not(.on):hover {
+  background: var(--ih-hover);
+}
+/* The page you are on: same grey as a selected intent. */
+.ih .ih-new.on,
+.ih .ih-menu-row.on,
+.ih .ih-profile.on {
+  background: var(--ih-selected);
+  color: var(--ih-ink);
+}
+.ih .ih-menu-row:hover {
+  background: var(--ih-hover);
+  color: var(--ih-ink);
+}
+.ih-profile-wrap {
+  position: relative;
+  margin-top: 6px;
+  border-top: 1px solid var(--ih-hairline);
+}
+.ih .ih-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  border-radius: 3px;
+}
+.ih-profile-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* dropdowns (people filter, profile menu) */
+.ih-pop {
+  position: absolute;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--ih-control);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  padding: 4px;
+  z-index: 5;
+  letter-spacing: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ih .ih-pop-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ih-text-2);
+}
+.ih-pop-item .ih-n {
+  color: var(--ih-faint);
+}
+.ih .ih-pop-item.on {
+  background: var(--ih-selected);
+  color: var(--ih-ink);
+}
+.ih .ih-pop-item:hover {
+  background: var(--ih-hover-2);
+}
+
+/* main */
+.ih-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* One page inside the main area (the intents screen; old pages bring a Stage). */
+.ih-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ih-head {
+  padding: 24px 32px 20px;
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ih-eyebrow {
+  font: 500 12px var(--ih-sans);
+  letter-spacing: 0.1em;
+  color: var(--ih-text-2);
+  margin-bottom: 8px;
+}
+.ih-title {
+  font: 500 18px/1.4 var(--ih-sans);
+  max-width: 640px;
+  text-wrap: pretty;
+  margin: 0;
+}
+.ih-status {
+  font: 400 13px var(--ih-sans);
+  color: var(--ih-text-2);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ih-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  display: inline-block;
+}
+.ih-actions {
+  display: flex;
+  gap: 8px;
+  font: 500 13px var(--ih-sans);
+  white-space: nowrap;
+}
+.ih .ih-ghost {
+  border: 1px solid var(--ih-control);
+  color: var(--ih-text-2);
+  padding: 7px 12px;
+  background: #fff;
+}
+.ih .ih-ghost:hover {
+  background: var(--ih-hover-2);
+}
+
+.ih-cols {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.ih-people {
+  flex: 1 1 380px;
+  min-width: 0;
+  padding: 0 0 32px;
+  border-top: 1px solid var(--ih-hairline);
+  border-right: 1px solid var(--ih-hairline);
+}
+.ih-bar {
+  height: 48px;
+  flex: none;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--ih-hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: 400 12px var(--ih-sans);
+  letter-spacing: 0.1em;
+  color: var(--ih-text-2);
+}
+.ih .ih-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--ih-control);
+  border-radius: 3px;
+  background: #fff;
+  white-space: nowrap;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ih-ink);
+}
+.ih .ih-filter:hover {
+  background: var(--ih-hover);
+}
+.ih-empty {
+  padding: 48px 32px;
+  font: 400 14px var(--ih-mono);
+  color: var(--ih-muted);
+}
+.ih .ih-link {
+  color: var(--ih-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ih .ih-link:hover {
+  color: var(--ih-ink);
+}
+
+/* The all view: no column frame, just sections at a reading width, centred in the page. */
+.ih-all {
+  flex: 0 1 920px;
+  max-width: 920px;
+  margin: 0 auto;
+  border: none;
+  padding-top: 8px;
+}
+.ih-all .ih-bar {
+  height: auto;
+  padding: 28px 32px 10px;
+  border-bottom: none;
+  justify-content: flex-start;
+}
+.ih-all .ih-bar .ih-n {
+  color: var(--ih-faint);
+  letter-spacing: 0;
+}
+.ih .ih-bar-toggle {
+  width: 100%;
+  letter-spacing: 0.1em;
+  color: var(--ih-text-2);
+}
+.ih .ih-bar-toggle:hover .ih-n {
+  color: var(--ih-ink);
+}
+.ih-all .ih-empty {
+  padding: 4px 32px 8px;
+}
+.ih-all .ih-bar + .ih-row {
+  border-top: 1px solid var(--ih-divider);
+}
+.ih .ih-more {
+  color: var(--ih-faint);
+}
+
+/* person rows */
+.ih-row {
+  margin: 0 32px;
+  border-bottom: 1px solid var(--ih-divider);
+}
+.ih-row-main {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.ih-avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  background: var(--ih-avatar);
+  color: var(--ih-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 500 13px var(--ih-sans);
+  border-radius: 3px;
+  overflow: hidden;
+  object-fit: cover;
+}
+.ih-row-text {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.ih-name-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.ih-name {
+  font: 500 14px var(--ih-sans);
+  color: var(--ih-ink);
+  text-decoration: none;
+}
+.ih a.ih-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ih-pill {
+  font: 400 12px var(--ih-sans);
+  background: var(--ih-selected);
+  padding: 1px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ih-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.ih .ih-tag {
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.ih .ih-tag:hover {
+  color: var(--ih-ink);
+}
+.ih-tag-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.ih-blurb {
+  font-size: 13px;
+  color: var(--ih-text-3);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ih-blurb.pending {
+  color: var(--ih-faint);
+}
+.ih-row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+  font: 500 12px var(--ih-sans);
+}
+.ih .ih-accept {
+  background: var(--ih-accent);
+  border: 1px solid var(--ih-accent);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.ih .ih-accept:hover {
+  background: var(--ih-accent-hover);
+}
+.ih .ih-pass {
+  border: 1px solid var(--ih-control);
+  color: var(--ih-text-2);
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #fff;
+}
+.ih .ih-pass:hover {
+  background: var(--ih-hover-2);
+}
+.ih-state {
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  color: var(--ih-text-2);
+}
+.ih-state.closed {
+  color: var(--ih-disabled);
+}
+.ih-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.ih .ih-row-actions .ih-link {
+  padding: 4px 2px;
+}
+.ih-log {
+  margin: 0 0 12px 40px;
+  padding: 10px 14px;
+  background: var(--ih-hover);
+  border-left: 2px solid var(--ih-control);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font: 400 13px/1.6 var(--ih-mono);
+}
+.ih-log-line {
+  display: flex;
+  gap: 12px;
+}
+.ih-log-from {
+  font: 400 12px var(--ih-mono);
+  color: var(--ih-muted);
+  width: 88px;
+  flex: none;
+  padding-top: 2px;
+}
+.ih-log-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ih-log-note {
+  color: var(--ih-muted);
+}
+.ih-log-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font: 500 12px var(--ih-sans);
+}
+
+/* agent column */
+.ih-agent {
+  flex: 1.3 1 460px;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  border-top: 1px solid var(--ih-hairline);
+  background: var(--ih-agent-bg);
+  display: flex;
+  flex-direction: column;
+}
+.ih-agent .ih-bar {
+  padding: 0 20px;
+}
+.ih-agent-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font: 400 12.5px/1.6 var(--ih-mono);
+}
+.ih-mono-sm {
+  font: 400 13px var(--ih-mono);
+  color: var(--ih-text-2);
+}
+.ih-query {
+  padding-left: 12px;
+  border-left: 1px solid var(--ih-closed);
+  font: 400 13px var(--ih-mono);
+  color: var(--ih-text-3);
+}
+.ih-found {
+  font: 400 13px/1.6 var(--ih-mono);
+  margin-top: 4px;
+}
+.ih-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ih-msg-meta {
+  font: 400 12px var(--ih-mono);
+  color: var(--ih-muted);
+  letter-spacing: 0.08em;
+}
+.ih-msg-body {
+  background: var(--ih-selected);
+  padding: 10px 12px;
+  font: 400 12.5px/1.6 var(--ih-mono);
+  text-wrap: pretty;
+  word-break: break-word;
+}
+.ih-msg-body.mine {
+  background: #fff;
+}
+.ih-msg-body p {
+  margin: 0 0 0.6em;
+}
+.ih-msg-body p:last-child {
+  margin-bottom: 0;
+}
+.ih-msg-body ul,
+.ih-msg-body ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+.ih-msg-body a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+.ih-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ih .ih-option {
+  border: 1px solid var(--ih-control);
+  background: #fff;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font: 400 13px var(--ih-mono);
+  color: var(--ih-text-2);
+}
+.ih .ih-option:hover {
+  background: var(--ih-hover-2);
+}
+.ih .ih-option.on {
+  background: var(--ih-selected);
+  color: var(--ih-ink);
+  border-color: var(--ih-closed);
+}
+.ih-answers {
+  border-top: 1px solid var(--ih-hairline);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: 400 12px var(--ih-mono);
+  color: var(--ih-muted);
+}
+.ih-compose {
+  border-top: 1px solid var(--ih-hairline);
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 16px;
+  flex: none;
+  background: var(--ih-agent-bg);
+}
+.ih .ih-send {
+  font: 500 14px var(--ih-mono);
+  padding: 8px 10px;
+  color: var(--ih-text-2);
+}
+.ih .ih-send:hover:not(:disabled) {
+  color: var(--ih-ink);
+}
+
+/* Under ~1100px the agent column wraps beneath people. */
+@media (max-width: 1100px) {
+  .ih-people {
+    border-right: none;
+  }
+  .ih-agent {
+    max-height: none;
+    min-height: 520px;
+  }
+}

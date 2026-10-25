@@ -1,16 +1,12 @@
-/* Interactive pages (login, cli-auth, download, consent, handoff): the invite
-   page's desktop. Blue field, white dots, white windows with black frames. */
+/* Interactive pages (login, cli-auth, download, consent, handoff): a white
+   page with a centred column of hairline panels. Tokens
+   and buttons come from app/site/flow.css. */
 
 .site.apps {
   min-height: 100vh;
   min-height: 100dvh;
-  background-color: #0055aa;
-  background-image: radial-gradient(rgba(255, 255, 255, .22) 1px, transparent 1px);
-  background-size: 4px 4px;
-  --serif: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --sans: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  color: #fff;
+  display: flex;
+  flex-direction: column;
 }
 
 /* The app launch screen covers the app shell and header it renders inside. */
@@ -18,13 +14,15 @@
   position: fixed;
   inset: 0;
   z-index: 50;
+  overflow: auto;
 }
 
 .apps-col {
-  min-height: 100dvh;
+  flex: 1;
+  width: 100%;
   max-width: 960px;
   margin: 0 auto;
-  padding: 40px 24px;
+  padding: 40px 24px 56px;
   display: flex;
   flex-direction: column;
 }
@@ -34,20 +32,39 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 28px;
+  gap: 16px;
 }
 
-.apps-col--narrow { max-width: 520px; }
-.apps-board {
+.apps-col--narrow { max-width: 480px; }
+
+/* ---------- panels ---------- */
+.apps-board,
+.apps-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   background: #fff;
-  color: #000;
-  border: 2px solid #000;
+  color: var(--ink);
+  border: 1px solid var(--divider);
+  border-radius: 3px;
 }
-.apps-board__body { display: flex; flex-direction: column; gap: 28px; padding: 28px; }
-.apps-intro { display: flex; flex-direction: column; gap: 10px; }
-.apps-board .apps-intro .site-p,
-.apps-board .apps-title.site-h1 { color: #000; }
-.apps-title.site-h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 500; }
+/* Header bar, the people column's: 11px caps label over a hairline. */
+.apps-card-bar {
+  height: 40px;
+  margin: 0;
+  padding: 0 20px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--divider);
+  font: 400 11px var(--sans);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--body);
+}
+.apps-board__body { display: flex; flex-direction: column; gap: 20px; padding: 24px 20px; }
+.apps-intro { display: flex; flex-direction: column; gap: 8px; }
+.apps-title.site-h1 { font: 500 16px/1.4 var(--sans); }
 
 /* ---------- cards ---------- */
 .apps-cards {
@@ -55,66 +72,28 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
 }
-.apps-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: #fff;
-  color: #000;
-  border: 2px solid #000;
-}
-.apps-card-bar {
-  height: 24px;
-  margin: 0;
-  flex: none;
-  display: flex;
-  align-items: center;
-  border-bottom: 2px solid #000;
-  background-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px);
-  background-position: 0 4px;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  line-height: 1;
-  color: #000;
-}
-.apps-card-bar > span {
-  background: #fff;
-  padding: 0 12px 0 8px;
-  margin-left: 4px;
-  height: 100%;
-  display: flex;
-  align-items: center;
-}
 .apps-card-body { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 20px; }
-.apps-card-icon { width: 18px; height: 18px; display: block; object-fit: contain; flex: none; }
-.apps-card-text { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.apps-card-icon { width: 16px; height: 16px; display: block; object-fit: contain; flex: none; }
+.apps-card-text { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .apps-card-title {
   margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.3;
-  color: #000;
+  font: 500 14px/1.3 var(--sans);
+  color: var(--ink);
 }
-.apps-card .site-p { color: #3a3a3a; }
 .apps-card-actions { display: flex; flex-direction: column; gap: 10px; margin-top: auto; }
+
 .apps-hermes { display: flex; flex-direction: column; gap: 16px; }
-.apps-hermes__way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.apps-hermes__way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; }
 .apps-hermes__title {
   margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #000;
+  font: 500 13px/1.2 var(--sans);
+  color: var(--ink);
 }
 .apps-hermes__title img { width: 16px; height: 16px; object-fit: contain; }
 .apps-hermes__term {
@@ -122,10 +101,9 @@
   height: 16px;
   display: grid;
   place-items: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 8px;
-  font-weight: 600;
-  background: #F4F1EA;
+  border-radius: 2px;
+  font: 600 8px var(--mono);
+  background: var(--flow-selected);
 }
 .apps-hermes__cmd {
   display: flex;
@@ -133,52 +111,41 @@
   gap: 8px;
   width: 100%;
   padding: 8px 10px;
-  background: #F4F1EA;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  color: #000;
+  background: var(--flow-hover);
+  border-left: 2px solid var(--flow-control);
+  font: 400 11.5px/1.5 var(--mono);
+  color: var(--ink);
 }
 .apps-hermes__cmd code { flex: 1; min-width: 0; font: inherit; overflow-wrap: anywhere; }
-.apps-hermes__prompt { color: #8A9199; }
+.apps-hermes__prompt { color: var(--muted); }
 .apps-hermes__copy {
   flex: none;
   padding: 0;
   border: 0;
   background: none;
-  font: inherit;
-  color: #000;
+  font: 500 11px var(--sans);
+  color: var(--muted);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.site .apps-hermes .site-arrow-link { color: #000; }
-.site .apps-card-alt {
-  min-height: 18px;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--body);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.site .apps-card-alt:hover { color: var(--blue); }
+.apps-hermes__copy:hover { color: var(--ink); }
+.site .apps-card-alt {
+  min-height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.site .apps-card-alt:hover { color: var(--ink); }
 
 /* The Hermes mark is a tall transparent glyph: fit it inside the tile. */
 .apps-card-icon--mark { object-fit: contain; background: transparent; }
-.apps-card-icon--web { display: flex; align-items: center; justify-content: center; color: #000; }
+.apps-card-icon--web { display: flex; align-items: center; justify-content: center; color: var(--ink); }
 .apps-card-icon--web svg { width: 16px; height: 16px; display: block; }
 
-.site.apps .site-btn,
-.site .apps-card .site-btn { border: 2px solid #000; background: #000; color: #fff; }
-.site.apps .site-btn:hover,
-.site .apps-card .site-btn:hover { background: #1F2A5C; border-color: #000; color: #fff; }
-.site.apps .site-btn--secondary,
-.site .apps-card .site-btn--secondary { background: #fff; color: #000; }
-.site.apps .site-btn--secondary:hover,
-.site .apps-card .site-btn--secondary:hover { background: #F4F1EA; color: #000; }
-
 @media (max-width: 640px) {
-  .apps-title.site-h1 { font-size: 28px; }
   .apps-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .apps-col { padding: 28px 16px; }
+  .apps-col { padding: 20px 16px 40px; }
 }

@@ -17,28 +17,23 @@ import { useBack } from "@/hooks/useBack";
 
 const logger = log.page.from('networks');
 
-const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
-
 function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
   const [broken, setBroken] = useState(false);
-  const size = 36;
+  const size = 28;
   if (photo && !broken) {
     return (
       <img
         src={resolveNetworkImageSrc(photo)}
         alt=""
         onError={() => setBroken(true)}
-        style={{ flex: "0 0 auto", width: size, height: size, objectFit: "cover", display: "block", border: "1px solid #000", filter: "grayscale(1) contrast(1.05)" }}
+        style={{ flex: "0 0 auto", width: size, height: size, objectFit: "cover", display: "block", borderRadius: 3 }}
       />
     );
   }
-  const seed = String(name || id || "");
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  const cells = [0, 1, 2, 3].map((i) => TILE[(h >>> (i * 3)) % TILE.length]);
+  const initial = String(name || id || "").trim().charAt(0).toUpperCase();
   return (
-    <span style={{ flex: "0 0 auto", width: size, height: size, border: "1px solid #000", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
-      {cells.map((color, i) => <span key={i} style={{ background: color }} />)}
+    <span style={{ flex: "0 0 auto", width: size, height: size, borderRadius: 3, background: "#ededea", color: "#555", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500 }}>
+      {initial}
     </span>
   );
 }
@@ -207,26 +202,26 @@ export default function NetworksPage() {
                 {/* Staff review queue */}
                 {canReview && pendingRequests.length > 0 && (
                   <div className="mb-8">
-                    <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, marginBottom: 8 }}>requests to review</p>
+                    <p style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "#555", marginBottom: 8 }}>requests to review</p>
                     <div className="space-y-3">
                       {pendingRequests.map((r) => (
-                        <div key={r.id} style={{ border: "1px solid #000", padding: 14, background: "#fff" }}>
+                        <div key={r.id} style={{ border: "1px solid #e3e3e0", borderRadius: 3, padding: 14, background: "#fff" }}>
                           <div className="flex items-center justify-between mb-1">
-                            <p className="text-sm font-medium text-black">{r.title}</p>
-                            <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                            <p style={{ fontSize: 13, fontWeight: 500, color: "#141414" }}>{r.title}</p>
+                            <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 2, background: "#f0f0ed", color: r.status === 'needs_changes' ? "#141414" : "#666" }}>
                               {r.status === 'needs_changes' ? 'needs changes' : 'in review'}
                             </span>
                           </div>
                           {r.requestedBy && (
-                            <p className="text-xs text-gray-400 mb-2">{r.requestedBy.name}{r.requestedBy.email ? ` · ${r.requestedBy.email}` : ''}</p>
+                            <p className="mb-2" style={{ fontSize: 12, color: "#777" }}>{r.requestedBy.name}{r.requestedBy.email ? ` · ${r.requestedBy.email}` : ''}</p>
                           )}
-                          {r.purpose && <p className="text-sm text-gray-600 mb-2">{r.purpose}</p>}
+                          {r.purpose && <p className="mb-2" style={{ fontSize: 13, color: "#555" }}>{r.purpose}</p>}
                           {(r.audience || r.expectedSize) && (
-                            <p className="text-xs text-gray-500 mb-2">
+                            <p className="mb-2" style={{ fontSize: 12, color: "#666" }}>
                               {[r.audience, r.expectedSize].filter(Boolean).join(' · ')}
                             </p>
                           )}
-                          {r.notes && <p className="text-xs text-gray-500 mb-3">{r.notes}</p>}
+                          {r.notes && <p className="mb-3" style={{ fontSize: 12, color: "#666" }}>{r.notes}</p>}
                           <div className="flex gap-2">
                             <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'approve')}>approve</button>
                             <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'needs_changes')}>needs changes</button>
@@ -242,24 +237,24 @@ export default function NetworksPage() {
                 {myRequests.length > 0 && (
                   <div className="mb-8 space-y-3">
                     {myRequests.map((r) => (
-                      <div key={r.id} style={{ border: "1px solid #000", padding: 14, background: "#fff" }}>
+                      <div key={r.id} style={{ border: "1px solid #e3e3e0", borderRadius: 3, padding: 14, background: "#fff" }}>
                         <div className="flex items-center justify-between mb-1">
-                          <p className="text-sm font-medium text-black">{r.title}</p>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                          <p style={{ fontSize: 13, fontWeight: 500, color: "#141414" }}>{r.title}</p>
+                          <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 2, background: "#f0f0ed", color: r.status === 'needs_changes' ? "#141414" : "#666" }}>
                             {r.status === 'needs_changes' ? 'needs changes' : 'in review'}
                           </span>
                         </div>
                         {r.status === 'needs_changes' && r.reviewNote ? (
                           <>
-                            <p className="text-xs text-gray-500 mb-1">Index team</p>
-                            <p className="text-sm text-gray-700 mb-3 italic">“{r.reviewNote}”</p>
+                            <p className="mb-1" style={{ fontSize: 12, color: "#666" }}>Index team</p>
+                            <p className="mb-3 italic" style={{ fontSize: 13, color: "#555" }}>“{r.reviewNote}”</p>
                             <div className="flex gap-2">
                               <button type="button" className="wb-btn small" onClick={() => handleDismissRequest(r.id)}>dismiss</button>
                               <button type="button" className="wb-btn small" onClick={() => { setEditingRequest(r); setRequestModalOpen(true); }}>update</button>
                             </div>
                           </>
                         ) : (
-                          <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13 }}>your request is in review.</p>
+                          <p style={{ fontSize: 13, color: "#555" }}>your request is in review.</p>
                         )}
                       </div>
                     ))}
@@ -276,7 +271,7 @@ export default function NetworksPage() {
                     action={{ label: "try again", onClick: () => void refreshNetworks() }}
                   />
                 ) : allNetworks.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
+                  <div>
                     {allNetworks.map((network) => {
                       // Prefer viewer membership `role` from GET /networks; the
                       // network.user.id compare is wrong for multi-owner nets.
@@ -285,14 +280,14 @@ export default function NetworksPage() {
                         || (viewerRole !== 'member' && user?.id === network.user?.id);
                       const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                       return (
-                        <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+                        <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #eeeeec" }}>
                           <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
                           <button type="button" onClick={() => navigate(`/networks/${network.id}`)} style={{ flex: 1, minWidth: 0, textAlign: "left", padding: 0, border: "none", background: "transparent", cursor: "pointer" }}>
-                            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
-                            <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{network._count?.members || 0} members</span>
+                            <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{network.title}</span>
+                            <span style={{ display: "block", marginTop: 1, fontSize: 12, color: "#666" }}>{network._count?.members || 0} members</span>
                           </button>
                           {pendingJoinCount > 0 && <span className="wb-count">{pendingJoinCount}</span>}
-                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 }}>{isOwner ? "owner" : "member"}</span>
+                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12 }}>{isOwner ? "owner" : "member"}</span>
                         </div>
                       );
                     })}
@@ -331,14 +326,14 @@ export default function NetworksPage() {
                 ) : publicNetworks.length > 0 ? (
                   <div>
                     {publicNetworks.map((network) => (
-                      <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+                      <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #eeeeec" }}>
                         <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
                         <span style={{ minWidth: 0, flex: 1 }}>
-                          <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
-                          <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members</span>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{network.title}</span>
+                          <span style={{ display: "block", marginTop: 1, fontSize: 12, color: "#666" }}>{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members</span>
                         </span>
                         {network.isMember ? (
-                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 }}>member</span>
+                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12 }}>member</span>
                         ) : (
                           <button
                             type="button"

@@ -11,7 +11,8 @@ import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiation
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 
-const emptyBox = { borderColor: "#000", padding: "18px 16px" } as const;
+const emptyBox = { borderColor: "var(--wb-hairline)", padding: "18px 16px" } as const;
+const countNum = { fontWeight: 500, color: "var(--ink)" } as const;
 
 type HistoryFilter = "all" | "won" | "lost" | "open";
 type HistoryMode = "stream" | "grouped";
@@ -112,7 +113,6 @@ export default function NegotiationsPage() {
               ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} />
               : <NegoTurnLine key={`t-${ev.th.id}-${ev.turn?.turnIndex}-${i}`} th={ev.th} turn={ev.turn!} you={ev.turn?.seatUserId === user?.id} withTag={mode === "stream"} onTag={openGrouped} />
         )}
-        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#FF8A00", animation: "mac-blink 1s steps(2) infinite" }}>▌</span>
       </div>
     </div>
   );
@@ -123,11 +123,11 @@ export default function NegotiationsPage() {
       <Window title="agent log" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
           <div style={{
-            padding: "10px 16px", borderBottom: "2px solid #000", background: "#fff",
+            padding: "10px 16px", borderBottom: "1px solid var(--wb-hairline)", background: "#fff",
             display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
           }}>
-            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000" }}>
-              <b>{threads.length}</b> sessions · <b>{counts.won}</b> ✓ · <b>{counts.lost}</b> ✕ · <b>{counts.open}</b> open
+            <span style={{ fontSize: 12, color: "var(--ink-2)" }}>
+              <b style={countNum}>{threads.length}</b> sessions · <b style={countNum}>{counts.won}</b> ✓ · <b style={countNum}>{counts.lost}</b> ✕ · <b style={countNum}>{counts.open}</b> open
             </span>
             <div style={{ flex: 1 }} />
             <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: "stream" }, { value: "grouped", label: "grouped" }]} />
@@ -140,13 +140,13 @@ export default function NegotiationsPage() {
             selectedId && selected ? (
               <div style={{ display: "grid", gridTemplateRows: "auto 1fr", minHeight: 0 }}>
                 <button type="button" onClick={() => setSelectedId(null)} style={{
-                  padding: "10px 16px", border: "none", borderBottom: "1px solid #000", background: "#F2F0EC",
-                  textAlign: "left", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#000", cursor: "pointer",
+                  padding: "10px 16px", border: "none", borderBottom: "1px solid var(--wb-divider)", background: "#fff",
+                  textAlign: "left", fontSize: 12, color: "var(--ink-2)", cursor: "pointer",
                 }}>← all sessions</button>
                 {log}
               </div>
             ) : (
-              <div className="mac-scroll" style={{ overflowY: "auto", padding: "12px 10px", background: "#F2F0EC", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="mac-scroll" style={{ overflowY: "auto", padding: "12px 10px", background: "#fff", display: "flex", flexDirection: "column", gap: 6 }}>
                 {filtered.length === 0 ? log : filtered.map((th) => (
                   <NegoThreadRow key={th.id} th={th} active={false} onPick={() => setSelectedId(th.id)} />
                 ))}
@@ -155,7 +155,7 @@ export default function NegotiationsPage() {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: 0 }}>
               <div className="mac-scroll" style={{
-                overflowY: "auto", padding: "12px 10px", borderRight: "2px solid #000", background: "#F2F0EC",
+                overflowY: "auto", padding: "12px 10px", borderRight: "1px solid var(--wb-hairline)", background: "#fff",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 {filtered.map((th) => (

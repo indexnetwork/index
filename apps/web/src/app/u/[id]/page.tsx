@@ -22,7 +22,7 @@ import { useBack } from "@/hooks/useBack";
 
 const logger = log.page.from("u/[id]");
 
-const sectionLabel = { fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 } as const;
+const sectionLabel = { fontFamily: "var(--amiga-sans)", fontSize: 11, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)", marginBottom: 8 } as const;
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -151,12 +151,12 @@ function UserProfile() {
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
 
           {/* Avatar, Name, Location, Socials */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #000" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid var(--wb-hairline)" }}>
             <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
+              <div style={{ fontFamily: "var(--amiga-sans)", fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{profileData.name}</div>
               {profileData.emailVerified === false && <NotOnIndexTag />}
-              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
+              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--amiga-sans)", fontSize: 12, color: "#666" }}>{profileData.location}</div>}
             </div>
             {isAuthenticated && isOtherUser && (
               <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${id}/chat`)}>send message</button>
@@ -175,7 +175,7 @@ function UserProfile() {
               <h3 style={sectionLabel}>elsewhere</h3>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {socialLinks.map((s) => (
-                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
                     {SOCIAL_ICONS[s.platform]}
                     <span>{s.handle}</span>
                   </a>
@@ -187,10 +187,10 @@ function UserProfile() {
           {isAuthenticated && isOtherUser && (
             <div>
               <h3 style={sectionLabel}>networks</h3>
-              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>no shared networks.</div>}
+              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>no shared networks.</div>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
                     {network.title} · {network._count.members}
                   </Link>
                 ))}
@@ -223,18 +223,18 @@ function UserProfile() {
                   const open = openOpportunityId === o.opportunityId;
                   const toggle = () => setOpenOpportunityId(open ? null : o.opportunityId);
                   return (
-                    <div key={o.opportunityId} style={{ border: "1px solid #000", background: "#fff" }}>
+                    <div key={o.opportunityId} style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", overflow: "hidden" }}>
                       <div role="button" tabIndex={0} onClick={toggle}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
-                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "#F2F0EC" : "#fff" }}>
+                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "var(--wb-selected)" : "#fff" }}>
                         <div style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{o.headline || o.mainText}</div>
-                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, whiteSpace: "nowrap" }}>
+                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
                           {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
                         </span>
-                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{open ? "▾" : "›"}</span>
+                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>{open ? "▾" : "›"}</span>
                       </div>
                       {open && (
-                        <div style={{ borderTop: "1px solid #000" }}>
+                        <div style={{ borderTop: "1px solid var(--wb-hairline)" }}>
                           <NegotiationConversation opportunityId={o.opportunityId} expanded onToggle={toggle} />
                         </div>
                       )}
@@ -245,7 +245,7 @@ function UserProfile() {
             </div>
           )}
 
-          {/* Past Negotiations — only for authenticated users */}
+          {/* Past Negotiations: only for authenticated users */}
           {isAuthenticated && id && !isOtherUser && (
             <div>
               <h3 style={sectionLabel}>agent log</h3>

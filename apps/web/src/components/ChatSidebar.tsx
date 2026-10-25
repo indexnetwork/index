@@ -86,14 +86,14 @@ export default function ChatSidebar({ showEmpty = true }: {
     }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
   const renderSkeleton = () => (
-    /* Cold cache — conversation-row skeletons while the first fetch lands. */
+    /* Cold cache: conversation-row skeletons while the first fetch lands. */
     <div className="space-y-1" data-testid="chat-sidebar-skeleton" aria-hidden="true">
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2 animate-pulse">
-          <div className="h-7 w-7 bg-gray-200 shrink-0" />
+          <div className="h-7 w-7 rounded-[3px] bg-[#ededea] shrink-0" />
           <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="h-3.5 w-2/3 rounded bg-gray-200" />
-            <div className="h-3 w-11/12 rounded bg-gray-200" />
+            <div className="h-3.5 w-2/3 rounded-[2px] bg-[#ededea]" />
+            <div className="h-3 w-11/12 rounded-[2px] bg-[#ededea]" />
           </div>
         </div>
       ))}
@@ -140,17 +140,17 @@ export default function ChatSidebar({ showEmpty = true }: {
                   textAlign: "left",
                   padding: "10px 12px",
                   border: "none",
-                  borderBottom: "1px solid var(--ink-4)",
-                  background: chat.peerUserId === activePeerId ? "#F2F0EC" : "#fff",
+                  borderBottom: "1px solid var(--wb-divider)",
+                  background: chat.peerUserId === activePeerId ? "var(--wb-selected)" : "#fff",
                   cursor: "pointer",
                 }}
               >
-                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={32} />
+                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} />
                 <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
                   <span style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--amiga-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
                     {chat.lastMessage && (
-                      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
+                      <span style={{ flex: "0 0 auto", fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
                     )}
                   </span>
                   {(() => {
@@ -164,12 +164,12 @@ export default function ChatSidebar({ showEmpty = true }: {
                       );
                     }
                     return (
-                      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
+                      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
                     );
                   })()}
                 </span>
                 {chat.showUnreadCount && (
-                  <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, background: "#FF8A00", color: "#000", border: "1px solid #000", padding: "0 6px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
+                  <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, fontWeight: 500, background: "var(--amiga-accent)", color: "var(--ink)", borderRadius: 2, padding: "0 6px", lineHeight: "16px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
                 )}
               </button>
             ))}

@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import { OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
-import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn } from "@/components/workbench/Workbench";
 import type { PrepareAnswer, RecoveryField } from "@/services/intent-prepare";
 
@@ -49,10 +48,10 @@ export function RecoveryForm({
   return (
     <div className="fade-up" style={{ display: "grid", gap: 16 }}>
       <AgentLine>{feedback || "help me understand what you're looking for."}</AgentLine>
-      <div style={{ marginLeft: 42, display: "grid", gap: 18, maxWidth: 620 }}>
+      <div style={{ display: "grid", gap: 18, maxWidth: 620 }}>
         {fields.map((field) => (
           <div key={field.id}>
-            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{field.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>{field.label}</div>
             {field.kind === "text" && (
               <textarea
                 value={textValues[field.id] ?? ""}
@@ -60,7 +59,7 @@ export function RecoveryForm({
                 placeholder={field.placeholder ?? "type your answer…"}
                 rows={2}
                 maxLength={65_536}
-                style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 14 }}
+                style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", border: "1px solid var(--wb-control)", borderRadius: 3, fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6 }}
               />
             )}
             {(field.kind === "single" || field.kind === "multi") && field.options && (
@@ -111,12 +110,10 @@ function AgentLine({ children, muted = false }: {
   muted?: boolean;
 }) {
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
-        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
-      </div>
+    // The agent column's message: caps meta line, then a grey monospace block.
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 620 }}>
+      <div style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>YOUR AGENT</div>
+      <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: muted ? "var(--ink-2)" : "var(--ink)" }}>{children}</div>
     </div>
   );
 }

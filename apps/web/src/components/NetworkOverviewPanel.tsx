@@ -132,13 +132,13 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   return (
     <>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-        <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>your intents</p>
-        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{overviewLoading ? "…" : `${visible.length} intent${visible.length === 1 ? "" : "s"}`}</span>
+        <p style={{ margin: 0, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "#555" }}>your intents</p>
+        <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{overviewLoading ? "…" : `${visible.length} intent${visible.length === 1 ? "" : "s"}`}</span>
       </div>
       {undo && (
-        <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #000", background: "#F2F0EC", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12 }}>removed from {network.title}. the intent is still running everywhere else.</span>
-          <button type="button" onClick={() => { void handlePutBack(); }} style={{ flex: "0 0 auto", cursor: "pointer", padding: "4px 11px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>put it back</button>
+        <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #e3e3e0", borderRadius: 3, background: "#f7f7f5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "#555" }}>removed from {network.title}. the intent is still running everywhere else.</span>
+          <button type="button" onClick={() => { void handlePutBack(); }} style={{ flex: "0 0 auto", cursor: "pointer", padding: "4px 11px", border: "1px solid #ddd", borderRadius: 3, background: "#fff", color: "var(--ink)", fontSize: 12 }}>put it back</button>
         </div>
       )}
       <div style={{ display: "grid", gap: 10 }}>
@@ -146,10 +146,10 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           const text = (intent.payload?.trim() || intent.summary?.trim() || "untitled intent");
           const date = intent.createdAt ? new Date(intent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
           return (
-            <div key={intent.id} onClick={() => handleOpenIntent(intent)} style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: 14, cursor: "pointer" }}>
-              <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 9 }}>
-                <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }}>{text}</div>
-                {date && <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>▤ {date}</span>}
+            <div key={intent.id} onClick={() => handleOpenIntent(intent)} style={{ border: "1px solid #e3e3e0", borderRadius: 3, background: "#fff", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: 14, cursor: "pointer" }}>
+              <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink)" }}>{text}</div>
+                {date && <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{date}</span>}
               </div>
               <span title={`stop sharing this intent with ${network.title}. it keeps running elsewhere`} style={{ flex: "0 0 auto" }} onClick={(event) => event.stopPropagation()}>
                 <IntentAction label="− remove" onClick={() => { void handleRemove(intent.id); }} />
@@ -169,13 +169,13 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
       {!overviewLoading && !overviewFailed && visible.length === 0 && (
         // Starting an intent is the one thing to do here, so it gets the home
         // window's primary button rather than the small empty-state one.
-        <div style={{ border: "1px dashed var(--ink-3)", padding: "22px 18px", display: "grid", justifyItems: "center", gap: 14, textAlign: "center" }}>
-          <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
+        <div style={{ border: "1px solid #e3e3e0", borderRadius: 3, padding: "22px 18px", display: "grid", justifyItems: "center", gap: 14, textAlign: "center" }}>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
             you haven&apos;t shared any intents in this network yet.
           </p>
-          <Link to="/i/new" className="wb-new-intent" style={{ width: "auto", marginTop: 0, padding: "11px 22px 11px 16px", textDecoration: "none" }}>
-            <span style={{ width: 24, height: 24, display: "grid", placeItems: "center", background: "#fff", color: "#000", border: "1px solid #000", fontFamily: "var(--mac-mono)", fontSize: 16, fontWeight: 700 }}>+</span>
-            <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>start an intent</span>
+          <Link to="/i/new" className="wb-new-intent" style={{ width: "auto", marginTop: 0, padding: "8px 16px 8px 12px", gap: 8, textDecoration: "none" }}>
+            <span style={{ width: 16, display: "grid", placeItems: "center", color: "var(--ink)", fontSize: 16, fontWeight: 400 }}>+</span>
+            <span style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>start an intent</span>
           </Link>
         </div>
       )}

@@ -29,17 +29,17 @@ function TurnMessage({ turn, own, isLast, theirId }: { turn: NegotiationTurn; ow
   return (
     <div style={{ display: "flex", gap: 12 }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div style={{ width: 8, height: 8, background: "#000", marginTop: 6 }} />
-        {!isLast && <div style={{ width: 1, flex: 1, background: "#000", marginTop: 4 }} />}
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ccc", marginTop: 6 }} />
+        {!isLast && <div style={{ width: 1, flex: 1, background: "var(--wb-divider)", marginTop: 4 }} />}
       </div>
       <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
-          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>
-            {own ? "you.agent" : <Link to={`/u/${theirId}`} title="view profile" style={{ color: "#000", textDecoration: "underline" }}>their.agent</Link>} · {actionInfo.label}
+          <span style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
+            {own ? "you.agent" : <Link to={`/u/${theirId}`} title="view profile" style={{ color: "inherit", textDecoration: "underline" }}>their.agent</Link>} · {actionInfo.label}
             {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
         </div>
-        <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{turn.message}</p>
+        <p style={{ margin: "4px 0 0", fontFamily: "var(--wb-code)", fontSize: 12, lineHeight: 1.6, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{turn.message}</p>
       </div>
     </div>
   );
@@ -123,7 +123,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         <EmptyState
           tone="error"
           framed
-          style={{ padding: "28px 16px", borderColor: "#000" }}
+          style={{ padding: "28px 16px", borderColor: "var(--wb-hairline)" }}
           message="couldn't load the agent log."
           action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
         />
@@ -132,7 +132,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
       {!isLoading && !loadFailed && negotiations.length === 0 && (
         <EmptyState
           framed
-          style={{ padding: "28px 16px", borderColor: "#000" }}
+          style={{ padding: "28px 16px", borderColor: "var(--wb-hairline)" }}
           message="nothing on the wire yet. your agent logs every conversation with other agents here as it happens."
         />
       )}
@@ -144,13 +144,13 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         const lastAt = neg.updatedAt || neg.settledAt || neg.createdAt;
 
         return (
-          <div key={neg.id} style={{ border: "1px solid #000", background: "#fff" }}>
+          <div key={neg.id} style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff" }}>
             <div
               role="button"
               tabIndex={0}
               onClick={() => void toggle(neg)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void toggle(neg); } }}
-              style={{ width: "100%", padding: 16, display: "flex", alignItems: "center", gap: 16, textAlign: "left", cursor: "pointer", background: isExpanded ? "#F2F0EC" : "#fff" }}
+              style={{ width: "100%", padding: 16, display: "flex", alignItems: "center", gap: 16, textAlign: "left", cursor: "pointer", background: isExpanded ? "var(--wb-hover)" : "#fff" }}
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -169,20 +169,20 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                 <div className="flex items-center gap-2 mb-0.5">
                     <Link
                     to={`/u/${neg.counterparty.id}`}
-                    style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", textDecoration: "none" }}
+                    style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", textDecoration: "none" }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {neg.counterparty.name}
                   </Link>
                   {outcomeInfo ? (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: outcomeInfo.label === "won" ? "var(--wb-live)" : "var(--ink-warn)" }}>
                       {outcomeInfo.label}
                     </span>
                   ) : (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
+                    <span style={{ fontSize: 12, color: "var(--ink-3)" }}>open</span>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+                <div style={{ display: "flex", gap: 8, fontSize: 12, color: "var(--ink-3)" }}>
                   {neg.turnCount > 0 && (
                     <span>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
                   )}
@@ -190,18 +190,18 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                 </div>
               </div>
 
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{isExpanded ? "▾" : "›"}</span>
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{isExpanded ? "▾" : "›"}</span>
             </div>
 
             {isExpanded && (
-              <div style={{ padding: "8px 16px 16px", borderTop: "1px solid #000" }}>
+              <div style={{ padding: "8px 16px 16px", borderTop: "1px solid var(--wb-divider)" }}>
                 {turns === undefined ? (
-                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+                  <p style={{ fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
                 ) : turns.length === 0 ? (
-                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, textAlign: "center" }}>no turns yet.</p>
+                  <p style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>no turns yet.</p>
                 ) : (
                   <>
-                    <p style={{ margin: "8px 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>agents spoke for both of you</p>
+                    <p style={{ margin: "8px 0", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)" }}>agents spoke for both of you</p>
                     <div>
                       {turns.map((turn, i) => (
                         <TurnMessage
@@ -225,7 +225,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          style={{ width: "100%", background: "none", border: "none", fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}
+          style={{ width: "100%", background: "none", border: "none", fontSize: 12, color: "var(--ink-2)", cursor: "pointer" }}
         >
           {loadingMore ? "loading…" : "show more"}
         </button>

@@ -54,7 +54,7 @@ export default function ChatLandingPage() {
       <Window title="conversations" onClose={() => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateColumns: listColumn ? "280px minmax(0, 1fr)" : "minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
           {listColumn && (
-            <div style={{ borderRight: "2px solid #000", minHeight: 0 }}>
+            <div style={{ borderRight: "1px solid var(--wb-hairline)", minHeight: 0 }}>
               <ChatSidebar showEmpty={false} />
             </div>
           )}

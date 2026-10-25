@@ -103,11 +103,12 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
 
   if (!open) return null;
 
-  const field = { display: "block", width: "100%", marginTop: 4, border: "1px solid #000", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 } as const;
+  const field = { display: "block", width: "100%", marginTop: 4, padding: "8px 10px", fontSize: 13, color: "var(--ink)" } as const;
+  const label = { fontSize: 12, fontWeight: 500, color: "var(--ink-2)" } as const;
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}
+      style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(20,20,20,0.18)", padding: 24 }}
       onClick={() => handleOpenChange(false)}
     >
       <div
@@ -115,7 +116,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-network-title"
-        style={{ width: 480, maxWidth: "100%" }}
+        style={{ width: 480, maxWidth: "100%", flex: "0 1 auto", border: "1px solid #e3e3e0", borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mac-titlebar">
@@ -123,28 +124,28 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
           <span className="mac-title"><span className="t">new network</span></span>
         </div>
         <div className="wb-body mac-scroll" style={{ padding: 18, gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
-          <p id="create-network-title" style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>
+          <p id="create-network-title" style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "var(--ink-2)" }}>
             a network is a group that shares intents. if you run a community, event, or team, create one here, then invite your members so their intents can find each other.
           </p>
           <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
             <button type="button" onClick={() => uploadNetworkImage && fileInputRef.current?.click()} disabled={isSubmitting || !uploadNetworkImage} style={{ display: "flex", gap: 12, alignItems: "center", background: "none", border: "none", padding: 0, textAlign: "left" }}>
               <NetworkAvatar title={name || "network name"} imageUrl={imagePreview} size={48} />
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>{imagePreview ? "picture" : "picture optional"}</span>
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{imagePreview ? "picture" : "picture optional"}</span>
             </button>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display: "none" }} />
             {imagePreview && <button type="button" className="wb-btn small" onClick={handleRemoveImage} disabled={isSubmitting}>remove image</button>}
-            {imageError && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{imageError}</p>}
-            <label style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>name
+            {imageError && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-warn)" }}>{imageError}</p>}
+            <label style={label}>name
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="network name" disabled={isSubmitting} autoFocus required style={field} />
             </label>
-            <label style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>description
+            <label style={label}>description
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="optional" rows={3} disabled={isSubmitting} style={field} />
             </label>
             <div>
-              <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-mono)", fontSize: 11 }}>access</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" className={`wb-btn small${joinPolicy === "anyone" ? " primary" : ""}`} onClick={() => setJoinPolicy("anyone")}>public</button>
-                <button type="button" className={`wb-btn small${joinPolicy === "invite_only" ? " primary" : ""}`} onClick={() => setJoinPolicy("invite_only")}>private</button>
+              <p style={{ margin: "0 0 6px", ...label }}>access</p>
+              <div className="wb-segmented">
+                <button type="button" aria-pressed={joinPolicy === "anyone"} onClick={() => setJoinPolicy("anyone")}>public</button>
+                <button type="button" aria-pressed={joinPolicy === "invite_only"} onClick={() => setJoinPolicy("invite_only")}>private</button>
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

@@ -14,27 +14,41 @@
 }
 
 .workbench {
-  --amiga-bg: #0055aa;
-  --amiga-fg: #000000;
+  /* The app's quiet look (styles/intents-home.css): white page, hairlines,
+     Plex Sans, one orange accent. The old Amiga token names stay so every
+     page that reads them follows. */
+  --amiga-bg: #ffffff;
+  --amiga-fg: #141414;
   --amiga-paper: #ffffff;
-  --amiga-accent: #ff8a00;
+  --amiga-accent: #e8700a;
   --amiga-light: #ffffff;
-  --ink: #000000;
-  --ink-2: #5a5548;
-  --ink-3: #8a8578;
-  --ink-4: #b5af9f;
-  --ink-warn: #8a0000;
-  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", "Tahoma", "Geneva", -apple-system, system-ui, sans-serif;
+  --ink: #141414;
+  --ink-2: #555555;
+  --ink-3: #777777;
+  --ink-4: #e3e3e0;
+  --ink-warn: #b3261e;
+  --wb-hairline: #e3e3e0;
+  --wb-divider: #eeeeec;
+  --wb-control: #dddddd;
+  --wb-hover: #f7f7f5;
+  --wb-hover-2: #f3f3f1;
+  --wb-selected: #f0f0ed;
+  --wb-accent-hover: #f28a2a;
+  --wb-live: #3b7a57;
+  /* Monospace is for agent text and code only; UI labels that asked for the
+     old mono now get the sans. Real code reads --wb-code. */
+  --wb-code: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-mono: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
   --amiga-title: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
   --mac-sans: var(--amiga-sans);
   --mac-mono: var(--amiga-mono);
 
-  background-color: var(--amiga-bg);
-  color: var(--amiga-fg);
+  background-color: #fff;
+  color: var(--ink);
   font-family: var(--amiga-sans);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -49,104 +63,89 @@
 }
 
 .mac-desktop {
-  background-color: var(--amiga-bg);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
-  background-size: 4px 4px;
+  background: #fff;
 }
 
+/* Desktop: the page column starts at the rail and fills the height;
+   `Stage width` caps it. */
 .wb-stage {
   height: 100%;
   min-height: 0;
-  display: grid;
-  place-items: center;
-  grid-template-columns: minmax(0, 1fr);
-  padding: 56px 40px;
+  display: flex;
+  justify-content: flex-start;
   overflow: auto;
 }
+.wb-column {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
+/* A window is a page: header bar, then the body. */
 .amiga-window {
-  background: var(--amiga-paper);
-  border: 2px solid var(--amiga-fg);
-  box-shadow: inset 2px 2px 0 var(--amiga-paper), inset -2px -2px 0 #6e6e6e;
+  background: #fff;
+  border-right: 1px solid var(--wb-hairline);
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  flex: 1;
 }
 
+/* Header bar, the people column's: 48px, 11px caps label, hairline under. */
 .mac-titlebar {
-  height: 24px;
+  height: 48px;
   flex: 0 0 auto;
-  border-bottom: 2px solid var(--amiga-fg);
-  background: var(--amiga-paper);
+  padding: 0 24px;
+  gap: 12px;
+  border-bottom: 1px solid var(--wb-hairline);
+  background: #fff;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   user-select: none;
-  color: var(--amiga-fg);
+  color: var(--ink-2);
   font-family: var(--amiga-sans);
-}
-.mac-titlebar .mac-close {
-  width: 24px;
-  height: 100%;
-  border-right: 2px solid var(--amiga-fg);
-  background: var(--amiga-paper);
-  flex: 0 0 auto;
-  position: relative;
-}
-.mac-titlebar .mac-close::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  transform: translate(-50%, -50%);
-  border: 2px solid var(--amiga-fg);
-  background: var(--amiga-paper);
-}
-.mac-titlebar .mac-close::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  transform: translate(-50%, -50%);
-  background: var(--amiga-fg);
-}
-.mac-titlebar .mac-close:hover::before,
-.mac-titlebar .mac-close:active,
-.mac-titlebar .mac-close:active::before {
-  background: var(--amiga-accent);
-}
-.mac-titlebar .mac-dismiss::after {
-  width: 10px;
-  height: 2px;
 }
 .mac-titlebar .mac-title {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  line-height: 1;
-  font-family: var(--amiga-mono);
-  letter-spacing: 0.3px;
   overflow: hidden;
-  background-image: repeating-linear-gradient(0deg, var(--amiga-fg) 0 2px, transparent 2px 6px);
-  background-position: 0 4px;
+  white-space: nowrap;
+  font: 400 11px var(--amiga-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 }
 .mac-titlebar .mac-title > .t {
-  background: var(--amiga-paper);
-  padding: 0 12px 0 8px;
-  margin-left: 4px;
-  height: 100%;
-  display: flex;
-  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* The close box reads as a text link at the right of the bar. */
+.mac-titlebar .mac-close {
+  order: 2;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 11px var(--amiga-sans);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.mac-titlebar .mac-close::before { content: "close"; }
+.mac-titlebar .mac-dismiss::before { content: "put away"; }
+.mac-titlebar .mac-back::before { content: "‹ back"; }
+.mac-titlebar .mac-home::before { content: none; }
+.mac-titlebar .mac-close:hover { color: var(--ink); }
+.mac-titlebar .mac-home svg { width: 14px; height: 14px; }
 
 .wb-body {
   flex: 1;
@@ -154,161 +153,153 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--amiga-paper);
+  background: #fff;
 }
 
 .mac-scroll::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-  background: var(--amiga-paper);
+  width: 8px;
+  height: 8px;
+  background: transparent;
 }
 .mac-scroll::-webkit-scrollbar-track {
-  background: var(--amiga-paper);
-  border-left: 1px solid var(--ink-4);
+  background: transparent;
 }
 .wb-chat p { margin: 0; }
 
 .mac-scroll::-webkit-scrollbar-thumb {
-  background: var(--amiga-accent);
-  border: 1px solid var(--amiga-fg);
-  border-left-width: 2px;
-  background-clip: padding-box;
+  background: var(--wb-control);
+  border-radius: 4px;
   min-height: 28px;
 }
 
+/* Section label: 11px caps over a hairline. */
 .wb-rule {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--mac-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
+  font: 400 11px var(--amiga-sans);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--amiga-fg);
-  margin: 12px 0 8px;
-  font-weight: 700;
+  color: var(--ink-2);
+  margin: 16px 0 8px;
 }
 .wb-rule > span:last-child {
   flex: 1;
-  height: 2px;
-  background:
-    linear-gradient(var(--amiga-fg), var(--amiga-fg)) top / 100% 1px no-repeat,
-    linear-gradient(var(--amiga-paper), var(--amiga-paper)) bottom / 100% 1px no-repeat;
+  height: 1px;
+  background: var(--wb-hairline);
 }
 
 .wb-btn {
-  padding: 5px 18px;
-  font-family: var(--mac-mono);
-  font-size: 12px;
-  text-transform: lowercase;
-  letter-spacing: 0.5px;
-  border: 1px solid #000;
+  padding: 7px 12px;
+  font: 500 12px var(--amiga-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  border: 1px solid var(--wb-control);
   background: #fff;
-  color: #000;
-  border-radius: 0;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
-  font-weight: 500;
+  color: var(--ink-2);
+  border-radius: 3px;
+  box-shadow: none;
 }
-.wb-btn:active:not(:disabled) {
-  background: #000;
-  color: #fff;
-  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
-  transform: translate(1px, 1px);
+.wb-btn:hover:not(:disabled) {
+  background: var(--wb-hover-2);
+  color: var(--ink);
 }
 .wb-btn.primary {
-  background: #ff8a00;
-  font-weight: 700;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
+  background: var(--amiga-accent);
+  border-color: var(--amiga-accent);
+  color: var(--ink);
 }
-.wb-btn.primary:active:not(:disabled) {
-  background: #000;
-  color: #ff8a00;
+.wb-btn.primary:hover:not(:disabled) {
+  background: var(--wb-accent-hover);
+  border-color: var(--wb-accent-hover);
+  color: var(--ink);
 }
 .wb-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 .wb-btn.small {
-  padding: 3px 12px;
+  padding: 4px 10px;
   font-size: 11px;
 }
 
+/* Tabs read as the filter dropdown's items: quiet chips, selected grey. */
 .wb-segmented {
   display: inline-flex;
-  border: 1px solid #000;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--wb-control);
+  border-radius: 3px;
+  background: #fff;
 }
 .wb-segmented button {
-  padding: 3px 12px;
-  background: #fff;
-  color: #000;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--ink-2);
   border: none;
-  border-left: 1px solid #000;
-  font-family: var(--mac-mono);
-  font-size: 11px;
-  text-transform: lowercase;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888;
+  border-radius: 2px;
+  font: 400 12px var(--amiga-sans);
+  text-transform: none;
+  box-shadow: none;
 }
-.wb-segmented button:first-child {
-  border-left: none;
+.wb-segmented button:hover {
+  background: var(--wb-hover-2);
 }
 .wb-segmented button[aria-pressed="true"] {
-  background: #ff8a00;
-  font-weight: 700;
-  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+  background: var(--wb-selected);
+  color: var(--ink);
 }
 .wb-segmented.lg button {
-  padding: 7px 18px;
-  font-size: 13.5px;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
+/* Waiting-on-you count: the one place a number takes the accent. */
 .wb-count {
   display: flex;
   align-items: baseline;
   justify-content: center;
-  padding: 3px 8px;
-  border: 1px solid #000;
-  background: #ff8a00;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
-  font-family: var(--mac-sans);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  color: #000;
+  min-width: 18px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 2px;
+  background: var(--amiga-accent);
+  box-shadow: none;
+  font: 500 11px var(--amiga-sans);
+  line-height: 1.2;
+  color: var(--ink);
 }
 
 .wb-shelf-row,
 .wb-new-intent {
   text-align: left;
-  border: 1px solid #000;
+  border: none;
+  border-bottom: 1px solid var(--wb-divider);
   background: #fff;
-  color: #000;
+  color: var(--ink);
   display: flex;
   align-items: center;
-  gap: 14px;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0, 0, 0, 0.2);
+  gap: 12px;
+  box-shadow: none;
 }
 .wb-shelf-row {
-  height: 72px;
-  padding: 0 16px;
+  height: 64px;
+  padding: 0 4px;
   flex: 0 0 auto;
   width: 100%;
 }
 .wb-shelf-row:hover {
-  background: #fff6e8;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
+  background: var(--wb-hover);
 }
 .wb-new-intent {
-  padding: 11px 16px;
-  border-width: 2px;
-  background: #ff8a00;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -2px -2px 0 #8a4500, 3px 3px 0 rgba(0, 0, 0, 0.2);
+  padding: 10px 14px;
+  border: 1px solid var(--amiga-accent);
+  border-radius: 3px;
+  background: var(--amiga-accent);
   margin-top: 8px;
   width: 100%;
 }
-.wb-new-intent:active {
-  background: #000;
-  color: #ff8a00;
-  box-shadow: none;
-  transform: translate(1px, 1px);
+.wb-new-intent:hover {
+  background: var(--wb-accent-hover);
 }
 
 .wb-nav-row {
@@ -316,15 +307,17 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 3px 6px;
+  padding: 8px 10px;
   text-align: left;
   border: none;
-  border-top: 1px solid #dad8d4;
+  border-radius: 3px;
   background: transparent;
-  font-family: var(--mac-mono);
-  font-size: 13px;
-  font-weight: 500;
-  color: #000;
+  font: 400 13px var(--amiga-sans);
+  color: var(--ink-2);
+}
+.wb-nav-row:hover {
+  background: var(--wb-hover);
+  color: var(--ink);
 }
 
 .wb-invite {
@@ -332,42 +325,44 @@
   margin-top: 24px;
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 16px 10px 10px;
-  border: none;
-  background: #e6f4ea;
-  font-family: var(--mac-mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: #24583a;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--wb-control);
+  border-radius: 3px;
+  background: #fff;
+  font: 500 12px var(--amiga-sans);
+  color: var(--ink-2);
 }
 .wb-invite:hover {
-  background: #d3eddb;
+  background: var(--wb-hover-2);
 }
 
 .wb-menu {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 4px);
   background: #fff;
-  border: 1px solid #000;
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--wb-control);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  padding: 4px;
   z-index: 5;
 }
 .wb-menu button {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 12px;
-  font-family: var(--mac-mono);
-  font-size: 12px;
-  background: #fff;
+  padding: 6px 10px;
+  border-radius: 2px;
+  font: 400 12px var(--amiga-sans);
+  background: transparent;
   border: none;
-  color: #000;
+  color: var(--ink-2);
 }
 .wb-menu button:hover {
-  background: #ff8a00;
+  background: var(--wb-hover-2);
+  color: var(--ink);
 }
 .wb-menu button.danger {
   color: var(--ink-warn);
@@ -375,34 +370,31 @@
 
 .wb-field {
   display: block;
-  font-family: var(--mac-mono);
-  font-size: 11px;
+  font: 500 12px var(--amiga-sans);
+  color: var(--ink-2);
   margin-bottom: 4px;
 }
 .workbench input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .workbench textarea,
 .workbench select {
   font-family: var(--amiga-sans);
-  border: 1px solid #000;
-  border-radius: 0;
+  border: 1px solid var(--wb-control);
+  border-radius: 3px;
   background: #fff;
 }
+.workbench input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.workbench textarea:focus,
+.workbench select:focus {
+  border-color: #999;
+  outline: none;
+}
 .workbench table {
-  border: 1px solid #000;
+  border: 1px solid var(--wb-hairline);
   border-collapse: collapse;
 }
 
-.workbench .rounded-lg,
-.workbench .rounded-md,
-.workbench .rounded-sm,
-.workbench .rounded-xl,
-.workbench .rounded-2xl,
-.workbench .rounded {
-  border-radius: 0 !important;
-}
-
 @keyframes mac-blink {
-  50% { opacity: 0.15; }
+  50% { opacity: 0.35; }
 }
 @keyframes mac-stripes {
   from { background-position: 0 0; }
@@ -417,29 +409,33 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fade-up 260ms cubic-bezier(.2, .7, .2, 1) both; }
+/* Live marker: the status line's green square. */
 .wb-live {
   display: inline-block;
-  background: #ff8a00;
-  border: 1px solid #000;
-  animation: mac-blink 1.2s steps(2) infinite;
+  background: var(--wb-live);
+  border: none;
   flex: 0 0 auto;
 }
 
-/* Old product utilities still sit inside the desktop shell. Pull them onto
-   the Workbench palette so a gray card or a navy button cannot show through. */
+/* Old product utilities still sit inside the shell. Pull them onto the
+   app's palette so a navy button or a heavy card cannot show through. */
 .workbench .text-gray-400,
 .workbench .text-gray-500,
-.workbench .text-gray-600,
+.workbench .text-gray-600 {
+  color: var(--ink-3);
+}
 .workbench .text-gray-700,
 .workbench .text-gray-900,
 .workbench .text-\[\#3D3D3D\],
 .workbench .text-\[\#041729\] {
-  color: #000;
+  color: var(--ink);
 }
 .workbench .bg-gray-50,
 .workbench .bg-gray-100,
 .workbench .bg-gray-200,
-.workbench .bg-\[\#F8F8F8\],
+.workbench .bg-\[\#F8F8F8\] {
+  background-color: var(--wb-hover);
+}
 .workbench .bg-\[\#FDFDFD\] {
   background-color: #fff;
 }
@@ -448,14 +444,22 @@
 .workbench .border-gray-300,
 .workbench .border-gray-400,
 .workbench .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #000;
+  border-color: var(--wb-hairline);
 }
 .workbench .shadow-sm,
 .workbench .shadow,
 .workbench .shadow-md,
 .workbench .shadow-lg,
 .workbench .shadow-xl {
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.workbench .rounded-lg,
+.workbench .rounded-md,
+.workbench .rounded-sm,
+.workbench .rounded-xl,
+.workbench .rounded-2xl,
+.workbench .rounded {
+  border-radius: 3px !important;
 }
 .workbench .font-sans,
 .workbench .font-ibm-plex-sans {
@@ -463,52 +467,46 @@
 }
 .workbench .font-mono,
 .workbench .font-ibm-plex-mono {
-  font-family: var(--mac-mono);
+  font-family: var(--wb-code);
 }
 .workbench button.font-sans {
-  font-family: var(--mac-mono) !important;
-  text-transform: lowercase;
-  letter-spacing: 0.4px;
-  border: 1px solid #000 !important;
-  border-radius: 0 !important;
+  font: 500 12px var(--amiga-sans) !important;
+  border: 1px solid var(--wb-control) !important;
+  border-radius: 3px !important;
   background: #fff !important;
-  color: #000 !important;
+  color: var(--ink-2) !important;
   height: auto !important;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
+  box-shadow: none !important;
 }
 .workbench button.font-sans.bg-\[\#041729\],
 .workbench button.bg-\[\#041729\] {
-  background: #ff8a00 !important;
-  color: #000 !important;
-  font-weight: 700;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
+  background: var(--amiga-accent) !important;
+  border-color: var(--amiga-accent) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
 }
 .workbench .bg-blue-50,
 .workbench .bg-green-50,
 .workbench .bg-amber-50,
 .workbench .bg-red-50 {
-  background: #fff;
+  background: var(--wb-hover);
 }
 .workbench .text-blue-700,
 .workbench .text-green-700,
 .workbench .text-green-600,
-.workbench .text-amber-700,
+.workbench .text-amber-700 {
+  color: var(--ink);
+}
 .workbench .text-red-600,
 .workbench .text-red-500 {
-  color: #000;
+  color: var(--ink-warn);
 }
 
 
 /* ── Responsive ─────────────────────────────────────────────────────────
-   Desktop: floating windows on the blue desktop. Medium: same, tighter
-   margins. Compact (phones, keep in sync with COMPACT_QUERY in
-   hooks/useCompact.ts): the window is the screen and navigation moves to
-   the bottom tab bar (.wb-tabbar). */
-@media (max-width: 1024px) {
-  .wb-stage {
-    padding: 32px 20px;
-  }
-}
+   Desktop: the page column beside the rail. Compact (phones, keep in sync
+   with COMPACT_QUERY in hooks/useCompact.ts): the window is the screen and
+   navigation moves to the bottom tab bar (.wb-tabbar). */
 
 /* The app shell, pinned to what is actually visible. Fixed so the document
    never scrolls behind it; height and offset track visualViewport
@@ -532,7 +530,6 @@
     -webkit-tap-highlight-color: transparent;
   }
   .wb-stage {
-    padding: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -540,48 +537,25 @@
   .wb-stage .amiga-window {
     border-left: none;
     border-right: none;
-    border-top: none;
-    box-shadow: none;
-    flex: 1;
   }
 
-  /* Titlebar doubles as the app bar: 44px tall for thumbs, safe-area aware. */
+  /* Header bar doubles as the app bar: 44px for thumbs, safe-area aware.
+     Back sits on the left, where a thumb expects it. */
   .mac-titlebar {
     height: calc(44px + env(safe-area-inset-top));
-    padding-top: env(safe-area-inset-top);
-  }
-  .mac-titlebar .mac-title {
-    font-size: 14px;
-    background-position: 0 7px;
-  }
-  .mac-titlebar .mac-title > .t {
-    padding: 0 14px 0 12px;
+    padding: env(safe-area-inset-top) 16px 0;
   }
   .mac-titlebar .mac-close {
-    width: 44px;
+    order: 0;
+    min-height: 44px;
+    text-decoration: none;
+    font-size: 13px;
+    color: var(--ink);
   }
   .mac-titlebar .mac-home {
     display: grid;
     place-items: center;
-  }
-  .mac-titlebar .mac-home::before,
-  .mac-titlebar .mac-home::after {
-    content: none;
-  }
-  .mac-titlebar .mac-home:active {
-    background: var(--amiga-accent);
-  }
-  .mac-titlebar .mac-back::before {
-    width: 20px;
-    height: 20px;
-  }
-  .mac-titlebar .mac-back::after {
-    width: 8px;
-    height: 8px;
-    background: transparent;
-    border-left: 2px solid var(--amiga-fg);
-    border-bottom: 2px solid var(--amiga-fg);
-    transform: translate(-30%, -50%) rotate(45deg);
+    min-width: 32px;
   }
 
   /* iOS zooms into any field under 16px; inline sizes need the override. */
@@ -610,26 +584,20 @@
     min-height: 32px;
     padding: 3px 10px;
   }
-  .wb-segmented.lg button {
-    padding: 6px 11px;
-    font-size: 12.5px;
-  }
   .wb-shelf-row {
-    height: 64px;
-    padding: 0 14px;
+    height: 60px;
   }
   .wb-new-intent {
-    padding: 13px 16px;
+    padding: 12px 16px;
   }
-
 
   .wb-tabbar {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
     flex: 0 0 auto;
-    background: var(--amiga-paper);
-    border-top: 2px solid var(--amiga-fg);
+    background: #fff;
+    border-top: 1px solid var(--wb-hairline);
     padding-bottom: env(safe-area-inset-bottom);
     position: relative;
     z-index: 30;
@@ -645,59 +613,46 @@
   gap: 4px;
   height: 56px;
   border: none;
-  border-left: 1px solid var(--ink-4);
-  background: var(--amiga-paper);
-  color: var(--amiga-fg);
-  font-family: var(--mac-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  text-transform: lowercase;
-}
-.wb-tab:first-child {
-  border-left: none;
+  background: #fff;
+  color: var(--ink-3);
+  font: 400 11px var(--amiga-sans);
 }
 .wb-tab[aria-current="page"] {
-  background: var(--amiga-accent);
-  font-weight: 700;
-  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+  color: var(--ink);
+  font-weight: 500;
 }
 .wb-tab:active {
-  background: #000;
-  color: var(--amiga-accent);
+  background: var(--wb-hover);
 }
 .wb-tab .wb-tab-badge {
   position: absolute;
-  top: 5px;
+  top: 6px;
   left: calc(50% + 6px);
   min-width: 16px;
   padding: 1px 4px;
-  border: 1px solid #000;
+  border: none;
+  border-radius: 2px;
   background: var(--amiga-accent);
-  font-family: var(--mac-sans);
-  font-size: 10px;
-  font-weight: 700;
+  font: 500 10px var(--amiga-sans);
   line-height: 1.2;
   text-align: center;
-  color: #000;
-}
-.wb-tab[aria-current="page"] .wb-tab-badge {
-  background: #fff;
+  color: var(--ink);
 }
 
-/* "you" sheet: slides up over the tab bar, Workbench window styling. */
+/* "you" sheet: slides up over the tab bar. */
 .wb-sheet-scrim {
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: rgba(0, 85, 170, 0.28);
+  background: rgba(20, 20, 20, 0.18);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
 }
 .wb-sheet {
-  background: var(--amiga-paper);
-  border-top: 2px solid var(--amiga-fg);
+  background: #fff;
+  border-top: 1px solid var(--wb-hairline);
+  border-radius: 6px 6px 0 0;
   padding-bottom: env(safe-area-inset-bottom);
   animation: wb-sheet-up 180ms cubic-bezier(.2, .7, .2, 1) both;
 }
@@ -716,22 +671,17 @@
   min-height: 50px;
   padding: 0 18px;
   border: none;
-  border-top: 1px solid var(--ink-4);
-  background: var(--amiga-paper);
-  font-family: var(--mac-mono);
-  font-size: 14px;
-  font-weight: 500;
-  color: #000;
+  border-top: 1px solid var(--wb-divider);
+  background: #fff;
+  font: 400 14px var(--amiga-sans);
+  color: var(--ink);
   text-align: left;
 }
 .wb-sheet-row:active {
-  background: #000;
-  color: var(--amiga-accent);
+  background: var(--wb-hover);
 }
 .wb-sheet-row.danger {
   color: var(--ink-warn);
-  font-weight: 600;
-  border-top: 2px solid #000;
 }
 
 /* A message's time sits in its existing label line and only shows on hover. */

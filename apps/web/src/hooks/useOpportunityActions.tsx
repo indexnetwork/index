@@ -52,14 +52,16 @@ export function useOpportunityActions({
       opportunityId: string,
       action: "accepted" | "rejected",
       _fallbackUserId?: string,
-      options?: { notOnIndex?: boolean },
+      options?: { notOnIndex?: boolean; scope?: OpportunityActionScope },
     ) => {
+      // A screen showing several intents names the row's own intent per call.
+      const callScope = options?.scope ?? scope;
       // Accept someone not on Index yet: record the accept only. There is
       // nobody to chat with, so no DM is created; the caller opens the invite.
       if (action === "accepted" && options?.notOnIndex) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", scope);
+          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", callScope);
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
           onRemove?.(opportunityId);
           onAccepted?.({
@@ -80,7 +82,7 @@ export function useOpportunityActions({
       if (action === "accepted") {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.startChat(opportunityId, scope);
+          const result = await opportunitiesService.startChat(opportunityId, callScope);
           // Local "accepted" keeps the chat column up while the row is still
           // pending on the other person. A radar refresh cannot put it back.
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
@@ -104,7 +106,7 @@ export function useOpportunityActions({
       // Reject: proceed immediately, no modal.
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
-        await opportunitiesService.updateStatus(opportunityId, action, scope);
+        await opportunitiesService.updateStatus(opportunityId, action, callScope);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: action }));
         onRemove?.(opportunityId);
       } catch (error) {
