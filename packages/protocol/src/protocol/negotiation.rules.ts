@@ -41,15 +41,15 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   awaitingUserId: string | null;
   outcome: 'agreed' | null;
   opportunityStatus: 'negotiating' | 'pending';
-  /** Why this turn ended its round, leaving nobody to move until an owner adds context. */
+  /** Why this turn ended its round, leaving nobody to move until a seat resumes it. */
   roundEnded: 'declined' | 'turn_limit' | null;
 };
 
 /**
  * The turns of the round in progress. A round ends at a decline or after
  * {@link NEGOTIATION_MAX_TURNS} turns; neither ends the negotiation, which
- * stays in talks with nobody to move until an owner's new context opens the
- * next round.
+ * stays in talks with nobody to move until a seat resumes it, because its
+ * owner added context that bears on the pair.
  *
  * @param turns - The whole turn log, oldest first.
  * @returns The turns since the last round ended.
@@ -61,6 +61,10 @@ export function currentRound<T extends { action: NegotiationAction }>(turns: T[]
   });
   return turns.slice(start);
 }
+
+/** Why a seat may not resume a negotiation: it is not paused between rounds, or it cannot be worked at all. */
+export type NegotiationResumeRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive' | 'not_paused';
+export type NegotiationResumeDecision = { ok: false; rejection: NegotiationResumeRejection } | { ok: true; awaitingUserId: string };
 
 /** @param pair - Current membership and intent eligibility. @returns The permitted opening, or null. */
 export function decideNegotiationOpening(pair: NegotiationOpening): NegotiationOpeningDecision {
@@ -94,7 +98,7 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
   // settles nothing and spends a turn, so it is answered rather than repeated.
   if (turn.action === 'propose' && previous && previous.seatUserId !== userId && previous.action === 'propose') return { ok: false, rejection: 'propose_over_offer' };
   // Only agreement settles. A decline or a full round leaves the pair in talks
-  // with nobody to move: an owner's new context starts the next round.
+  // with nobody to move, until a seat resumes it.
   const outcome = turn.action === 'accept' ? 'agreed' : null;
   const roundEnded = outcome ? null : turn.action === 'decline' ? 'declined' : round.length + 1 >= NEGOTIATION_MAX_TURNS ? 'turn_limit' : null;
   return {
@@ -102,6 +106,24 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
     awaitingUserId: outcome || roundEnded ? null : userId === state.initiatorUserId ? state.responderUserId : state.initiatorUserId,
     opportunityStatus: outcome ? 'pending' : 'negotiating',
   };
+}
+
+/**
+ * Whether a seat may resume a negotiation paused between rounds.
+ *
+ * Resuming is the seat's own call: its owner added context that bears on this
+ * pair, so it takes the first turn of a new round. Nothing resumes on its own.
+ *
+ * @param state - State locked by the host. @param userId - Resuming principal.
+ * @returns The seat that takes the turn, or why it may not.
+ */
+export function decideNegotiationResume(state: NegotiationState | null, userId: string): NegotiationResumeDecision {
+  if (!state) return { ok: false, rejection: 'not_found' };
+  if (userId !== state.initiatorUserId && userId !== state.responderUserId) return { ok: false, rejection: 'not_a_seat' };
+  if (state.settled) return { ok: false, rejection: 'already_settled' };
+  if (!state.eligible) return { ok: false, rejection: 'intent_inactive' };
+  if (state.awaitingUserId !== null) return { ok: false, rejection: 'not_paused' };
+  return { ok: true, awaitingUserId: userId };
 }
 
 /** @param state - Current authoritative state. @param userId - Reading principal. @returns Guidance and actions available to that seat now. */

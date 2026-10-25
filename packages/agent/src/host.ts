@@ -120,8 +120,7 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     status: negotiation.outcome ?? "negotiating",
     // Nobody moves between rounds: a decline or a full round ended the last one.
     awaiting: yours ? "you" : negotiation.awaitingUserId ? "them" : "nobody",
-    // Earlier turns but none yet in this round: new context handed it back.
-    ...(yours && negotiation.turnCount > 0 && remainingTurns === maxTurns ? { resumed: true } : {}),
+    ...(!negotiation.outcome && !negotiation.awaitingUserId ? { paused: true } : {}),
     turnCount: negotiation.turnCount,
     turns: negotiation.turns.map((turn) => ({
       turnIndex: turn.turnIndex,
@@ -394,8 +393,8 @@ function counterpartsOf(details: Negotiation[]): Map<string, MatchReference> {
  * @param runtime - Model, clock, cancellation, and where to open negotiations.
  * @returns The wake's actions.
  */
-export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning" }): Promise<WakeResult> {
-  const { model, decide, now, signal, log = () => {}, onNegotiate, reason, steer } = runtime;
+export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning"; edited?: boolean }): Promise<WakeResult> {
+  const { model, decide, now, signal, log = () => {}, onNegotiate, reason, steer, edited } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -464,6 +463,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
     onReply: (text) => publishActions(client, intent.id, [{ type: "reply", text }], context),
     ...(steer ? { steer } : {}),
     ...(reason ? { reason } : {}),
+    ...(edited ? { edited } : {}),
   });
 
   if (!result.actions.length) log("  silent");

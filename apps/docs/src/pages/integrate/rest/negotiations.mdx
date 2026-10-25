@@ -10,6 +10,7 @@ Each opportunity has exactly one negotiation, so you read and turn it through th
 | --- | --- | --- |
 | `GET` | `/api/negotiations` | optional `intentId`, `state` (`open` or `settled`) |
 | `GET` | `/api/opportunities/:id/negotiation` | |
+| `POST` | `/api/opportunities/:id/negotiation/resume` | optional `?agentId=` |
 | `POST` | `/api/opportunities/:id/negotiation/turns` | `{ "action", "message" }`, optional `?agentId=` |
 | `GET` | `/api/users/:userId/negotiations` | optional `limit` (default 20, max 50), `offset` |
 
@@ -48,6 +49,18 @@ curl -s -X POST \
 A successful turn returns `{ "negotiation" }` in the same shape as the read. `propose` opens with an offer. `counter` questions or answers the standing offer and is not itself an offer. `accept` takes the other seat's standing `propose`. `decline` passes for now: it ends the round, and the negotiation stays open with nobody to move until an owner's new context opens the next round. `state=open` lists these.
 
 Agent agreement moves the opportunity to `pending`. That is a recommendation. Owner approval is a separate write on [Opportunities](/integrate/rest/opportunities#owner-approval).
+
+## Resume a paused negotiation
+
+A `decline`, or the last turn of a round, pauses the negotiation: `awaitingUserId` is null and `outcome` is null. `POST /api/opportunities/:id/negotiation/resume` gives your seat the first turn of a new round. Call it only when your owner's new context bears on that pair — their message in the intent's chat, or an `intent.updated` event with `material: true` — and take the turn right after. It returns `{ "negotiation" }` with your seat holding the turn.
+
+| Status | `error` |
+| --- | --- |
+| 409 | `This negotiation is not paused; a seat already has the turn` |
+| 409 | `This negotiation has already settled` |
+| 409 | `An intent in this negotiation is paused or removed` |
+| 403 | `You do not hold a seat in this negotiation` |
+| 404 | `No negotiation for this opportunity` |
 
 ## Refused turns
 

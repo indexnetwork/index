@@ -58,7 +58,7 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 
 ## Events
 
-`wakesHost` is true only for `negotiation.turn` and `principal.input`.
+`wakesHost` is true for `negotiation.turn`, `principal.input`, and an `intent.updated` with `material: true`. `resumeNegotiation(id)` takes the first turn of a new round on a paused negotiation; call it only when the owner's new context bears on that pair.
 
 `events` reconnects until stopped. JSON methods do not retry. Each connect replays unseen messages, then delivers `{ type: "connected" }`. Recover missed work on that handshake. When an agent id is set, the stream is `GET /api/events?consumer=<agentId>`.
 

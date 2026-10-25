@@ -13,6 +13,12 @@ export async function handleNegotiation(client: ApiClient, subcommand: string | 
     output.negotiationTable(negotiations);
     if (negotiations.length > 0) output.dim("\n  Details: index negotiation show <id>  (the short ID works)");
     console.log();
+  } else if (subcommand === "resume") {
+    if (!options.targetId) throw new Error("An opportunity ID is required");
+    const negotiation = await client.resumeNegotiation(options.targetId);
+    if (options.json) { console.log(JSON.stringify(negotiation)); return; }
+    output.success("Resumed: your seat has the first turn of a new round");
+    output.negotiationCard(negotiation);
   } else if (subcommand === "show" || subcommand === "turn") {
     if (!options.targetId) throw new Error("An opportunity ID is required");
     if (subcommand === "show") {
@@ -31,6 +37,6 @@ export async function handleNegotiation(client: ApiClient, subcommand: string | 
       output.negotiationCard(negotiation);
     }
   } else {
-    throw new Error("Usage: index negotiation list [--intent-id <id>] [--state open|settled], show <opportunity-id>, or turn <opportunity-id> --action <action> --message <text>");
+    throw new Error("Usage: index negotiation list [--intent-id <id>] [--state open|settled], show <opportunity-id>, resume <opportunity-id>, or turn <opportunity-id> --action <action> --message <text>");
   }
 }

@@ -1115,7 +1115,8 @@ export class OpportunityDatabaseAdapter {
    * finished accepting within PENDING_TTL. Skips terminal statuses.
    *
    * A negotiation with nobody to move is in talks between rounds, waiting on
-   * an owner's new context rather than on an agent, so idling never expires it.
+   * a seat resuming it on its owner's new context rather than on an agent, so
+   * idling never expires it.
    * Its idle clock restarts when a resume hands a seat the turn.
    */
   async expireStaleOpportunities(): Promise<number> {

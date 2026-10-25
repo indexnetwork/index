@@ -177,6 +177,8 @@ export type UserEvent = FrameStamp & (
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
   | { type: "intent.created"; id: string; title: string; body: string; data: { intentId: string } }
+  /** `material` when what the intent asks for changed, as opposed to a refresh of its bookkeeping. */
+  | { type: "intent.updated"; id: string; title: string; body: string; data: { intentId: string; material?: boolean } }
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
@@ -187,9 +189,10 @@ const WAKE_TYPES = ["negotiation.turn", "principal.input"] as const;
 
 /**
  * @param event - A parsed user-event frame.
- * @returns Whether an agent host should wake for this frame.
+ * @returns Whether an agent host should wake for this frame. A material edit to an intent does, since it may bear on a paused negotiation.
  */
 export function wakesHost(event: UserEvent): boolean {
+  if (event.type === "intent.updated") return event.data.material === true;
   return (WAKE_TYPES as readonly string[]).includes(event.type);
 }
 
@@ -203,6 +206,7 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
     case "negotiation.settled":
     case "negotiation.changed":
     case "intent.created":
+    case "intent.updated":
     case "intent.lifecycle":
     case "question.pending":
     case "principal.input":
@@ -258,6 +262,15 @@ export interface Index {
     id: string,
     turn: { action: NegotiationAction; message: string },
   ): Promise<NegotiationDetail>;
+  /**
+   * Take the first turn of a new round on a negotiation paused with nobody to
+   * move. Call it only when the owner's new context bears on this pair.
+   *
+   * @param id - Opportunity id.
+   * @returns The negotiation with this seat holding the turn.
+   * @throws When Index refuses, for example because a seat already has the turn.
+   */
+  resumeNegotiation(id: string): Promise<NegotiationDetail>;
   /**
    * Accept one opportunity for this owner. Same write as the MCP `accept_opportunity` tool.
    *
@@ -485,6 +498,20 @@ export class IndexClient implements Index {
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
+    );
+    return negotiation;
+  }
+
+  /**
+   * Take the first turn of a new round on a negotiation paused with nobody to
+   * move. Call it only when the owner's new context bears on this pair.
+   *
+   * @param id - Opportunity id.
+   * @returns The negotiation with this seat holding the turn.
+   */
+  async resumeNegotiation(id: string): Promise<NegotiationDetail> {
+    const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
+      "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/resume`),
     );
     return negotiation;
   }

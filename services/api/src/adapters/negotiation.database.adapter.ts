@@ -136,8 +136,8 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   roundEnded: 'declined' | 'turn_limit' | null;
 };
 
-/** What gave an owner's seat the turn back: a message in the intent's chat, or an edit to the intent. */
-export type ResumeCause = 'input' | 'intent';
+export type NegotiationResumeRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive' | 'not_paused';
+export type NegotiationResumeDecision = { ok: false; rejection: NegotiationResumeRejection } | { ok: true; awaitingUserId: string };
 
 export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
 export type SubmitTurnRejection = NegotiationRejection;
@@ -487,32 +487,7 @@ export class NegotiationDatabaseAdapter {
   ): Promise<NegotiationDecision> {
     try {
       return await db.transaction(async (tx) => {
-        if (execution) {
-          if (execution.userId !== callerUserId) throw new Error('Execution belongs to another principal.');
-          if ('agentId' in execution) {
-            // Share the selection transaction's owner lock: handover and an
-            // external turn cannot both commit using the old executor binding.
-            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
-            const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
-              eq(schema.agents.id, execution.agentId), eq(schema.agents.ownerId, callerUserId),
-              eq(schema.agents.type, 'external'), eq(schema.agents.status, 'active'),
-              eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
-            ));
-            if (!selected) throw new RuntimeConflictError();
-          } else {
-            await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
-          }
-        } else {
-          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
-          const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
-            eq(schema.agents.ownerId, callerUserId), eq(schema.agents.type, 'external'),
-            eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
-          ));
-          if (selected) throw new RuntimeConflictError();
-        }
-        const [negotiation] = await tx.select().from(negotiations)
-          .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
-        if (execution && 'intentId' in execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
+        const negotiation = await this.lockForSeat(tx, opportunityId, callerUserId, execution);
         const state = negotiation ? await this.state(tx, negotiation, true) : null;
         const decision = decide(state);
         if (!decision.ok || !negotiation) return decision;
@@ -538,74 +513,73 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Give one owner's seat the turn on every negotiation of theirs that is in
-   * talks with nobody to move, because a decline or a full round ended its
-   * last round. Their new context is what the next round is for.
+   * Hand the caller's seat the first turn of a new round on a negotiation
+   * paused between rounds, in a single transaction.
    *
-   * Only records still in talks move: nothing settled or closed, nothing
-   * whose opportunity left `negotiating`, and nothing whose pair has a paused
-   * or removed intent, which could not take the turn anyway.
+   * The seat's executor decides to resume, because its owner added context
+   * that bears on this pair; nothing here judges that. The same executor fence
+   * as a turn applies, so a seat cannot be resumed by a negotiator it no
+   * longer selects.
    *
-   * Both seats refresh, and the owner's seat gets a `negotiation.turn` frame
-   * marked `resumed` with its cause. An external negotiator acts on it like
-   * any turn. The hosted agent does not run a negotiator straight from it: the
-   * new context goes through a wake first, so the turn is decided on what the
-   * owner just said rather than on the decision that ended the last round.
-   *
-   * NEVER THROWS. The owner's message or edit is already saved, and a resume
-   * that fails must not undo it.
-   *
-   * @param intentId - The owner's intent that gained context.
-   * @param userId - Its owner, who takes the turn.
-   * @param cause - What gave the intent new context.
-   * @returns How many negotiations resumed.
+   * @param opportunityId - The negotiation's opportunity.
+   * @param callerUserId - The seat resuming.
+   * @param decide - Protocol policy over the locked state.
+   * @param execution - Hosted lease or external executor binding; unnamed is the hosted seat.
+   * @returns The seat now holding the turn, or why it may not resume.
+   * @throws RuntimeConflictError when the named agent is no longer selected, or an unnamed caller resumes while an external negotiator is selected.
    */
-  async resumeForIntent(intentId: string, userId: string, cause: ResumeCause): Promise<number> {
-    try {
-      const live = db.select({ id: intents.id }).from(intents).where(liveIntentWhere());
-      const rows = await db.update(negotiations)
-        .set({ awaitingUserId: userId, updatedAt: new Date() })
-        .where(and(
-          or(
-            and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
-            and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
-          ),
-          isNull(negotiations.awaitingUserId),
-          isNull(negotiations.settledAt),
-          isNull(negotiations.outcome),
-          inArray(negotiations.initiatorIntentId, live),
-          inArray(negotiations.responderIntentId, live),
-          inArray(negotiations.opportunityId, db.select({ id: opportunities.id }).from(opportunities)
-            .where(eq(opportunities.status, 'negotiating'))),
-        ))
-        .returning();
-      if (rows.length === 0) return 0;
-      const turnCounts = await db.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
-        .from(negotiationTurns)
-        .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
-        .groupBy(negotiationTurns.negotiationId);
-      const turnCountById = new Map(turnCounts.map((row) => [row.negotiationId, row.count]));
-      for (const row of rows) {
-        const turnCount = turnCountById.get(row.id) ?? 0;
-        await publishNegotiationChange([
-          { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
-          { userId: row.responderUserId, intentId: row.responderIntentId },
-        ], row.opportunityId);
-        await publishUserEvent(userId, {
-          type: 'negotiation.turn',
-          id: `${row.opportunityId}:${turnCount}:resumed`,
-          title: 'Your turn',
-          body: 'New context resumed a negotiation that was in talks.',
-          data: { opportunityId: row.opportunityId, intentId, resumed: cause, turnIndex: turnCount },
-        }).catch((error: unknown) => {
-          logger.error('Failed to publish resumed negotiation turn', { opportunityId: row.opportunityId, error: String(error) });
-        });
+  async commitNegotiationResume(
+    opportunityId: string,
+    callerUserId: string,
+    decide: (state: NegotiationState | null) => NegotiationResumeDecision,
+    execution?: NegotiationExecution,
+  ): Promise<NegotiationResumeDecision> {
+    return db.transaction(async (tx) => {
+      const negotiation = await this.lockForSeat(tx, opportunityId, callerUserId, execution);
+      const decision = decide(negotiation ? await this.state(tx, negotiation, true) : null);
+      if (!decision.ok || !negotiation) return decision;
+      await tx.update(negotiations).set({ awaitingUserId: decision.awaitingUserId, updatedAt: new Date() })
+        .where(eq(negotiations.id, negotiation.id));
+      return decision;
+    });
+  }
+
+  /**
+   * Fence the caller's executor and lock its negotiation for a write.
+   *
+   * @param execution - Hosted lease or external executor binding to fence before applying a decision.
+   *   An unnamed caller is the hosted seat and is refused while an external negotiator holds it.
+   * @returns The negotiation row locked for update, or undefined when there is none.
+   * @throws RuntimeConflictError when the named agent is no longer selected, or an unnamed caller writes while an external negotiator is selected.
+   */
+  private async lockForSeat(tx: Transaction, opportunityId: string, callerUserId: string, execution?: NegotiationExecution): Promise<NegotiationRow | undefined> {
+    if (execution) {
+      if (execution.userId !== callerUserId) throw new Error('Execution belongs to another principal.');
+      if ('agentId' in execution) {
+        // Share the selection transaction's owner lock: handover and an
+        // external write cannot both commit using the old executor binding.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
+        const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+          eq(schema.agents.id, execution.agentId), eq(schema.agents.ownerId, callerUserId),
+          eq(schema.agents.type, 'external'), eq(schema.agents.status, 'active'),
+          eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
+        ));
+        if (!selected) throw new RuntimeConflictError();
+      } else {
+        await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
       }
-      return rows.length;
-    } catch (error: unknown) {
-      logger.error('Failed to resume negotiations', { intentId, userId, cause, error: String(error) });
-      return 0;
+    } else {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
+      const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+        eq(schema.agents.ownerId, callerUserId), eq(schema.agents.type, 'external'),
+        eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
+      ));
+      if (selected) throw new RuntimeConflictError();
     }
+    const [negotiation] = await tx.select().from(negotiations)
+      .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
+    if (execution && 'intentId' in execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
+    return negotiation;
   }
 
   /** @param opportunityId - Match identity. @param userId - Reading seat. @returns Current facts for protocol observation. */

@@ -1,9 +1,10 @@
-import type { NegotiationDecision, NegotiationState, NegotiationTurn } from '../../protocol/negotiation.rules.js';
+import type { NegotiationDecision, NegotiationResumeDecision, NegotiationState, NegotiationTurn } from '../../protocol/negotiation.rules.js';
 
 /** A host must evaluate the supplied policy against locked, current data and apply its transition atomically. */
 export interface NegotiationDatabase {
   readNegotiationState(id: string, userId: string): Promise<NegotiationState | null>;
   commitNegotiationTurn(id: string, userId: string, turn: NegotiationTurn, decide: (state: NegotiationState | null) => NegotiationDecision): Promise<NegotiationDecision>;
+  commitNegotiationResume(id: string, userId: string, decide: (state: NegotiationState | null) => NegotiationResumeDecision): Promise<NegotiationResumeDecision>;
 }
 
 /**
@@ -29,7 +30,7 @@ export type NegotiationContextOutcome = 'agreed' | 'declined' | 'closed';
 export interface NegotiationContextRecord {
   outcome: NegotiationContextOutcome | null;
   turns: NegotiationContextTurn[];
-  /** In talks with nobody to move: a decline or a full round paused it until an owner adds context. */
+  /** In talks with nobody to move: a decline or a full round paused it until a seat resumes it. */
   paused?: boolean;
 }
 

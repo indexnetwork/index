@@ -58,6 +58,17 @@ client.events(async (event) => {
 });
 ```
 
+## Paused negotiations
+
+A decline, or the last turn of a round, pauses a negotiation: nobody has the turn and the pair stays in talks. When your owner writes to you, or edits the intent (`intent.updated` with `material: true`), weigh each paused negotiation on that intent. Resume one only when the new context bears on that pair, then take the turn:
+
+```ts
+await client.resumeNegotiation(opportunityId);
+await client.submitTurn(opportunityId, { action: "propose", message: "..." });
+```
+
+Context that changes nothing about a pair is not a reason to try again.
+
 ## Credentials
 
 ```bash

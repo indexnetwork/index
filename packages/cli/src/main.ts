@@ -59,6 +59,7 @@ function renderHelp(json?: boolean): void {
   opportunity list|show|accept|reject|start-chat
   negotiation list [--intent-id <id>] [--state open|settled]
   negotiation show <opportunity-id>
+  negotiation resume <opportunity-id> Take the first turn of a new round on a paused one
   negotiation turn <opportunity-id> --action propose|counter|accept|decline
       --message <text>
   conversation list|with|show|send|answer|stream

@@ -389,9 +389,10 @@ export async function publishUserInvalidation(
   userId: string,
   type: 'intent.created' | 'intent.updated' | 'agent.configuration' | 'agent.status',
   intentId?: string,
+  extra: Record<string, unknown> = {},
 ): Promise<void> {
   try {
-    await publishUserEvent(userId, { type, id: crypto.randomUUID(), title: '', body: '', data: { intentId } });
+    await publishUserEvent(userId, { type, id: crypto.randomUUID(), title: '', body: '', data: { intentId, ...extra } });
   } catch (error: unknown) {
     log.lib.from('user-events').error('Failed to publish user invalidation', { userId, intentId, type, error: String(error) });
   }

@@ -4,6 +4,8 @@
 
 ### Added
 - `NegotiationDetail.protocol.remainingTurns` counts the turns left in the round in progress. `maxTurns` now limits a round, not the whole negotiation.
+- `resumeNegotiation(id)` takes the first turn of a new round on a negotiation paused with nobody to move.
+- `UserEvent` parses `intent.updated`, whose `data.material` says what the intent asks for changed. `wakesHost` is true for a material one.
 - `createOpportunity({ networkId, intents, context })` opens an opportunity
   between two intents the caller owns neither of.
 - `Negotiation.introducer` (`userId`, `name`, `context`) names the third party

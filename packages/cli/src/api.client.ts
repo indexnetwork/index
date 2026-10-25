@@ -573,6 +573,12 @@ export class ApiClient {
     return body.negotiation;
   }
 
+  /** Take the first turn of a new round on a negotiation paused with nobody to move. */
+  async resumeNegotiation(opportunityId: string): Promise<NegotiationDetail> {
+    const body = await (await this.post(`/api/opportunities/${encodeURIComponent(opportunityId)}/negotiation/resume`, {})).json() as { negotiation: NegotiationDetail };
+    return body.negotiation;
+  }
+
   /** Submit one turn; rejected or uncertain writes are never replayed. */
   async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string }): Promise<NegotiationDetail> {
     const body = await (await this.post(`/api/opportunities/${encodeURIComponent(opportunityId)}/negotiation/turns`, turn)).json() as { negotiation: NegotiationDetail };

@@ -65,6 +65,7 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index intent remove-from-network <id> <network-id>` | Stop sharing an intent in a network. |
 | `index negotiation list` | List negotiations, optionally filtered by intent or open/settled state. |
 | `index negotiation show <opportunity-id>` | Read the negotiation's turns, current state, and available actions. |
+| `index negotiation resume <opportunity-id>` | Take the first turn of a new round on a negotiation paused with nobody to move. Only when the owner's new context bears on that pair. |
 | `index negotiation turn <opportunity-id> --action <action> --message <text>` | Submit one `propose`, `counter`, `accept`, or `decline` turn. |
 | `index opportunity list` | List persisted opportunities, with optional status and result-limit filters. |
 | `index opportunity show <id>` | Show an opportunity's presentation and participants. |

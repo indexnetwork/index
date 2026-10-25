@@ -48,6 +48,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const again = new Set<string>();
   /** What the principal wrote while a wake ran, by intent, until a step of it reads it. */
   const inbox = new Map<string, string[]>();
+  /** Intents the principal edited since their last wake read them. */
+  const edited = new Set<string>();
   /** Opportunities with a negotiator in flight, by intent. */
   const working = new Map<string, string>();
   /** Failed wakes retried so far, by intent. */
@@ -67,16 +69,19 @@ export function startRunner(options: RunnerOptions): Runner {
    *
    * @param intentId - The intent to think about.
    * @param text - A direct message that caused this wake. While a wake runs it is handed to that wake instead of waiting for another.
+   * @param options - `edited` when the principal changed what the intent asks for; a wake already running gets a follow-up that knows it.
    */
-  function startWake(intentId: string, text?: string): void {
+  function startWake(intentId: string, text?: string, options: { edited?: boolean } = {}): void {
     const intent = intents.get(intentId);
     if (stopped || !intent) return;
+    if (options.edited) edited.add(intentId);
     if (waking.has(intentId)) {
       if (text) inbox.set(intentId, [...inbox.get(intentId) ?? [], text]);
       else again.add(intentId);
       return;
     }
     waking.add(intentId);
+    const wasEdited = edited.delete(intentId);
     void (async () => {
       // This wake reads every stall standing on the intent, so none of them is
       // a reason to wake again.
@@ -88,11 +93,14 @@ export function startRunner(options: RunnerOptions): Runner {
       await runWake(client, intent, {
         ...runtime(),
         steer: () => inbox.get(intentId)?.splice(0) ?? [],
+        ...(wasEdited ? { edited: true } : {}),
         onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId),
       });
       retries.delete(intentId);
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
     })().catch((error: unknown) => {
+      // The retry still owes the edit its read.
+      if (wasEdited) edited.add(intentId);
       retry(intentId);
       onError(error);
     }).finally(() => {
@@ -304,6 +312,13 @@ export function startRunner(options: RunnerOptions): Runner {
       case "intent.created":
         log(`event ${event.type}: ${event.data.intentId}`);
         void refresh().catch(onError);
+        break;
+      case "intent.updated":
+        // An edit to what the intent asks for is context the wake weighs
+        // against each paused negotiation; any other refresh is not.
+        if (!event.data.material) break;
+        log(`event ${event.type}: ${event.data.intentId} edited`);
+        void refresh().then(() => startWake(event.data.intentId, undefined, { edited: true })).catch(onError);
         break;
       case "intent.lifecycle":
         log(`event ${event.type}: ${event.data.intentId} is ${event.data.status}`);

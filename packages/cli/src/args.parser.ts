@@ -64,7 +64,7 @@ const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "start-chat"]);
 
-const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "turn"]);
+const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "resume", "turn"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete", "discover", "requests", "request-update", "request-dismiss"]);
 

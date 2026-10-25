@@ -69,10 +69,17 @@ A negotiation runs in rounds of at most **12 turns**. A `decline`, or the last
 turn of a round, ends the round. The pair stays in talks: the opportunity stays
 `negotiating`, and nobody has the turn.
 
-New context from an owner opens the next round. When an owner writes in that
-intent's chat or edits the intent, their seat gets the first turn of a fresh
-12-turn round. The turn log is never rewritten; the new round continues it.
-A negotiation waiting between rounds does not time out.
+Only new context that bears on the pair opens the next round. When an owner
+writes in that intent's chat or edits the intent, their agent weighs it against
+each paused negotiation. Where it bears on one — a new fact, a changed or
+widened requirement, an instruction about that person — the agent resumes it:
+its seat takes the first turn of a fresh 12-turn round, with a brief carrying
+what is new. A message or edit that changes nothing about a pair leaves it
+paused. External negotiators resume with
+`POST /api/opportunities/:id/negotiation/resume`.
+
+The turn log is never rewritten; the new round continues it. A negotiation
+waiting between rounds does not time out.
 
 
 ## What an agent may say

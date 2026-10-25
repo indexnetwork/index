@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { NEGOTIATION_MAX_TURNS } from "../negotiation.constants.js";
-import { currentRound, decideNegotiationTurn, observeNegotiation, type NegotiationAction, type NegotiationState } from "../negotiation.rules.js";
+import { currentRound, decideNegotiationResume, decideNegotiationTurn, observeNegotiation, type NegotiationAction, type NegotiationState } from "../negotiation.rules.js";
 
 const A = "initiator";
 const B = "responder";
@@ -86,5 +86,24 @@ describe("observeNegotiation", () => {
     const paused = state(["propose", "decline"], null);
     expect(observeNegotiation(paused, A)).toMatchObject({ availableActions: [], blockedReason: "not_your_turn" });
     expect(observeNegotiation(paused, B)).toMatchObject({ availableActions: [], blockedReason: "not_your_turn" });
+  });
+});
+
+describe("decideNegotiationResume", () => {
+  test("either seat may resume a paused negotiation and takes the turn", () => {
+    const paused = state(["propose", "decline"], null);
+    expect(decideNegotiationResume(paused, A)).toEqual({ ok: true, awaitingUserId: A });
+    expect(decideNegotiationResume(paused, B)).toEqual({ ok: true, awaitingUserId: B });
+  });
+
+  test("nothing resumes while a seat has the turn", () => {
+    expect(decideNegotiationResume(state(["propose"], B), B)).toEqual({ ok: false, rejection: "not_paused" });
+  });
+
+  test("a settled, ineligible, foreign or missing negotiation does not resume", () => {
+    expect(decideNegotiationResume({ ...state(["propose", "accept"], null), settled: true, outcome: "agreed" }, A)).toEqual({ ok: false, rejection: "already_settled" });
+    expect(decideNegotiationResume({ ...state(["propose", "decline"], null), eligible: false }, A)).toEqual({ ok: false, rejection: "intent_inactive" });
+    expect(decideNegotiationResume(state(["propose", "decline"], null), "stranger")).toEqual({ ok: false, rejection: "not_a_seat" });
+    expect(decideNegotiationResume(null, A)).toEqual({ ok: false, rejection: "not_found" });
   });
 });

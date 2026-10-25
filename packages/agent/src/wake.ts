@@ -14,8 +14,11 @@ const SEARCH_QUERIES = 5;
 /** How many counterparties one call may open, matching what Index accepts. */
 const OPEN_LIMIT = 30;
 
-/** What a resumed opportunity is, and why it is decided on this wake. */
-const RESUMED_PROMPT = "An opportunity marked resumed ended its last round on a decline or a full round, and is your seat's turn again because your principal added context since. Decide it on this wake with set_brief, in a brief that carries what is new: continue or accept opens the next round, and decline passes again only when the new context still rules it out. Leaving it undecided leaves the pair waiting on you.";
+/** What a paused opportunity is, and the one reason to resume it. */
+const PAUSED_PROMPT = "An opportunity marked paused is still in talks, but nobody has the turn: its last round ended on a decline or a full round. Resume it with resume_negotiation only when your principal's unanswered message, or their edit to the intent, bears on that pair: a new fact, a changed or widened requirement, an instruction about this person. Its brief carries what is new, and its negotiator takes the first turn of a new round. A message or edit that changes nothing about the pair is not a reason to try again: leave it paused.";
+
+/** The line a wake after an edit to the intent adds. */
+const EDITED = "Your principal just edited this intent; the statement you see is the new one. Work out what the change bears on, including any paused opportunity it reopens, act only there, and stop.";
 
 const WAKE_PROMPT = [
   "You think for your principal about one intent, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
@@ -24,7 +27,7 @@ const WAKE_PROMPT = [
   "An intent with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
-  RESUMED_PROMPT,
+  PAUSED_PROMPT,
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the intent, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
@@ -169,8 +172,6 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   /** Opportunities whose stall a question on this wake asks about. */
   const asking = new Set<string>();
-  /** Opportunities decided on this wake. */
-  const decidedNow = new Set<string>();
   let noted = false;
   /** The host's first failure to persist a decision, raised once the loop is done. */
   let unpersisted: unknown;
@@ -235,19 +236,54 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!opportunity) {
           throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
         }
+        if (opportunity.paused) {
+          throw new Error("This negotiation is paused, so a decision alone moves nothing. Use resume_negotiation if your principal's new context bears on this pair; otherwise leave it.");
+        }
         const decided = recordBrief(opportunity, decision, brief);
         actions.push(...decided);
         // The standing brief moves with the decision, so a second call in this
         // same wake is judged against what was just written.
         if (brief) opportunity.brief = brief;
         opportunity.decision = decision;
-        decidedNow.add(opportunityId);
         const held = opportunity.stall && !opportunity.stall.answered && (decision === "continue" || decision === "accept");
         if (!held) delete opportunity.stall;
         await persist(decided);
         return held
           ? "Brief recorded. Its negotiator stays held: the stall still needs its question asked, answered, or resolve_stall."
           : "Brief recorded, and its negotiator is starting.";
+      },
+    }),
+    tool({
+      name: "resume_negotiation",
+      description:
+        "Reopen one paused negotiation because your principal's new message or edit bears on this pair, and brief its negotiator with what is new. Your seat takes the first turn of a new round, and its negotiator starts as soon as you call this. Never for a message or edit that changes nothing about the pair.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          opportunityId: { type: "string" },
+          decision: { type: "string", enum: ["continue", "accept"] },
+          brief: { type: "string", minLength: 1, maxLength: BRIEF_LIMIT },
+        },
+        required: ["opportunityId", "decision", "brief"],
+      },
+      run: async ({ opportunityId, decision, brief }: { opportunityId: string; decision: "continue" | "accept"; brief: string }) => {
+        const opportunity = byId.get(opportunityId);
+        if (!opportunity) {
+          throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
+        }
+        if (!opportunity.paused) throw new Error("This negotiation is not paused. Use set_brief to change how its negotiator proceeds.");
+        const decided = recordBrief(opportunity, decision, brief);
+        // The seat takes the turn before the decision is published, so the
+        // negotiator that decision starts finds its turn waiting.
+        await client.resumeNegotiation(opportunityId);
+        actions.push(...decided);
+        opportunity.brief = brief;
+        opportunity.decision = decision;
+        opportunity.paused = false;
+        opportunity.awaiting = "you";
+        await persist(decided);
+        return "Resumed: your seat has the first turn of a new round, and its negotiator is starting.";
       },
     }),
     tool({
@@ -497,7 +533,8 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     prompt:
       (input.reason === "morning"
         ? MORNING
-        : "Something happened on this intent. Work out what it changes, act only there, and stop.") + "\n" +
+        : input.edited ? EDITED
+          : "Something happened on this intent. Work out what it changes, act only there, and stop.") + "\n" +
       JSON.stringify({
         principal: principalFacts(user),
         opportunities: view(opportunities),
@@ -538,29 +575,6 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
       tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name)),
-    });
-  }
-
-  // A resumed opportunity moves only on a fresh decision, so one the passes
-  // above left alone gets its own.
-  const resumed = opportunities.filter(({ id, resumed }) => resumed && !decidedNow.has(id));
-  if (!unpersisted && resumed.length) {
-    await run({
-      model: input.model,
-      operation: "wake.resumed",
-      identity,
-      intent,
-      maxSteps: 4,
-      steer,
-      ...(input.now ? { now: input.now } : {}),
-      ...(input.signal ? { signal: input.signal } : {}),
-      instructions: [RESUMED_PROMPT, "Decide each of these negotiations with set_brief.", BRIEF_PROMPT].join("\n\n"),
-      prompt: JSON.stringify({
-        principal: principalFacts(user),
-        conversation,
-        opportunities: resumed,
-      }),
-      tools: tools.filter((entry) => entry.name === "set_brief"),
     });
   }
 

@@ -18,7 +18,7 @@ export interface NegotiationContext {
   turnCount: number;
   turns: NegotiationContextTurn[];
   outcome?: NegotiationContextOutcome;
-  /** In talks with nobody to move, until an owner adds context. */
+  /** In talks with nobody to move, until a seat resumes it on relevant new context. */
   paused?: boolean;
 }
 

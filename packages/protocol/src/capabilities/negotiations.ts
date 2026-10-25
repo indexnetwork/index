@@ -1,4 +1,4 @@
-import { decideNegotiationTurn, observeNegotiation, type NegotiationTurn } from '../protocol/negotiation.rules.js';
+import { decideNegotiationResume, decideNegotiationTurn, observeNegotiation, type NegotiationTurn } from '../protocol/negotiation.rules.js';
 import type { NegotiationDatabase } from '../platform/database/negotiation.js';
 
 /** Autonomous participation: observe current rules, then commit a decision under those rules. */
@@ -14,5 +14,10 @@ export class Negotiations {
   /** @param id - Opportunity identity. @param userId - Acting principal. @param turn - Proposed action. @returns The authoritative transition or refusal. */
   execute(id: string, userId: string, turn: NegotiationTurn) {
     return this.database.commitNegotiationTurn(id, userId, turn, (state) => decideNegotiationTurn(state, userId, turn));
+  }
+
+  /** @param id - Opportunity identity. @param userId - Seat whose owner added context that bears on the pair. @returns The seat now holding the turn, or why it may not resume. */
+  resume(id: string, userId: string) {
+    return this.database.commitNegotiationResume(id, userId, (state) => decideNegotiationResume(state, userId));
   }
 }

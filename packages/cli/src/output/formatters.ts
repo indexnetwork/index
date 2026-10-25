@@ -478,7 +478,7 @@ export function negotiationCard(negotiation: NegotiationDetail): void {
 
   let turnLabel = negotiation.outcome
     ? `${GRAY}\u2014 settled${RESET}`
-    : `${GRAY}nobody: paused until either owner adds context${RESET}`;
+    : `${GRAY}nobody: paused until either owner's new context bears on it${RESET}`;
   if (whoseTurn(negotiation) === "you") turnLabel = `${YELLOW}${BOLD}you${RESET}`;
   if (whoseTurn(negotiation) === "them") turnLabel = name;
 

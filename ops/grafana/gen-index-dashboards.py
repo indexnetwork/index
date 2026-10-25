@@ -100,7 +100,7 @@ negotiation = dash("index-negotiation", "Index - Negotiation health", [
     described(stat(9, "Agent passes (decline turns)", "select count(*) as value from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at)", 0, 17, w=6),
               "A decline pauses the pair rather than ending it, so it is counted as a turn, not as an outcome."),
     described(stat(10, "Pass rate (decline turns / negotiations started)", "select (select count(*) from analytics.negotiation_turns where action = 'decline' and $__timeFilter(created_at))::float / nullif((select count(*) from analytics.negotiations where $__timeFilter(created_at)), 0) as value", 6, 17, "percentunit", 6),
-              "Can pass 100%: a pair resumed by new context can be passed on again."),
+              "Can pass 100%: a pair resumed on new context can be passed on again."),
 ])
 
 retention = dash("index-retention", "Index - Retention", [

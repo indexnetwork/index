@@ -15,20 +15,18 @@ function detail(awaitingUserId: string | null, turnCount: number, remainingTurns
 }
 
 describe("toOpportunity", () => {
-  test("nobody moves between rounds", () => {
-    const opportunity = toOpportunity(detail(null, 2, 12), "u");
-    expect(opportunity.awaiting).toBe("nobody");
-    expect(opportunity.resumed).toBeUndefined();
+  test("nobody moves between rounds, so the pair reads as paused", () => {
+    expect(toOpportunity(detail(null, 2, 12), "u")).toMatchObject({ awaiting: "nobody", paused: true });
   });
 
-  test("a seat handed a fresh round after earlier turns is resumed", () => {
+  test("a seat holding the turn is not paused, and counts turns left in its round", () => {
     const opportunity = toOpportunity(detail("u", 2, 12), "u");
-    expect(opportunity).toMatchObject({ awaiting: "you", resumed: true, remainingTurns: 12 });
+    expect(opportunity).toMatchObject({ awaiting: "you", remainingTurns: 12 });
+    expect(opportunity.paused).toBeUndefined();
+    expect(toOpportunity(detail("c", 3, 9), "u")).toMatchObject({ awaiting: "them", remainingTurns: 9 });
   });
 
-  test("an opening turn and a round in progress are not resumed", () => {
-    expect(toOpportunity(detail("u", 0, 12), "u").resumed).toBeUndefined();
-    expect(toOpportunity(detail("u", 3, 9), "u")).toMatchObject({ awaiting: "you", remainingTurns: 9 });
-    expect(toOpportunity(detail("c", 3, 9), "u").awaiting).toBe("them");
+  test("a settled negotiation is not paused", () => {
+    expect(toOpportunity({ ...detail(null, 3, 9), outcome: "agreed" }, "u").paused).toBeUndefined();
   });
 });

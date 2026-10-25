@@ -52,8 +52,8 @@ reasoning.
 
 The agents settle first. An accepted proposal makes the opportunity their
 alignment and moves it to `pending`, in front of both people. A decline only
-pauses the negotiation, and the opportunity stays `negotiating` until an owner's
-new context opens the next round.
+pauses the negotiation, and the opportunity stays `negotiating` until a seat
+resumes it because its owner's new context bears on the pair.
 
 A person's accept is a separate act. It records their commitment and opens a
 direct conversation between the two people right away. The opportunity stays
@@ -84,7 +84,7 @@ that the opportunity belongs to it.
 
 Rejected, expired, and otherwise terminal opportunities do not advance again on
 their own. A negotiation paused in talks is not terminal: an owner's new context
-resumes it.
+that bears on the pair can resume it.
 
 ## Example
 

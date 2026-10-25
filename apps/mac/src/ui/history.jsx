@@ -24,7 +24,7 @@ function negoDetail(th) {
   return "closed";
 }
 // Whose move it is while in talks. Nobody moves between rounds: an agent passed
-// or the round ran out, and new context from either owner resumes it.
+// or the round ran out, and either owner's new context that bears on it resumes it.
 function negoMove(th, myId) {
   if (!th.awaitingUserId) return "paused";
   return th.awaitingUserId === myId ? "your move" : "their move";

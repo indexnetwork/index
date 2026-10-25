@@ -203,7 +203,8 @@ export class IntentDatabaseAdapter {
       });
       if (!result) return null;
       if (result.oldFingerprint !== result.newFingerprint) {
-        await publishUserInvalidation(result.updated.userId, 'intent.updated', intentId);
+        // Material: what the intent asks for changed, which an agent may weigh against paused negotiations.
+        await publishUserInvalidation(result.updated.userId, 'intent.updated', intentId, { material: true });
         await IntentEvents.onMaterialUpdated({
           intentId,
           userId: result.updated.userId,

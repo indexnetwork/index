@@ -657,14 +657,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       : view.stage === 'closed' ? 'closed'
         : view.yourTurn ? 'in talks, your agent\'s turn'
           : view.awaitingUserId ? 'in talks, their turn'
-            : 'in talks, paused until either owner adds context';
+            : 'in talks, paused until either owner\'s new context bears on it';
     return `${mdLink(view.counterparty.name || 'Someone', view.url)} — ${status} — ${view.turnCount} turns`;
   };
 
   server.registerTool(
     'list_negotiations',
     {
-      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the stage: in talks until the agents agree (opportunity), or closed by a person or Index. A pair in talks with nobody\'s turn is paused until either owner adds context. Filter by state: open (in talks) or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the stage: in talks until the agents agree (opportunity), or closed by a person or Index. A pair in talks with nobody\'s turn is paused until either owner\'s new context bears on it. Filter by state: open (in talks) or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         state: z.enum(['open', 'settled']).optional(),

@@ -2736,7 +2736,7 @@
   }
   const NEGO_GLYPH = { opportunity: "✓", closed: "✕", in_talks: "●" };
   // Whose move it is while in talks. Nobody moves between rounds: an agent
-  // passed or the round ran out, and new context from either owner resumes it.
+  // passed or the round ran out, and either owner's new context that bears on it resumes it.
   function negoMove(thread, userId) {
     if (!thread.awaitingUserId) return "paused";
     return thread.awaitingUserId === userId ? "your move" : "their move";

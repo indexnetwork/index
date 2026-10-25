@@ -490,8 +490,8 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   return {
     ...(paused ? {
       headline: "In talks, paused",
-      personalizedSummary: "The agents paused this one without agreeing. It stays open: anything new you tell your agent about this intent picks it back up.",
-      suggestedAction: "Tell your agent more to pick it back up",
+      personalizedSummary: "The agents paused this one without agreeing. It stays open: tell your agent something that bears on this match, and it can pick it back up.",
+      suggestedAction: "Tell your agent what changed to pick it back up",
       narratorRemark: `In talks · paused after ${turnCount} turns`,
     } : {
       headline: "Agents are talking",

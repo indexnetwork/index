@@ -30,7 +30,7 @@ const OUTCOME_PRESENTATION = {
 
 const YOUR_MOVE = { label: 'In talks · your agent’s turn', chipClass: 'border-[#041729] bg-[#041729] text-white' };
 const THEIR_MOVE = { label: 'In talks · their agent’s turn', chipClass: 'border-amber-200 bg-amber-50 text-amber-700' };
-const PAUSED = { label: 'In talks · paused until new context', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' };
+const PAUSED = { label: 'In talks · paused', chipClass: 'border-gray-200 bg-gray-100 text-gray-600' };
 
 function formatTimeAgo(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
@@ -49,7 +49,7 @@ function formatTimeAgo(timestamp: number, now: number): string {
  *
  * The record carries the whole state: `awaitingUserId` is the seat that owes a
  * turn, and `outcome` is set exactly once, when it settles. Nobody owes a turn
- * between rounds, so those stay in progress, paused until new context.
+ * between rounds, so those stay in progress, paused until a seat resumes them.
  *
  * @param negotiations - The viewer's negotiations, as `/negotiations` returns them.
  * @param viewerUserId - The authenticated seat owner.

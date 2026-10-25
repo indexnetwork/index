@@ -238,7 +238,7 @@ Opportunity states are participant-facing as follows:
 
 | State | Participant-facing term | Meaning |
 |---|---|---|
-| **negotiating** | In talks | The agents are negotiating whether the fit holds. An agent's decline, or a full round of turns, pauses the talks until an owner adds context; it never ends them. |
+| **negotiating** | In talks | The agents are negotiating whether the fit holds. An agent's decline, or a full round of turns, pauses the talks; it never ends them. A seat resumes it when its owner's new context bears on the pair. |
 | **pending** | Waiting on you | The agents agreed and the participants decide. A participant who already accepted sees Chat open: the first accept opens the conversation, and the status stays pending until every participant has accepted. |
 | **accepted** | Connected | Every participant accepted. |
 | **rejected** | Passed | A participant rejected the opportunity. Records from before declines paused the talks can also be an agent's decline. |
@@ -251,7 +251,7 @@ A conforming agent MUST NOT present a received opportunity as **Connected** with
 ```mermaid
 stateDiagram-v2
     [*] --> negotiating: agent opens it
-    negotiating --> negotiating: agent declines or a round fills (paused until an owner adds context)
+    negotiating --> negotiating: agent declines or a round fills (paused until a seat resumes it on relevant new context)
     negotiating --> pending: agents agree
     negotiating --> rejected: participant rejects
     negotiating --> expired: intent archived or turn untaken for 96h

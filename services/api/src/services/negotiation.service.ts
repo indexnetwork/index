@@ -2,17 +2,21 @@ import { Negotiations, observeNegotiation, type NegotiationTurn } from '@indexne
 
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationResumeRejection, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 
 export { negotiationTurnSchema } from '@indexnetwork/protocol';
-export type { NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
+export type { NegotiationResumeRejection, NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
 export type NegotiationDetail = StoredNegotiationDetail & { protocol: NonNullable<Awaited<ReturnType<Negotiations['observe']>>> };
 
 export interface SubmitTurnFailure {
   rejection: SubmitTurnRejection;
+}
+
+export interface ResumeFailure {
+  rejection: NegotiationResumeRejection;
 }
 
 /**
@@ -86,11 +90,7 @@ export class NegotiationService {
     turn: NegotiationTurn,
     execution?: NegotiationExecution,
   ): Promise<NegotiationDetail | SubmitTurnFailure> {
-    const capability = new Negotiations({
-      readNegotiationState: (id, userId) => this.negotiations.readNegotiationState(id, userId),
-      commitNegotiationTurn: (id, userId, input, decide) => this.negotiations.commitNegotiationTurn(id, userId, input, decide, execution),
-    });
-    const result = await capability.execute(opportunityId, callerUserId, turn);
+    const result = await this.capability(execution).execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
     if (result.opportunityStatus === 'pending') {
       emitOpportunityTransitionBestEffort({ id: opportunityId, status: result.opportunityStatus });
@@ -104,12 +104,44 @@ export class NegotiationService {
       id: `${opportunityId}:${result.turnIndex + 1}`,
       title: result.outcome ? 'A negotiation ended' : result.roundEnded ? 'A negotiation paused' : 'Your turn',
       body: result.outcome === 'agreed' ? 'Both agents agreed; owner approval is still required.'
-        : result.roundEnded === 'declined' ? 'One agent passed for now. It stays in talks: new context from either owner resumes it.'
-          : result.roundEnded ? 'The round ended without agreement. It stays in talks: new context from either owner resumes it.'
+        : result.roundEnded === 'declined' ? 'One agent passed for now. It stays in talks: new context from either owner that bears on this pair can resume it.'
+          : result.roundEnded ? 'The round ended without agreement. It stays in talks: new context from either owner that bears on this pair can resume it.'
             : 'A negotiation is waiting on your agent.',
       data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, roundEnded: result.roundEnded, turnIndex: result.turnIndex + 1 },
     })));
     return record;
+  }
+
+  /**
+   * Take the first turn of a new round on a negotiation paused between rounds.
+   *
+   * The seat's executor calls this because its owner added context that bears
+   * on this pair. The turn it then takes is what tells the other seat; until
+   * then both seats only refresh.
+   *
+   * @param opportunityId - The negotiation's opportunity.
+   * @param callerUserId - The seat resuming.
+   * @param execution - Hosted lease or external executor binding checked in the write transaction.
+   * @returns The negotiation as the caller now sees it, or the refusal reason.
+   */
+  async resume(opportunityId: string, callerUserId: string, execution?: NegotiationExecution): Promise<NegotiationDetail | ResumeFailure> {
+    const result = await this.capability(execution).resume(opportunityId, callerUserId);
+    if (!result.ok) return { rejection: result.rejection };
+    const record = (await this.read(opportunityId, callerUserId))!;
+    await publishNegotiationChange([
+      { userId: callerUserId, intentId: record.intentId },
+      { userId: record.counterparty.userId, intentId: record.counterparty.intentId },
+    ], opportunityId);
+    return record;
+  }
+
+  /** @param execution - Executor binding fenced inside each write. @returns The protocol capability over this host's records. */
+  private capability(execution?: NegotiationExecution): Negotiations {
+    return new Negotiations({
+      readNegotiationState: (id, userId) => this.negotiations.readNegotiationState(id, userId),
+      commitNegotiationTurn: (id, userId, input, decide) => this.negotiations.commitNegotiationTurn(id, userId, input, decide, execution),
+      commitNegotiationResume: (id, userId, decide) => this.negotiations.commitNegotiationResume(id, userId, decide, execution),
+    });
   }
 
   /**

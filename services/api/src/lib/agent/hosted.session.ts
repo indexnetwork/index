@@ -26,8 +26,12 @@ export interface HostedSessionIO {
   running(): boolean;
   holdsSeat(userId: string): Promise<boolean>;
   activeIntent(userId: string, intentId: string): Promise<Intent | null>;
-  /** `steer` hands over what the principal wrote since its last call, for the running wake to read. */
-  runWake(userId: string, intent: Intent, steer: () => string[]): Promise<void>;
+  /**
+   * `steer` hands over what the principal wrote since its last call, for the
+   * running wake to read. `edited` says the principal changed what the intent
+   * asks for since the last wake.
+   */
+  runWake(userId: string, intent: Intent, steer: () => string[], options?: { edited?: boolean }): Promise<void>;
   /** Tell the principal something in their conversation. */
   notify(userId: string, intentId: string, text: string): Promise<void>;
   closeInitiation(userId: string, intent: Intent): Promise<'pending' | 'idle' | 'done'>;
@@ -46,6 +50,8 @@ export class HostedSession {
   private readonly again = new Set<string>();
   /** What the principal wrote while a wake ran, by intent, until a step of it reads it. */
   private readonly inbox = new Map<string, string[]>();
+  /** Intents the principal edited since their last wake read them. */
+  private readonly edited = new Set<string>();
   /** Opportunities with a negotiator in flight, by the intent they stand on. */
   private readonly working = new Map<string, string>();
   /** Failed wakes retried so far, by intent. */
@@ -78,9 +84,11 @@ export class HostedSession {
    * @param userId - The intent's owner.
    * @param intentId - The intent to think about.
    * @param text - A direct message that caused this wake. While a wake runs it is handed to that wake instead of waiting for another.
+   * @param options - `edited` when the principal changed what the intent asks for; a wake already running gets a follow-up that knows it.
    */
-  async wake(userId: string, intentId: string, text?: string): Promise<void> {
+  async wake(userId: string, intentId: string, text?: string, options: { edited?: boolean } = {}): Promise<void> {
     if (!this.io.running()) return;
+    if (options.edited) this.edited.add(intentId);
     // Claimed before the first await: two frames for one intent must not both
     // become a wake.
     if (this.waking.has(intentId)) {
@@ -94,16 +102,19 @@ export class HostedSession {
     for (const [opportunityId, intent] of this.unread) if (intent === intentId) this.unread.delete(opportunityId);
 
     let failed = false;
+    const edited = this.edited.delete(intentId);
     try {
       if (!await this.io.holdsSeat(userId)) return;
       const intent = await this.io.activeIntent(userId, intentId);
       if (!intent) return;
       // Each opportunity opens the moment its own decision is published, so the
       // first turns go out while the wake is still thinking.
-      await this.io.runWake(userId, intent, () => this.inbox.get(intentId)?.splice(0) ?? []);
+      await this.io.runWake(userId, intent, () => this.inbox.get(intentId)?.splice(0) ?? [], edited ? { edited } : undefined);
       this.retries.delete(intentId);
     } catch (error: unknown) {
       failed = true;
+      // The retry still owes the edit its read.
+      if (edited) this.edited.add(intentId);
       this.retry(userId, intentId);
       throw error;
     } finally {

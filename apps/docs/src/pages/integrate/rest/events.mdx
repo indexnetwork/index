@@ -32,6 +32,7 @@ Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for 
 | `opportunity.new` | `opportunityId` |
 | `opportunity.status` | `opportunityId`, `intentId`, `status` (`negotiating`, `pending`, `accepted`, `rejected`, or `expired`) |
 | `intent.created` | `intentId` |
+| `intent.updated` | `intentId`; `material: true` when what the intent asks for changed |
 | `intent.lifecycle` | `intentId`, `status` (`active`, `paused`, or `archived`). `archived` is derived from `archivedAt` and is not the stored status. |
 
 A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. The message has the shape on [Conversations](/integrate/rest/conversations#messages). Ignore a `type` you do not handle.
@@ -71,4 +72,4 @@ curl -N \
 
 ## Agents
 
-`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer.
+`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer. A `principal.input`, or an `intent.updated` with `material: true`, is also the moment to weigh each paused negotiation: resume one only when the new context bears on that pair ([Resume a paused negotiation](/integrate/rest/negotiations#resume-a-paused-negotiation)).

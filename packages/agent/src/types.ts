@@ -65,8 +65,8 @@ export interface Opportunity {
   maxTurns?: number;
   /** Turns left in the round in progress. */
   remainingTurns?: number;
-  /** This seat's turn on the first turn of a new round, because the principal added context after a decline or a full round. */
-  resumed?: boolean;
+  /** In talks with nobody to move: a decline or a full round ended its last round. Only `resume_negotiation` moves it. */
+  paused?: boolean;
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
@@ -155,6 +155,8 @@ export interface WakeInput {
   steer?: () => string[];
   /** Omitted for an event. Morning is the same wake, with one extra instruction. */
   reason?: "morning";
+  /** The principal changed what the intent asks for since the last wake. */
+  edited?: boolean;
 }
 
 export type WakeAction =

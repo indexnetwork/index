@@ -37,7 +37,7 @@ const QUESTION_SWEEP_INTENTS = 20;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string; resumed?: 'input' | 'intent' };
+  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string; material?: boolean };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -58,7 +58,7 @@ export class HostedAgent {
       running: () => this.running,
       holdsSeat: (userId) => this.holdsSeat(userId),
       activeIntent: (userId, intentId) => this.activeIntent(userId, intentId),
-      runWake: (userId, intent, steer) => this.invokeWake(userId, intent, steer),
+      runWake: (userId, intent, steer, options) => this.invokeWake(userId, intent, steer, options),
       notify: (userId, intentId, text) => new HostedIndex(userId).sendPrincipal(intentId, encodeActions([{ type: 'progress', text }], { counterparts: new Map() })),
       closeInitiation: (userId, intent) => closeInitiation(new HostedIndex(userId), intent, this.runtime()),
       runNegotiate: (userId, intent, opportunityId) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime()),
@@ -211,18 +211,16 @@ export class HostedAgent {
   private dispatch({ userId, data }: UserEventRecord): void {
     let frame: WakeFrame;
     try { frame = JSON.parse(data) as WakeFrame; } catch { return; }
-    const { intentId, opportunityId, status, resumed } = frame.data ?? {};
+    const { intentId, opportunityId, status, material } = frame.data ?? {};
 
     switch (frame.type) {
       case 'negotiation.turn':
-        // A resumed negotiation ended its last round on a decision the owner's
-        // new context may change, so a wake re-decides it before a negotiator
-        // runs. A message already wakes on its own `principal.input`.
-        if (resumed) {
-          if (resumed === 'intent' && intentId) this.session.run(this.session.wake(userId, intentId));
-        } else if (intentId && opportunityId) {
-          this.session.run(this.session.negotiate(userId, intentId, opportunityId));
-        }
+        if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
+        break;
+      case 'intent.updated':
+        // An edit to what the intent asks for is context the wake weighs
+        // against each paused negotiation; any other refresh is not.
+        if (intentId && material) this.session.run(this.session.wake(userId, intentId, undefined, { edited: true }));
         break;
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the
@@ -272,10 +270,11 @@ export class HostedAgent {
    * One event wake. Each opportunity opens the moment its own decision is
    * published, so the first turns go out while the wake is still thinking.
    */
-  private async invokeWake(userId: string, intent: Intent, steer: () => string[]): Promise<void> {
+  private async invokeWake(userId: string, intent: Intent, steer: () => string[], options: { edited?: boolean } = {}): Promise<void> {
     await runWake(new HostedIndex(userId), intent, {
       ...this.runtime(),
       steer,
+      ...(options.edited ? { edited: true } : {}),
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
   }
