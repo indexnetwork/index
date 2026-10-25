@@ -1706,6 +1706,10 @@ export class ChatDatabaseAdapter {
       and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.userId, userId)),
     );
 
+    // A repeat call (sign-in, already a member) must not restore intents the
+    // member removed. Only a newly created membership imports existing ones.
+    if (result.length > 0) await this.linkMemberIntents(networkId, userId);
+
     return { success: true, alreadyMember: result.length === 0 };
   }
 
@@ -1737,6 +1741,21 @@ export class ChatDatabaseAdapter {
     await this.unlinkMemberIntents(networkId, userId);
 
     return { success: true };
+  }
+
+  /**
+   * Share the member's existing active intents in a network they just joined.
+   * Private intents stay unlinked. An existing link is left as it is.
+   */
+  private async linkMemberIntents(networkId: string, userId: string): Promise<void> {
+    const eligible = and(activeOwnIntentsWhere(userId), eq(intents.isPrivate, false));
+    await db.execute(sql`
+      insert into ${intentNetworks} (intent_id, network_id)
+      select ${intents.id}, ${networkId}
+      from ${intents}
+      where ${eligible}
+      on conflict (intent_id, network_id) do nothing
+    `);
   }
 
   /**

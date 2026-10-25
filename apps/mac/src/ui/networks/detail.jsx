@@ -462,14 +462,34 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     const at = intents.findIndex(s => s.id === sig.id);
     setIntents(intents.filter(s => s.id !== sig.id));
     setUndo({ sig, at });
+    if (!live || !local.id) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    c.intents.removeFromNetwork(sig.id, local.id).catch(() => {
+      setIntents((current) => {
+        if (current.some((s) => s.id === sig.id)) return current;
+        const restored = [...current];
+        restored.splice(Math.min(Math.max(at, 0), restored.length), 0, sig);
+        return restored;
+      });
+      setUndo((current) => (current && current.sig.id === sig.id ? null : current));
+    });
   };
 
   const putBack = () => {
     if (!undo) return;
+    const { sig, at } = undo;
     const next = [...intents];
-    next.splice(undo.at, 0, undo.sig);
+    next.splice(at, 0, sig);
     setIntents(next);
     setUndo(null);
+    if (!live || !local.id) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    c.intents.addToNetwork(sig.id, local.id).catch(() => {
+      setIntents((current) => current.filter((s) => s.id !== sig.id));
+      setUndo({ sig, at });
+    });
   };
 
   const copyLink = async () => {

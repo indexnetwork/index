@@ -56,6 +56,13 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   const [undo, setUndo] = useState<{ id: string; at: number } | null>(null);
 
   useEffect(() => {
+    setHiddenIds([]);
+    setUndo(null);
+    setIntents([]);
+    setOverviewLoading(true);
+  }, [network.id]);
+
+  useEffect(() => {
     const loadOverview = async () => {
       try {
         const overview = await networksService.getNetworkOverview(network.id);
@@ -92,6 +99,34 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     }
   };
 
+  const handleRemove = async (intentId: string) => {
+    setHiddenIds((ids) => (ids.includes(intentId) ? ids : [...ids, intentId]));
+    setUndo({ id: intentId, at: 0 });
+    try {
+      await api.delete(`/intents/${intentId}/networks/${network.id}`);
+    } catch (err) {
+      logger.error('Error removing intent from network', { error: err });
+      setHiddenIds((ids) => ids.filter((id) => id !== intentId));
+      setUndo((current) => (current?.id === intentId ? null : current));
+      error('Failed to remove intent');
+    }
+  };
+
+  const handlePutBack = async () => {
+    if (!undo) return;
+    const intentId = undo.id;
+    setHiddenIds((ids) => ids.filter((id) => id !== intentId));
+    setUndo(null);
+    try {
+      await api.post(`/intents/${intentId}/networks`, { networkId: network.id });
+    } catch (err) {
+      logger.error('Error restoring intent to network', { error: err });
+      setHiddenIds((ids) => (ids.includes(intentId) ? ids : [...ids, intentId]));
+      setUndo({ id: intentId, at: 0 });
+      error('Failed to restore intent');
+    }
+  };
+
   const visible = intents.filter((intent) => !hiddenIds.includes(intent.id));
 
   return (
@@ -103,7 +138,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
       {undo && (
         <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #000", background: "#F2F0EC", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12 }}>removed from {network.title}. the intent is still running everywhere else.</span>
-          <button type="button" onClick={() => { setHiddenIds((ids) => ids.filter((id) => id !== undo.id)); setUndo(null); }} style={{ flex: "0 0 auto", cursor: "pointer", padding: "4px 11px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>put it back</button>
+          <button type="button" onClick={() => { void handlePutBack(); }} style={{ flex: "0 0 auto", cursor: "pointer", padding: "4px 11px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>put it back</button>
         </div>
       )}
       <div style={{ display: "grid", gap: 10 }}>
@@ -117,7 +152,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
                 {date && <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>▤ {date}</span>}
               </div>
               <span title={`stop sharing this intent with ${network.title}. it keeps running elsewhere`} style={{ flex: "0 0 auto" }} onClick={(event) => event.stopPropagation()}>
-                <IntentAction label="− remove" onClick={() => { setHiddenIds((ids) => [...ids, intent.id]); setUndo({ id: intent.id, at: 0 }); }} />
+                <IntentAction label="− remove" onClick={() => { void handleRemove(intent.id); }} />
               </span>
             </div>
           );
