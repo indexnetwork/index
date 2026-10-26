@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getOAuthState } from "better-auth/api";
 import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
@@ -48,8 +48,30 @@ export interface AuthDeps {
   secondaryStorage?: AuthSecondaryStorage;
   /** Runs after every successful Edge City sign-in (e.g. network auto-join). */
   onEdgeCitySignIn?: (userId: string) => Promise<void>;
-  /** Runs after an Index session is created (web, Mac, Hermes). Not Edge City. */
-  onIndexSignIn?: (userId: string) => Promise<void>;
+  /**
+   * Runs after an Index session is created (web, Mac, Hermes). Not Edge City.
+   * `callbackURL` is the app URL the sign-in flow returns to, when the flow
+   * carries one — it tells the handler which page the user signed in from.
+   */
+  onIndexSignIn?: (userId: string, callbackURL?: string) => Promise<void>;
+}
+
+/**
+ * The app URL a sign-in flow returns to. Email sign-in/up carries it in the
+ * body, magic-link verify in the query, and a social OAuth callback inside the
+ * stored state. Undefined for flows without one (e.g. device authorization).
+ */
+async function resolveSignInCallbackURL(context?: { body?: unknown; query?: unknown } | null): Promise<string | undefined> {
+  const fromRequest = readCallbackURL(context?.body) ?? readCallbackURL(context?.query);
+  if (fromRequest) return fromRequest;
+  const oauthState = await getOAuthState().catch(() => null);
+  return oauthState?.callbackURL;
+}
+
+function readCallbackURL(source: unknown): string | undefined {
+  if (!source || typeof source !== "object") return undefined;
+  const value = (source as { callbackURL?: unknown }).callbackURL;
+  return typeof value === "string" && value ? value : undefined;
 }
 
 /**
@@ -98,7 +120,7 @@ export function createAuth(deps: AuthDeps) {
         create: {
           after: async (session, context) => {
             if (!onIndexSignIn || context?.path === "/sign-in/edge-city") return;
-            await onIndexSignIn(session.userId);
+            await onIndexSignIn(session.userId, await resolveSignInCallbackURL(context));
           },
         },
       },
