@@ -5,17 +5,19 @@ import path from 'path';
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
-import { isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { ensureLoopsMemberProperties, syncMemberToLoops } from '../lib/loops';
-import { users } from '../schemas/database.schema';
+import { networkMembers, users } from '../schemas/database.schema';
 
 /**
- * Backfills every existing (non-deleted) user into the Loops audience with
- * `indexMember: true` and `indexMemberSince`. The user-creation hook keeps
- * Loops current from then on; this catches everyone who signed up before it.
+ * Backfills existing Index Early network members into the Loops audience with
+ * `indexMember: true` and `indexMemberSince` (their join date). The
+ * addMemberToNetwork hook keeps Loops current from then on; this catches
+ * everyone who joined before it.
  *
- * Requires LOOPS_API_KEY. Dry run by default; pass --confirm to write.
+ * Requires LOOPS_API_KEY and INDEX_EARLY_NETWORK_ID. Dry run by default;
+ * pass --confirm to write.
  */
 async function main() {
   const confirm = process.argv.includes('--confirm');
@@ -24,12 +26,22 @@ async function main() {
     console.error('❌ LOOPS_API_KEY is not set');
     process.exit(1);
   }
+  const indexEarlyNetworkId = process.env.INDEX_EARLY_NETWORK_ID?.trim();
+  if (!indexEarlyNetworkId) {
+    console.error('❌ INDEX_EARLY_NETWORK_ID is not set');
+    process.exit(1);
+  }
 
   const members = await db
-    .select({ email: users.email, name: users.name, createdAt: users.createdAt })
-    .from(users)
-    .where(isNull(users.deletedAt))
-    .orderBy(users.createdAt);
+    .select({ email: users.email, name: users.name, createdAt: networkMembers.createdAt })
+    .from(networkMembers)
+    .innerJoin(users, eq(users.id, networkMembers.userId))
+    .where(and(
+      eq(networkMembers.networkId, indexEarlyNetworkId),
+      isNull(networkMembers.deletedAt),
+      isNull(users.deletedAt),
+    ))
+    .orderBy(networkMembers.createdAt);
 
   console.log(`${members.length} members to sync${confirm ? '' : ' (dry run — pass --confirm to write)'}`);
   if (!confirm) return;

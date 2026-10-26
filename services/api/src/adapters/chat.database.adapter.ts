@@ -5,6 +5,7 @@ import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { IntentEvents } from '../events/intent.event';
 import { publishUserInvalidation } from '../lib/user-events';
+import { syncMemberToLoops } from '../lib/loops';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
@@ -1739,6 +1740,14 @@ export class ChatDatabaseAdapter {
     // A repeat call (sign-in, already a member) must not restore intents the
     // member removed. Only a newly created membership imports existing ones.
     if (result.length > 0) await this.linkMemberIntents(networkId, userId);
+
+    // Joining Index Early — not any other network — is what marks someone an
+    // Index member in the Loops audience. Fire-and-forget: the sync never
+    // throws and must not delay the join.
+    if (result.length > 0 && networkId === process.env.INDEX_EARLY_NETWORK_ID?.trim()) {
+      const [member] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+      if (member) void syncMemberToLoops({ email: member.email, name: member.name, createdAt: new Date() });
+    }
 
     return { success: true, alreadyMember: result.length === 0 };
   }
