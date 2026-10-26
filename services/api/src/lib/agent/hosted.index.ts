@@ -185,6 +185,13 @@ export class HostedIndex implements Index {
     return toNegotiationDetail(result);
   }
 
+  /** @param id - Opportunity id. @returns The negotiation with this seat holding the first turn of a new round. @throws When Index refuses. */
+  async resumeNegotiation(id: string): Promise<NegotiationDetail> {
+    const result = await negotiationService.resume(id, this.userId);
+    if ('rejection' in result) throw new Error(result.rejection);
+    return toNegotiationDetail(result);
+  }
+
   /** @param id - Opportunity id. @returns The opportunity now accepted. @throws When Index refuses the update. */
   async acceptOpportunity(id: string): Promise<{ opportunityId: string; status: 'accepted' }> {
     return this.setOpportunityStatus(id, 'accepted');

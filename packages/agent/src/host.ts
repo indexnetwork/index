@@ -112,11 +112,15 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
  * @returns The opportunity row a wake and a negotiator read.
  */
 export function toOpportunity(negotiation: NegotiationDetail, userId: string): Opportunity {
+  const { maxTurns, remainingTurns } = negotiation.protocol;
+  const yours = negotiation.awaitingUserId === userId;
   return {
     id: negotiation.opportunityId,
     counterpart: negotiation.counterparty.name ?? negotiation.counterparty.userId,
     status: negotiation.outcome ?? "negotiating",
-    awaiting: negotiation.awaitingUserId === userId ? "you" : "them",
+    // Nobody moves between rounds: a decline or a full round ended the last one.
+    awaiting: yours ? "you" : negotiation.awaitingUserId ? "them" : "nobody",
+    ...(!negotiation.outcome && !negotiation.awaitingUserId ? { paused: true } : {}),
     turnCount: negotiation.turnCount,
     turns: negotiation.turns.map((turn) => ({
       turnIndex: turn.turnIndex,
@@ -125,8 +129,8 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
       message: turn.message,
       createdAt: turn.createdAt,
     })),
-    maxTurns: negotiation.protocol.maxTurns,
-    remainingTurns: Math.max(0, negotiation.protocol.maxTurns - negotiation.turnCount),
+    maxTurns,
+    remainingTurns,
     actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
     bio: negotiation.counterparty.bio,

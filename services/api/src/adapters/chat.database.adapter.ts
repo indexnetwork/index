@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, ne, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -1681,6 +1681,36 @@ export class ChatDatabaseAdapter {
   async getNetworkMemberCount(networkId: string): Promise<number> {
     const [r] = await db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt)));
     return Number(r?.count ?? 0);
+  }
+
+  /**
+   * Whether the user already belongs to — or is waiting to join — any network
+   * other than `excludedNetworkId`. The Index Early auto-join uses this to
+   * limit itself to people who arrived at Index on their own: anyone who came
+   * in through an invitation (link or owner email) carries such a tie by the
+   * time they sign in again.
+   */
+  async hasNetworkTieOutside(userId: string, excludedNetworkId: string): Promise<boolean> {
+    const [member] = await db
+      .select({ networkId: networkMembers.networkId })
+      .from(networkMembers)
+      .where(and(
+        eq(networkMembers.userId, userId),
+        ne(networkMembers.networkId, excludedNetworkId),
+        isNull(networkMembers.deletedAt),
+      ))
+      .limit(1);
+    if (member) return true;
+
+    const [request] = await db
+      .select({ networkId: networkJoinRequests.networkId })
+      .from(networkJoinRequests)
+      .where(and(
+        eq(networkJoinRequests.userId, userId),
+        ne(networkJoinRequests.networkId, excludedNetworkId),
+      ))
+      .limit(1);
+    return !!request;
   }
 
   async addMemberToNetwork(
