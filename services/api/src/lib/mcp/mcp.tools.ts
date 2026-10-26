@@ -13,6 +13,7 @@ import { userService } from '../../services/user.service';
 import { RuntimeConflictError } from '../agent/runtime-errors';
 import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
+import { distinctXProfileUrls } from '../x/socials';
 
 import { MCP_CADENCE, MCP_ONBOARDING } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
@@ -579,8 +580,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           id: opportunity.opportunityId,
           url: chatUrl ?? appLink('o', opportunity.opportunityId),
           ...(chatUrl ? {} : {
-            acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
-            declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
+            acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept', principal.surface),
+            declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline', principal.surface),
           }),
           priorOpportunity: opportunity.priorOpportunity ?? null,
           peerChat: opportunity.peerChat && chatUrl ? { ...opportunity.peerChat, url: chatUrl } : null,
@@ -624,8 +625,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if ('error' in opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
       const negotiation = await negotiationService.read(resolved.id, principal.userId);
       const url = appLink('o', opportunity.id);
-      const acceptUrl = actionLink(opportunity.id, principal.userId, 'accept');
-      const declineUrl = actionLink(opportunity.id, principal.userId, 'decline');
+      const acceptUrl = actionLink(opportunity.id, principal.userId, 'accept', principal.surface);
+      const declineUrl = actionLink(opportunity.id, principal.userId, 'decline', principal.surface);
       const peer = { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) };
       const otherParties = opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) }));
       const people = otherParties.map((party) => mdLink(party.name, party.url)).join(', ');
@@ -829,16 +830,27 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         const chatOpen = accepted && 'conversationId' in result && !!result.conversationId;
         const url = chatOpen ? `${peer.url}/chat` : appLink('o', result.opportunity.opportunityId);
         const opportunity = { ...result.opportunity, id: result.opportunity.opportunityId, url, peer };
+        // On an X-surfaced client the chat continues in X DMs, when exactly one profile is known.
+        let xProfileUrl: string | null = null;
+        if (chatOpen && principal.surface === 'x') {
+          try {
+            const urls = distinctXProfileUrls(await userService.socialValuesOnSurface(peer.userId, 'x'));
+            if (urls.length === 1) xProfileUrl = urls[0];
+          } catch { /* The X handoff is a nicety: fall back to the Index chat. */ }
+        }
+        const chatUrl = chatOpen ? xProfileUrl ?? url : null;
         return mcpSuccess({
           ...result,
           opportunity,
-          chatUrl: chatOpen ? url : null,
+          chatUrl,
           message: chatOpen
-            ? `Accepted. The chat with ${peer.name} is open now; they don't need to accept first, and you can message them right away.`
+            ? xProfileUrl
+              ? `Accepted. ${peer.name} is on X — DM them at ${xProfileUrl} to continue; they don't need to accept first.`
+              : `Accepted. The chat with ${peer.name} is open now; they don't need to accept first, and you can message them right away.`
             : accepted
               ? 'Opportunity accepted.'
               : 'Opportunity passed; its associated negotiation may have been closed.',
-        }, `${opportunityLine(peer.name, url, opportunity.headline, opportunity.status, null, chatOpen)} — ${accepted ? 'accepted' : 'passed'}`);
+        }, `${opportunityLine(peer.name, chatUrl ?? url, opportunity.headline, opportunity.status, null, chatOpen)} — ${accepted ? 'accepted' : 'passed'}`);
       }),
     );
   };

@@ -28,9 +28,10 @@ function sign(id: string, viewer: string, action: LinkAction): string {
   return createHmac('sha256', secret()).update(`o:${id}:${viewer}:${action}`).digest('base64url');
 }
 
-/** Signed accept or decline link. The surface is appended later and is not signed. */
-export function actionLink(opportunityId: string, viewerId: string, action: LinkAction): string {
+/** Signed accept or decline link. The surface is unsigned and only steers the post-action redirect. */
+export function actionLink(opportunityId: string, viewerId: string, action: LinkAction, surface?: string): string {
   const query = new URLSearchParams({ action, viewer: viewerId, sig: sign(opportunityId, viewerId, action) });
+  if (surface) query.set('surface', surface);
   return `${appLink('o', opportunityId)}?${query}`;
 }
 
