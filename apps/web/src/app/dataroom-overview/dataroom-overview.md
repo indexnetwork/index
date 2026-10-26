@@ -153,7 +153,7 @@ Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media e
 Designed human–AI interaction for 10 years, including conversational systems. Founded [QNB Group](https://www.qnb.com/)'s design studio as first hire, serving 30M banking customers ($400B AUM).
 
 **[Ashish Uppala](https://ashishuppala.com/), Founding Team Member**
-First hire and CTO of [scite.ai](https://scite.ai/) through its acquisition. Applied metascience at Portal Stargaze and a collective intelligence funding program at ARIA. Research background at the National Cancer Institute.
+First hire and CTO of [scite.ai](https://scite.ai/), scaling it to 1.2B+ analyzed citations and 21K paying subscribers through its acquisition by Nasdaq-listed Research Solutions. Applied metascience at Portal Stargaze and ran a collective intelligence funding program at ARIA.
 
 **[Vicky Gu](https://www.linkedin.com/in/vickygu/), Brand & Narrative**
 Defined the narrative attracting top technical talent for $3B social discovery platform Grindr. Led category narrative at NewtonX ($47M raised), elevating B2B research from service to strategy.
