@@ -65,7 +65,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/waitlist",
-        element: <Navigate to="/download" replace />,
+        element: <Navigate to="/setup" replace />,
       },
       {
         path: "/found-in-translation",
@@ -137,8 +137,12 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/o/:id", () => import("@/app/o/[id]/page")),
       },
       {
+        path: "/setup",
+        lazy: lazyRoute("/setup", () => import("@/app/download/page")),
+      },
+      {
         path: "/download",
-        lazy: lazyRoute("/download", () => import("@/app/download/page")),
+        element: <Navigate to="/setup" replace />,
       },
       {
         path: "/l/:code",
