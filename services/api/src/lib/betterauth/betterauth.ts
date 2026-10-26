@@ -54,6 +54,8 @@ export interface AuthDeps {
    * carries one — it tells the handler which page the user signed in from.
    */
   onIndexSignIn?: (userId: string, callbackURL?: string) => Promise<void>;
+  /** Runs after a new user row is created, on every sign-up path. */
+  onUserCreated?: (user: { id: string; email: string; name: string; createdAt: Date }) => Promise<void>;
 }
 
 /**
@@ -83,7 +85,7 @@ function readCallbackURL(source: unknown): string | undefined {
  * REVIEWER_EMAIL — everyone else uses magic link or social OAuth.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn, onIndexSignIn } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn, onIndexSignIn, onUserCreated } = deps;
 
   return betterAuth({
     baseURL: API_URL,
@@ -116,6 +118,14 @@ export function createAuth(deps: AuthDeps) {
     },
     emailAndPassword: { enabled: emailPasswordEnabled },
     databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            if (!onUserCreated) return;
+            await onUserCreated({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
+          },
+        },
+      },
       session: {
         create: {
           after: async (session, context) => {

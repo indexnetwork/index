@@ -3,6 +3,7 @@ import { getRedisClient } from '../../adapters/cache.adapter';
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { getTrustedOrigins } from '../cors';
 import { sendMagicLinkEmail } from '../email/magic-link.handler';
+import { syncMemberToLoops } from '../loops';
 import { isRedisConfigured } from '../redis-env';
 
 import { createAuth, WEB_APP_URL, type AuthSecondaryStorage } from './betterauth';
@@ -64,4 +65,7 @@ export const auth = createAuth({
         await networkDb.addMemberToNetwork(indexEarlyNetworkId, userId, 'member').catch(() => {});
       }
     : undefined,
+  onUserCreated: async (user) => {
+    await syncMemberToLoops({ email: user.email, name: user.name, createdAt: user.createdAt });
+  },
 });
