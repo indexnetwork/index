@@ -158,6 +158,12 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
       return Response.redirect(reqUrl, 308);
     }
 
+    // `/download` moved to `/setup`; keep old links working.
+    if (pathname === "/download" || pathname === "/download/") {
+      reqUrl.pathname = "/setup";
+      return Response.redirect(reqUrl, 301);
+    }
+
     if (pathname === AASA_PATH && (req.method === "GET" || req.method === "HEAD")) {
       return new Response(req.method === "HEAD" ? null : appleAppSiteAssociation(), {
         headers: {

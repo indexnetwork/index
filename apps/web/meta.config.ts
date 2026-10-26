@@ -19,7 +19,7 @@ const MARKETING: Record<string, PageMeta> = {
     image: `${ORIGIN}/found-in-translation/found-in-translation-1-hero.png`,
     type: "article",
   },
-  "/download": {
+  "/setup": {
     title: "Install Index & Hermes | Index Network",
     description:
       "Install the Index macOS app and Hermes Desktop plugin to stay connected to your networks.",
