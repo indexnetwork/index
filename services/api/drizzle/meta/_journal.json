@@ -127,6 +127,13 @@
       "when": 1792949131996,
       "tag": "0017_opportunity_event_data",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793115321033,
+      "tag": "0018_clever_korg",
+      "breakpoints": true
     }
   ]
 }
