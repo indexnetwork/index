@@ -1,10 +1,13 @@
 import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, type IntentSuggestions, type PrepareInput } from '@indexnetwork/protocol';
 
+import type { AssignmentVisibility } from '../schemas/database.schema';
+
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
+import { scheduleMutualCheck } from '../lib/intent/mutual-check';
 import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
 import { IntentEvents } from '../events/intent.event';
 
@@ -238,7 +241,29 @@ export class IntentService {
     networkIds: string[],
     preparationReceipt?: string,
     source: IntentSource = {},
+    options: { visibility?: AssignmentVisibility; isPrivate?: boolean } = {},
   ): Promise<{ id: string; networkIds: string[] }> {
+    if (options.isPrivate && options.visibility) {
+      throw new IntentCreateRejectedError('A private intent has no assignment visibility.');
+    }
+    if (options.isPrivate) {
+      for (const networkId of networkIds) {
+        if (!await this.adapter.isNetworkMember(networkId, userId)) throw new IntentNetworkMembershipError(networkId);
+      }
+      const embedding = await this.embedder.generate(description) as number[];
+      const created = await this.adapter.createIntent({
+        userId,
+        payload: description,
+        isPrivate: true,
+        embedding,
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+      });
+      for (const networkId of networkIds) await this.adapter.assignIntentToNetwork(created.id, networkId);
+      this.emitCreated(created.id, userId);
+      return { id: created.id, networkIds };
+    }
+
     const targetNetworkIds = networkIds.length > 0
       ? networkIds
       : (await chatDatabaseAdapter.getAssignmentNetworkMembershipsForUser(userId))
@@ -262,7 +287,7 @@ export class IntentService {
     logger.verbose('Creating intent', { userId, networkCount: targetNetworkIds.length });
 
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds, ...source },
+      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds, visibility: options.visibility, ...source },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ actionType: string; success: boolean; intentId?: string; error?: string; linkedNetworkIds?: string[] }>;
@@ -302,12 +327,32 @@ export class IntentService {
    * @param source - Optional client-owned source fields, stored unchanged.
    * @returns Whether the rewrite landed, or why it did not.
    */
-  async update(intentId: string, userId: string, description: string | undefined, source: IntentSource = {}): Promise<IntentUpdateOutcome> {
+  async update(
+    intentId: string,
+    userId: string,
+    description: string | undefined,
+    source: IntentSource = {},
+    options: { isPrivate?: boolean } = {},
+  ): Promise<IntentUpdateOutcome> {
     logger.verbose('Updating intent', { intentId, userId });
 
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
     if (intent.archivedAt) return { kind: 'archived' };
+    if (intent.isPrivate && options.isPrivate === false) {
+      return { kind: 'rejected', detail: 'A private intent stays private. Create a new one instead.' };
+    }
+
+    if (intent.isPrivate || options.isPrivate) {
+      const embedding = description !== undefined ? await this.embedder.generate(description) as number[] : undefined;
+      const updated = await this.adapter.updateIntent(intentId, {
+        ...(description !== undefined ? { payload: description } : {}),
+        ...(embedding !== undefined ? { embedding } : {}),
+        ...(options.isPrivate ? { isPrivate: true } : {}),
+        ...source,
+      });
+      return updated ? { kind: 'updated' } : { kind: 'not_found' };
+    }
 
     if (description === undefined) {
       const updated = await this.adapter.updateIntent(intentId, source);
@@ -363,9 +408,27 @@ export class IntentService {
    * @param userId - Authenticated owner.
    * @returns Whether the link exists now, or why it was refused.
    */
-  async addToNetwork(intentId: string, networkId: string, userId: string): Promise<IntentNetworkLinkOutcome> {
+  async exclude(intentId: string, userId: string, excludedUserId: string): Promise<boolean> {
+    return this.adapter.excludeUser(intentId, userId, excludedUserId);
+  }
+
+  async unexclude(intentId: string, userId: string, excludedUserId: string): Promise<boolean> {
+    return this.adapter.unexcludeUser(intentId, userId, excludedUserId);
+  }
+
+  async addToNetwork(
+    intentId: string,
+    networkId: string,
+    userId: string,
+    visibility?: AssignmentVisibility,
+  ): Promise<IntentNetworkLinkOutcome> {
     logger.verbose('Linking intent to network', { intentId, networkId, userId });
-    return this.runLink(intentId, networkId, userId, 'create');
+    const linked = await this.runLink(intentId, networkId, userId, 'create');
+    if (linked.kind === 'ok' && visibility) {
+      await this.adapter.assignIntentToNetwork(intentId, networkId, undefined, undefined, visibility);
+      if (visibility === 'mutuals_only') scheduleMutualCheck(intentId, [networkId]);
+    }
+    return linked;
   }
 
   /**
@@ -479,7 +542,7 @@ export class IntentService {
   async discover(
     intentId: string,
     userId: string,
-    input: { query: string; limit?: number; since?: Date },
+    input: { query: string; limit?: number; since?: Date; peerUserId?: string },
   ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
@@ -496,6 +559,8 @@ export class IntentService {
     const candidates = await this.embedder.searchIntentCandidates(embedding, {
       networkScope,
       excludeUserId: userId,
+      searchingIntentId: intentId,
+      ...(input.peerUserId ? { userId: input.peerUserId } : {}),
       limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
       minScore: 0,
       ...(input.since ? { since: input.since } : {}),
@@ -529,9 +594,30 @@ export class IntentService {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
+    if (!input.peerUserId) await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
 
     return { kind: 'ok', counterparties };
+  }
+
+  /**
+   * Open every discoverable intent pair between the caller and one peer: each
+   * of the caller's active intents is discovered against the peer alone, so
+   * eligibility is discovery's own. Idempotent on each pair.
+   *
+   * @param userId - Authenticated owner.
+   * @param peerUserId - The member to pair with.
+   * @returns The opportunities that now exist, or `no_pair` when nothing was discoverable.
+   */
+  async pairWithUser(userId: string, peerUserId: string): Promise<{ kind: 'ok'; opportunityIds: string[] } | { kind: 'no_pair' }> {
+    if (userId === peerUserId) return { kind: 'no_pair' };
+    const opportunityIds: string[] = [];
+    for (const intent of await chatDatabaseAdapter.getActiveIntents(userId)) {
+      const found = await this.discover(intent.id, userId, { query: intent.payload, peerUserId, limit: CREATE_OPPORTUNITIES_LIMIT });
+      if (found.kind !== 'ok' || found.counterparties.length === 0) continue;
+      const created = await this.createOpportunities(intent.id, userId, found.counterparties);
+      if (created.kind === 'ok') opportunityIds.push(...created.opportunities.map((o) => o.opportunityId));
+    }
+    return opportunityIds.length ? { kind: 'ok', opportunityIds } : { kind: 'no_pair' };
   }
 
   /**
@@ -561,10 +647,12 @@ export class IntentService {
     const pairs = [];
     for (const pick of picks.slice(0, CREATE_OPPORTUNITIES_LIMIT)) {
       if (pick.intentId === intentId) continue;
-      const [initiator, responder] = await Promise.all([
-        negotiationDatabaseAdapter.seatedIntent(intentId, pick.networkId),
-        negotiationDatabaseAdapter.seatedIntent(pick.intentId, pick.networkId),
-      ]);
+      const initiator = await negotiationDatabaseAdapter.seatedIntent(intentId, pick.networkId);
+      const responder = initiator && await negotiationDatabaseAdapter.seatedIntent(pick.intentId, pick.networkId, {
+        visible: true,
+        otherUserId: initiator.userId,
+        otherIntentId: intentId,
+      });
       if (!initiator || !responder || initiator.userId === responder.userId) continue;
       pairs.push({
         pairKey: pairKeyOf(pick.networkId, initiator.intentId, responder.intentId),
@@ -617,7 +705,12 @@ export class IntentService {
     context: string,
   ): Promise<OpenOpportunityOutcome> {
     if (!await this.adapter.isNetworkMember(networkId, userId)) return { kind: 'not_member' };
-    const [a, b] = await Promise.all(intentIds.map((id) => negotiationDatabaseAdapter.seatedIntent(id, networkId)));
+    const a = await negotiationDatabaseAdapter.seatedIntent(intentIds[0], networkId, { visible: true });
+    const b = a && await negotiationDatabaseAdapter.seatedIntent(intentIds[1], networkId, {
+      visible: true,
+      otherUserId: a.userId,
+      otherIntentId: a.intentId,
+    });
     if (!a || !b || a.intentId === b.intentId) return { kind: 'not_seated' };
     if (a.userId === userId || b.userId === userId || a.userId === b.userId) return { kind: 'own_intent' };
 

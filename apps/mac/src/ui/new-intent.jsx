@@ -82,7 +82,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
     const failed = picked.length - saved.length;
     setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
     setCreated(saved);
-    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((p) => `· ${p.text}`).join("\n") }]);
+    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((p) => `· ${p.text}`).join("\n"), at: new Date().toISOString() }]);
     setStage("opening");
     setCalibrating(false);
   };
@@ -128,7 +128,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
   const submitOpening = (value) => {
     const answer = String(value ?? draft).trim();
     if (!answer) return;
-    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer }]);
+    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer, at: new Date().toISOString() }]);
     payloadRef.current = answer;
     if (!client) { setCalibrating(true); onDone({ intent: answer }, false, null); return; }
     void runPrepare();
@@ -211,7 +211,7 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
               marginRight:-28, paddingRight:28, paddingBottom:18,
             }}>
               {turns.map((t) => (
-                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer}/>
+                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer} at={t.at}/>
               ))}
 
               {thinking ? (
@@ -309,6 +309,9 @@ function NewIntent({ onDone, onBack, onHome, suggest = false }) {
 // Onboarding step one: the agent's drafts from the profile, any number picked.
 function PicksView({ suggestions, onCreate, onSkip }) {
   const [picked, setPicked] = useState([]);
+  // Their own line, created alongside whatever they picked.
+  const [writing, setWriting] = useState(false);
+  const [own, setOwn] = useState("");
   if (suggestions === "loading") {
     return (
       <div className="fade-up">
@@ -317,6 +320,8 @@ function PicksView({ suggestions, onCreate, onSkip }) {
     );
   }
   const toggle = (i) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
+  const ownText = writing ? own.trim().slice(0, 65_536) : "";
+  const chosen = [...[...picked].sort().map((i) => suggestions[i]), ...(ownText ? [{ text: ownText }] : [])];
   return (
     <div className="fade-up" style={{ display:"grid", gap:10 }}>
       <AgentBubble label={<TurnLabel/>}>{PICKS_PROMPT}</AgentBubble>
@@ -324,9 +329,31 @@ function PicksView({ suggestions, onCreate, onSkip }) {
         {suggestions.map((s, i) => (
           <SuggestionChip key={s.text} suggestion={s} selected={picked.includes(i)} onClick={() => toggle(i)}/>
         ))}
+        {writing ? (
+          <input
+            autoFocus
+            value={own}
+            maxLength={65_536}
+            onChange={(e) => setOwn(e.target.value)}
+            onBlur={(e) => { if (!e.currentTarget.value.trim()) setWriting(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && !e.currentTarget.value.trim()) setWriting(false);
+              if (e.key === "Enter" && chosen.length) onCreate(chosen);
+            }}
+            placeholder="write your own"
+            aria-label="Write your own"
+            style={{
+              width:"100%", maxWidth:620, boxSizing:"border-box", minHeight:36,
+              border:"1px solid #000", padding:"8px 14px",
+              fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#111", outline:"none",
+            }}
+          />
+        ) : (
+          <OptionChip write label="write your own" onClick={() => setWriting(true)}/>
+        )}
         <div style={{ display:"flex", alignItems:"center", gap:16, marginTop:8 }}>
-          <Btn primary disabled={!picked.length} onClick={() => onCreate([...picked].sort().map((i) => suggestions[i]))}>
-            {picked.length > 1 ? `create these ${picked.length}` : "create this"} →
+          <Btn primary disabled={!chosen.length} onClick={() => onCreate(chosen)}>
+            {chosen.length > 1 ? `create these ${chosen.length}` : "create this"} →
           </Btn>
           <button type="button" onClick={onSkip} style={{
             fontFamily:"var(--mac-mono)", fontSize:11, padding:0, border:"none",
@@ -534,10 +561,10 @@ function WorkingDots({ size = 8 }) {
   );
 }
 
-function UserBubble({ children }) {
+function UserBubble({ children, at }) {
   return (
     <div style={{ display:"flex", justifyContent:"flex-end" }}>
-      <div style={{
+      <div title={at ? new Date(at).toLocaleString() : undefined} style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
         fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
@@ -547,11 +574,11 @@ function UserBubble({ children }) {
   );
 }
 
-function PastTurn({ step, answer }) {
+function PastTurn({ step, answer, at }) {
   return (
     <div style={{ display:"grid", gap:10 }}>
       <AgentBubble muted label={<TurnLabel/>}>{step.prompt}</AgentBubble>
-      <UserBubble>{answer}</UserBubble>
+      <UserBubble at={at}>{answer}</UserBubble>
     </div>
   );
 }

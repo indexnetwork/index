@@ -175,6 +175,18 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /** Applied to every network this create links. Omitted means networks_only. */
+  visibility: Annotation<'networks_only' | 'mutuals_only' | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Only the owner's agent reads this intent. Skips admission when set on create. */
+  isPrivate: Annotation<boolean | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /** Focused request scope type for write-side assignment and follow-up queues. */
   scopeType: Annotation<ScopeType | undefined>({
     reducer: (curr, next) => next ?? curr,

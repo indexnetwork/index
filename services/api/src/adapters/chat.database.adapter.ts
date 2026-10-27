@@ -1,10 +1,11 @@
-import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, ne, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { IntentEvents } from '../events/intent.event';
 import { publishUserInvalidation } from '../lib/user-events';
+import { syncMemberToLoops } from '../lib/loops';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
@@ -176,7 +177,9 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             eq(schema.intentNetworks.networkId, networkId),
+            eq(schema.intentNetworks.visibility, 'networks_only'),
             eq(schema.intents.userId, userId),
+            eq(schema.intents.isPrivate, false),
             isNull(schema.intents.archivedAt),
             activeIntentLifecycleWhere(),
           )
@@ -226,7 +229,7 @@ export class ChatDatabaseAdapter {
           payload: data.payload,
           summary: data.summary ?? null,
           embedding: data.embedding,
-          isIncognito: data.isIncognito ?? false,
+          isPrivate: data.isPrivate ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
           // Null means unmeasured; only omitted fields may use database defaults.
@@ -242,7 +245,7 @@ export class ChatDatabaseAdapter {
           id: schema.intents.id,
           payload: schema.intents.payload,
           summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
+          isPrivate: schema.intents.isPrivate,
           createdAt: schema.intents.createdAt,
           updatedAt: schema.intents.updatedAt,
           userId: schema.intents.userId,
@@ -262,7 +265,7 @@ export class ChatDatabaseAdapter {
       if (data.payload !== undefined) updateData.payload = data.payload;
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
-      if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.isPrivate !== undefined) updateData.isPrivate = data.isPrivate;
       if (data.sourceType !== undefined) updateData.sourceType = data.sourceType;
       if (data.sourceId !== undefined) updateData.sourceId = data.sourceId;
       if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
@@ -295,7 +298,7 @@ export class ChatDatabaseAdapter {
             id: schema.intents.id,
             payload: schema.intents.payload,
             summary: schema.intents.summary,
-            isIncognito: schema.intents.isIncognito,
+            isPrivate: schema.intents.isPrivate,
             createdAt: schema.intents.createdAt,
             updatedAt: schema.intents.updatedAt,
             userId: schema.intents.userId,
@@ -737,7 +740,7 @@ export class ChatDatabaseAdapter {
         id: intents.id,
         payload: intents.payload,
         summary: intents.summary,
-        isIncognito: intents.isIncognito,
+        isPrivate: intents.isPrivate,
         createdAt: intents.createdAt,
         updatedAt: intents.updatedAt,
         userId: intents.userId,
@@ -765,7 +768,7 @@ export class ChatDatabaseAdapter {
       id: row.id,
       payload: row.payload,
       summary: row.summary,
-      isIncognito: row.isIncognito,
+      isPrivate: row.isPrivate,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       userId: row.userId,
@@ -898,8 +901,9 @@ export class ChatDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<void> {
-    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
+    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata, visibility);
   }
 
   async assignIntentToNetworkIfMember(
@@ -908,6 +912,7 @@ export class ChatDatabaseAdapter {
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
     return this.intentAdapter.assignIntentToNetworkIfMember(
       userId,
@@ -915,6 +920,7 @@ export class ChatDatabaseAdapter {
       networkId,
       relevancyScore,
       assignmentMetadata,
+      visibility,
     );
   }
 
@@ -1009,7 +1015,7 @@ export class ChatDatabaseAdapter {
       ownerRows.map(async (row) => {
         const [memberCountResult, intentCountResult] = await Promise.all([
           db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, row.networkId), isNull(networkMembers.deletedAt))),
-          db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, row.networkId)),
+          db.select({ count: count() }).from(intentNetworks).innerJoin(intents, eq(intentNetworks.intentId, intents.id)).where(this.liveIntentWhere(row.networkId)),
         ]);
         const perms = toPublicNetworkPermissions(row.permissions);
         const memberCount = Number(memberCountResult[0]?.count ?? 0);
@@ -1066,7 +1072,9 @@ export class ChatDatabaseAdapter {
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
           .where(and(
             eq(intentNetworks.networkId, networkId),
+            eq(intentNetworks.visibility, 'networks_only'),
             eq(intents.userId, m.userId),
+            eq(intents.isPrivate, false),
             isNull(intents.archivedAt),
             activeIntentLifecycleWhere(),
           ));
@@ -1132,10 +1140,8 @@ export class ChatDatabaseAdapter {
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
           .where(and(
-            eq(intentNetworks.networkId, networkId),
+            this.liveIntentWhere(networkId),
             inArray(intents.userId, memberUserIds),
-            isNull(intents.archivedAt),
-            activeIntentLifecycleWhere(),
           ))
           .groupBy(intents.userId)
       : [];
@@ -1193,6 +1199,58 @@ export class ChatDatabaseAdapter {
     return Array.from(byId.values());
   }
 
+  /**
+   * Search people the user shares a network with, by name or exact email.
+   * Emails are matched but never returned.
+   * @param excludeNetworkId - Leave out people already in this network.
+   */
+  async searchUsersInUserNetworks(
+    userId: Id<'users'>,
+    q: string,
+    excludeNetworkId?: string,
+    limit = 10,
+  ): Promise<{ id: Id<'users'>; name: string; avatar: string | null }[]> {
+    const term = q.trim();
+    if (!term) return [];
+
+    const myNetworkRows = await db
+      .select({ networkId: networkMembers.networkId })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+      .where(and(
+        eq(networkMembers.userId, userId),
+        isNull(networkMembers.deletedAt),
+        isNull(networks.deletedAt),
+      ));
+    const myNetworkIds = myNetworkRows.map((r) => r.networkId);
+    if (myNetworkIds.length === 0) return [];
+
+    let excludeIds: Id<'users'>[] = [];
+    if (excludeNetworkId) {
+      const memberRows = await db
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(and(eq(networkMembers.networkId, excludeNetworkId), isNull(networkMembers.deletedAt)));
+      excludeIds = memberRows.map((r) => r.userId);
+    }
+
+    const escaped = term.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const rows = await db
+      .selectDistinct({ id: users.id, name: users.name, avatar: users.avatar })
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(and(
+        inArray(networkMembers.networkId, myNetworkIds),
+        isNull(networkMembers.deletedAt),
+        isNull(users.deletedAt),
+        excludeIds.length > 0 ? notInArray(users.id, excludeIds) : undefined,
+        or(ilike(users.name, `%${escaped}%`), eq(users.email, term.toLowerCase())),
+      ))
+      .limit(limit);
+
+    return rows;
+  }
+
   async getNetworkIntentsForOwner(
     networkId: string,
     requestingUserId: string,
@@ -1220,6 +1278,8 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
         eq(intentNetworks.networkId, networkId),
+        eq(intentNetworks.visibility, 'networks_only'),
+        eq(intents.isPrivate, false),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
       ))
@@ -1306,6 +1366,8 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
         eq(intentNetworks.networkId, networkId),
+        eq(intentNetworks.visibility, 'networks_only'),
+        eq(intents.isPrivate, false),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
       ))
@@ -1490,7 +1552,7 @@ export class ChatDatabaseAdapter {
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
-      db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
+      db.select({ count: count() }).from(intentNetworks).innerJoin(intents, eq(intentNetworks.intentId, intents.id)).where(this.liveIntentWhere(networkId)),
     ]);
     const permissions = toPublicNetworkPermissions(updatedRow.permissions);
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
@@ -1622,6 +1684,36 @@ export class ChatDatabaseAdapter {
     return Number(r?.count ?? 0);
   }
 
+  /**
+   * Whether the user already belongs to — or is waiting to join — any network
+   * other than `excludedNetworkId`. The Index Early auto-join uses this to
+   * limit itself to people who arrived at Index on their own: anyone who came
+   * in through an invitation (link or owner email) carries such a tie by the
+   * time they sign in again.
+   */
+  async hasNetworkTieOutside(userId: string, excludedNetworkId: string): Promise<boolean> {
+    const [member] = await db
+      .select({ networkId: networkMembers.networkId })
+      .from(networkMembers)
+      .where(and(
+        eq(networkMembers.userId, userId),
+        ne(networkMembers.networkId, excludedNetworkId),
+        isNull(networkMembers.deletedAt),
+      ))
+      .limit(1);
+    if (member) return true;
+
+    const [request] = await db
+      .select({ networkId: networkJoinRequests.networkId })
+      .from(networkJoinRequests)
+      .where(and(
+        eq(networkJoinRequests.userId, userId),
+        ne(networkJoinRequests.networkId, excludedNetworkId),
+      ))
+      .limit(1);
+    return !!request;
+  }
+
   async addMemberToNetwork(
     networkId: string,
     userId: string,
@@ -1644,6 +1736,18 @@ export class ChatDatabaseAdapter {
     await db.delete(networkJoinRequests).where(
       and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.userId, userId)),
     );
+
+    // A repeat call (sign-in, already a member) must not restore intents the
+    // member removed. Only a newly created membership imports existing ones.
+    if (result.length > 0) await this.linkMemberIntents(networkId, userId);
+
+    // Joining Index Early — not any other network — is what marks someone an
+    // Index member in the Loops audience. Fire-and-forget: the sync never
+    // throws and must not delay the join.
+    if (result.length > 0 && networkId === process.env.INDEX_EARLY_NETWORK_ID?.trim()) {
+      const [member] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+      if (member) void syncMemberToLoops({ email: member.email, name: member.name, createdAt: new Date() });
+    }
 
     return { success: true, alreadyMember: result.length === 0 };
   }
@@ -1707,8 +1811,38 @@ export class ChatDatabaseAdapter {
     await db
       .delete(networkMembers)
       .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)));
+    await this.unlinkMemberIntents(networkId, userId);
 
     return { success: true };
+  }
+
+  /**
+   * Share the member's existing active intents in a network they just joined.
+   * Private intents stay unlinked. An existing link is left as it is.
+   */
+  private async linkMemberIntents(networkId: string, userId: string): Promise<void> {
+    const eligible = and(activeOwnIntentsWhere(userId), eq(intents.isPrivate, false));
+    await db.execute(sql`
+      insert into ${intentNetworks} (intent_id, network_id)
+      select ${intents.id}, ${networkId}
+      from ${intents}
+      where ${eligible}
+      on conflict (intent_id, network_id) do nothing
+    `);
+  }
+
+  /**
+   * Drop a departed member's intents from the network. Discovery already
+   * requires a live membership, but a stale `intent_networks` row still seats
+   * the intent in negotiations and misreports the network's intents.
+   */
+  private async unlinkMemberIntents(networkId: string, userId: string): Promise<void> {
+    await db.execute(sql`
+      delete from ${intentNetworks} using ${intents}
+      where ${intents.id} = ${intentNetworks.intentId}
+        and ${intentNetworks.networkId} = ${networkId}
+        and ${intents.userId} = ${userId}
+    `);
   }
 
   // user_profiles was dropped in WS8 (IND-365); there is no separate profile row to
@@ -1842,15 +1976,16 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Live, public intents tagged to this network whose owner is still a member.
+   * Live networks_only intents tagged to this network whose owner is still a member.
    * Leaving keeps the tag, so without the member check ex-members kept counting.
-   * Incognito and inactive ones never count.
+   * Private, mutuals_only, and inactive ones never count.
    */
   private liveIntentWhere(networkId: string) {
     return and(
       eq(intentNetworks.networkId, networkId),
       isNull(intents.archivedAt),
-      eq(intents.isIncognito, false),
+      eq(intents.isPrivate, false),
+      eq(intentNetworks.visibility, 'networks_only'),
       activeIntentLifecycleWhere(),
       sql`EXISTS (
         SELECT 1 FROM ${networkMembers}
@@ -2279,6 +2414,7 @@ export class ChatDatabaseAdapter {
     if (deleted.length === 0) {
       throw new Error('Member not found');
     }
+    await this.unlinkMemberIntents(networkId, memberUserId);
   }
 
   /**
@@ -2321,6 +2457,7 @@ export class ChatDatabaseAdapter {
     if (deleted.length === 0) {
       throw new Error('You are not a member of this network');
     }
+    await this.unlinkMemberIntents(networkId, userId);
   }
 
   /**

@@ -118,6 +118,7 @@ export async function handleIntent(
         options.targetId ? [options.targetId] : undefined,
         options.receipt,
         source,
+        { visibility: options.visibility, isPrivate: options.isPrivate },
       );
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Intent created.");
@@ -130,12 +131,12 @@ export async function handleIntent(
         output.error("Missing intent ID. Usage: index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]", 1);
         return;
       }
-      if (!options.intentContent && Object.keys(source).length === 0) {
+      if (!options.intentContent && !options.isPrivate && Object.keys(source).length === 0) {
         output.error("Nothing to update. Usage: index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]", 1);
         return;
       }
       if (!options.json) output.info("Updating intent...");
-      const result = await client.updateIntent(options.intentId, options.intentContent, source);
+      const result = await client.updateIntent(options.intentId, options.intentContent, source, { isPrivate: options.isPrivate });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Intent updated.");
       return;
@@ -180,9 +181,20 @@ export async function handleIntent(
         output.error("Usage: index intent add-to-network <intent-id> <network-id>", 1);
         return;
       }
-      await client.addIntentToNetwork(options.intentId, options.targetId);
+      await client.addIntentToNetwork(options.intentId, options.targetId, options.visibility);
       if (options.json) { console.log(JSON.stringify({ success: true })); return; }
       output.success("Intent added to network.");
+      return;
+    }
+
+    case "exclude": {
+      if (!options.intentId || !options.excludeUserId) {
+        output.error("Usage: index intent exclude <intent-id> <user-id>", 1);
+        return;
+      }
+      await client.excludeUser(options.intentId, options.excludeUserId);
+      if (options.json) { console.log(JSON.stringify({ success: true })); return; }
+      output.success("Person excluded.");
       return;
     }
 

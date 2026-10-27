@@ -159,11 +159,13 @@ export class ApiClient {
    * @returns The created intent id and the networks it was linked to.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
+  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}, options: { visibility?: "networks_only" | "mutuals_only"; isPrivate?: boolean } = {}): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
     const res = await this.post("/api/intents", {
       description,
       ...(networkIds?.length ? { networkIds } : {}),
       ...(preparationReceipt ? { preparationReceipt } : {}),
+      ...(options.visibility ? { visibility: options.visibility } : {}),
+      ...(options.isPrivate ? { private: true } : {}),
       ...source,
     });
     return (await res.json()) as { intentId: string; networkIds: string[] } & Required<IntentSource>;
@@ -188,9 +190,10 @@ export class ApiClient {
    * @param source - Source fields to set; null clears one.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async updateIntent(intentId: string, description?: string, source: IntentSource = {}): Promise<{ intentId: string; description: string } & Required<IntentSource>> {
+  async updateIntent(intentId: string, description?: string, source: IntentSource = {}, options: { isPrivate?: boolean } = {}): Promise<{ intentId: string; description: string } & Required<IntentSource>> {
     const res = await this.patch(`/api/intents/${encodeURIComponent(intentId)}`, {
       ...(description !== undefined ? { description } : {}),
+      ...(options.isPrivate ? { private: true } : {}),
       ...source,
     });
     return (await res.json()) as { intentId: string; description: string } & Required<IntentSource>;
@@ -226,8 +229,12 @@ export class ApiClient {
    * @param networkId - The network UUID.
    * @throws Error on auth failure, refused membership, or network error.
    */
-  async addIntentToNetwork(intentId: string, networkId: string): Promise<void> {
-    await this.post(`/api/intents/${encodeURIComponent(intentId)}/networks`, { networkId });
+  async addIntentToNetwork(intentId: string, networkId: string, visibility?: "networks_only" | "mutuals_only"): Promise<void> {
+    await this.post(`/api/intents/${encodeURIComponent(intentId)}/networks`, { networkId, ...(visibility ? { visibility } : {}) });
+  }
+
+  async excludeUser(intentId: string, userId: string): Promise<void> {
+    await this.post(`/api/intents/${encodeURIComponent(intentId)}/exclusions`, { userId });
   }
 
   /**

@@ -213,7 +213,7 @@ export function IndexChips({
   );
 }
 
-/** `/download` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
+/** `/setup` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
 export default function Download({ overlay }: { overlay?: boolean }) {
   return (
     <AppsShell overlay={overlay} framed={false}>

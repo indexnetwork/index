@@ -73,7 +73,10 @@ export class ConversationController {
     }
 
     try {
-      const conversation = await this.conversationService.createConversation(body.participants);
+      const users = body.participants.filter((p) => p.participantType === 'user');
+      const conversation = body.participants.length === 2 && users.length === 2
+        ? await this.conversationService.getOrCreateDm(users[0].participantId, users[1].participantId)
+        : await this.conversationService.createConversation(body.participants);
       return Response.json({ conversation }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

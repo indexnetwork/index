@@ -46,3 +46,14 @@ export function IntentGlyph({ size = 20 }: { size?: number }) {
     </svg>
   );
 }
+
+/** A pixel house: the way home from a screen with nothing behind it. */
+export function HomeGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="square" strokeLinejoin="miter" style={{ display: "block" }}>
+      <path d="M3 11 12 3l9 8" />
+      <path d="M5.5 9.5V21h13V9.5" />
+      <rect x="10" y="14" width="4" height="7" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

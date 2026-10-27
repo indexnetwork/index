@@ -1,9 +1,10 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { admitOpportunityEvent, type OpportunityLogEvent } from '@indexnetwork/protocol';
 
 import db from '../drizzle/drizzle';
 import { opportunities, opportunityEvents, type OpportunityActor } from '../../schemas/database.schema';
+import { LIFECYCLE_EVENT_TYPES, type ClientEvent } from './opportunity-event.policy';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -35,7 +36,7 @@ export async function applyOpportunityEvent(
 
   const stored = await tx.select({ type: opportunityEvents.type, actorUserId: opportunityEvents.actorUserId })
     .from(opportunityEvents)
-    .where(eq(opportunityEvents.opportunityId, opportunityId))
+    .where(and(eq(opportunityEvents.opportunityId, opportunityId), inArray(opportunityEvents.type, LIFECYCLE_EVENT_TYPES)))
     .orderBy(
       sql`case ${opportunityEvents.type}
         when 'opened' then 0
@@ -47,7 +48,7 @@ export async function applyOpportunityEvent(
       asc(opportunityEvents.id),
     );
   const events: OpportunityLogEvent[] = stored.map((row) => ({
-    type: row.type,
+    type: row.type as OpportunityLogEvent['type'],
     actorUserId: row.actorUserId,
   }));
   const actorIds = [...new Set((locked.actors as OpportunityActor[]).map((actor) => actor.userId).filter(Boolean))];
@@ -104,7 +105,29 @@ export async function committedActorIdsByOpportunity(opportunityIds: string[]): 
 }
 
 function andCommitted(opportunityIds: string[]) {
-  return inArray(opportunityEvents.opportunityId, opportunityIds);
+  return and(inArray(opportunityEvents.opportunityId, opportunityIds), eq(opportunityEvents.type, 'committed'));
+}
+
+/**
+ * Append a client event. It sits beside the lifecycle facts and never moves the status.
+ *
+ * @param opportunityId - Opportunity the event is about.
+ * @param actorUserId - Who recorded it.
+ * @param event - A non-lifecycle type and its context.
+ * @returns The new event's id.
+ */
+export async function appendClientOpportunityEvent(
+  opportunityId: string,
+  actorUserId: string,
+  event: ClientEvent,
+): Promise<string> {
+  const [row] = await db.insert(opportunityEvents).values({
+    opportunityId,
+    type: event.type,
+    actorUserId,
+    data: event.data,
+  }).returning({ id: opportunityEvents.id });
+  return row.id;
 }
 
 /**

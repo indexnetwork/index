@@ -3,7 +3,8 @@ import { log } from '../lib/log';
 import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { appendClientOpportunityEvent, recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import type { ClientEvent } from '../lib/opportunity/opportunity-event.policy';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
@@ -158,7 +159,7 @@ export class OpportunityService {
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
   /** Closes the negotiation underneath an opportunity the owner has ended. */
-  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities'> = negotiationDatabaseAdapter;
+  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities' | 'readNegotiationContext'> = negotiationDatabaseAdapter;
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
@@ -207,8 +208,26 @@ export class OpportunityService {
   }
 
   /**
+   * Record a client event (survey answer, "we met", ...) on an opportunity the caller is part of.
+   * Any status is fine; the event never changes it.
+   *
+   * @param opportunityId - Resolved opportunity id.
+   * @param userId - Caller; must be one of the opportunity's actors.
+   * @param event - Validated by `parseClientEvent`.
+   * @returns The new event's id, or 404 when the caller isn't on the opportunity.
+   */
+  async recordEvent(opportunityId: string, userId: string, event: ClientEvent): Promise<{ id: string } | { error: string; status: number }> {
+    const opportunity = await this.db.getOpportunity(opportunityId);
+    if (!opportunity?.actors.some((actor) => actor.userId === userId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+    return { id: await appendClientOpportunityEvent(opportunityId, userId, event) };
+  }
+
+  /**
    * List opportunities with presenter output for the viewer. peerUserId
-   * switches to accepted pair scope (chat context).
+   * switches to pair scope: every opportunity in `statuses` whose agents
+   * exchanged a turn when given, otherwise accepted ones only (chat context).
    */
   async presentOpportunitiesForViewer(
     userId: string,
@@ -224,6 +243,14 @@ export class OpportunityService {
       presentation?: 'full' | 'skeleton';
     },
   ): Promise<PresentedOpportunityList | { error: string }> {
+    if (options?.peerUserId && options.statuses) {
+      const rows = await this.db.findOpportunitiesByActors([userId, options.peerUserId], { includeIntroducers: true, statuses: options.statuses });
+      const seen = rows.filter((opp) => canUserSeeOpportunity(opp.actors, opp.status, userId));
+      const turns = await Promise.all(seen.map((opp) => this.negotiations.readNegotiationContext(opp.id, userId)));
+      const visible = seen.filter((_, i) => (turns[i]?.turns.length ?? 0) > 0);
+      const opportunities = await Promise.all(visible.map((opp) => this.presentOpportunityForViewer(opp, userId)));
+      return { opportunities, meta: { totalOpportunities: opportunities.length } };
+    }
     if (options?.peerUserId) {
       const chat = await this.getChatContext(userId, options.peerUserId);
       return {

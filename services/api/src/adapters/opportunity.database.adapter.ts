@@ -5,6 +5,11 @@ import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { exactLivePoolWhere } from './poolquery.shared';
 
+/** Longer than a question waits on its owner, so a released negotiator still has time to move. */
+const NEGOTIATION_IDLE = '96 hours';
+const PENDING_TTL = '7 days';
+const EXPIRE_BATCH = 500;
+
 /** Aligned with the protocol's `PriorOpportunity`; adapters do not import the protocol. */
 interface PriorOpportunity {
   opportunityId: string;
@@ -1100,16 +1105,34 @@ export class OpportunityDatabaseAdapter {
     return expired;
   }
 
-  /** Append `expired` for opportunities with expires_at <= now. Skips terminal statuses. */
+  /**
+   * Append `expired` for opportunities past their expires_at, negotiations
+   * whose turn went untaken for NEGOTIATION_IDLE, and agreements nobody
+   * finished accepting within PENDING_TTL. Skips terminal statuses.
+   *
+   * A negotiation with nobody to move is paused between rounds, waiting on a
+   * seat to resume it rather than on an agent, so idling never expires it. Its
+   * idle clock restarts when a seat resumes it.
+   */
   async expireStaleOpportunities(): Promise<number> {
     const due = await db
       .select({ id: opportunities.id })
       .from(opportunities)
       .where(and(
-        isNotNull(opportunities.expiresAt),
-        lte(opportunities.expiresAt, new Date()),
         notInArray(opportunities.status, ['accepted', 'rejected', 'expired']),
-      ));
+        or(
+          and(isNotNull(opportunities.expiresAt), lte(opportunities.expiresAt, new Date())),
+          and(eq(opportunities.status, 'negotiating'), sql`exists (
+            select 1 from negotiations n where n.opportunity_id = ${opportunities.id} and n.settled_at is null
+              and n.awaiting_user_id is not null
+              and greatest(n.created_at, n.updated_at, (select max(t.created_at) from negotiation_turns t where t.negotiation_id = n.id))
+                < now() - ${NEGOTIATION_IDLE}::interval)`),
+          and(eq(opportunities.status, 'pending'), sql`exists (
+            select 1 from opportunity_events e where e.opportunity_id = ${opportunities.id} and e.type = 'agreed'
+              and e.at < now() - ${PENDING_TTL}::interval)`),
+        ),
+      ))
+      .limit(EXPIRE_BATCH);
     const expiredIds: string[] = [];
     for (const row of due) {
       const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });

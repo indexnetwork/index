@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const auth: { isAuthenticated: boolean; isReady: boolean; user: unknown } = { isAuthenticated: false, isReady: true, user: null };
+const auth: { isAuthenticated: boolean; isReady: boolean; user: unknown; refetchUser: ReturnType<typeof vi.fn> } = {
+  isAuthenticated: false,
+  isReady: true,
+  user: null,
+  refetchUser: vi.fn().mockResolvedValue(undefined),
+};
 const acceptInvitation = vi.fn();
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuthContext: () => auth }));
@@ -50,6 +55,7 @@ describe("NetworkWebInviteLanding", () => {
   beforeEach(() => {
     auth.isAuthenticated = false;
     auth.user = null;
+    auth.refetchUser.mockClear();
     acceptInvitation.mockReset();
     acceptInvitation.mockResolvedValue({ status: "joined", network: { id: "n1" } });
   });
@@ -108,6 +114,7 @@ describe("NetworkWebInviteLanding", () => {
     renderLanding();
     expect(await screen.findByText("onboarding page")).toBeTruthy();
     expect(acceptInvitation).toHaveBeenCalledWith("abc");
+    expect(auth.refetchUser).toHaveBeenCalled();
   });
 
   it("joins an existing account and opens the network", async () => {
@@ -116,5 +123,6 @@ describe("NetworkWebInviteLanding", () => {
     renderLanding();
     expect(await screen.findByText("network page")).toBeTruthy();
     expect(acceptInvitation).toHaveBeenCalledWith("abc");
+    expect(auth.refetchUser).toHaveBeenCalled();
   });
 });

@@ -1,8 +1,10 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
+import { formatChatClock } from "@/lib/utils";
 
 /* Copied from apps/mac/src/ui. Data bindings are the only web-side change. */
 
@@ -60,11 +62,10 @@ export function MatchCard({
     e.stopPropagation();
     onProfile();
   };
-  const cardClickable = accepted || expired || ready || negotiating;
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      onClick={cardClickable ? onOpen : undefined}
+      onClick={onProfile}
       style={{
         textAlign: "left",
         display: "grid",
@@ -74,9 +75,9 @@ export function MatchCard({
         background: "#fff", color: "#000",
         border: "1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
-        transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
-        cursor: cardClickable ? "pointer" : "default",
+        boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
+        transform: hover ? "translate(-1px, -1px)" : "none",
+        cursor: "pointer",
         transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
@@ -96,7 +97,7 @@ export function MatchCard({
         {accepted ? (
           <>
             {waitingOnThem && (
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>waiting for them</span>
+              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>chat open</span>
             )}
             <button type="button" className="wb-btn primary small" onClick={onOpen}>
               {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
@@ -140,19 +141,6 @@ export function SummarySection({ label, children }: { label: string; children: R
       <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>{children}</div>
     </div>
   );
-}
-
-export function expiryReason(id: string, name: string) {
-  const reasons = [
-    "the moment passed. they committed to something else before you replied.",
-    "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your intent sharpened, and your edges drifted apart.",
-    "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
-  ];
-  const s = id || name || "x";
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return reasons[h % reasons.length];
 }
 
 export function OptionChip({ label, selected = false, write = false, onClick }: {
@@ -223,11 +211,13 @@ function negoDetail(th: NegotiationSummary) {
 function negoFirstName(th: NegotiationSummary) {
   return (th.counterparty?.name || "unknown").split(/\s+/)[0].toLowerCase();
 }
+// Date and 24h time at a fixed width ("oct 02 14:03"), so turn text lines up under it.
 function negoClock(iso: string | null | undefined) {
   const d = new Date(iso || "");
-  if (isNaN(d.getTime())) return "--:--:--";
+  if (isNaN(d.getTime())) return "------ --:--";
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const day = d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }).toLowerCase();
+  return `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 const NEGO_RESULT_GLYPH = {
@@ -242,7 +232,7 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
   return (
     <div style={{ display: "grid", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000" }}>
-        <span style={{ color: "var(--ink-3)", flex: "0 0 auto" }}>{negoClock(turn.createdAt)}</span>
+        <time dateTime={turn.createdAt} title={turn.createdAt ? new Date(turn.createdAt).toLocaleString() : undefined} style={{ color: "var(--ink-3)", flex: "0 0 auto", width: "12ch" }}>{negoClock(turn.createdAt)}</time>
         {withTag && (
           <button type="button" onClick={() => onTag?.(th)} style={{
             flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10,
@@ -251,7 +241,11 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{negoFirstName(th)}</button>
         )}
-        <span style={{ fontWeight: 700, flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
+        {!you && th.counterparty?.userId ? (
+          <Link to={`/u/${th.counterparty.userId}`} title="view profile" style={{ fontWeight: 700, flex: "0 0 auto", color: "#000", textDecoration: "underline" }}>{negoFirstName(th)}.agent</Link>
+        ) : (
+          <span style={{ fontWeight: 700, flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
+        )}
         <span style={{ flex: "0 0 auto" }}>{you ? "→" : "←"}</span>
         <span style={{
           flex: "0 0 auto", textTransform: "uppercase", letterSpacing: 1,
@@ -261,7 +255,7 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
       </div>
       {turn.message && (
         <div style={{
-          marginLeft: withTag ? 156 : 72,
+          marginLeft: withTag ? "calc(12ch + 92px)" : "calc(12ch + 8px)",
           fontFamily: "var(--mac-mono)", fontSize: 11, lineHeight: 1.45,
           color: "var(--ink-2)", maxWidth: 560,
         }}>"{turn.message}"</div>
@@ -305,7 +299,7 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
   const r = negoResult(th);
   const { g, color } = NEGO_RESULT_GLYPH[r];
   return (
-    <button type="button" onClick={onPick} style={{
+    <button type="button" onClick={onPick} title={`last activity ${new Date(th.updatedAt || th.settledAt || th.createdAt).toLocaleString()}`} style={{
       display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8,
       alignItems: "center", width: "100%", textAlign: "left",
       padding: "7px 10px", cursor: "pointer",
@@ -315,7 +309,7 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
       fontFamily: "var(--mac-mono)", fontSize: 11,
     }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{negoFirstName(th)}</span>
-      <span style={{ color: active ? "#FF8A00" : "var(--ink-3)", fontSize: 10 }}>{th.turnCount || 0}t</span>
+      <span style={{ color: active ? "#FF8A00" : "var(--ink-3)", fontSize: 10, whiteSpace: "nowrap" }}>{th.turnCount || 0}t</span>
       <span style={{ color: active ? "#FF8A00" : color, fontWeight: 700 }}>{g}</span>
     </button>
   );
@@ -405,20 +399,21 @@ export function DiscoveryLoader() {
   );
 }
 
-function AgentLabel() {
+function AgentLabel({ at }: { at?: string }) {
   return (
     <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>
       your agent
+      {at && <time className="wb-stamp" dateTime={at} style={{ textTransform: "none" }}> · {formatChatClock(at)}</time>}
     </div>
   );
 }
 
-export function AgentFeedNote({ children }: { children: ReactNode }) {
+export function AgentFeedNote({ children, at }: { children: ReactNode; at?: string }) {
   return (
-    <div style={{ display: "flex", gap: 12 }}>
+    <div className="wb-stamped" style={{ display: "flex", gap: 12 }}>
       <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <AgentLabel />
+        <AgentLabel at={at} />
         <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{children}</div>
       </div>
     </div>

@@ -19,8 +19,7 @@ A person, or
 their agent, says what they want or what they can offer. Not every sentence is
 that. Admission keeps the ones another agent can take up, and refuses the rest.
 
-The checks below are the default. A
-[network](/network) can set its own admission rules and change the thresholds.
+The checks below are the default. The thresholds are the same for every network.
 
 ```mermaid
 flowchart TD
@@ -30,7 +29,7 @@ flowchart TD
     Clarity -->|unclear or generic| DropVague[Refuse]
     Clarity -->|clear| Breadth[Breadth on creation]
     Breadth -->|unbounded| DropBroad[Refuse and ask]
-    Breadth -->|admitted| Privacy[Privacy lattice]
+    Breadth -->|admitted| Admitted[Intent is admitted]
 ```
 
 ### 1. Classification
@@ -65,21 +64,16 @@ real want, and whether this person could plausibly say it.
 | Sincerity | Does the wording imply a real want or commitment? | In SF next week, want to meet founders building with agents. Free for coffee Tuesday and Wednesday. | In SF next week, might meet founders building with agents if there's time. |
 | Authority | Could this person plausibly make this offer or ask? | A founder who just raised a seed round, in SF next week, offering coffee to founders raising their first round. | In SF next week, offering intros to every AI lab founder in the city. |
 
-Each is scored from 0 to 100. By default only clarity gates admission: an
-intent with clarity below 40 is refused. Sincerity and authority are recorded.
-
-A network can let sincerity or authority refuse an intent, not only clarity.
-It can also move the cutoff. The default cutoff for clarity is 40. A network
-can set a different number, and set cutoffs for the other scores.
+Each is scored from 0 to 100. Clarity is what gates admission: an intent with
+clarity below 40 is refused. Sincerity and authority are recorded.
 
 ### 3. Two further refusals
 
 Classification and the scores can pass, and the declaration can still be too
 vague for another agent to take up. Admission refuses those as well.
 
-- **Underspecification:** Too little constraint to evaluate. By default,
-  semantic entropy is above 0.75, clarity is below 40, or the request is a bare
-  "I need intros". A network can change these thresholds.
+- **Underspecification:** Too little constraint to evaluate. Semantic entropy
+  is above 0.75, clarity is below 40, or the request is a bare "I need intros".
 - **Unbounded reference:** Enough topic, still too large a class of people who
   could satisfy it ("meet people in AI while I'm in SF"). Missing constraints
   (role, outcome, location, timeframe, domain, need) keep that class open. Only
@@ -105,24 +99,31 @@ unarchived `active` intent.
 
 ## Visibility
 
-Every intent has a visibility property, chosen when it is declared. It decides
-whether other agents can find the intent, who can read it, and when its content
-is revealed. It is set per intent, not per person, so one principal can hold a
-`public` ask to meet founders in SF and a `private` constraint, such as no
-meetings before 10, at the same time.
+An intent is how other people can find what you want. Visibility is how far
+that reaches inside the [networks](/network) you belong to.
 
-- **`public`:** Found and read anywhere.
-- **`network_only`:** Found and read only inside the [networks](/network) it
-  is assigned to. With no network, it finds nobody.
-- **`incognito`:** Found only by the network, which privately checks whether
-  the interest is mutual. Nothing reaches the other side unless it is. See
-  [double blind matching](/discovery#double-blind-matching).
-- **`private`:** Never found. It only limits the agent that holds it: timing,
-  limits, things its principal will not do.
+A founder looking for coffee next week can be easy to find in a local
+community. A search for a new role can wait until someone in that community is
+hiring. A salary floor can stay with your agent and shape what it will accept.
 
-Visibility and the lifecycle state are separate. Pausing an intent takes it out
-of the candidate set whatever its visibility; a `private` intent never enters
-that set at all.
+The choice is made for each network an intent is shared into, so the same
+intent can be easy to find in one community and quiet in another.
 
-See [Privacy](/privacy#intent-visibility) for how each visibility is found,
-read, and revealed.
+- **`networks_only`** is the usual share. Members of that network find the
+  intent by search, and see it in the network's list.
+- **`mutuals_only`** isn't listed. It reaches someone in that network only
+  when the fit holds both ways. See [the mutual check](/discovery#mutual-check).
+- **`private`** stays with your agent: a salary floor, a company you will not
+  join, a time you will not meet. Your agent uses it when it speaks for you.
+  If it opens a negotiation from that intent, the other person sees the
+  statement then. You can still share a private intent into networks. Those
+  are the networks your agent searches, and it can approach people there. That
+  reaches further than waiting for a mutual fit, because your agent chooses
+  whom to approach.
+
+An intent shared into no network has nowhere to search. It still tells your
+agent what you want.
+
+Pausing an intent takes it out of discovery at every visibility.
+
+See [Privacy](/privacy#intent-visibility).

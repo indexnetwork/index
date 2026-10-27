@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode, type UIEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
@@ -21,7 +21,7 @@ import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/u
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
-import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
@@ -35,7 +35,7 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 const DISCOVERY_GIVE_UP_MS = 120_000;
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
-/** Same lifecycle set as the Mac radar. Rejected (failed) and expired (missed) both land in Closed. */
+/** Same lifecycle set as the Mac radar. Rejected (not a fit) and expired both land in Closed. */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "pending",
   "negotiating",
@@ -398,13 +398,63 @@ function IntentDetail() {
   const discovering = !!intent && lifecycleStatus !== "paused" && shownCount === 0 && !discoveryExpired;
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
+  // Compact: the intent header shrinks while the feed scrolls down and grows
+  // back on the way up, and stays small while the keyboard is open.
+  const [headerSmall, setHeaderSmall] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const scrollGesture = useRef({ at: 0, quietUntil: 0, anchor: new WeakMap<Element, number>() });
+  useEffect(() => { setHeaderSmall(false); setTyping(false); }, [intentId, compactPane]);
+  const markScrollGesture = useCallback(() => { scrollGesture.current.at = Date.now(); }, []);
+  const onBodyScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const pane = event.target;
+    if (!(pane instanceof HTMLElement) || pane.tagName === "TEXTAREA" || pane.tagName === "INPUT") return;
+    const gesture = scrollGesture.current;
+    const top = pane.scrollTop;
+    const anchor = gesture.anchor.get(pane) ?? top;
+    const now = Date.now();
+    // Only a finger or wheel moves the header: programmatic follow-scrolls and
+    // the reflow from the header resizing itself would otherwise loop.
+    if (now < gesture.quietUntil || now - gesture.at > 600) {
+      gesture.anchor.set(pane, top);
+      return;
+    }
+    const toggle = (small: boolean) => {
+      gesture.quietUntil = now + 300;
+      gesture.anchor.set(pane, top);
+      setHeaderSmall(small);
+    };
+    if (top <= 0) { if (headerSmall) toggle(false); else gesture.anchor.set(pane, top); return; }
+    const diff = top - anchor;
+    if (!headerSmall && diff > 24) toggle(true);
+    else if (headerSmall && diff < -24) toggle(false);
+    // The anchor follows the scroll while it keeps going the current way.
+    else if (headerSmall ? diff > 0 : diff < 0) gesture.anchor.set(pane, top);
+  }, [headerSmall]);
+  const isField = (el: EventTarget | null) => el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+  const onBodyFocus = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (!isField(event.target)) return;
+    scrollGesture.current.quietUntil = Date.now() + 300;
+    setTyping(true);
+    setHeaderSmall(true);
+  }, []);
+  const onBodyBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (!isField(event.target) || isField(event.relatedTarget)) return;
+    scrollGesture.current.quietUntil = Date.now() + 300;
+    setTyping(false);
+    setHeaderSmall(false);
+  }, []);
+  const small = compact && headerSmall;
+
   const leave = compact ? back : () => navigate("/");
   const closePerson = () => setOpenPersonId(null);
   // Medium widths fit two panes, so an open person takes the agent chat's place.
   const hideChat = !compact && medium && !!openPerson;
 
   const intentHeader = (
-    <div style={{ padding: "12px 18px", minHeight: 68, boxSizing: "border-box", borderBottom: "1px solid #000", background: "#fff" }}>
+    <div style={{
+      padding: small ? "8px 14px" : "12px 18px", minHeight: small ? 0 : 68, boxSizing: "border-box",
+      borderBottom: "1px solid #000", background: "#fff", transition: "padding 180ms ease, min-height 180ms ease",
+    }}>
       {intentLoading ? (
         <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
       ) : (
@@ -412,10 +462,10 @@ function IntentDetail() {
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
             <h2 title={title || "your intent"} style={{
               margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
-              fontSize: 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
-              flex: 1, minWidth: 0,
-              display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3,
-              maxHeight: "3.6em", overflow: "hidden",
+              fontSize: small ? 14 : 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
+              flex: 1, minWidth: 0, transition: "font-size 180ms ease",
+              display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: small ? 1 : 3,
+              maxHeight: small ? "1.2em" : "3.6em", overflow: "hidden",
             }}>{title || "your intent"}</h2>
             <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
               <IntentAction
@@ -431,9 +481,16 @@ function IntentDetail() {
               />
             </div>
           </div>
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000" }}>
+          <div aria-hidden={small || undefined} style={{
+            marginTop: small ? 0 : 8, maxHeight: small ? 0 : 40, opacity: small ? 0 : 1, overflow: "hidden",
+            transition: "margin-top 180ms ease, max-height 180ms ease, opacity 120ms ease",
+            display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000",
+          }}>
             {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6 }} />}
-            <span>{lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}</span>
+            <span>
+              {lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}
+              {intent?.createdAt && ` · created ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+            </span>
           </div>
         </>
       )}
@@ -451,7 +508,7 @@ function IntentDetail() {
         onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
         stages={RADAR_STAGES.map((stage) => ({
           label: stage,
-          display: stage === "negotiating" ? "in talks" : stage,
+          display: stage === "negotiating" ? "in talks" : stage === "accepted" ? "chat open" : stage,
           count: bucketCounts[stage] ?? 0,
           accent: stage === "awaiting you" || stage === "accepted",
         }))}
@@ -489,7 +546,7 @@ function IntentDetail() {
         const peer = item.peer;
         const name = item.name || peer?.name || "unknown";
         const blurb = item.headline || item.mainText || "";
-        // "waiting for them" only while this viewer has said yes and
+        // "chat open" chip only while this viewer has said yes and
         // the other person has not. A mutual accept stays a plain
         // accepted row, same as the Mac card.
         const waitingOnThem = item.status === "pending" && (
@@ -532,6 +589,8 @@ function IntentDetail() {
       onClose={() => setOpenPersonId(null)}
       onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId, { notOnIndex: openPerson.peer?.emailVerified === false })}
       onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
+      hasChat={!!(openPerson.userId || openPerson.peer?.userId) && chatPeers.has(openPerson.userId || openPerson.peer?.userId || "")}
+      onOpenChat={() => navigate(`/u/${openPerson.userId || openPerson.peer?.userId}/chat`)}
     />
   ) : null;
 
@@ -564,23 +623,35 @@ function IntentDetail() {
             </Window>
           ) : (
             <Window title="intent" onClose={leave}>
-              {intentHeader}
-              <div style={{ padding: "8px 12px", borderBottom: "1px solid #000", background: "#fff" }}>
-                <Segmented
-                  value={compactPane}
-                  onChange={setCompactPane}
-                  options={[
-                    { value: "agent", label: "agent" },
-                    { value: "radar", label: shownCount ? `radar · ${shownCount}` : "radar" },
-                  ]}
-                />
+              <div
+                style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+                onScrollCapture={onBodyScroll}
+                onTouchMove={markScrollGesture}
+                onWheel={markScrollGesture}
+                onFocus={onBodyFocus}
+                onBlur={onBodyBlur}
+              >
+                {intentHeader}
+                {/* The keyboard leaves little room, so the pane switch steps aside while typing. */}
+                {!typing && (
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #000", background: "#fff" }}>
+                    <Segmented
+                      value={compactPane}
+                      onChange={setCompactPane}
+                      options={[
+                        { value: "agent", label: "agent" },
+                        { value: "radar", label: shownCount ? `radar · ${shownCount}` : "radar" },
+                      ]}
+                    />
+                  </div>
+                )}
+                {compactPane === "agent" ? agentChat : (
+                  <>
+                    {radarFunnel}
+                    {radarList}
+                  </>
+                )}
               </div>
-              {compactPane === "agent" ? agentChat : (
-                <>
-                  {radarFunnel}
-                  {radarList}
-                </>
-              )}
             </Window>
           )}
         </Stage>
@@ -793,6 +864,8 @@ function PersonPane({
   onClose,
   onAccept,
   onPass,
+  hasChat = false,
+  onOpenChat,
 }: {
   item: RadarCardItem;
   bucket: ReturnType<typeof radarBucketForOpportunity>;
@@ -804,7 +877,10 @@ function PersonPane({
   onClose: () => void;
   onAccept: () => void;
   onPass: () => void;
+  hasChat?: boolean;
+  onOpenChat?: () => void;
 }) {
+  const navigate = useNavigate();
   const name = item.name || "someone";
   const notOnIndex = item.peer?.emailVerified === false;
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
@@ -813,6 +889,8 @@ function PersonPane({
   const profileSettled = settledFor === item.userId;
   const showingProfile = pane === "profile" || (pane === "stage" && bucket !== "accepted" && bucket !== "negotiating" && bucket !== "closed");
   const openProfile = () => onPane("profile");
+  // The agent log names the other agent; tapping it opens its owner's profile page.
+  const openFullProfile = () => (item.userId ? navigate(`/u/${item.userId}`) : openProfile());
   useEffect(() => {
     if (!item.userId || !showingProfile) return;
     let active = true;
@@ -829,10 +907,12 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-          <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
+          <span title="view profile" onClick={openFullProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
+            <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
+          </span>
           <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>
-              your agent ⇄ <span title="view profile" onClick={openProfile} style={{ cursor: "pointer" }}>{first}</span>&apos;s agent
+              your agent ⇄ <span title="view profile" onClick={openFullProfile} style={{ cursor: "pointer", textDecoration: "underline" }}>{first}&apos;s agent</span>
             </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
               {bucket === "closed"
@@ -878,7 +958,7 @@ function PersonPane({
   const socials = resolveSocials(profile?.socials);
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
-      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} size={42} />
+      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} size={42} onOpenProfile={item.userId ? () => navigate(`/u/${item.userId}`) : undefined} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         {bio && <SummarySection label="bio">{bio}</SummarySection>}
         {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
@@ -897,7 +977,7 @@ function PersonPane({
         {profile?.location && (
           <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>{profile.location}</div>
         )}
-        {bucket === "closed" && <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>}
+        {bucket === "closed" && item.status === "expired" && <SummarySection label="why it closed">an intent was archived.</SummarySection>}
         {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
             ? <EmptyState tone="loading" align="start" />
@@ -905,7 +985,11 @@ function PersonPane({
         )}
       </div>
       <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {bucket === "awaiting you" ? (
+        {/* Same as the radar card: a chat that already exists means there is
+            nothing left to accept, so offer the chat instead. */}
+        {(bucket === "awaiting you" || bucket === "accepted") && hasChat && !notOnIndex ? (
+          <Btn primary small onClick={onOpenChat}>open chat ›</Btn>
+        ) : bucket === "awaiting you" ? (
           <>
             <Btn primary small onClick={onAccept}>accept</Btn>
             <Btn small onClick={onPass}>pass</Btn>

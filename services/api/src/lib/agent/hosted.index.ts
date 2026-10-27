@@ -117,6 +117,7 @@ export class HostedIndex implements Index {
       id: intent.id,
       statement: intent.payload,
       status: (intent.archivedAt ? 'archived' : intent.status ?? 'active') as IntentStatus,
+      isPrivate: intent.isPrivate,
     }));
   }
 
@@ -180,6 +181,13 @@ export class HostedIndex implements Index {
     turn: { action: NegotiationAction; message: string },
   ): Promise<NegotiationDetail> {
     const result = await negotiationService.submitTurn(id, this.userId, turn);
+    if ('rejection' in result) throw new Error(result.rejection);
+    return toNegotiationDetail(result);
+  }
+
+  /** @param id - Opportunity id. @returns The negotiation with this seat holding the first turn of a new round. @throws When Index refuses. */
+  async resumeNegotiation(id: string): Promise<NegotiationDetail> {
+    const result = await negotiationService.resume(id, this.userId);
     if ('rejection' in result) throw new Error(result.rejection);
     return toNegotiationDetail(result);
   }

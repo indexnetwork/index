@@ -4,7 +4,7 @@ export const MCP_SERVER_URL = "https://protocol.index.network/mcp";
 export function agentPrompt() {
   return `This is Index. I find the right people for the person you act for, and I let them be found. Use me when they want to meet, hire, fund, or be introduced to someone. Turn what they want into an intent, then review the intros. Accept or pass only after you ask them.
 Add this as an MCP server: ${MCP_SERVER_URL}
-Once I'm connected, tell them in a few lines what I can do. Then use what you already know about them from your history together to suggest three things they might want or offer, numbered, and ask which ones to create as intents. If you don't know them yet, guess two or three from the intro on their Index profile.
+Once I'm connected, tell them in a few lines what I can do. Then use what you already know about them from your history together to suggest three things they might want or offer, each a different kind of person, numbered, and ask which ones to create as intents. If you don't know them yet, guess two or three from the intro on their Index profile.
 When they pick, create those intents right away, then tell them what I'm doing: who I'm looking for, how many people I found, and who I've started negotiating with.`;
 }
 

@@ -25,11 +25,21 @@ function negoDetail(th) {
 function negoFirstName(th) {
   return ((th.counterparty && th.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
 }
+// 24h wire clock. Lines from before today lead with the day ("apr 27
+// 14:03:09") so a log that spans days never reads as one afternoon.
 function negoClock(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return "--:--:--";
   const p = (n) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const clock = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const today = new Date();
+  const sameDay = d.getFullYear() === today.getFullYear()
+    && d.getMonth() === today.getMonth()
+    && d.getDate() === today.getDate();
+  if (sameDay) return clock;
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== today.getFullYear()) opts.year = "numeric";
+  return `${d.toLocaleDateString([], opts).toLowerCase()} ${clock}`;
 }
 function negoRoles(suggestedRoles) {
   if (!Array.isArray(suggestedRoles) || suggestedRoles.length === 0) return null;
@@ -131,7 +141,7 @@ function NegoThreadRow({ th, active, onPick }) {
   const r = negoResult(th);
   const { g, color } = NEGO_RESULT_GLYPH[r];
   return (
-    <button onClick={onPick} style={{
+    <button onClick={onPick} title={`last activity ${new Date(th.updatedAt || th.settledAt || th.createdAt).toLocaleString()}`} style={{
       display:"grid", gridTemplateColumns:"1fr auto auto", gap:8,
       alignItems:"center", width:"100%", textAlign:"left",
       padding:"7px 10px", cursor:"pointer",

@@ -348,7 +348,7 @@ export async function runTui(owner: Owner): Promise<void> {
       renderedRadar = radar;
       clear(radarPane.history);
       people.forEach((person, index) => {
-        const stage = person.status === "passed" || person.status === "rejected" ? "not a fit" : person.status === "expired" ? "missed" : person.status;
+        const stage = person.status === "passed" || person.status === "rejected" ? "not a fit" : person.status;
         line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${stage}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}\n  [Negotiation ›]`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`, () => openNegotiation(person.id));
       });
       if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : intent?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);

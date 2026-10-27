@@ -48,7 +48,7 @@ export interface CreateIntentInput {
   payload: string;
   summary?: string | null;
   embedding?: number[];
-  isIncognito?: boolean;
+  isPrivate?: boolean;
   sourceType?: string | null;
   sourceId?: string | null;
   semanticEntropy?: number | null;
@@ -63,7 +63,7 @@ export interface UpdateIntentInput {
   payload?: string;
   summary?: string | null;
   embedding?: number[];
-  isIncognito?: boolean;
+  isPrivate?: boolean;
   sourceType?: string | null;
   sourceId?: string | null;
   semanticEntropy?: number | null;
@@ -82,7 +82,7 @@ export interface CreatedIntentRow {
   id: string;
   payload: string;
   summary: string | null;
-  isIncognito: boolean;
+  isPrivate: boolean;
   createdAt: Date;
   updatedAt: Date;
   userId: string;
@@ -98,7 +98,7 @@ export interface IntentListRow {
   payload: string;
   summary: string | null;
   status: IntentLifecycleStatus | null;
-  isIncognito: boolean;
+  isPrivate: boolean;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -109,7 +109,7 @@ export interface IntentListRow {
    * shared it nowhere, which lets the UI surface orphaned intents instead of
    * hiding the assignment outcome.
    */
-  networks: { id: string; title: string }[];
+  networks: { id: string; title: string; visibility: 'networks_only' | 'mutuals_only' }[];
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
    * attributed to this intent by `detection.triggeredBy` or the owner's
@@ -388,7 +388,7 @@ export interface SimilarIntent {
   id: string;
   payload: string;
   summary: string | null;
-  isIncognito: boolean;
+  isPrivate: boolean;
   createdAt: Date;
   updatedAt: Date;
   userId: string;
@@ -440,6 +440,7 @@ export async function upsertIntentNetworkAssignment(
     networkId: string,
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    visibility?: import('../schemas/database.schema').AssignmentVisibility,
   ): Promise<void> {
     await db.insert(intentNetworks)
       .values({
@@ -447,12 +448,14 @@ export async function upsertIntentNetworkAssignment(
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
         ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+        ...(visibility !== undefined ? { visibility } : {}),
       })
       .onConflictDoUpdate({
         target: [intentNetworks.intentId, intentNetworks.networkId],
         set: {
           relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
           ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+          ...(visibility !== undefined ? { visibility } : {}),
         },
       });
   }

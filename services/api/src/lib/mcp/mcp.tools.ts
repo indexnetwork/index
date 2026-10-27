@@ -15,11 +15,12 @@ import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { cosignEnricher, cosignLine } from './mcp.cosign';
-import { MCP_ONBOARDING } from './mcp.instructions';
+import { MCP_CADENCE, MCP_ONBOARDING } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
 const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, intent, or opportunity name itself, never as a separate "link" word.';
+const CADENCE_HINT = ` ${MCP_CADENCE}`;
 
 /** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
 const hints = (
@@ -111,6 +112,7 @@ function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listInten
     description: intent.payload,
     summary: intent.summary,
     status: intent.status,
+    private: intent.isPrivate,
     archived: intent.archivedAt !== null,
     archivedAt: intent.archivedAt,
     createdAt: intent.createdAt,
@@ -347,12 +349,25 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
+        visibility: z.enum(['networks_only', 'mutuals_only']).optional(),
+        private: z.boolean().optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
       annotations: hints('Create intent', false, false, false, false),
     },
-    ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+    ({ description, networkIds, visibility, private: isPrivate, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+      if (isPrivate) {
+        try {
+          const created = await intentService.create(principal.userId, description, networkIds ?? [], undefined, { sourceType, sourceId }, { isPrivate: true });
+          const url = appLink('i', created.id);
+          return mcpSuccess({ intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId }, `${mdLink(intentLabel(description), url)} — created`);
+        } catch (error) {
+          if (error instanceof IntentCreateRejectedError) return mcpError(error.code, error.message);
+          if (error instanceof IntentNetworkMembershipError) return mcpError(error.code, error.message, { networkId: error.networkId });
+          throw error;
+        }
+      }
       let prepared;
       try {
         prepared = await intentService.prepare(principal.userId, { payload: description });
@@ -377,6 +392,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           networkIds ?? [],
           prepared.preparationReceipt,
           { sourceType, sourceId },
+          { visibility, isPrivate },
         );
         const url = appLink('i', created.id);
         const label = intentLabel(prepared.payload);
@@ -409,18 +425,19 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         description: z.string().trim().min(1).max(65_536).optional(),
+        private: z.literal(true).optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
       }).strict(),
       annotations: hints('Update intent', false, true, false, true),
     },
-    ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
-      if (description === undefined && sourceType === undefined && sourceId === undefined) {
-        return mcpError('invalid_input', 'description, sourceType, or sourceId is required.');
+    ({ intentId, description, private: isPrivate, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
+      if (description === undefined && isPrivate === undefined && sourceType === undefined && sourceId === undefined) {
+        return mcpError('invalid_input', 'description, private, sourceType, or sourceId is required.');
       }
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
-      const outcome = await intentService.update(resolved.id, principal.userId, description, { sourceType, sourceId });
+      const outcome = await intentService.update(resolved.id, principal.userId, description, { sourceType, sourceId }, { isPrivate });
       if (outcome.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
       if (outcome.kind === 'archived') return mcpError('intent_archived', 'Archived intents cannot be updated.');
       if (outcome.kind === 'rejected') return mcpError('intent_rejected', outcome.detail);
@@ -532,7 +549,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT + CADENCE_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -646,7 +663,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_negotiations',
     {
-      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT,
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         state: z.enum(['open', 'settled']).optional(),
@@ -697,7 +714,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Put each one to the owner as a choice prompt built from those fields, never inline in your reply, and save their pick or own words with principal_send_message and that questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Put each one to the owner as a choice prompt built from those fields, never inline in your reply, and save their pick or own words with principal_send_message and that questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT + CADENCE_HINT,
       inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },

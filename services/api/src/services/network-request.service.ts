@@ -139,6 +139,7 @@ export class NetworkRequestService {
         and(
           sql`${schema.networks.requestStatus} IS NOT NULL`,
           isNull(schema.networks.deletedAt),
+          sql`${schema.networks.metadata}->'request'->>'skippedAt' IS NULL`,
         ),
       )
       .orderBy(sql`${schema.networks.createdAt} DESC`);
@@ -217,7 +218,8 @@ export class NetworkRequestService {
   }
 
   /**
-   * Staff decision on a request: approve (create it) or ask for changes.
+   * Staff decision on a request: approve (create it), ask for changes, or skip
+   * (hide it from the review queue without notifying the requester).
    *
    * The read, status flip, and (on approval) owner-membership write happen in a
    * single serialized transaction with a `FOR UPDATE` row lock, so two staff
@@ -227,7 +229,7 @@ export class NetworkRequestService {
    */
   async reviewRequest(
     networkId: string,
-    decision: 'approve' | 'needs_changes',
+    decision: 'approve' | 'needs_changes' | 'skip',
     reviewNote?: string,
   ): Promise<NetworkRequestDTO> {
     const note = decision === 'needs_changes' ? (reviewNote ?? '').trim() : '';
@@ -266,6 +268,15 @@ export class NetworkRequestService {
         return { decision, updated, requesterId, membershipCreated: inserted.length > 0 } as const;
       }
 
+      if (decision === 'skip') {
+        const [updated] = await tx
+          .update(schema.networks)
+          .set({ metadata: { request: { ...req, skippedAt: new Date().toISOString() } } })
+          .where(eq(schema.networks.id, networkId))
+          .returning();
+        return { decision, updated, requesterId, membershipCreated: false } as const;
+      }
+
       const nextMeta = { request: { ...req, reviewNote: note, reviewedAt: new Date().toISOString() } };
       const [updated] = await tx
         .update(schema.networks)
@@ -275,9 +286,11 @@ export class NetworkRequestService {
       return { decision, updated, requesterId, membershipCreated: false } as const;
     });
 
-    this.emailRequester(outcome.decision, outcome.updated, outcome.requesterId).catch((err) =>
-      logger.error('Review email failed', { networkId, decision: outcome.decision, error: err }),
-    );
+    if (outcome.decision !== 'skip') {
+      this.emailRequester(outcome.decision, outcome.updated, outcome.requesterId).catch((err) =>
+        logger.error('Review email failed', { networkId, decision: outcome.decision, error: err }),
+      );
+    }
     return this.toDTO(outcome.updated);
   }
 

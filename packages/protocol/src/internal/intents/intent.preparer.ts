@@ -10,7 +10,12 @@ import { SemanticVerifier } from "./intent.verifier.js";
 /** One answer paired with the recovery field it fills. */
 export interface PrepareAnswer { prompt: string; answer: string }
 /** The current draft and recovery answers not yet folded into it. */
-export interface PrepareInput { payload: string; answers?: PrepareAnswer[] }
+export interface PrepareInput {
+  payload: string;
+  answers?: PrepareAnswer[];
+  /** 1 asks again when admission fails. 2, or any supplied answer, admits the draft. */
+  turn?: number;
+}
 export interface RecoveryFieldOption { label: string; description: string }
 export type RecoveryFieldKind = "single" | "multi" | "text";
 export interface RecoveryField {
@@ -86,30 +91,24 @@ export class IntentPreparer {
       ]);
       payload = payloadSchema.parse(result).payload;
     }
+    // A second pass, or any call that already brought answers, is admitted. The first pass still asks.
+    const secondTurn = (input.turn ?? 1) >= 2 || answers.length > 0;
+    // The form starts with verification: it only needs the draft, so a failed draft doesn't wait for it twice.
+    const recovery = secondTurn ? undefined : this.recoveryForm(payload, answers);
+    recovery?.catch(() => {}); // Unused when the draft is ready, or when verification throws first.
     const verdict = await this.verifier.invoke(payload, profileContext);
-    const failure = admissionFailure(payload, verdict);
+    const failure = secondTurn ? undefined : admissionFailure(payload, verdict);
     if (!failure) return { status: "ready", payload, metadata: semanticMetadata(verdict) };
 
+    return { status: "needs_revision", payload, feedback: failure.message, recovery: await recovery! };
+  }
+
+  private async recoveryForm(payload: string, answers: PrepareAnswer[]): Promise<RecoveryField[]> {
     const model = createStructuredModel("intentClarifier", recoverySchema, { name: "intent_recovery" });
     const result = await invokeWithAbortSignal(model, [
-      new SystemMessage("Build one recovery form that helps the person concretize their intent. Return 2-6 fields. Each field needs a draft-specific label, a kind (single, multi, or text), and for single/multi 2-5 concrete options anchored to the draft. Text fields need a placeholder. Never re-ask what the draft or answers already settle. Options must be matchable and specific. Do not expose scores, classifications, JSON, or internal vocabulary."),
-      new HumanMessage(JSON.stringify({
-        payload,
-        answers,
-        feedback: failure.message,
-        category: failure.category,
-        classification: verdict.classification,
-        clarity: verdict.felicity_scores.clarity,
-        entropy: verdict.semantic_entropy,
-        referentialBreadth: verdict.referential_breadth,
-        missingConstraints: verdict.missing_selectional_constraints,
-      })),
+      new SystemMessage("Build one recovery form that helps the person concretize their intent. Assume the draft is too broad to match anyone yet: ask for whatever is missing among role, outcome, location, timeframe, domain, and concrete need. Return 2-6 fields. Each field needs a draft-specific label, a kind (single, multi, or text), and for single/multi 2-5 concrete options anchored to the draft. Text fields need a placeholder. Never re-ask what the draft or answers already settle. Options must be matchable and specific. Do not expose scores, classifications, JSON, or internal vocabulary."),
+      new HumanMessage(JSON.stringify({ payload, answers })),
     ]);
-    return {
-      status: "needs_revision",
-      payload,
-      feedback: failure.message,
-      recovery: parseRecoveryFields(recoverySchema.parse(result)),
-    };
+    return parseRecoveryFields(recoverySchema.parse(result));
   }
 }

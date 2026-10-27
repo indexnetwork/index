@@ -144,7 +144,7 @@ Full detail: [Roadmap](/9db20a5fbe/roadmap).
 
 ## Team
 
-**We built the old discovery economy, and now we're building its future.**
+**We’re a New York–based team that built the old discovery economy. Now we’re building its future.**
 
 **[Seref Yarar](https://x.com/hyperseref), Co-founder**
 Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media ecosystem spanning 7,000+ brands and 20+ markets. Led engineering and large-scale recommender systems at Genart through its acquisition by [Aleph](https://alephdigital.com/).
@@ -152,8 +152,8 @@ Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media e
 **[Seren Sandikci](https://x.com/serensandikci), Co-founder**
 Designed human–AI interaction for 10 years, including conversational systems. Founded [QNB Group](https://www.qnb.com/)'s design studio as first hire, serving 30M banking customers ($400B AUM).
 
-**[Yanki Ekin Yuksel](https://www.linkedin.com/in/yanekyuk/), Founding Engineer**
-Led engineering as CTO of digital media platform [Aposto](https://aposto.com/) (1M readership). Expertise in computational linguistics - matching on meaning, not keywords.
+**[Ashish Uppala](https://ashishuppala.com/), Founding Team Member**
+First hire and CTO of [scite.ai](https://scite.ai/), scaling it to 1.2B+ analyzed citations and 21K paying subscribers through its acquisition by Nasdaq-listed Research Solutions. Applied metascience at Portal Stargaze and ran a collective intelligence funding program at ARIA.
 
 **[Vicky Gu](https://www.linkedin.com/in/vickygu/), Brand & Narrative**
 Defined the narrative attracting top technical talent for $3B social discovery platform Grindr. Led category narrative at NewtonX ($47M raised), elevating B2B research from service to strategy.

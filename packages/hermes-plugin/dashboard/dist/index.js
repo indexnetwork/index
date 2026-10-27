@@ -2739,11 +2739,18 @@
     return ((thread.counterparty && thread.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
   }
 
+  // 24h wire clock. Lines from before today lead with the day ("apr 27
+  // 14:03:09") so a log that spans days never reads as one afternoon.
   function negoClock(iso) {
     const d = new Date(iso);
     if (isNaN(d)) return "--:--:--";
     const p = function (n) { return String(n).padStart(2, "0"); };
-    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    const clock = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return clock;
+    const opts = { month: "short", day: "numeric" };
+    if (d.getFullYear() !== today.getFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString([], opts).toLowerCase() + " " + clock;
   }
 
   /**
@@ -3712,6 +3719,9 @@
               onClick: openUser,
             }, speaker.label)
             : React.createElement("span", { className: "index-dashboard__agent-who" }, speaker.label),
+          props.at && timeStamp(props.at)
+            ? React.createElement("time", { className: "index-dashboard__agent-time", dateTime: props.at }, timeStamp(props.at))
+            : null,
         ),
         props.children,
       ),
@@ -3895,7 +3905,7 @@
                         className: "index-dashboard__a2a-action index-dashboard__a2a-action--" + (turn.action || "turn"),
                       }, turn.action),
                       React.createElement("span", { className: "index-dashboard__a2a-time" },
-                        timeStamp(turn.createdAt, true)),
+                        timeStamp(turn.createdAt)),
                     ),
                     React.createElement("p", { className: "index-dashboard__a2a-text" }, turn.text),
                   );
@@ -4115,7 +4125,7 @@
 
     // A question is a turn like any other, rendered where the agent asked it,
     // so anything you said afterwards still reads as the reply it was.
-    function questionCard(question) {
+    function questionCard(question, at) {
       const options = Array.isArray(question.options) ? question.options : [];
       const answer = selections[question.id] || "";
       const own = options.indexOf(answer) < 0 && answer;
@@ -4129,6 +4139,7 @@
       }
       return React.createElement(AgentLine, {
         key: question.id,
+        at: at,
         tag: "question",
         speaker: agentSpeaker(question),
         onOpenUser: props.onOpenUser,
@@ -4204,7 +4215,7 @@
       if (!content.text) continue;
       if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) {
         placed[provenance.questionId] = true;
-        entries.push({ id: raw.id, kind: "card", question: carded[provenance.questionId] });
+        entries.push({ id: raw.id, kind: "card", question: carded[provenance.questionId], createdAt: raw.createdAt });
         continue;
       }
       if (raw.role === "user") {
@@ -4219,6 +4230,7 @@
         id: raw.id,
         kind: provenance.record || "note",
         text: content.text,
+        createdAt: raw.createdAt,
         provenance: provenance,
         opportunityId: match && match.opportunityId,
         counterpart: match && match.counterparty && match.counterparty.name,
@@ -4238,10 +4250,13 @@
     for (let i = entries.length - 1; waiting && i > 0 && entries[i].kind === "user" && entries[i - 1].kind === "user"; i--) queued[entries[i].id] = true;
 
     const bubbles = buildDiscoveryFeed(entries).map(function (entry) {
-      if (entry.kind === "card") return questionCard(entry.question);
+      if (entry.kind === "card") return questionCard(entry.question, entry.createdAt);
       if (entry.kind === "user") {
         return React.createElement("div", { key: entry.id, className: "index-dashboard__agent-mine" },
-          React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
+          React.createElement("div", {
+            className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine",
+            title: entry.at ? new Date(entry.at).toLocaleString() : undefined,
+          },
             React.createElement(Markdown, { text: entry.text }),
           ),
           queued[entry.id] ? React.createElement("span", { className: "index-dashboard__agent-queued" }, "queued") : null,
@@ -4253,6 +4268,7 @@
       if (entry.kind === "progress") return React.createElement(ProgressLine, { key: entry.id, text: entry.text });
       return React.createElement(AgentLine, {
         key: entry.id,
+        at: entry.createdAt,
         speaker: agentSpeaker(entry.provenance),
         onOpenUser: props.onOpenUser,
       }, React.createElement(Markdown, { text: entry.text }));
@@ -4260,7 +4276,7 @@
 
     const feed = bubbles.concat(questions.filter(function (question) {
       return !placed[question.id];
-    }).map(questionCard)).concat(waiting ? [React.createElement(ProgressLine, { key: "thinking", text: "thinking…" })] : []);
+    }).map(function (question) { return questionCard(question); })).concat(waiting ? [React.createElement(ProgressLine, { key: "thinking", text: "thinking…" })] : []);
     const threadBody = feed.length
       ? feed
       : readState === "loading"
@@ -5428,16 +5444,21 @@
     };
   }
 
+  // A message's time, as the web and mac apps write it: "9:41 pm" today,
+  // "apr 27, 9:41 pm" before. `coarse` is the list-row form: the clock today,
+  // then a weekday, then a date.
   function timeStamp(iso, coarse) {
     if (!iso) return "";
     const at = new Date(iso);
     if (isNaN(at.getTime())) return "";
-    const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (!coarse) return clock;
-    const days = (Date.now() - at.getTime()) / 86400000;
-    if (days < 1) return clock;
-    if (days < 7) return at.toLocaleDateString([], { weekday: "short" });
-    return at.toLocaleDateString([], { month: "short", day: "numeric" });
+    const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+    if (at.toDateString() === new Date().toDateString()) return clock;
+    if (coarse) {
+      const days = (Date.now() - at.getTime()) / 86400000;
+      if (days < 7) return at.toLocaleDateString([], { weekday: "short" });
+      return at.toLocaleDateString([], { month: "short", day: "numeric" });
+    }
+    return at.toLocaleDateString([], { month: "short", day: "numeric" }).toLowerCase() + ", " + clock;
   }
 
   function MessagesPanel(props) {

@@ -8,6 +8,7 @@ import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type Pr
 import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { formatChatClock } from "@/lib/utils";
 
 type Provenance = {
   kind?: string;
@@ -146,8 +147,29 @@ function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch
   return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
 }
 
-function OpenQuestion({ question, selections, setSelections, writing, setWriting, onSelectMatch }: {
+/**
+ * Scrolls the question being answered to the top of its feed once the
+ * keyboard has opened, so the question and its field both stay in view.
+ */
+function revealQuestion(field: HTMLElement) {
+  const reveal = () => {
+    const pane = field.closest(".mac-scroll");
+    if (!(pane instanceof HTMLElement)) return;
+    const paneTop = pane.getBoundingClientRect().top;
+    const cardTop = (field.closest("article") ?? field).getBoundingClientRect().top - paneTop;
+    const fieldBottom = field.getBoundingClientRect().bottom - paneTop;
+    // The field wins when the whole card doesn't fit above the keyboard.
+    let shift = cardTop - 12;
+    if (fieldBottom - shift > pane.clientHeight) shift = fieldBottom - pane.clientHeight + 12;
+    if (Math.abs(shift) > 2) pane.scrollBy({ top: shift, behavior: "smooth" });
+  };
+  window.visualViewport?.addEventListener("resize", reveal, { once: true });
+  window.setTimeout(reveal, 350);
+}
+
+function OpenQuestion({ question, at, selections, setSelections, writing, setWriting, onSelectMatch }: {
   question: QuestionCard;
+  at?: string;
   selections: Record<string, string>;
   setSelections: Dispatch<SetStateAction<Record<string, string>>>;
   writing: Record<string, boolean>;
@@ -162,13 +184,14 @@ function OpenQuestion({ question, selections, setSelections, writing, setWriting
   const own = !options.includes(answer) && answer;
   const write = writing[id] || options.length === 0;
   return (
-    <article style={{ display: "flex", gap: 12 }}>
+    <article className="wb-stamped" style={{ display: "flex", gap: 12 }}>
       {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
             <span style={{ background: "#111", color: "#fff", padding: "2px 6px", borderRadius: 3, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>QUESTION</span>
             {questionAskerLabel(question, asker.label, onSelectMatch)}
+            {at && <time className="wb-stamp" dateTime={at} style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88" }}>{formatChatClock(at)}</time>}
           </div>
           <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 600, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
         </div>
@@ -185,6 +208,7 @@ function OpenQuestion({ question, selections, setSelections, writing, setWriting
               autoFocus={options.length > 0}
               value={own ? answer : ""}
               onChange={(event) => setSelections((current) => ({ ...current, [id]: event.target.value }))}
+              onFocus={(event) => revealQuestion(event.currentTarget)}
               onBlur={(event) => { if (!event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               onKeyDown={(event) => { if (event.key === "Escape" && !event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               placeholder="write your own"
@@ -203,20 +227,22 @@ function OpenQuestion({ question, selections, setSelections, writing, setWriting
   );
 }
 
-function AnsweredQuestion({ question, answer }: {
+function AnsweredQuestion({ question, answer, at }: {
   question: QuestionCard;
+  at?: string;
   answer: string;
 }) {
   const asker = questionAsker(question);
   const owner = asker.owner;
   return (
-    <article style={{ display: "flex", gap: 12 }}>
+    <article className="wb-stamped" style={{ display: "flex", gap: 12 }}>
       {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
             <span style={{ color: "#2f7d4f", fontWeight: 600 }}>✓ answered</span>
             <span style={{ color: "#8f8f88" }}>{asker.label}</span>
+            {at && <time className="wb-stamp" dateTime={at} style={{ color: "#8f8f88", textTransform: "none" }}>{formatChatClock(at)}</time>}
           </div>
           <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
         </div>
@@ -340,6 +366,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   };
 
   const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
+  // A piece takes its time from the message it was built from; a live question with no message yet has none.
+  const timeById = useMemo(() => new Map(messages.map((message) => [message.id, message.createdAt])), [messages]);
   // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
   // Only a hosted agent answers here; an external one never will, so nothing waits on it.
@@ -363,13 +391,14 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
         ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
           ask about your matches, share a preference, or tell your agent what to look for.
         </p> : feed.map((piece, index) => {
+          const at = timeById.get(piece.id);
           if (piece.kind === "discovery") {
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
           }
           if (piece.kind === "user") {
             return (
               <div key={piece.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
+                <div title={at ? new Date(at).toLocaleString() : undefined} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
                 {waiting && index > firstWaiting && <span style={{ marginTop: 4, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
@@ -381,14 +410,14 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           }
           if (piece.kind === "open-question") {
             return (
-              <OpenQuestion key={piece.id} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
+              <OpenQuestion key={piece.id} at={at} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
             );
           }
           if (piece.kind === "answered-question") {
-            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} />;
+            return <AnsweredQuestion key={piece.id} at={at} question={piece.question} answer={piece.answer} />;
           }
           return (
-            <AgentFeedNote key={piece.id}>
+            <AgentFeedNote key={piece.id} at={at}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
             </AgentFeedNote>
           );
@@ -423,3 +452,4 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     </div>
   );
 }
+

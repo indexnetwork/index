@@ -5,7 +5,8 @@ import { getTrustedOrigins } from '../cors';
 import { sendMagicLinkEmail } from '../email/magic-link.handler';
 import { isRedisConfigured } from '../redis-env';
 
-import { createAuth, type AuthSecondaryStorage } from './betterauth';
+import { createAuth, WEB_APP_URL, type AuthSecondaryStorage } from './betterauth';
+import { isInviteLanding } from './invite-landing';
 
 const authDb = new AuthDatabaseAdapter();
 
@@ -51,7 +52,15 @@ export const auth = createAuth({
       }
     : undefined,
   onIndexSignIn: indexEarlyNetworkId
-    ? async (userId) => {
+    ? async (userId, callbackURL) => {
+        // Index Early is for people who arrive at Index on their own. A
+        // sign-in on an invite landing, or an existing tie to another network
+        // (invited by link or email earlier), keeps them out of it.
+        if (isInviteLanding(callbackURL, WEB_APP_URL)) return;
+        const invited = await networkDb
+          .hasNetworkTieOutside(userId, indexEarlyNetworkId)
+          .catch(() => true);
+        if (invited) return;
         await networkDb.addMemberToNetwork(indexEarlyNetworkId, userId, 'member').catch(() => {});
       }
     : undefined,

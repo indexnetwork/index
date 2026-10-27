@@ -17,9 +17,9 @@ export type PrepareResult =
   | Extract<ProtocolPrepareResult, { status: "needs_revision" }>;
 
 export const intentService = {
-  /** Prepare a draft; fold recovery answers and run admission. */
-  prepare: (payload: string, answers: PrepareAnswer[] = []) =>
-    apiClient.post<PrepareResult>("/intents/prepare", { payload, answers }),
+  /** Prepare a draft; fold recovery answers and run admission. Turn 2 is admitted. */
+  prepare: (payload: string, answers: PrepareAnswer[] = [], turn?: number) =>
+    apiClient.post<PrepareResult>("/intents/prepare", { payload, answers, ...(turn ? { turn } : {}) }),
 
   /** Two things to look for and one to offer, drafted from the profile, plus the example starters rewritten for them; empty when there are none. */
   suggestions: () =>

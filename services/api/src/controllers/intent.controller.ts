@@ -11,10 +11,13 @@ import { parseListOpportunitiesQuery } from '../services/opportunity.list-query'
 const logger = log.controller.from('intent');
 
 const SourceFieldSchema = z.string().max(1024).nullable().optional();
+const VisibilitySchema = z.enum(['networks_only', 'mutuals_only']);
 const CreateSchema = z.object({
   description: z.string().max(65_536).refine((text) => text.trim().length > 0, 'description is required'),
   preparationReceipt: z.string().min(1).max(65_536).optional(),
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
+  visibility: VisibilitySchema.optional(),
+  private: z.boolean().optional(),
   sourceType: SourceFieldSchema,
   sourceId: SourceFieldSchema,
 }).strict();
@@ -24,20 +27,26 @@ const PrepareSchema = z.object({
     prompt: z.string().trim().min(1),
     answer: z.string().trim().min(1),
   })).default([]),
+  turn: z.number().int().min(1).max(2).optional().default(1),
 }).strict();
 const StatusSchema = z.object({
   status: z.enum(['active', 'paused']),
 });
 const UpdateSchema = z.object({
   description: z.string().trim().min(1, 'description is required').max(65_536).optional(),
+  private: z.literal(true).optional(),
   sourceType: SourceFieldSchema,
   sourceId: SourceFieldSchema,
 }).strict().refine(
-  (body) => body.description !== undefined || body.sourceType !== undefined || body.sourceId !== undefined,
-  'description, sourceType, or sourceId is required',
+  (body) => body.description !== undefined || body.private !== undefined || body.sourceType !== undefined || body.sourceId !== undefined,
+  'description, private, sourceType, or sourceId is required',
 );
 const LinkSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID'),
+  visibility: VisibilitySchema.optional(),
+}).strict();
+const ExclusionSchema = z.object({
+  userId: z.string().uuid('userId must be a UUID'),
 }).strict();
 const DiscoverSchema = z.object({
   query: z.string().trim().min(1, 'query is required').max(2_000),
@@ -151,10 +160,10 @@ export class IntentController {
         { status: 400 },
       );
     }
-    const { description, networkIds, preparationReceipt, sourceType = null, sourceId = null } = parsed.data;
+    const { description, networkIds, preparationReceipt, visibility, private: isPrivate, sourceType = null, sourceId = null } = parsed.data;
 
     try {
-      const created = await intentService.create(user.id, description, networkIds, preparationReceipt, { sourceType, sourceId });
+      const created = await intentService.create(user.id, description, networkIds, preparationReceipt, { sourceType, sourceId }, { visibility, isPrivate });
       return Response.json({ intentId: created.id, networkIds: created.networkIds, sourceType, sourceId });
     } catch (err) {
       if (err instanceof IntentPreparationReceiptError) {
@@ -497,8 +506,8 @@ export class IntentController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const { description, sourceType, sourceId } = parsed.data;
-    const result = await intentService.update(resolved.id, user.id, description, { sourceType, sourceId });
+    const { description, private: isPrivate, sourceType, sourceId } = parsed.data;
+    const result = await intentService.update(resolved.id, user.id, description, { sourceType, sourceId }, { isPrivate });
     if (result.kind === 'not_found') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
@@ -536,6 +545,28 @@ export class IntentController {
     return Response.json({ networkIds });
   }
 
+  @Post('/:id/exclusions')
+  @UseGuards(AuthGuard)
+  async exclude(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const parsed = ExclusionSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+    const ok = await intentService.exclude(resolved.id, user.id, parsed.data.userId);
+    if (!ok) return Response.json({ error: 'Intent not found' }, { status: 404 });
+    return Response.json({ success: true });
+  }
+
+  @Delete('/:id/exclusions/:userId')
+  @UseGuards(AuthGuard)
+  async unexclude(_req: Request, user: AuthenticatedUser, params: { id: string; userId: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+    const ok = await intentService.unexclude(resolved.id, user.id, params.userId);
+    if (!ok) return Response.json({ error: 'Intent not found' }, { status: 404 });
+    return Response.json({ success: true });
+  }
+
   /**
    * Share an owned intent in one community.
    *
@@ -558,7 +589,7 @@ export class IntentController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await intentService.addToNetwork(resolved.id, parsed.data.networkId, user.id);
+    const result = await intentService.addToNetwork(resolved.id, parsed.data.networkId, user.id, parsed.data.visibility);
     if (result.kind === 'refused') {
       return Response.json({ error: 'forbidden', detail: result.detail }, { status: 403 });
     }

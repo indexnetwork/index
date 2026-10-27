@@ -4,6 +4,7 @@ import { Controller, Get, Patch, Post, Delete, UseGuards } from '../lib/router/r
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
+import { consentService } from '../services/consent.service';
 import { onboardingService } from '../services/onboarding.service';
 import { log } from '../lib/log';
 import { emailPasswordEnabled } from '../lib/betterauth/betterauth';
@@ -33,6 +34,20 @@ const updateProfileSchema = z.object({
 const completeOnboardingSchema = z.object({
   intentId: z.string().min(1).optional(),
 }).strict();
+
+const recordConsentSchema = z.object({
+  networkId: z.string().min(1),
+  signature: z.string().trim().min(1),
+  privacyPolicy: z.literal(true),
+  participation: z.literal(true),
+}).strict();
+
+function clientIp(req: Request): string | null {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (!forwarded) return null;
+  const first = forwarded.split(',')[0]?.trim();
+  return first || null;
+}
 
 const revokeDeviceSchema = z.object({
   sessionId: z.string().min(1),
@@ -69,10 +84,12 @@ export class AuthController {
     }
 
     const { hasProfile: _hasProfile, notificationPreferences, ...userFields } = fullUser;
+    const pendingConsents = await consentService.pending(user.id);
     return Response.json({
       user: {
         ...userFields,
         notificationPreferences,
+        pendingConsents,
       },
       features: {
         // Legacy shipped-mac-client compat: older mac builds hide the agent
@@ -114,6 +131,28 @@ export class AuthController {
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });
+  }
+
+  @Post('/consent')
+  @UseGuards(AuthGuard)
+  async recordConsent(req: Request, user: AuthenticatedUser) {
+    const parsed = recordConsentSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid consent payload' }, { status: 400 });
+    }
+    try {
+      await consentService.record(
+        user.id,
+        parsed.data.networkId,
+        parsed.data.signature,
+        clientIp(req),
+        req.headers.get('user-agent'),
+      );
+      return Response.json({ success: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return Response.json({ error: message }, { status: 400 });
+    }
   }
 
   @Post('/onboarding/confirm-profile')

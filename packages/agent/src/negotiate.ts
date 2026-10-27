@@ -39,7 +39,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     tool({
       name: "submit_turn",
       description:
-        "Take this negotiation's next turn: propose puts the reason on the table or answers a counter, counter questions or answers the standing proposal without making an offer, accept takes the counterpart's standing proposal, decline ends it. Only a proposal can be accepted. One turn only.",
+        "Take this negotiation's next turn: propose puts the reason on the table or answers a counter, counter questions or answers the standing proposal without making an offer, accept takes the counterpart's standing proposal, decline passes for now and leaves the pair in talks until an owner's new context bears on it. Only a proposal can be accepted. One turn only.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -81,13 +81,19 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
-    instructions: [SYSTEM_PROMPT, user.emailVerified === false && UNVERIFIED_PROMPT, input.evidence && EVIDENCE_PROMPT].filter(Boolean).join("\n\n"),
+    instructions: [
+      SYSTEM_PROMPT,
+      user.emailVerified === false && UNVERIFIED_PROMPT,
+      input.evidence && EVIDENCE_PROMPT,
+      input.privateContext?.length && "Your principal's private intents are listed below. Weigh them as context. Decline when the counterpart plainly breaks one. Never quote, paraphrase, or hint that they exist.",
+    ].filter(Boolean).join("\n\n"),
     prompt:
       "Take this negotiation's next turn, or stall.\nYour brief:\n" +
       brief +
       "\n\nYour principal (null when unconfirmed):\n" +
       JSON.stringify(principalFacts(user)) +
       (input.evidence ? "\n\nYour principal's linked network profiles:\n" + input.evidence : "") +
+      (input.privateContext?.length ? "\n\nYour principal's private intents:\n" + input.privateContext.map((text) => "- " + text).join("\n") : "") +
       "\n\nThis negotiation:\n" +
       JSON.stringify(opportunity),
     tools,

@@ -10,6 +10,8 @@ import type { Id } from '../types/common.types';
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['active', 'paused']);
+export const assignmentVisibilityEnum = pgEnum('assignment_visibility', ['networks_only', 'mutuals_only']);
+export type AssignmentVisibility = (typeof assignmentVisibilityEnum.enumValues)[number];
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
@@ -70,6 +72,8 @@ export interface NetworkRequestDetails {
   reviewNote?: string;
   submittedAt: string;
   reviewedAt?: string;
+  // Set when staff skip the request: hidden from the review queue, requester not notified.
+  skippedAt?: string;
 }
 
 export type NetworkRequestStatus = 'pending' | 'needs_changes';
@@ -309,7 +313,7 @@ export const emailEvents = pgTable('email_events', {
 }));
 
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer' | 'mutual_check';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -363,12 +367,15 @@ export const opportunities = pgTable('opportunities', {
 export const opportunityEvents = pgTable('opportunity_events', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
-  type: text('type').$type<'opened' | 'agreed' | 'committed' | 'declined' | 'expired'>().notNull(),
+  /** A lifecycle type the status fold reads, or any type a client records (e.g. `met`, `survey`). */
+  type: text('type').notNull(),
   actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
   at: timestamp('at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  /** Free-form context a client sent with its event. Null on lifecycle events. */
+  data: jsonb('data').$type<Record<string, unknown>>(),
 }, (table) => ({
   opportunityIdx: index('opportunity_events_opportunity_idx').on(table.opportunityId),
-  oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} <> 'committed'`),
+  oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} in ('opened', 'agreed', 'declined', 'expired')`),
   oneCommit: uniqueIndex('opportunity_events_one_commit').on(table.opportunityId, table.actorUserId).where(sql`${table.type} = 'committed'`),
 }));
 
@@ -425,7 +432,7 @@ export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
   summary: text('summary'),
-  isIncognito: boolean('is_incognito').notNull().default(false),
+  isPrivate: boolean('is_private').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
@@ -501,12 +508,21 @@ export const networkJoinRequests = pgTable('network_join_requests', {
 export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   networkId: text('network_id').notNull().references(() => networks.id),
+  visibility: assignmentVisibilityEnum('visibility').notNull().default('networks_only'),
   relevancyScore: numeric('relevancy_score'),
   assignmentMetadata: jsonb('assignment_metadata').$type<import('@indexnetwork/protocol').NetworkAssignmentMetadata>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.intentId, t.networkId] }),
   networkIdIdx: index('intent_networks_network_id_idx').on(t.networkId),
+}));
+
+/** People who never find this intent, and whom it never finds. */
+export const intentExclusions = pgTable('intent_exclusions', {
+  intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  excludedUserId: text('excluded_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.intentId, t.excludedUserId] }),
 }));
 
 

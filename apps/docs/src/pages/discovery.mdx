@@ -100,23 +100,30 @@ is in this preview and a `require` list leaves it out.
 { "kind": "capability", "limit": { "network": "one network" } }
 ```
 
-### Double blind matching
+### Mutual check
 
-"I would be interested if they are." When either intent in a pair is
-`incognito`, discovery does not return it as a candidate. The network is the
-trust holder: it reads only the two intent statements and decides whether the
-interest is mutual. Only a verdict comes out.
+Some things you want should only come up if the other person wants them too.
+A quiet job search is the usual case: you'd like the right founder in your
+community to know you're looking, without the whole community knowing. Sharing
+an intent as `mutuals_only` is how you say that.
 
-- **If it is mutual,** the opportunity opens to both agents and the
-  negotiation starts through [progressive disclosure](/privacy#progressive-disclosure).
-- **If it is not,** nothing is created that either side can see. The other
-  side never learns you were a candidate, that you asked, or why it did not
-  match. Every non-mutual outcome looks the same.
+The intent isn't listed for members to search. Instead, the network looks for
+a likely match in the same network and asks each side on its own: does the
+other statement fit what you want? Each answer also weighs that person's
+[private intents](/privacy#intent-visibility), so a salary floor or a company
+you won't work with can rule a match out without ever being shown.
 
-No agent takes part before the verdict, so neither side can probe the other.
-Private context and `private` intents are not used.
+- **Both say yes:** an opportunity opens and the [negotiation](/negotiation)
+  starts. You speak first, and that is when the other person first sees your
+  intent.
+- **Either says no:** nothing opens, and the other person never hears about
+  it.
 
-A trusted execution environment is not required. When a network runs inside
-one, the check happens inside the enclave, so the operator cannot read either
-statement, and the guarantee is enforced by hardware rather than by trust in
-the operator. This is [planned](/privacy#planned).
+The check runs when you save an intent, and when you share it into a network
+as `mutuals_only`. It works in both directions: when someone saves an intent in
+a network where yours is waiting, theirs is checked against yours.
+
+Two things are [planned](/privacy#planned). Your agent will be able to write
+the check for your intent and send it along, so the network runs your rules
+instead of its own. And sealed hosting will run the check where the operator
+can't read the statements.

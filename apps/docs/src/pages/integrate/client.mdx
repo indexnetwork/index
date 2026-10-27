@@ -34,7 +34,7 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 | Method | HTTP |
 | --- | --- |
 | `me()` | `GET /api/auth/me` → `{ id, name, intro, location, timezone, profileConfirmed }`, memoized |
-| `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]`. `status` is `active`, `paused`, or `archived` |
+| `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status, isPrivate }[]`. `status` is `active`, `paused`, or `archived` |
 | `discover(intentId, query, limit?, since?)` | `POST /api/intents/:id/discover` → counterparties, strongest first. `since` keeps only intents that arrived after it. Writes nothing |
 | `createOpportunities(intentId, counterparties)` | `POST /api/intents/:id/opportunities` → `{ opportunityId }[]`. Idempotent on the pair |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |

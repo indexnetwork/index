@@ -39,8 +39,9 @@ export interface ModelConfig {
 function getBaseModelConfig(config?: ModelConfig) {
   const settings = {
     intentInferrer:       { model: "google/gemini-3.7-flash" },
-    intentVerifier:       { model: "google/gemini-3.7-flash" },
-    intentClarifier:      { model: "google/gemini-3.7-flash" },
+    intentVerifier:       { model: "google/gemini-2.5-flash" },
+    intentMutuality:      { model: "google/gemini-2.5-flash", temperature: 0, maxTokens: 32 },
+    intentClarifier:      { model: "google/gemini-2.5-flash" },
     profileGenerator:     { model: "google/gemini-3.7-flash" },
     opportunityPresenter: { model: "google/gemini-3.7-flash" },
     negotiator:           { model: "google/gemini-3.7-flash" },

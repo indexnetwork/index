@@ -198,6 +198,14 @@ export class NetworkService {
   }
 
   /**
+   * Search people the user shares a network with, for the add-member box.
+   * @param excludeNetworkId - Leave out people already in this network.
+   */
+  async searchUsers(userId: string, q: string, excludeNetworkId?: string) {
+    return this.adapter.searchUsersInUserNetworks(userId, q, excludeNetworkId);
+  }
+
+  /**
    * Get networks shared between the current user and a target user.
    * @param currentUserId - Authenticated user ID.
    * @param targetUserId - Profile user ID to compare memberships with.

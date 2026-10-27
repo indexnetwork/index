@@ -560,6 +560,17 @@
   .mac-titlebar .mac-close {
     width: 44px;
   }
+  .mac-titlebar .mac-home {
+    display: grid;
+    place-items: center;
+  }
+  .mac-titlebar .mac-home::before,
+  .mac-titlebar .mac-home::after {
+    content: none;
+  }
+  .mac-titlebar .mac-home:active {
+    background: var(--amiga-accent);
+  }
   .mac-titlebar .mac-back::before {
     width: 20px;
     height: 20px;
@@ -722,3 +733,8 @@
   font-weight: 600;
   border-top: 2px solid #000;
 }
+
+/* A message's time sits in its existing label line and only shows on hover. */
+.wb-stamp { opacity: 0; transition: opacity .12s ease; }
+.wb-stamped:hover .wb-stamp,
+.wb-stamped:focus-within .wb-stamp { opacity: 1; }

@@ -67,8 +67,8 @@ export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT } from './protocol/neg
 export { NEGOTIATION_GUIDANCE } from './protocol/protocol.prompt.js';
 export { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from './protocol/protocol.prompt.js';
 export type { CanonicalGuidanceTopic } from './protocol/protocol.prompt.js';
-export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema } from './protocol/negotiation.rules.js';
-export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
+export { decideNegotiationOpening, decideNegotiationResume, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema, currentRound } from './protocol/negotiation.rules.js';
+export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationResumeDecision, NegotiationResumeRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
 export type { NegotiationDatabase } from './platform/database/negotiation.js';
 
 // ─── Networks ─────────────────────────────────────────────────────────────────
@@ -97,6 +97,7 @@ export type {
   PreparedIntent,
 } from "./capabilities/intents.js";
 export { IntentSuggester } from "./internal/intents/intent.suggester.js";
+export { sideIsInterested, type MutualitySide } from "./internal/intents/intent.mutuality.js";
 export type { IntentSuggestion, IntentSuggestionInput, IntentSuggestions } from "./internal/intents/intent.suggester.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

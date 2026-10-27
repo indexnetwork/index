@@ -27,7 +27,7 @@ const OPENING_OPTIONS = [
 ];
 
 type Stage = "picks" | "opening" | "recovery" | "summary" | "retry";
-type Turn = { id: string; prompt: string; answer: string };
+type Turn = { id: string; prompt: string; answer: string; at: string };
 
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewIntentPage() {
@@ -52,10 +52,10 @@ export default function NewIntentPage() {
   const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const runPrepare = async (text: string, answers: PrepareAnswer[] = []) => {
+  const runPrepare = async (text: string, answers: PrepareAnswer[] = [], turn = 1) => {
     setThinking(true);
     try {
-      const result = await intentService.prepare(text, answers);
+      const result = await intentService.prepare(text, answers, turn);
       setPayload(result.payload);
       if (result.status === "ready") {
         setPreparationReceipt(result.preparationReceipt);
@@ -86,7 +86,7 @@ export default function NewIntentPage() {
     const failed = picked.length - ids.length;
     setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
     setCreatedIds(ids);
-    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((s) => `· ${s.text}`).join("\n") }]);
+    if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((s) => `· ${s.text}`).join("\n"), at: new Date().toISOString() }]);
     setStage("opening");
     setCreating(false);
   };
@@ -96,7 +96,7 @@ export default function NewIntentPage() {
   const submitOpening = (text: string) => {
     const answer = text.trim();
     if (!answer) return;
-    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer }]);
+    setTurns((current) => [...current.filter((t) => t.id !== "intent"), { id: "intent", prompt: openingPrompt, answer, at: new Date().toISOString() }]);
     setPayload(answer);
     void runPrepare(answer);
   };
@@ -155,7 +155,7 @@ export default function NewIntentPage() {
                 </div>
                 <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: compact ? -16 : -28, paddingRight: compact ? 16 : 28, paddingBottom: 18 }}>
                   {turns.map((turn) => (
-                    <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} />
+                    <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} at={turn.at} />
                   ))}
                   {thinking ? (
                     <div className="fade-up"><AgentLine><WorkingDots /></AgentLine></div>
@@ -177,7 +177,7 @@ export default function NewIntentPage() {
                       />
                     </div>
                   ) : stage === "recovery" ? (
-                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers)} />
+                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers, 2)} />
                   ) : stage === "picks" ? (
                     <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
                   ) : (
@@ -339,15 +339,16 @@ function WorkingDots() {
   );
 }
 
-function PastTurn({ prompt, answer }: {
+function PastTurn({ prompt, answer, at }: {
   prompt: string;
   answer: string;
+  at: string;
 }) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <AgentLine muted>{prompt}</AgentLine>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
+        <div title={new Date(at).toLocaleString()} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
       </div>
     </div>
   );

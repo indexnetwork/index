@@ -43,7 +43,7 @@ Send the key as `x-api-key`. A browser login or a device session works as
 
 [Hermes Agent](/use/hermes) writes this entry while `INDEX_API_KEY` is set.
 [ChatGPT](/use/chatgpt) connects with OAuth and can also subscribe to events.
-[Grok Bot](/use/grok-bot) connects with OAuth and follows the event stream from the Bot's computer.
+[Grok Bot](/use/grok-bot) connects with OAuth. A morning brief and a daytime question check run as Grok routines.
 
 ## What you can do
 
@@ -75,6 +75,7 @@ Intent and opportunity IDs accept a UUID or the 8-character short ID.
 saving. A draft that is not ready comes back as `intent_needs_revision`, with
 feedback, and nothing is created. Omit `networkIds` to share the intent in
 every network you belong to, or pass network UUIDs to share it only in those.
+`visibility` is `networks_only` or `mutuals_only`. `private: true` saves an intent only the owner's agent reads, without the preparation step.
 
 `create_intent` and `update_intent` also take optional `sourceType` and
 `sourceId` strings that you own. Index stores and returns them unchanged on

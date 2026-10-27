@@ -7,10 +7,11 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import MobileTabBar, { isTabRoot } from "@/components/workbench/MobileTabBar";
+import ConsentGate from "@/components/ConsentGate";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/onboarding'];
 // /l is the chrome-free web invite join.
-const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
+const bareRoutes = ['/', '/l', '/login', '/download', '/setup', '/i/new', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -64,18 +65,20 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               }
             `}</style>
 
-            {showAppShell ? (
-              <div className="workbench mac-desktop wb-viewport overflow-hidden flex flex-col">
-                <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <ConsentGate>
+              {showAppShell ? (
+                <div className="workbench mac-desktop wb-viewport overflow-hidden flex flex-col">
+                  <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                    {children}
+                  </main>
+                  {compact && isAuthenticated && isTabRoot(pathname) && <MobileTabBar />}
+                </div>
+              ) : (
+                <main className="flex flex-col min-h-screen">
                   {children}
                 </main>
-                {compact && isAuthenticated && isTabRoot(pathname) && <MobileTabBar />}
-              </div>
-            ) : (
-              <main className="flex flex-col min-h-screen">
-                {children}
-              </main>
-            )}
+              )}
+            </ConsentGate>
           </div>
       </NetworkFilterProvider>
       </ConversationProvider>
