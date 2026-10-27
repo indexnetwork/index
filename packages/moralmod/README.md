@@ -25,6 +25,15 @@ What's inside:
   untouched; every failure falls back to the plain negotiator and is recorded
   as a `moralmod-turn-exposure-1` event through the `emit` sink.
 
+**Scope (edgecity-goa only):** the study runs only in the edgecity-goa
+network. There is no network switch in Index; scope is enforced by the
+consumer: run the negotiator seat only for edgecity-goa residents, and have
+the `arm` callback return `null` for anyone not enrolled there. Note the gate
+is per-resident: a resident who is also in another network gets that
+network's opportunities through the same runner, and `NegotiateInput` carries
+no network id — filter per-opportunity in the runner if strict network
+scoping matters.
+
 The stock Index negotiator ignores the `assessment` field on its input; a host
 that wants assessed turns supplies a negotiator that honours it (the lab's
 decorator does). The consult wire contract and the exposure event shape are
