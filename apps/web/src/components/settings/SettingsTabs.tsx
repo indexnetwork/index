@@ -1,20 +1,19 @@
 import { useLocation, useSearchParams, useNavigate } from "react-router";
 
 const TABS = [
-  { key: "profile", label: "profile", to: "/settings" },
-  { key: "notifications", label: "notifications", to: "/settings?tab=notifications" },
+  { key: "notifications", label: "notifications", to: "/settings" },
   { key: "access", label: "access", to: "/settings?tab=access" },
   { key: "advanced", label: "advanced", to: "/settings?tab=advanced" },
 ] as const;
 
-/** Account panes. Agents is its own screen, reached from the hub. */
+/** Account panes. The profile and agents are their own screens. */
 export default function SettingsTabs() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   if (pathname.startsWith("/agents")) return null;
   const tab = searchParams.get("tab");
-  const active = tab === "notifications" || tab === "access" || tab === "advanced" ? tab : "profile";
+  const active = tab === "access" || tab === "advanced" ? tab : "notifications";
 
   return (
     <div className="wb-segmented lg" role="tablist">

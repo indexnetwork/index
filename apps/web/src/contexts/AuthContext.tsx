@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { authClient, clearJwtToken } from '@/lib/auth-client';
+import { isHandlePath } from '@/lib/handle-route';
 import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
@@ -152,7 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       '/login', '/s/', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download', '/setup',
       '/9db20a5fbe',
     ];
-    const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
+    // Profile and network links at the root (index.network/<handle>) are public too.
+    const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p)) || isHandlePath(pathname);
     const isProtectedPage = pathname.startsWith('/i/new');
 
     if (authenticated && userLoading && !isPublicPage) return;

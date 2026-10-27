@@ -11,6 +11,7 @@ export interface DeviceSession {
 }
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
+import { isUUID } from '../lib/keys';
 
 export class UserDatabaseAdapter {
   /**
@@ -28,11 +29,12 @@ export class UserDatabaseAdapter {
   /**
    * Find multiple users by IDs. Returns public profile fields only (same shape as single-user API).
    */
-  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; createdAt: Date; updatedAt: Date }>> {
+  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; username: string | null; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; createdAt: Date; updatedAt: Date }>> {
     if (userIds.length === 0) return [];
     const userRows = await db.select({
       id: users.id,
       name: users.name,
+      username: users.username,
       intro: users.intro,
       avatar: users.avatar,
       location: users.location,
@@ -116,29 +118,28 @@ export class UserDatabaseAdapter {
   }
 
   /**
-   * Find user by key (human-readable identifier).
-   * @param key - The user's key
+   * Find user by username.
+   * @param username - The user's username, already lowercased
    * @returns User record or null
    */
-  async findByKey(key: string): Promise<typeof users.$inferSelect | null> {
+  async findByUsername(username: string): Promise<typeof users.$inferSelect | null> {
     const result = await db.select()
       .from(users)
-      .where(eq(users.key, key))
+      .where(eq(users.username, username))
       .limit(1);
     return result[0] ?? null;
   }
 
   /**
-   * Find user by ID or key. Detects UUID format to decide which column to query.
-   * @param idOrKey - UUID or human-readable key
+   * Find user by ID or username. Detects UUID format to decide which column to query.
+   * @param idOrUsername - UUID or username
    * @returns User record or null
    */
-  async findByIdOrKey(idOrKey: string): Promise<typeof users.$inferSelect | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
-    if (isUuidFormat) {
-      return this.findById(idOrKey);
+  async findByIdOrUsername(idOrUsername: string): Promise<typeof users.$inferSelect | null> {
+    if (isUUID(idOrUsername)) {
+      return this.findById(idOrUsername);
     }
-    return this.findByKey(idOrKey);
+    return this.findByUsername(idOrUsername.toLowerCase());
   }
 
   /**

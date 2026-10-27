@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql, inArray } from 'drizzle-orm/sql';
+import { handleDatabaseAdapter } from '../adapters/handle.database.adapter';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -107,6 +108,8 @@ export class NetworkRequestService {
       })
       .returning();
 
+    // Requested networks get their index.network/<key> link at once, like created ones.
+    row.key = await handleDatabaseAdapter.assignNetworkKey(row.id, row.title);
     logger.verbose('Network request created', { networkId: row.id, userId: requester.id });
     this.notifyStaff(row, requester).catch((err) =>
       logger.error('Staff notification failed', { networkId: row.id, error: err }),

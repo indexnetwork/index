@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router';
 
 import { Network } from '@/lib/types';
 import { validateFiles } from '@/lib/file-validation';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { log } from '@/lib/logger';
+import { APIError } from '@/lib/api';
 
 const logger = log.ui.from('SettingsTab');
 const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
@@ -11,7 +13,7 @@ const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
 interface SettingsTabProps {
   network: Network;
   networkId: string;
-  updateNetwork: (id: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; metadata?: Record<string, unknown> }) => Promise<Network>;
+  updateNetwork: (id: string, data: { title?: string; key?: string | null; prompt?: string | null; imageUrl?: string | null; metadata?: Record<string, unknown> }) => Promise<Network>;
   uploadImage: (file: File) => Promise<string>;
   onUpdated: (network: Network) => void;
   onDeleted?: () => void;
@@ -51,7 +53,11 @@ export default function SettingsTab({
   success,
   error,
 }: SettingsTabProps) {
+  const navigate = useNavigate();
   const [title, setTitle] = useState(network.title || '');
+  // The network's index.network/<key> link name, shared with usernames.
+  const savedKey = (network as { key?: string | null }).key ?? '';
+  const [linkName, setLinkName] = useState(savedKey);
   const [prompt, setPrompt] = useState(network.prompt || '');
   const [imageUrl, setImageUrl] = useState<string | null>(network.imageUrl ?? null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -71,6 +77,7 @@ export default function SettingsTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local form state from prop changes */
   useEffect(() => {
     setTitle(network.title);
+    setLinkName(savedKey);
     setPrompt(network.prompt || '');
     setImageUrl(network.imageUrl ?? null);
     setOriginalTitle(network.title);
@@ -82,7 +89,7 @@ export default function SettingsTab({
     setDeleteConfirmationText('');
     setShowDelete(false);
     setImageError('');
-  }, [network.id, network.title, network.prompt, network.imageUrl]);
+  }, [network.id, network.title, network.prompt, network.imageUrl, savedKey]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,6 +112,7 @@ export default function SettingsTab({
 
   const resetSettings = () => {
     setTitle(originalTitle);
+    setLinkName(savedKey);
     setPrompt(originalPrompt);
     setImageUrl(originalImageUrl);
     setImageFile(null);
@@ -124,9 +132,15 @@ export default function SettingsTab({
       let finalImageUrl: string | null = imageUrl;
       if (imageFile) finalImageUrl = await uploadImage(imageFile);
       else if (removeImageRequested) finalImageUrl = null;
+      const keyChanged = linkName !== savedKey;
       const updatedIndex = await updateNetwork(networkId, {
         title: title.trim(), prompt: prompt.trim() || null, imageUrl: finalImageUrl,
+        ...(keyChanged ? { key: linkName || null } : {}),
       });
+      // Standing on the old link name, which no longer resolves: move to the new one.
+      if (keyChanged && savedKey && window.location.pathname.startsWith(`/${savedKey}`)) {
+        navigate(window.location.pathname.replace(`/${savedKey}`, linkName ? `/${linkName}` : `/networks/${networkId}`), { replace: true });
+      }
       setOriginalTitle(title);
       setOriginalPrompt(prompt);
       setOriginalImageUrl(finalImageUrl);
@@ -138,7 +152,8 @@ export default function SettingsTab({
       success('Settings updated');
     } catch (err) {
       logger.error('Error updating network', { error: err });
-      error('Failed to update settings');
+      // A refused link name (rule broken, or taken by a person or network) says why.
+      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : 'Failed to update settings');
     } finally {
       setIsSavingSettings(false);
     }
@@ -161,7 +176,7 @@ export default function SettingsTab({
 
   const displayImageUrl = imagePreview ? imagePreview : (removeImageRequested ? null : imageUrl);
   const hasImageChanged = imageFile !== null || removeImageRequested || (imageUrl !== originalImageUrl && !imageFile && !removeImageRequested);
-  const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt || hasImageChanged;
+  const hasSettingsChanged = title !== originalTitle || linkName !== savedKey || prompt !== originalPrompt || hasImageChanged;
   const busy = isSavingSettings || isDeletingNetwork;
 
   return (
@@ -194,6 +209,20 @@ export default function SettingsTab({
 
       <Field label="title" required>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" style={fieldInput} />
+      </Field>
+      <Field label="link">
+        <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", whiteSpace: "nowrap" }}>{window.location.host}/</span>
+          <input
+            value={linkName}
+            // Same alphabet as usernames: lowercase letters, numbers, hyphens.
+            onChange={(e) => setLinkName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+            placeholder="network-name"
+            autoComplete="off"
+            data-1p-ignore
+            style={fieldInput}
+          />
+        </div>
       </Field>
       <div>
         <div style={fieldLabel}>prompt</div>

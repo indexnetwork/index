@@ -13,6 +13,8 @@ const logger = log.controller.from('auth');
 
 const updateProfileSchema = z.object({
   name: z.string().optional(),
+  /** Empty or null clears it. Validated and uniqueness-checked by `userService.setUsername`. */
+  username: z.string().max(80).nullable().optional(),
   intro: z.string().optional(),
   avatar: z.string().optional(),
   location: z.string().optional(),
@@ -111,8 +113,18 @@ export class AuthController {
     if (!parsed.success) {
       return Response.json({ error: 'Invalid profile update payload' }, { status: 400 });
     }
-    const { notificationPreferences, socials, ...userFields } = parsed.data;
+    const { notificationPreferences, socials, username, ...userFields } = parsed.data;
 
+    // The username goes first: a refused one fails the whole save, before anything else is written.
+    if (username !== undefined) {
+      const claimed = await userService.setUsername(user.id, username);
+      if (claimed.kind === 'invalid') {
+        return Response.json({ error: claimed.error }, { status: 400 });
+      }
+      if (claimed.kind === 'taken') {
+        return Response.json({ error: 'That username is taken' }, { status: 409 });
+      }
+    }
     if (Object.keys(userFields).length > 0) {
       await userService.update(user.id, userFields);
     }

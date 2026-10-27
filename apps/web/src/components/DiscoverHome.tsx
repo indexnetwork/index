@@ -301,8 +301,8 @@ export default function DiscoverHome() {
                 {menuOpen && (
                   <div role="menu" style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 40, minWidth: 200, width: "100%", background: "#fff", border: "1px solid #000", boxShadow: "3px 3px 0 rgba(0,0,0,0.22)", padding: "4px 0" }}>
                     {([
+                      { id: "profile", label: "profile", danger: false },
                       { id: "settings", label: "settings", danger: false },
-                      { id: "notifications", label: "notifications", danger: false },
                       { id: "history", label: "agent log", danger: false },
                       { id: "signout", label: "sign out", danger: true },
                     ] as const).map((item) => (
@@ -312,8 +312,8 @@ export default function DiscoverHome() {
                         role="menuitem"
                         onClick={() => {
                           setMenuOpen(false);
+                          if (item.id === "profile") navigate("/profile");
                           if (item.id === "settings") navigate("/settings");
-                          if (item.id === "notifications") navigate("/settings?tab=notifications");
                           if (item.id === "history") navigate("/negotiations");
                           if (item.id === "signout") void signOut();
                         }}
