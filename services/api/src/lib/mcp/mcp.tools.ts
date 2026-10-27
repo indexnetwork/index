@@ -23,6 +23,7 @@ import type { McpPrincipal } from './mcp.types';
 
 const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, intent, or opportunity name itself, never as a separate "link" word.';
 const CADENCE_HINT = ` ${MCP_CADENCE}`;
+const NARRATION_HINT = ' While this call runs, discovery is live; when the result arrives, lead your reply with what happened during the watch — negotiations opened, opportunities ready, or a question waiting — before anything else. It is the part the owner is waiting to hear.';
 
 /** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
 const hints = (
@@ -348,7 +349,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
@@ -424,11 +425,11 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           lines.push(`Your agent has a question: "${watch.pendingQuestion.question}" — read it with get_intent_conversation and answer with principal_send_message.`);
         }
         if (watch?.opportunities.length) {
-          lines.push('Ready now:', ...watch.opportunities.map((o) => `- ${mdLink(o.headline, o.url)}`));
+          lines.push('Live while you waited — ready now:', ...watch.opportunities.map((o) => `- ${mdLink(o.headline, o.url)}`));
         } else if (watch) {
           lines.push(watch.negotiating > 0
-            ? `${watch.negotiating} negotiation(s) started in the first ${watch.seconds}s; discovery continues in the background — check list_opportunities later.`
-            : `Nothing surfaced in the first ${watch.seconds}s; discovery continues in the background — check list_opportunities later.`);
+            ? `Live while you waited: ${watch.negotiating === 1 ? 'an agent' : `${watch.negotiating} agents`} entered negotiation for this intent. Discovery continues — check list_opportunities in a few minutes.`
+            : `Nothing surfaced in the first ${watch.seconds}s. Discovery continues — check list_opportunities in a few minutes.`);
         }
         return mcpSuccess(
           { intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId, ...(watch && { watch }) },
