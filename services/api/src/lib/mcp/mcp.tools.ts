@@ -15,7 +15,7 @@ import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { cosignEnricher, cosignLine } from './mcp.cosign';
-import { onboardingText } from './mcp.instructions';
+import { MCP_ONBOARDING } from './mcp.instructions';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
@@ -178,7 +178,16 @@ function runTool(
   principal: McpPrincipal,
   operation: () => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
-  return operation().catch((error) => captureMcpToolFailure(error, name, principal));
+  return operation()
+    .catch((error) => captureMcpToolFailure(error, name, principal))
+    .then((result) => (principal.onboarding ? withOnboarding(result) : result));
+}
+
+/** Many hosts never show the model the initialize instructions, but every host shows it tool results. */
+function withOnboarding(result: CallToolResult): CallToolResult {
+  const [first, ...rest] = result.content;
+  if (first?.type !== 'text') return result;
+  return { ...result, content: [{ ...first, text: `${first.text}\n\n${MCP_ONBOARDING}` }, ...rest] };
 }
 
 const conversationService = new ConversationService();
@@ -216,18 +225,6 @@ function inboxMessage(message: {
 
 /** Register the curated owner-only Index tool surface on a fresh MCP server. */
 export function registerMcpTools(server: McpServer, principal: McpPrincipal): void {
-  // Many hosts never show the model the initialize instructions, so the tool description asks for onboarding too.
-  const onboarding = onboardingText(Boolean(principal.cosign));
-  server.registerTool(
-    'show_onboarding',
-    {
-      description: 'Onboarding: how Index works, then three suggested intents to capture. Call it at the start of every new conversation, and whenever they ask for the onboarding or a fresh start.',
-      inputSchema: emptyInputSchema,
-      annotations: hints('Show onboarding', true, false, false, true),
-    },
-    () => Promise.resolve(mcpSuccess({ onboarding }, onboarding)),
-  );
-
   server.registerTool(
     'get_my_profile',
     {
