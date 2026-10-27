@@ -268,7 +268,13 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
       network: Network;
       membership?: Member;
       alreadyMember?: boolean;
+      authorizeUrl?: string;
     }>(`/networks/${networkId}/join`);
+    // An MCP network is joined by logging in to its server, which returns to the API.
+    if (response.authorizeUrl) {
+      window.location.href = response.authorizeUrl;
+      return new Promise(() => {});
+    }
     return {
       network: response.network,
       membership: response.membership,

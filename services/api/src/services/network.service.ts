@@ -1,9 +1,12 @@
 import { log } from '../lib/log';
+import { authorizeUrl, dropTokens, finishAuth } from '../lib/network-mcp/network-mcp.client';
 import { getNetworkPulseSummary, SUMMARY_MIN_MEMBERS } from '../lib/network-pulse-summary';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
+
+export const MCP_ONLY = 'This network is joined by connecting its account, not by invite.';
 
 /**
  * Every open invite page polls its counts every few seconds. Viewers of one
@@ -279,6 +282,8 @@ export class NetworkService {
    */
   async acceptInvitation(code: string, userId: string) {
     logger.verbose('Accepting invitation', { userId });
+    const network = await this.adapter.getNetworkByShareCode(code);
+    if (network && await this.adapter.getNetworkMcp(network.id)) throw new Error(MCP_ONLY);
     return this.adapter.acceptNetworkInvitation(code, userId);
   }
 
@@ -315,6 +320,24 @@ export class NetworkService {
   }
 
   /**
+   * @returns The MCP server's login URL when this network is joined through one, otherwise null.
+   */
+  async mcpJoinUrl(networkId: string, userId: string): Promise<string | null> {
+    const mcp = await this.adapter.getNetworkMcp(networkId);
+    return mcp ? authorizeUrl(networkId, userId, mcp) : null;
+  }
+
+  /**
+   * Complete an MCP login and make the member.
+   * @returns The network they joined.
+   */
+  async finishMcpJoin(state: string, code: string): Promise<string> {
+    const { userId, networkId } = await finishAuth(state, code);
+    await this.adapter.addMemberToNetwork(networkId, userId, 'member');
+    return networkId;
+  }
+
+  /**
    * Join a public network.
    */
   async joinPublicNetwork(networkId: string, userId: string) {
@@ -329,6 +352,7 @@ export class NetworkService {
   async leaveNetwork(networkId: string, userId: string) {
     logger.verbose('Leaving network', { networkId, userId });
     await this.adapter.leaveNetwork(networkId, userId);
+    await dropTokens(networkId, userId);
   }
 
   /**
