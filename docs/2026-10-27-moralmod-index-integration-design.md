@@ -34,6 +34,28 @@ MoralMod-specific surface inside Index. The decoupled shape:
 - **Ramp (their ask 4):** entirely lab-side (which residents their boxes
   negotiate for), no Index involvement.
 
+### Amendment (2026-10-27, later): Index hosts the edgecity-goa negotiators
+
+Seref: Index's own hosted agent runs the negotiators for edgecity-goa
+residents, so the consumer of `packages/moralmod` is our hosted agent after
+all — scoped strictly to that one network:
+
+- The hosted agent builds the hook from env (`MORALMOD_ASSESSMENT_URL`
+  gates everything); the arm is **network membership**: members of the
+  network keyed `MORALMOD_NETWORK_KEY` (default `edgecity-goa`) are ON,
+  everyone else and every other deployment passes through untouched. No
+  arms table, no control-plane endpoints.
+- `negotiate()` honours optional assessment guidance again (the reviewed
+  implementation from PR #1870's history).
+- The assessment runs on our own thin service,
+  `services/moralmod-assessment` (FastAPI around the lab's
+  flexible-moral-reasoning pipeline @ f17d52c, used with their cooperation),
+  implementing `moralmod-consult-0`. Input rendering follows the lab's own
+  conventions; no candidate-action menu, the model infers scientific actions
+  as their production does. Requires `OPENROUTER_API_KEY` **and** the lab's
+  `TYPESAFE_API_KEY` per run; without keys it answers `unavailable` and every
+  turn falls back to the plain negotiator — the village never blocks on it.
+
 Everything below this line is the superseded embedded design.
 
 ---

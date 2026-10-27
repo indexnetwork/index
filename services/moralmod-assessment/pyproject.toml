@@ -1,0 +1,17 @@
+[project]
+name = "moralmod-assessment"
+version = "0.1.0"
+description = "moralmod-consult-0 assessment service: runs the Sydney Levine Lab's flexible-moral-reasoning pipeline over Index negotiation turn packets."
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    # The lab's pipeline, pinned to the reviewed revision. Private repo: the
+    # build needs a GitHub token with read access (see README).
+    "flexible-moral-reasoning @ git+https://github.com/Sydney-Levine-Lab/flexible-moral-reasoning@f17d52c",
+]
+
+[tool.uv]
+# Local development against a checkout instead of the git pin:
+#   uv sync --no-install-package flexible-moral-reasoning
+#   uv pip install -e /path/to/flexible-moral-reasoning
