@@ -23,6 +23,8 @@ export type { Decide, DecideClientOptions } from "./decide.ts";
 export type { Model, ModelClientOptions } from "./model.ts";
 
 export type {
+  AssessmentGuidance,
+  AssessmentSelection,
   BriefInput,
   ConversationEntry,
   Decision,
