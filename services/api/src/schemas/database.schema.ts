@@ -98,7 +98,8 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   emailVerified: boolean('email_verified').notNull().default(false),
   name: text('name').notNull(),
-  key: text('key'),
+  /** The public handle in profile URLs (`/u/:username`). Stored in the legacy `key` column. */
+  username: text('key'),
   avatar: text('avatar'),
   intro: text('intro'),
   location: text('location'),
@@ -114,7 +115,7 @@ export const users = pgTable('users', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
-  usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
+  usersKeyUnique: uniqueIndex('users_key_unique').on(table.username),
 }));
 
 export const userSocials = pgTable('user_socials', {

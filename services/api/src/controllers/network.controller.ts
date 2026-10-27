@@ -5,7 +5,8 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { isStaff } from '../lib/staff';
 import { networkInvitationService } from '../services/network-invitation.service';
-import { MCP_ONLY, networkService } from '../services/network.service';
+import { MCP_ONLY, NetworkKeyError, networkService } from '../services/network.service';
+import { intentService } from '../services/intent.service';
 
 const logger = log.controller.from('network');
 
@@ -235,6 +236,8 @@ export class NetworkController {
     try {
       const body = await req.json().catch(() => ({})) as {
         title?: string;
+        /** The index.network/<key> link name; empty or null clears it. */
+        key?: string | null;
         prompt?: string | null;
         imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
@@ -246,6 +249,9 @@ export class NetworkController {
       logger.verbose('Network updated', { networkId: params.id });
       return Response.json({ network: result });
     } catch (err: unknown) {
+      if (err instanceof NetworkKeyError) {
+        return Response.json({ error: err.message }, { status: err.status });
+      }
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
         return Response.json({ error: msg }, { status: 403 });
@@ -364,6 +370,25 @@ export class NetworkController {
   async getPublicNetworks(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getPublicNetworks(user.id);
     logger.verbose('Public networks listed for user', { userId: user.id, count: result.networks.length });
+    return Response.json(result);
+  }
+
+  /**
+   * POST /networks/shared/:userId/ensure — called when someone opens another
+   * person's profile. If the two share no network, both join Index Early, and
+   * their agents are paired on the spot so the profile has something to show.
+   * IMPORTANT: This must come before routes matching /:id.
+   */
+  @Post('/shared/:userId/ensure')
+  @UseGuards(AuthGuard)
+  async ensureSharedNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const result = await networkService.ensureSharedNetwork(user.id, params.userId);
+    if (result.joined) {
+      // Best effort: the shared network is what matters; discovery also runs later.
+      await intentService.pairWithUser(user.id, params.userId).catch((err: unknown) =>
+        logger.error('Pair after joining Index Early failed', { userId: user.id, peerUserId: params.userId, error: errorMessage(err) }),
+      );
+    }
     return Response.json(result);
   }
 

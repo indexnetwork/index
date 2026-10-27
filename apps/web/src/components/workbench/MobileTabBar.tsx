@@ -102,9 +102,9 @@ function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; o
 
   const rows: Array<{ label: string; to?: string; action?: () => void; badge?: number }> = [
     { label: "networks", to: "/networks", badge: pendingJoins },
+    { label: "profile", to: "/profile" },
     { label: "settings", to: "/settings" },
     { label: "agent log", to: "/negotiations" },
-    { label: "notifications", to: "/settings?tab=notifications" },
     { label: "invite friends", action: onInvite },
   ];
 

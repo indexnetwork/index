@@ -96,6 +96,8 @@ function safeProfile(profile: NonNullable<Awaited<ReturnType<typeof userService.
   return {
     id: profile.id,
     url: appLink('u', profile.id),
+    // The shareable address: index.network/<username>. Null until claimed.
+    username: profile.username,
     email: profile.email,
     name: profile.name,
     intro: profile.intro,
@@ -251,6 +253,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       description: 'Replace the supplied fields on the authenticated API key owner\'s profile. Omitted fields stay. Sending socials replaces the whole list, and the previous values are not kept.' + LINK_HINT,
       inputSchema: z.object({
         name: z.string().optional(),
+        /** The handle in index.network/<username>; null clears it. */
+        username: z.string().max(80).nullable().optional(),
         intro: z.string().optional(),
         location: z.string().optional(),
         timezone: z.string().optional(),
@@ -263,7 +267,13 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       annotations: hints('Update my profile', false, true, false, true),
     },
     (input) => runTool('update_my_profile', principal, async () => {
-      const { socials, ...fields } = input;
+      const { socials, username, ...fields } = input;
+      // The username goes first: a refused one fails the whole save, before anything else is written.
+      if (username !== undefined) {
+        const claimed = await userService.setUsername(principal.userId, username);
+        if (claimed.kind === 'invalid') return mcpError('username_invalid', claimed.error);
+        if (claimed.kind === 'taken') return mcpError('username_taken', 'That username is taken.');
+      }
       if (Object.keys(fields).length > 0) {
         await userService.update(principal.userId, fields);
       }

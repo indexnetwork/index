@@ -19,6 +19,15 @@ export interface NegotiationHistoryEntry {
   updatedAt: string;
 }
 
+/** The viewer's own agent totals. Paired agents counts distinct people their agent has negotiated with. */
+export interface AgentStats {
+  pairedAgents: number;
+  negotiations: number;
+  inProgress: number;
+  agreed: number;
+  connected: number;
+}
+
 export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   getUserProfile: async (userId: string): Promise<User> => {
     const response = await api.get<APIResponse<User>>(`/users/${userId}`);
@@ -62,6 +71,12 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
       results.forEach(([id, user]) => profileMap.set(id, user));
       return profileMap;
     }
+  },
+
+  /** The viewer's own agent totals, shown on their profile. */
+  getAgentStats: async (): Promise<AgentStats> => {
+    const response = await api.get<{ stats: AgentStats }>('/users/me/agent-stats');
+    return response.stats;
   },
 
   /**

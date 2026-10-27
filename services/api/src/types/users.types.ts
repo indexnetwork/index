@@ -30,6 +30,8 @@ export interface User {
   id: UUID;
   email: string | null;
   name: string;
+  /** Public handle in profile URLs (`/u/:username`); null until claimed. */
+  username?: string | null;
   intro: string | null;
   avatar: string | null;
   location?: string | null;
@@ -44,6 +46,8 @@ export interface User {
 
 export interface UpdateProfileRequest {
   name?: string;
+  /** Empty or null clears it. */
+  username?: string | null;
   intro?: string;
   avatar?: string;
   location?: string;

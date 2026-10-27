@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { APIError } from "@/lib/api";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
 import { ConfirmWindow, RuleLabel, Segmented, Stage, Window } from "@/components/workbench/Workbench";
@@ -15,7 +16,8 @@ import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { assembleFirstRunProfile, lookupFoundNothing, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 
-const SETTINGS_TABS = ["profile", "notifications", "access", "advanced"] as const;
+// The profile editor lives at /profile/edit; settings is the account panes only.
+const SETTINGS_TABS = ["notifications", "access", "advanced"] as const;
 
 const PROTOCOL_PRESETS = [
   { value: "main", label: "main", url: "https://protocol.index.network", web: "https://index.network" },
@@ -39,11 +41,15 @@ export interface FirstRunReview {
   onDone: () => void;
 }
 
-export default function ProfilePage() {
+export default function SettingsPage() {
   return <ProfileSettings />;
 }
 
-export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}) {
+/**
+ * The account window. Settings shows the account panes; `editProfile` (at
+ * /profile/edit) and `firstRun` show the profile form alone.
+ */
+export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRunReview; editProfile?: boolean } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
   const back = useBack("/");
@@ -53,6 +59,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   const { success, error } = useNotifications();
 
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [intro, setIntro] = useState("");
   const [location, setLocation] = useState("");
   const [timezone, setTimezone] = useState("");
@@ -78,7 +85,12 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   }>({});
 
   const tabParam = searchParams.get("tab");
-  const activeTab: SettingsTab = firstRun ? "profile" : isSettingsTab(tabParam) ? tabParam : "profile";
+  const profileOnly = !!firstRun || !!editProfile;
+  const activeTab: SettingsTab | "profile" = profileOnly ? "profile" : isSettingsTab(tabParam) ? tabParam : "notifications";
+  // Old links to the settings profile tab land on the profile editor.
+  useEffect(() => {
+    if (!profileOnly && tabParam === "profile") navigate("/profile/edit", { replace: true });
+  }, [profileOnly, tabParam, navigate]);
 
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -101,6 +113,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
       ? assembleFirstRunProfile(u, firstRun.lookup, firstRun.name)
       : { name: u.name || "", intro: u.intro || "", location: u.location || "", socials: (u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })) };
     setName(base.name);
+    setUsername(u.username || "");
     setIntro(base.intro);
     setLocation(base.location);
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -152,6 +165,8 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
 
       await authService.updateProfile({
         name: name || undefined,
+        // Only sent when it changed, so an unchanged save never re-checks availability.
+        ...(username !== (user?.username || "") ? { username: username || null } : {}),
         intro: intro || undefined,
         location: location || undefined,
         avatar: avatarFilename || undefined,
@@ -172,8 +187,10 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
       setAvatarPreview(null);
       setIsDirty(false);
       success("Profile saved");
-    } catch {
-      error("Failed to save profile");
+      if (editProfile) navigate("/profile");
+    } catch (err) {
+      // A refused username comes back as 400 or 409 with a message worth showing.
+      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : "Failed to save profile");
     } finally {
       setSaving(false);
     }
@@ -204,9 +221,9 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
       <>
         <Stage width={860} height="min(660px, calc(100vh - 112px))">
         <Window
-          title={firstRun ? "getting started" : "settings"}
+          title={firstRun ? "getting started" : editProfile ? "edit profile" : "settings"}
           // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
-          onClose={firstRun ? () => void signOut() : compact ? back : () => navigate("/")}
+          onClose={firstRun ? () => void signOut() : editProfile ? () => navigate("/profile") : compact ? back : () => navigate("/")}
           style={{ height: "100%" }}
         >
         {firstRun && (
@@ -217,7 +234,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
           </div>
         )}
         <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
-          {!firstRun && (
+          {!profileOnly && (
             <div style={{ marginBottom: 18 }}>
               <SettingsTabs />
             </div>
@@ -242,6 +259,14 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
 
               <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
                 <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
+                <MacField
+                  label="username"
+                  prefix="@"
+                  placeholder="yourname"
+                  value={username}
+                  // Same alphabet the server accepts: lowercase letters, numbers, hyphens.
+                  onChange={(v) => { setUsername(v.toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-]/g, "")); mark(); }}
+                />
                 <MacField label="email" value={user?.email || ""} disabled />
                 <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
               </div>
@@ -309,8 +334,22 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               </div>
             </div>
 
-            {/* Danger Zone: settings only, not first-run setup */}
-            {!firstRun && <div style={{ marginTop: 26 }}>
+
+          </div>
+          )}
+
+          {activeTab === "access" && (
+              <div style={{ display: "grid", gap: 22 }}>
+                <ApiKeysSection />
+                <DevicesSection />
+              </div>
+          )}
+
+          {activeTab === "advanced" && (
+            <div>
+            <AdvancedPane signOut={signOut} />
+            {/* Danger zone: account-level, so it sits with the account panes. */}
+            <div style={{ marginTop: 26 }}>
               <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: "var(--ink-warn)", textTransform: "uppercase" }}>
                 <span style={{ display: "inline-block", transform: isDangerZoneExpanded ? "rotate(90deg)" : "none" }}>›</span>
                 danger zone
@@ -324,19 +363,9 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
                   <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "6px 15px", border: "1px solid var(--ink-warn)", background: "var(--ink-warn)", color: "#fff", cursor: "pointer" }}>delete</button>
                 </div>
               )}
-            </div>}
-
-          </div>
+            </div>
+            </div>
           )}
-
-          {activeTab === "access" && (
-              <div style={{ display: "grid", gap: 22 }}>
-                <ApiKeysSection />
-                <DevicesSection />
-              </div>
-          )}
-
-          {activeTab === "advanced" && <AdvancedPane signOut={signOut} />}
 
           {activeTab === "notifications" && (
               <div className="space-y-10">
@@ -404,7 +433,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               textDecoration: "underline", cursor: "pointer", opacity: 0.7,
             }}>sign out</button>
           ) : (
-            <button type="button" onClick={() => navigate("/")} disabled={saving} style={{
+            <button type="button" onClick={() => navigate(editProfile ? "/profile" : "/")} disabled={saving} style={{
               fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
               border: "1px solid #000", background: "#fff", color: "#000",
               boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
@@ -535,8 +564,8 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
   );
 }
 
-function MacField({ label, value, onChange, disabled, required }: {
-  label: string; value: string; onChange?: (value: string) => void; disabled?: boolean; required?: boolean;
+function MacField({ label, value, onChange, disabled, required, prefix, placeholder }: {
+  label: string; value: string; onChange?: (value: string) => void; disabled?: boolean; required?: boolean; prefix?: string; placeholder?: string;
 }) {
   return (
     <div style={{ minWidth: 0 }}>
@@ -548,9 +577,12 @@ function MacField({ label, value, onChange, disabled, required }: {
         background: disabled ? "#EDEAE1" : "#fff",
         boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
         padding: "7px 10px",
+        display: "flex", alignItems: "center", gap: 2,
       }}>
+        {prefix && <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{prefix}</span>}
         <input
           value={value}
+          placeholder={placeholder}
           disabled={disabled}
           onChange={(e) => onChange?.(e.target.value)}
           style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, color: disabled ? "var(--ink-2)" : "#000" }}
@@ -560,4 +592,4 @@ function MacField({ label, value, onChange, disabled, required }: {
   );
 }
 
-export const Component = ProfilePage;
+export const Component = SettingsPage;

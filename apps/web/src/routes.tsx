@@ -178,7 +178,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/profile",
-        element: <Navigate to="/settings" replace />,
+        lazy: lazyRoute("/profile", () => import("@/app/profile/page")),
+      },
+      {
+        path: "/profile/edit",
+        lazy: lazyRoute("/profile/edit", () => import("@/app/profile/edit/page")),
       },
       {
         path: "/s/:token",
@@ -207,6 +211,11 @@ export const router = createBrowserRouter([
       {
         path: "/mcp/consent",
         lazy: lazyRoute("/mcp/consent", () => import("@/app/mcp/consent/page")),
+      },
+      {
+        // index.network/<username> or /<network-link-name>; static routes above win.
+        path: "/:handle/*",
+        lazy: lazyRoute("/:handle/*", () => import("@/app/handle/page")),
       },
       {
         path: "*",

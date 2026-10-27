@@ -182,7 +182,7 @@ function PhotoPicker({ me, name, photo, onPick }) {
   );
 }
 
-function ProfilePane({ me, form, set, profileOnly = false, onWriteOwnIntro }) {
+function ProfilePane({ me, form, set, profileOnly = false, onWriteOwnIntro, usernameError }) {
   const introRef = useRef(null);
 
   return (
@@ -203,6 +203,19 @@ function ProfilePane({ me, form, set, profileOnly = false, onWriteOwnIntro }) {
           value={form.name}
           onChange={v => set("name", v)}
         />
+        {/* The handle in profile links (/u/username). Typing is held to the
+            alphabet the server accepts: lowercase letters, numbers, hyphens. */}
+        <div style={{ minWidth:0 }}>
+          <TextField
+            label="username"
+            placeholder="yourname"
+            value={form.username}
+            onChange={v => set("username", v.toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-]/g, ""))}
+          />
+          {usernameError && (
+            <div style={{ marginTop:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-warn)" }}>{usernameError}</div>
+          )}
+        </div>
         {/* Identity is bound to the email the agent authenticated with. The
             greyed well and non-editable cursor already say it isn't editable,
             so the field carries no extra badge. */}
@@ -860,6 +873,7 @@ function assembleProfile(ME, enriched, name) {
   const p = (enriched && enriched.profile) || {};
   return {
     name: name || ME.name || "",
+    username: String(ME.handle || "").replace(/^@/, ""),
     email: ME.email || "",
     location: ME.location || p.location || "",
     intro: ME.intro || p.intro || "",
@@ -894,6 +908,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       && !found.websites.length && !Object.values(found.handles).some(Boolean);
   }, [enriched]);
   const [form, setForm] = useState(assembled.current);
+  const [usernameError, setUsernameError] = useState(null);
   // In-session edits (ME.notify) win over the durable native store; the
   // defaults only apply on a truly fresh install. `messages` predates neither:
   // older saves without it fall back to on, matching notificationEventAllowed.
@@ -971,7 +986,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     };
     if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(toast);
     if (live && client) {
+      // Sent only when it changed. A refused username fails the whole save,
+      // so the pane stays open with the reason instead of closing.
+      const usernameChanged = form.username !== assembled.current.username;
+      let refused = null;
       await client.auth.updateProfile({
+        ...(usernameChanged ? { username: form.username || null } : {}),
         name: form.name,
         intro: form.intro,
         location: form.location,
@@ -984,7 +1004,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           morningBrief: !!notify.morningBrief,
         },
         ...(avatarKey ? { avatar: avatarKey } : {}),
-      }).catch(() => {});
+      }).catch((e) => {
+        if (usernameChanged && e && (e.status === 400 || e.status === 409)) refused = e.message;
+      });
+      if (refused) { setUsernameError(refused); return; }
+      setUsernameError(null);
+      ME.handle = form.username ? `@${form.username}` : "";
       if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
         await window.IndexApp.confirmOnboardingProfile().catch(() => {});
       }
@@ -1052,7 +1077,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             padding:"20px 24px 22px",
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}
-              onWriteOwnIntro={firstRun && !foundNothing ? writeOwnIntro : undefined}/>}
+              onWriteOwnIntro={firstRun && !foundNothing ? writeOwnIntro : undefined} usernameError={usernameError}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle} timezone={timezone} onTimezone={setTimezone}/>}
             {tab === "keys"    && <AccessPane/>}
             {tab === "advanced" && <AdvancedPane/>}

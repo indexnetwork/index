@@ -137,20 +137,23 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         />
       )}
 
-      {negotiations.map((neg) => {
+      {/* One line per negotiation, stacked into a single bordered list. */}
+      {negotiations.length > 0 && (
+      <div style={{ border: "1px solid #000", background: "#fff" }}>
+      {negotiations.map((neg, index) => {
         const isExpanded = expandedId === neg.id;
         const turns = turnsByOpportunity[neg.opportunityId];
         const outcomeInfo = neg.outcome ? OUTCOME_LABELS[neg.outcome] : null;
         const lastAt = neg.updatedAt || neg.settledAt || neg.createdAt;
 
         return (
-          <div key={neg.id} style={{ border: "1px solid #000", background: "#fff" }}>
+          <div key={neg.id} style={{ borderTop: index ? "1px solid #000" : "none" }}>
             <div
               role="button"
               tabIndex={0}
               onClick={() => void toggle(neg)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void toggle(neg); } }}
-              style={{ width: "100%", padding: 16, display: "flex", alignItems: "center", gap: 16, textAlign: "left", cursor: "pointer", background: isExpanded ? "#F2F0EC" : "#fff" }}
+              style={{ width: "100%", padding: "6px 12px", display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", background: isExpanded ? "#F2F0EC" : "#fff" }}
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -161,34 +164,29 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                   id={neg.counterparty.id}
                   name={neg.counterparty.name}
                   avatar={neg.counterparty.avatar}
-                  size={36}
+                  size={22}
                 />
               </Link>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                    <Link
-                    to={`/u/${neg.counterparty.id}`}
-                    style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", textDecoration: "none" }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {neg.counterparty.name}
-                  </Link>
-                  {outcomeInfo ? (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
-                      {outcomeInfo.label}
-                    </span>
-                  ) : (
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-                  {neg.turnCount > 0 && (
-                    <span>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
-                  )}
-                  <time className="ml-auto" dateTime={lastAt} title={new Date(lastAt).toLocaleString()}>{formatChatClock(lastAt)}</time>
-                </div>
-              </div>
+              <Link
+                to={`/u/${neg.counterparty.id}`}
+                style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700, color: "#000", textDecoration: "none" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {neg.counterparty.name}
+              </Link>
+              {outcomeInfo ? (
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
+                  {outcomeInfo.label}
+                </span>
+              ) : (
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
+              )}
+              <span style={{ flex: 1 }} />
+              {neg.turnCount > 0 && (
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
+              )}
+              <time dateTime={lastAt} title={new Date(lastAt).toLocaleString()} style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{formatChatClock(lastAt)}</time>
 
               <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{isExpanded ? "▾" : "›"}</span>
             </div>
@@ -220,6 +218,8 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
           </div>
         );
       })}
+      </div>
+      )}
 
       {hasMore && (
         <button

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks, useOpportunities } from "@/contexts/APIContext";
 import type { RadarCardItem } from "@/services/opportunities";
@@ -12,28 +12,39 @@ import { Stage, Window } from "@/components/workbench/Workbench";
 import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import NegotiationConversation from "@/components/NegotiationConversation";
-import { getPublicUserProfile } from "@/services/users";
+import { getPublicUserProfile, type AgentStats } from "@/services/users";
 import { log } from "@/lib/logger";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useBack } from "@/hooks/useBack";
+import { clearPendingPair, readPendingPair, rememberPendingPair } from "@/lib/pending-pair";
+import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
 
 const logger = log.page.from("u/[id]");
 
 const sectionLabel = { fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 } as const;
 
+/** /u/:id, the old profile address. It still opens, and moves to /:username when there is one. */
 export default function UserProfilePage() {
   const { id } = useParams();
-  return <AppHandoff kind="u" id={id ?? ""} webPage={<UserProfile />} />;
+  return <AppHandoff kind="u" id={id ?? ""} webPage={<UserProfile idOrUsername={id ?? ""} />} />;
 }
 
-function UserProfile() {
-  const { id } = useParams();
+/**
+ * One person's profile. Rendered at `/:username` (the shareable address) and
+ * at `/u/:id`, which hands over to `/:username` once the profile loads.
+ */
+export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: string; atRoot?: boolean }) {
+  const id = idOrUsername;
   const navigate = useNavigate();
   const back = useBack("/");
   const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
+  const [searchParams] = useSearchParams();
+  // `?as=public` renders the page as a signed-out visitor sees it, which is what share profile opens.
+  const asPublic = searchParams.get("as") === "public";
+  const signedIn = isAuthenticated && !asPublic;
   const usersService = useUsers();
   const networksService = useNetworks();
   const opportunitiesService = useOpportunities();
@@ -49,27 +60,45 @@ function UserProfile() {
   const [oppsLoaded, setOppsLoaded] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState(false);
+  const [agentStats, setAgentStats] = useState<AgentStats | null>(null);
 
-  const isOtherUser = !!user?.id && user.id !== id;
+  // `id` is a user id or a username; the loaded profile says whose page this is.
+  const profileId = profileData?.id;
+  const isSelf = signedIn && !!user?.id && !!profileId && user.id === profileId;
+  const isOtherUser = signedIn && !!user?.id && !!profileId && user.id !== profileId;
 
   useEffect(() => {
     // /u/ is a public route, so authLoading clears before /auth/me resolves; wait for the viewer too.
     if (authLoading || (isAuthenticated && !user?.id)) return;
     let active = true;
+    // Stays "loading" while handing over to /:username, so nothing flashes on the way.
+    let redirecting = false;
     const fetchData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const profile = isAuthenticated
+        const profile = signedIn
           ? await usersService.getUserProfile(id)
           : await getPublicUserProfile(id!);
         if (!active) return;
+        // The shareable address is index.network/<username>; old /u/ links move there.
+        if (!atRoot && profile.username) {
+          redirecting = true;
+          navigate(`/${profile.username}${window.location.search}`, { replace: true });
+          return;
+        }
         setProfileData(profile);
 
         let networks: typeof sharedNetworks = [];
-        if (isAuthenticated && user?.id && user.id !== id) {
+        if (signedIn && user?.id && user.id !== profile.id) {
           try {
-            networks = await networksService.getSharedNetworks(id!);
+            networks = await networksService.getSharedNetworks(profile.id);
+            // No network in common: both join Index Early, which pairs the agents.
+            if (networks.length === 0) {
+              const ensured = await networksService.ensureSharedNetwork(profile.id);
+              networks = ensured.networks;
+              if (ensured.joined && active) setOppKey((k) => k + 1);
+            }
           } catch (err) {
             logger.error('Failed to fetch shared networks', { error: err });
           }
@@ -78,37 +107,63 @@ function UserProfile() {
       } catch (err) {
         if (!active) return;
         logger.error('Failed to fetch profile', { error: err });
+        // A profile that's gone can't be paired with; don't keep sending them here.
+        if (readPendingPair()?.path === window.location.pathname) clearPendingPair();
         // A 200 without a user throws a plain Error: that is "missing" too.
         setError(isNotFoundError(err) || !(err instanceof APIError) ? "notFound" : "failed");
       } finally {
-        if (active) setIsLoading(false);
+        if (active && !redirecting) setIsLoading(false);
       }
     };
     fetchData();
     return () => { active = false; };
-  }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService, reloadKey]);
+  }, [id, atRoot, navigate, user?.id, isAuthenticated, signedIn, authLoading, usersService, networksService, reloadKey]);
 
   useEffect(() => {
     setSharedOpportunities([]);
     setOppsLoaded(false);
-    if (!isOtherUser || !id) return;
+    if (!isOtherUser || !profileId) return;
     let active = true;
     opportunitiesService
-      .getRadarView({ peerUserId: id, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: oppKey > 0 })
+      .getRadarView({ peerUserId: profileId, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: oppKey > 0 })
       .then((res) => { if (active) setSharedOpportunities(res.items); })
       .catch((err) => logger.error('Failed to fetch shared opportunities', { error: err }))
       .finally(() => { if (active) setOppsLoaded(true); });
     return () => { active = false; };
-  }, [id, isOtherUser, opportunitiesService, oppKey]);
+  }, [profileId, isOtherUser, opportunitiesService, oppKey]);
+
+  // Agent analytics are the owner's alone: only fetched on your own profile.
+  useEffect(() => {
+    if (!isSelf) return;
+    let active = true;
+    usersService
+      .getAgentStats()
+      .then((stats) => { if (active) setAgentStats(stats); })
+      .catch((err) => logger.error('Failed to fetch agent stats', { error: err }));
+    return () => { active = false; };
+  }, [isSelf, usersService]);
+
+  const shareProfile = () => {
+    if (!profileData) return;
+    const path = `${profileData.username ? `/${profileData.username}` : `/u/${profileData.id}`}?as=public`;
+    window.open(path, "_blank", "noopener,noreferrer");
+  };
 
   const pair = async () => {
-    if (!id || pairing) return;
-    // Signed-out viewers pair after login; sign-in lands them in the default network.
-    if (!isAuthenticated) return openLoginModal();
+    if (!profileId || !profileData || pairing) return;
+    // The public preview is the owner looking at their own page; nothing to pair.
+    if (asPublic) return;
+    if (!isAuthenticated) {
+      // Signed-out visitors pair once they're in: the click is remembered through
+      // sign-up and onboarding, and finished when they're brought back here.
+      // Sign-in lands them in the default network, which the pair runs in.
+      rememberPendingPair({ path: profileData.username ? `/${profileData.username}` : `/u/${profileId}`, userId: profileId });
+      return openLoginModal(window.location.href);
+    }
     setPairing(true);
     setPairError(false);
     try {
-      await opportunitiesService.pairWith(id);
+      await opportunitiesService.pairWith(profileId);
       setOppKey((k) => k + 1);
     } catch {
       setPairError(true);
@@ -116,6 +171,23 @@ function UserProfile() {
       setPairing(false);
     }
   };
+
+  // Back from sign-in (and onboarding, for someone new): finish the pair they asked for.
+  const pendingPairFor = isOtherUser ? readPendingPair()?.userId : undefined;
+  // Signed in as the very person they meant to pair with: nothing to finish.
+  useEffect(() => {
+    if (isSelf && readPendingPair()?.userId === profileId) clearPendingPair();
+  }, [isSelf, profileId]);
+  useEffect(() => {
+    if (!profileId || pendingPairFor !== profileId) return;
+    // New here: onboarding first. Its last step lands on the home page, which brings them back.
+    if (needsOnboarding(user)) { navigate("/onboarding"); return; }
+    // Profile confirmed but no intent yet, so nothing to pair with.
+    if (awaitsFirstIntent(user)) { navigate("/i/new"); return; }
+    clearPendingPair();
+    void pair();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per arrival; pair reads current state
+  }, [profileId, pendingPairFor]);
 
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
@@ -155,11 +227,22 @@ function UserProfile() {
             <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
+              {profileData.username ? (
+                <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12 }}>@{profileData.username}</div>
+              ) : isSelf && (
+                <Link to="/profile/edit" style={{ display: "inline-block", marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>set a username</Link>
+              )}
               {profileData.emailVerified === false && <NotOnIndexTag />}
               {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
             </div>
-            {isAuthenticated && isOtherUser && (
-              <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${id}/chat`)}>send message</button>
+            {isOtherUser && (
+              <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${profileData.id}/chat`)}>send message</button>
+            )}
+            {isSelf && (
+              <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+                <button type="button" className="wb-btn small" onClick={() => navigate("/profile/edit")}>edit profile</button>
+                <button type="button" className="wb-btn primary small" onClick={shareProfile}>share profile</button>
+              </div>
             )}
           </div>
 
@@ -184,7 +267,7 @@ function UserProfile() {
             </div>
           )}
 
-          {isAuthenticated && isOtherUser && (
+          {isOtherUser && (
             <div>
               <h3 style={sectionLabel}>networks</h3>
               {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>no shared networks.</div>}
@@ -198,7 +281,7 @@ function UserProfile() {
             </div>
           )}
 
-          {(!isAuthenticated || (isOtherUser && oppsLoaded && sharedOpportunities.length === 0)) && (
+          {!signedIn && (
             <div>
               <h3 style={sectionLabel}>opportunities</h3>
               <EmptyState
@@ -211,6 +294,18 @@ function UserProfile() {
                 }
                 action={{ label: pairing ? "pairing…" : "pair agents", onClick: pair, primary: true, large: true }}
               />
+            </div>
+          )}
+
+          {/* Signed in, nothing between us yet. Opening the profile already made
+              sure we share a network, so our agents are paired: nothing to click. */}
+          {isOtherUser && oppsLoaded && sharedOpportunities.length === 0 && (
+            <div>
+              <h3 style={sectionLabel}>opportunities</h3>
+              <div style={{ border: "1px solid #000", background: "#fff", padding: "14px 16px", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }}>
+                <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>our agents are already paired.</div>
+                they&apos;re talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over. until then, enjoy connecting with others.
+              </div>
             </div>
           )}
 
@@ -245,11 +340,30 @@ function UserProfile() {
             </div>
           )}
 
+          {isSelf && (
+            <div style={{ borderTop: "1px solid #000", paddingTop: 16 }}>
+              <h3 style={sectionLabel}>agent analytics</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", border: "1px solid #000", background: "#fff" }}>
+                {([
+                  { label: "paired agents", value: agentStats?.pairedAgents, hint: "people your agent has negotiated with" },
+                  { label: "negotiations", value: agentStats?.negotiations, hint: "every conversation, all time" },
+                  { label: "in progress", value: agentStats?.inProgress, hint: "still talking" },
+                  { label: "connections", value: agentStats?.connected, hint: "both of you said yes" },
+                ]).map((tile, i) => (
+                  <div key={tile.label} title={tile.hint} style={{ flex: "1 1 0", minWidth: 110, display: "flex", alignItems: "baseline", gap: 6, padding: "6px 10px", borderLeft: i ? "1px solid #000" : "none" }}>
+                    <span style={{ fontFamily: "var(--amiga-title)", fontSize: 16, fontWeight: 600 }}>{tile.value ?? "–"}</span>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, whiteSpace: "nowrap" }}>{tile.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Past Negotiations — only for authenticated users */}
-          {isAuthenticated && id && !isOtherUser && (
+          {isSelf && (
             <div>
               <h3 style={sectionLabel}>agent log</h3>
-              <NegotiationHistory userId={id} />
+              <NegotiationHistory userId={profileData.id} />
             </div>
           )}
 
