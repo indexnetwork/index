@@ -424,9 +424,13 @@ export const negotiationTurns = pgTable('negotiation_turns', {
   seatUserId: text('seat_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   action: negotiationTurnActionEnum('action').notNull(),
   message: text('message').notNull(),
+  /** Caller-chosen submission id: a retry carrying it replays this turn instead of being refused. */
+  clientTurnId: text('client_turn_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
+  clientTurnIdx: uniqueIndex('negotiation_turns_client_turn_idx').on(table.negotiationId, table.clientTurnId)
+    .where(sql`${table.clientTurnId} is not null`),
 }));
 
 export const intents = pgTable('intents', {

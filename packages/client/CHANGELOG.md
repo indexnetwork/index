@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `submitTurn(id, turn)` accepts an optional `clientTurnId` (caller-minted UUID). A retry carrying the same id replays the committed turn as success (`replayed: true` in the response) instead of being refused `not_your_turn`, so a lost response is reconcilable.
 - `resumeNegotiation(id)` takes the first turn of a new round on a negotiation paused with nobody to move.
 - `NegotiationDetail.protocol.remainingTurns` counts the turns left in the round in progress. `maxTurns` now limits a round, not the whole negotiation.
 - `createOpportunity({ networkId, intents, context })` opens an opportunity

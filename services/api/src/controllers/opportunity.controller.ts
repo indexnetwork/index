@@ -430,13 +430,14 @@ export class OpportunityController {
       return Response.json({ error: response.error }, { status: response.status });
     }
 
-    logger.info('Turn submitted', {
+    const { replayed, ...negotiation } = result;
+    logger.info(replayed ? 'Turn replayed' : 'Turn submitted', {
       userId: user.id,
       opportunityId,
       action: parsed.data.action,
       outcome: result.outcome,
     });
-    return Response.json({ negotiation: result });
+    return Response.json({ negotiation, ...(replayed ? { replayed: true } : {}) });
   }
 
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "negotiation_turns" ADD COLUMN "client_turn_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "negotiation_turns_client_turn_idx" ON "negotiation_turns" USING btree ("negotiation_id","client_turn_id") WHERE "negotiation_turns"."client_turn_id" is not null;

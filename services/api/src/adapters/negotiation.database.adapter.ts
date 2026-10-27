@@ -134,6 +134,8 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   outcome: 'agreed' | null;
   opportunityStatus: 'negotiating' | 'pending';
   roundEnded: 'declined' | 'turn_limit' | null;
+  /** The turn had already committed under the same clientTurnId; nothing was appended. */
+  replayed?: true;
 };
 
 export type NegotiationResumeRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive' | 'not_paused';
@@ -148,7 +150,7 @@ export interface NegotiationStats {
   connected: number;
 }
 
-export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
+export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string; clientTurnId?: string }
 export type SubmitTurnRejection = NegotiationRejection;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -520,12 +522,31 @@ export class NegotiationDatabaseAdapter {
     try {
       return await db.transaction(async (tx) => {
         const negotiation = await this.lockForSeat(tx, opportunityId, callerUserId, execution);
+        if (negotiation && turn.clientTurnId) {
+          // A retry of a committed submission replays it instead of being
+          // refused as not_your_turn; nothing is appended and no side effect
+          // re-fires. The same id from another seat or with another payload is
+          // a reused key, which only a re-read can untangle.
+          const [committed] = await tx.select().from(negotiationTurns).where(and(
+            eq(negotiationTurns.negotiationId, negotiation.id), eq(negotiationTurns.clientTurnId, turn.clientTurnId),
+          )).limit(1);
+          if (committed) {
+            if (committed.seatUserId !== callerUserId || committed.action !== turn.action
+              || committed.message !== turn.message.trim()) return { ok: false, rejection: 'raced' };
+            return {
+              ok: true, replayed: true, turnIndex: committed.turnIndex,
+              awaitingUserId: negotiation.awaitingUserId, outcome: negotiation.outcome === 'agreed' ? 'agreed' : null,
+              opportunityStatus: negotiation.outcome === 'agreed' ? 'pending' : 'negotiating', roundEnded: null,
+            };
+          }
+        }
         const state = negotiation ? await this.state(tx, negotiation, true) : null;
         const decision = decide(state);
         if (!decision.ok || !negotiation) return decision;
         await tx.insert(negotiationTurns).values({
           negotiationId: negotiation.id, turnIndex: decision.turnIndex,
           seatUserId: callerUserId, action: turn.action, message: turn.message.trim(),
+          ...(turn.clientTurnId ? { clientTurnId: turn.clientTurnId } : {}),
         });
         const now = new Date();
         await tx.update(negotiations).set({

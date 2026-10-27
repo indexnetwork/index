@@ -99,9 +99,14 @@ export class NegotiationService {
     callerUserId: string,
     turn: NegotiationTurn,
     execution?: NegotiationExecution,
-  ): Promise<NegotiationDetail | SubmitTurnFailure> {
+  ): Promise<(NegotiationDetail & { replayed?: true }) | SubmitTurnFailure> {
     const result = await this.capability(execution).execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
+    if (result.replayed) {
+      // The same clientTurnId already committed this turn: every side effect
+      // fired then, so a replay only re-reads.
+      return { ...(await this.read(opportunityId, callerUserId))!, replayed: true };
+    }
     if (result.opportunityStatus === 'pending') {
       emitOpportunityTransitionBestEffort({ id: opportunityId, status: result.opportunityStatus });
     }
