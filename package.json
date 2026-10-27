@@ -12,8 +12,7 @@
     "packages/hermes-plugin",
     "packages/agent",
     "packages/agent-tui",
-    "packages/client",
-    "packages/moralmod"
+    "packages/client"
   ],
   "scripts": {
     "postinstall": "git config core.hooksPath scripts/hooks || true",
