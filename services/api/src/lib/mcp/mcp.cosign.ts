@@ -35,24 +35,26 @@ export interface CosignContext {
 export async function cosignNetwork(userId: string): Promise<CosignNetwork | null> {
   try {
     const networks = await new ChatDatabaseAdapter().getMemberMcpNetworks(userId);
-    return networks.find(({ mcp }) => new URL(mcp.url).hostname.endsWith('cosign.co')) ?? null;
+    return networks.find(({ mcp }) => {
+      const { hostname } = new URL(mcp.url);
+      return hostname === 'cosign.co' || hostname.endsWith('.cosign.co');
+    }) ?? null;
   } catch (error) {
     logger.warn('Cosign network lookup failed', { userId, error: String(error) });
     return null;
   }
 }
 
+/** @returns The tool's result, or null when the member has no Cosign login. */
 async function read(network: CosignNetwork, userId: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
   const text = await callNetworkTool(network, userId, tool, { reason_for_call: REASON, llm_model: 'unknown', ...args });
-  if (text === null) throw new NotSignedIn();
+  if (text === null) return null;
   try {
     return JSON.parse(text);
   } catch {
     return text;
   }
 }
-
-class NotSignedIn extends Error {}
 
 function xHandle(socials: { label: string; value: string }[]): string | null {
   const value = socials.find(({ label }) => label === 'twitter' || label === 'x')?.value.trim();

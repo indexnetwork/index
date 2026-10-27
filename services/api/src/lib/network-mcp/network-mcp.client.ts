@@ -228,7 +228,8 @@ export async function callNetworkTool(
 }
 
 /**
- * A member's own profile on a network's MCP server, read at most once a day.
+ * A member's own profile on a network's MCP server, read fresh on every call;
+ * the last successful read is kept and answers when the server cannot.
  *
  * @param network - The MCP network and the profile last read for it.
  * @param userId - The member.
