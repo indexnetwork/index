@@ -1,9 +1,13 @@
 import { log } from '../lib/log';
+import { authorizeUrl, dropTokens, finishAuth } from '../lib/network-mcp/network-mcp.client';
 import { getNetworkPulseSummary, SUMMARY_MIN_MEMBERS } from '../lib/network-pulse-summary';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
+import { handleDatabaseAdapter, type HandleCheck } from '../adapters/handle.database.adapter';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
+
+export const MCP_ONLY = 'This network is joined by connecting its account, not by invite.';
 
 /**
  * Every open invite page polls its counts every few seconds. Viewers of one
@@ -25,6 +29,16 @@ const sharePulseCache = new Map<string, { at: number; value: Promise<SharePulse>
  * - Get single network details
  * - Manage network memberships
  */
+/** A refused network link name: 400 when it breaks a rule, 409 when someone holds it. */
+export class NetworkKeyError extends Error {
+  readonly status: 400 | 409;
+  constructor(check: Exclude<HandleCheck, { kind: 'ok' }>) {
+    super(check.kind === 'invalid' ? check.error : 'That link name is taken');
+    this.name = 'NetworkKeyError';
+    this.status = check.kind === 'invalid' ? 400 : 409;
+  }
+}
+
 export class NetworkService {
   constructor(private adapter = new ChatDatabaseAdapter()) {}
 
@@ -48,6 +62,8 @@ export class NetworkService {
     });
     // Add the creating user as the owner
     await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
+    // Every network gets a shareable index.network/<key> link; the owner can change it.
+    await handleDatabaseAdapter.assignNetworkKey(index.id, data.title);
     // Fetch the full network details with user and member count
     const fullNetwork = await this.adapter.getNetworkDetail(index.id, userId);
     if (!fullNetwork) {
@@ -76,8 +92,18 @@ export class NetworkService {
   /**
    * Update network settings (title, prompt, permissions). Owner-only.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; key?: string | null; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('Updating network', { networkId, userId });
+    const { key, ...settings } = data;
+    // The link name goes first and fails the whole update, like a username does.
+    if (key !== undefined) {
+      if (!(await this.adapter.isNetworkOwner(networkId, userId))) {
+        throw new Error('Access denied: Not an owner of this network');
+      }
+      const claimed = await handleDatabaseAdapter.claimNetworkKey(networkId, key);
+      if (claimed.kind !== 'ok') throw new NetworkKeyError(claimed);
+    }
+    data = settings;
     const validatedMetadata = data.metadata !== undefined
       ? validateNetworkMetadata(data.metadata)
       : undefined;
@@ -203,6 +229,31 @@ export class NetworkService {
   }
 
   /**
+   * Make sure two people share a network, so their agents can meet. When they
+   * share none, both join Index Early (`INDEX_EARLY_NETWORK_ID`). This is the
+   * one place a person is added to Index Early without signing in, on purpose:
+   * opening someone's profile pairs your agents, so neither side is left out.
+   *
+   * @param viewerId - Who opened the profile.
+   * @param targetUserId - Whose profile it is.
+   * @returns The networks they now share, and whether Index Early was joined.
+   */
+  async ensureSharedNetwork(viewerId: string, targetUserId: string): Promise<{ networks: Awaited<ReturnType<ChatDatabaseAdapter['getSharedNetworks']>>; joined: boolean }> {
+    if (viewerId === targetUserId) return { networks: [], joined: false };
+    const shared = await this.adapter.getSharedNetworks(viewerId, targetUserId);
+    if (shared.length > 0) return { networks: shared, joined: false };
+
+    const indexEarlyId = process.env.INDEX_EARLY_NETWORK_ID?.trim();
+    const target = await userDatabaseAdapter.findById(targetUserId);
+    if (!indexEarlyId || !target || target.deletedAt) return { networks: [], joined: false };
+
+    logger.verbose('Joining both to Index Early to share a network', { viewerId, targetUserId });
+    await this.adapter.addMemberToNetwork(indexEarlyId, viewerId, 'member');
+    await this.adapter.addMemberToNetwork(indexEarlyId, targetUserId, 'member');
+    return { networks: await this.adapter.getSharedNetworks(viewerId, targetUserId), joined: true };
+  }
+
+  /**
    * Get networks shared between the current user and a target user.
    * @param currentUserId - Authenticated user ID.
    * @param targetUserId - Profile user ID to compare memberships with.
@@ -279,6 +330,8 @@ export class NetworkService {
    */
   async acceptInvitation(code: string, userId: string) {
     logger.verbose('Accepting invitation', { userId });
+    const network = await this.adapter.getNetworkByShareCode(code);
+    if (network && await this.adapter.getNetworkMcp(network.id)) throw new Error(MCP_ONLY);
     return this.adapter.acceptNetworkInvitation(code, userId);
   }
 
@@ -315,6 +368,24 @@ export class NetworkService {
   }
 
   /**
+   * @returns The MCP server's login URL when this network is joined through one, otherwise null.
+   */
+  async mcpJoinUrl(networkId: string, userId: string): Promise<string | null> {
+    const mcp = await this.adapter.getNetworkMcp(networkId);
+    return mcp ? authorizeUrl(networkId, userId, mcp) : null;
+  }
+
+  /**
+   * Complete an MCP login and make the member.
+   * @returns The network they joined.
+   */
+  async finishMcpJoin(state: string, code: string): Promise<string> {
+    const { userId, networkId } = await finishAuth(state, code);
+    await this.adapter.addMemberToNetwork(networkId, userId, 'member');
+    return networkId;
+  }
+
+  /**
    * Join a public network.
    */
   async joinPublicNetwork(networkId: string, userId: string) {
@@ -329,6 +400,7 @@ export class NetworkService {
   async leaveNetwork(networkId: string, userId: string) {
     logger.verbose('Leaving network', { networkId, userId });
     await this.adapter.leaveNetwork(networkId, userId);
+    await dropTokens(networkId, userId);
   }
 
   /**

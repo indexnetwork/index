@@ -322,6 +322,8 @@ export function toOpportunityRow(row: typeof opportunities.$inferSelect): Opport
 export interface UserWithGraph {
   id: string;
   email: string | null;
+  /** The handle in index.network/<username>. Null until claimed. */
+  username: string | null;
   name: string | null;
   intro: string | null;
   location: string | null;

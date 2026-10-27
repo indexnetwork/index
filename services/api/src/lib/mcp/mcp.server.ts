@@ -6,6 +6,7 @@ import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
 import { userService } from '../../services/user.service';
 import { log } from '../log';
 
+import { cosignNetwork } from './mcp.cosign';
 import { registerMcpEvents } from './mcp.events';
 import { mcpInstructions } from './mcp.instructions';
 import { registerMcpTools } from './mcp.tools';
@@ -117,14 +118,14 @@ async function firstConnection(request: Request, principal: McpPrincipal): Promi
 }
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
-function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions' | 'result' | null): McpServer {
+function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions' | 'result' | null, cosign: Awaited<ReturnType<typeof cosignNetwork>>): McpServer {
   const server = new McpServer({
     name: 'index',
     title: 'Index',
     version,
     websiteUrl: WEB_APP_URL,
     icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
-  }, { instructions: mcpInstructions(onboarding === 'instructions') });
+  }, { instructions: mcpInstructions(onboarding === 'instructions', cosign?.networkId ?? null) });
   registerMcpTools(server, onboarding === 'result' ? { ...principal, onboarding: true } : principal);
   registerMcpEvents(server, principal);
   return server;
@@ -132,7 +133,7 @@ function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions
 
 /** Serve one stateless MCP request, in either protocol era, with no protocol session state. */
 export async function handleMcpRequest(request: Request, principal: McpPrincipal): Promise<Response> {
-  const onboarding = await firstConnection(request, principal);
-  const handler = createMcpHandler(() => createIndexMcpServer(principal, onboarding));
+  const [onboarding, cosign] = await Promise.all([firstConnection(request, principal), cosignNetwork(principal.userId)]);
+  const handler = createMcpHandler(() => createIndexMcpServer(principal, onboarding, cosign));
   return handler.fetch(request);
 }

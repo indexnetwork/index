@@ -38,6 +38,20 @@ export interface NetworkPermissionsState {
   requireAdminApproval?: boolean;
 }
 
+/** An MCP server a network is joined through, stored at `networks.metadata.mcp`. */
+export interface NetworkMcp {
+  url: string;
+  /** The tool that returns the signed-in member's own profile. */
+  profileTool: string;
+  /** Arguments the profile tool requires. */
+  profileArgs?: Record<string, unknown>;
+  /** What to ask the member to grant, when the server requires a scope. */
+  scope?: string;
+  /** For servers that do not register clients dynamically. */
+  clientId?: string;
+  clientSecret?: string;
+}
+
 export type NetworkJoinRequestStatus = 'pending' | 'declined';
 
 /**
@@ -84,7 +98,8 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   emailVerified: boolean('email_verified').notNull().default(false),
   name: text('name').notNull(),
-  key: text('key'),
+  /** The public handle in profile URLs (`/u/:username`). Stored in the legacy `key` column. */
+  username: text('key'),
   avatar: text('avatar'),
   intro: text('intro'),
   location: text('location'),
@@ -100,7 +115,7 @@ export const users = pgTable('users', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
-  usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
+  usersKeyUnique: uniqueIndex('users_key_unique').on(table.username),
 }));
 
 export const userSocials = pgTable('user_socials', {

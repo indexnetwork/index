@@ -139,6 +139,15 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
 export type NegotiationResumeRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'intent_inactive' | 'not_paused';
 export type NegotiationResumeDecision = { ok: false; rejection: NegotiationResumeRejection } | { ok: true; awaitingUserId: string };
 
+/** A user's negotiation totals, as their profile shows them. */
+export interface NegotiationStats {
+  pairedAgents: number;
+  negotiations: number;
+  inProgress: number;
+  agreed: number;
+  connected: number;
+}
+
 export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
 export type SubmitTurnRejection = NegotiationRejection;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -408,6 +417,29 @@ export class NegotiationDatabaseAdapter {
     if (options.offset !== undefined) query = query.offset(options.offset);
 
     return this.toViews(await query, userId);
+  }
+
+  /**
+   * Totals across every negotiation one user sits in.
+   *
+   * @param userId - The seat owner.
+   * @returns Distinct counterparties (paired agents), all negotiations, the
+   *   unsettled ones, the ones that settled agreed, and the ones whose
+   *   opportunity both people accepted.
+   */
+  async statsForUser(userId: string): Promise<NegotiationStats> {
+    const counterparty = sql`case when ${negotiations.initiatorUserId} = ${userId} then ${negotiations.responderUserId} else ${negotiations.initiatorUserId} end`;
+    const [row] = await db.select({
+      pairedAgents: sql<number>`count(distinct ${counterparty})::int`,
+      negotiations: sql<number>`count(*)::int`,
+      inProgress: sql<number>`(count(*) filter (where ${negotiations.settledAt} is null))::int`,
+      agreed: sql<number>`(count(*) filter (where ${negotiations.outcome} = 'agreed'))::int`,
+      connected: sql<number>`(count(*) filter (where ${opportunities.status} = 'accepted'))::int`,
+    })
+      .from(negotiations)
+      .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+      .where(or(eq(negotiations.initiatorUserId, userId), eq(negotiations.responderUserId, userId)));
+    return row ?? { pairedAgents: 0, negotiations: 0, inProgress: 0, agreed: 0, connected: 0 };
   }
 
   /**

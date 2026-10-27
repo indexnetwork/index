@@ -5,7 +5,8 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { isStaff } from '../lib/staff';
 import { networkInvitationService } from '../services/network-invitation.service';
-import { networkService } from '../services/network.service';
+import { MCP_ONLY, NetworkKeyError, networkService } from '../services/network.service';
+import { intentService } from '../services/intent.service';
 
 const logger = log.controller.from('network');
 
@@ -235,6 +236,8 @@ export class NetworkController {
     try {
       const body = await req.json().catch(() => ({})) as {
         title?: string;
+        /** The index.network/<key> link name; empty or null clears it. */
+        key?: string | null;
         prompt?: string | null;
         imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
@@ -246,6 +249,9 @@ export class NetworkController {
       logger.verbose('Network updated', { networkId: params.id });
       return Response.json({ network: result });
     } catch (err: unknown) {
+      if (err instanceof NetworkKeyError) {
+        return Response.json({ error: err.message }, { status: err.status });
+      }
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
         return Response.json({ error: msg }, { status: 403 });
@@ -368,6 +374,25 @@ export class NetworkController {
   }
 
   /**
+   * POST /networks/shared/:userId/ensure — called when someone opens another
+   * person's profile. If the two share no network, both join Index Early, and
+   * their agents are paired on the spot so the profile has something to show.
+   * IMPORTANT: This must come before routes matching /:id.
+   */
+  @Post('/shared/:userId/ensure')
+  @UseGuards(AuthGuard)
+  async ensureSharedNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const result = await networkService.ensureSharedNetwork(user.id, params.userId);
+    if (result.joined) {
+      // Best effort: the shared network is what matters; discovery also runs later.
+      await intentService.pairWithUser(user.id, params.userId).catch((err: unknown) =>
+        logger.error('Pair after joining Index Early failed', { userId: user.id, peerUserId: params.userId, error: errorMessage(err) }),
+      );
+    }
+    return Response.json(result);
+  }
+
+  /**
    * Get networks shared between the authenticated user and a target user.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
@@ -399,6 +424,26 @@ export class NetworkController {
   }
 
   /**
+   * Where an MCP network's login returns. The member is the one the login was started for,
+   * so this takes no session.
+   * IMPORTANT: This must come before GET /:id/... routes to avoid route collision.
+   */
+  @Get('/mcp/callback')
+  async mcpCallback(req: Request) {
+    const web = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const params = new URL(req.url).searchParams;
+    const [state, code] = [params.get('state'), params.get('code')];
+    try {
+      if (!state || !code) throw new Error('Login was not completed.');
+      const networkId = await networkService.finishMcpJoin(state, code);
+      return Response.redirect(`${web}/networks/${networkId}`, 302);
+    } catch (err: unknown) {
+      logger.warn('MCP network login failed', { error: errorMessage(err) });
+      return Response.redirect(`${web}/networks?error=${encodeURIComponent('Could not connect that account.')}`, 302);
+    }
+  }
+
+  /**
    * Join a public network.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
@@ -406,6 +451,8 @@ export class NetworkController {
   @UseGuards(AuthGuard)
   async joinPublicNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      const authorizeUrl = await networkService.mcpJoinUrl(params.id, user.id);
+      if (authorizeUrl) return Response.json({ authorizeUrl });
       const network = await networkService.joinPublicNetwork(params.id, user.id);
       logger.verbose('User joined public network', { networkId: params.id, userId: user.id });
       return Response.json({ network });
@@ -565,7 +612,7 @@ export class NetworkController {
       if (msg.includes('was declined')) {
         return Response.json({ error: msg }, { status: 403 });
       }
-      const isKnownError = msg.includes('Invalid or expired invitation link');
+      const isKnownError = msg.includes('Invalid or expired invitation link') || msg === MCP_ONLY;
       logger.warn('Failed to accept invitation', { error: msg, userId: user.id });
       return Response.json({ error: isKnownError ? msg : 'Failed to accept invitation' }, { status: isKnownError ? 400 : 500 });
     }

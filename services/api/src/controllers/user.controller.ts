@@ -37,6 +37,22 @@ function toHistoryEntry(negotiation: NegotiationView) {
 @Controller('/users')
 export class UserController {
 
+  /**
+   * GET /users/me/agent-stats — the caller's own agent totals: how many
+   * distinct people their agent has negotiated with (paired agents), and how
+   * those negotiations went. Only ever the caller's; nobody else sees them.
+   */
+  @Get('/me/agent-stats')
+  @UseGuards(AuthGuard)
+  async getAgentStats(_req: Request, viewer: AuthenticatedUser) {
+    try {
+      return Response.json({ stats: await negotiationService.stats(viewer.id) });
+    } catch (err) {
+      logger.error('Failed to fetch agent stats', { userId: viewer.id, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to fetch agent stats' }, { status: 500 });
+    }
+  }
+
   @Get('/batch')
   @UseGuards(AuthGuard)
   async getBatch(req: Request, _user: AuthenticatedUser) {
@@ -55,6 +71,7 @@ export class UserController {
     const users = rows.map((row) => ({
       id: row.id,
       name: row.name,
+      username: row.username,
       intro: row.intro,
       avatar: row.avatar,
       location: row.location,
@@ -102,7 +119,7 @@ export class UserController {
   @Get('/:userId')
   async getUser(_req: Request, _user: unknown, params: { userId: string }) {
     logger.verbose('Get user requested', { userId: params.userId });
-    const user = await userService.findByIdOrKey(params.userId);
+    const user = await userService.findByIdOrUsername(params.userId);
     if (!user) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
@@ -111,7 +128,7 @@ export class UserController {
       user: {
         id: user.id,
         name: user.name,
-        key: user.key,
+        username: user.username,
         intro: user.intro,
         avatar: user.avatar,
         location: user.location,

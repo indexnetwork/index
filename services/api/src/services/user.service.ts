@@ -1,4 +1,5 @@
 import { log } from '../lib/log';
+import { handleDatabaseAdapter, isUniqueViolation } from '../adapters/handle.database.adapter';
 import { detectSocialLabel } from '../adapters/database.shared';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
@@ -130,13 +131,35 @@ export class UserService {
     }
 
     /**
-     * Find a user by UUID or key.
-     * @param idOrKey - UUID or human-readable key
+     * Find a user by UUID or username.
+     * @param idOrUsername - UUID or username
      * @returns User record or null
      */
-    async findByIdOrKey(idOrKey: string) {
-        logger.verbose('Finding user by ID or key', { idOrKey });
-        return this.db.findByIdOrKey(idOrKey);
+    async findByIdOrUsername(idOrUsername: string) {
+        logger.verbose('Finding user by ID or username', { idOrUsername });
+        return this.db.findByIdOrUsername(idOrUsername);
+    }
+
+    /**
+     * Claim, change, or clear the caller's username. Usernames are stored
+     * lowercased, so uniqueness is case-insensitive.
+     *
+     * @param userId - The caller.
+     * @param raw - The requested username; empty or null clears it.
+     * @returns `ok`, or why the username was refused.
+     */
+    async setUsername(userId: string, raw: string | null): Promise<{ kind: 'ok' } | { kind: 'invalid'; error: string } | { kind: 'taken' }> {
+        // Usernames share index.network/<handle> with network keys, so the check spans both.
+        const checked = await handleDatabaseAdapter.check(raw, { kind: 'user', id: userId }, 'Username');
+        if (checked.kind !== 'ok') return checked;
+        try {
+            await this.db.update(userId, { username: checked.handle });
+        } catch (error) {
+            // Two claims racing past the check meet the unique index.
+            if (isUniqueViolation(error)) return { kind: 'taken' };
+            throw error;
+        }
+        return { kind: 'ok' };
     }
 
     /**

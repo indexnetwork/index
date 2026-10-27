@@ -5,10 +5,25 @@
  * for users and networks.
  */
 
-/** Reserved words that cannot be used as keys. */
+/**
+ * Reserved words that cannot be used as keys. Usernames and network keys share
+ * the root of the web app (`index.network/<handle>`), so every top-level web
+ * path, static folder, and likely future page is reserved here.
+ */
 const RESERVED_KEYS = new Set([
   'me', 'new', 'edit', 'delete', 'settings', 'admin',
   'api', 'auth', 'login', 'logout', 'signup', 'register',
+  'profile', 'index',
+  // Top-level web routes (apps/web/src/routes.tsx) and public folders.
+  'about', 'agents', 'blog', 'chat', 'cli-auth', 'download', 'found-in-translation',
+  'hermes', 'mcp', 'negotiations', 'networks', 'onboarding', 'opportunities', 'pages',
+  'protocol', 'setup', 'waitlist', 'site', 'landing', 'logos', 'media', 'fonts',
+  'dataroom', 'dataroom-demo', 'dataroom-overview', 'overview', 'roadmap', 'edge-city-metrics',
+  '9db20a5fbe',
+  // Plausible future pages.
+  'help', 'support', 'docs', 'status', 'home', 'explore', 'search', 'invite', 'join',
+  'privacy', 'terms', 'legal', 'security', 'pricing', 'contact', 'assets', 'static',
+  'www', 'mail', 'app', 'apps', 'network', 'user', 'users', 'notifications', 'discover',
 ]);
 
 /** Pattern for a valid key: lowercase alphanumeric + hyphens, no leading/trailing hyphens. */
@@ -42,23 +57,34 @@ export function toKebabKey(input: string): string {
 }
 
 /**
+ * Whether a key is a reserved word.
+ *
+ * @param key - The key to check, already lowercased.
+ * @returns True if the key may not be claimed.
+ */
+export function isReservedKey(key: string): boolean {
+  return RESERVED_KEYS.has(key);
+}
+
+/**
  * Validate a key string for format compliance.
  *
  * @param key - The key to validate.
+ * @param noun - What the key is called in error messages (e.g. `Username`).
  * @returns An object with `valid` boolean and optional `error` message.
  */
-export function validateKey(key: string): { valid: boolean; error?: string } {
+export function validateKey(key: string, noun = 'Key'): { valid: boolean; error?: string } {
   if (key.length < MIN_KEY_LENGTH) {
-    return { valid: false, error: `Key must be at least ${MIN_KEY_LENGTH} characters` };
+    return { valid: false, error: `${noun} must be at least ${MIN_KEY_LENGTH} characters` };
   }
   if (key.length > MAX_KEY_LENGTH) {
-    return { valid: false, error: `Key must be at most ${MAX_KEY_LENGTH} characters` };
+    return { valid: false, error: `${noun} must be at most ${MAX_KEY_LENGTH} characters` };
   }
   if (!KEY_PATTERN.test(key)) {
-    return { valid: false, error: 'Key must contain only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen' };
+    return { valid: false, error: `${noun} must contain only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen` };
   }
   if (RESERVED_KEYS.has(key)) {
-    return { valid: false, error: `"${key}" is a reserved word and cannot be used as a key` };
+    return { valid: false, error: `"${key}" is a reserved word and cannot be used as a ${noun.toLowerCase()}` };
   }
   return { valid: true };
 }

@@ -2,13 +2,13 @@ import { Negotiations, observeNegotiation, type NegotiationTurn } from '@indexne
 
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationResumeRejection, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationResumeRejection, type NegotiationScanRecord, type NegotiationStats, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 
 export { negotiationTurnSchema } from '@indexnetwork/protocol';
-export type { NegotiationResumeRejection, NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
+export type { NegotiationResumeRejection, NegotiationStats, NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
 export type NegotiationDetail = StoredNegotiationDetail & { protocol: NonNullable<Awaited<ReturnType<Negotiations['observe']>>> };
 
 export interface SubmitTurnFailure {
@@ -42,6 +42,16 @@ export class NegotiationService {
     options: { intentId?: string; open?: boolean; counterpartyUserId?: string; limit?: number; offset?: number } = {},
   ): Promise<NegotiationView[]> {
     return this.negotiations.listForUser(userId, options);
+  }
+
+  /**
+   * The caller's negotiation totals, for their own profile.
+   *
+   * @param userId - The seat owner.
+   * @returns Paired agents (distinct counterparties) and negotiation counts.
+   */
+  async stats(userId: string): Promise<NegotiationStats> {
+    return this.negotiations.statsForUser(userId);
   }
 
   /**

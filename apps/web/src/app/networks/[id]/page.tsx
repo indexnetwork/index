@@ -85,6 +85,13 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [isOwner, setIsOwner] = useState(false);
+
+  // index.network/<key> is the network's address; old /networks/:id links move there, keeping the tab.
+  const networkKey = (network as { key?: string | null } | null)?.key;
+  useEffect(() => {
+    if (networkIdOverride || !networkKey) return;
+    navigate(`/${networkKey}${tabParam ? `/${tabParam}` : ''}${window.location.search}`, { replace: true });
+  }, [networkIdOverride, networkKey, tabParam, navigate]);
   const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
 
