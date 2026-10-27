@@ -425,6 +425,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
             watch = await watchIntentDiscovery({
               userId: principal.userId, intentId: created.id, sinceId, seconds: watchFor,
               signal: ctx.mcpReq.signal, step,
+              // The presenter decides what the owner may see; an unrevealable peer comes back 'Unknown'.
+              peerName: async (opportunityId) => {
+                try {
+                  const presented = await opportunityService.getOpportunityWithPresentation(opportunityId, principal.userId);
+                  const name = presented && !('error' in presented) ? presented.peer.name : null;
+                  return name && name !== 'Unknown' ? name : null;
+                } catch { return null; }
+              },
             });
           } catch { watch = null; }
         }
@@ -437,8 +445,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         if (watch?.opportunities.length) {
           lines.push('Live while you waited — ready now:', ...watch.opportunities.map((o) => `- ${mdLink(o.headline, o.url)}`));
         } else if (watch) {
+          const named = watch.negotiatingWith.slice(0, 3);
+          const who = named.length
+            ? ` (${named.join(', ')}${watch.negotiating > named.length ? ' and more' : ''})`
+            : '';
           lines.push(watch.negotiating > 0
-            ? `Live while you waited: ${watch.negotiating === 1 ? 'an agent' : `${watch.negotiating} agents`} entered negotiation for this intent. Discovery continues — check list_opportunities in a few minutes.`
+            ? `Live while you waited: ${watch.negotiating === 1 ? 'an agent' : `${watch.negotiating} agents`} entered negotiation for this intent${who}. Discovery continues — check list_opportunities in a few minutes.`
             : `Nothing surfaced in the first ${watch.seconds}s. Discovery continues — check list_opportunities in a few minutes.`);
         }
         return mcpSuccess(
