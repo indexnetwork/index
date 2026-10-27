@@ -335,6 +335,13 @@ def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | No
             if not isinstance(value, str):
                 return None, f"{key} must be a string."
             update[key] = value.strip()
+    # The handle in index.network/<username>. Unlike the fields above, an
+    # explicit null clears it, so presence is what forwards it.
+    if "username" in body:
+        username = body.get("username")
+        if username is not None and not isinstance(username, str):
+            return None, "username must be a string or null."
+        update["username"] = username.strip() if isinstance(username, str) else None
     socials = body.get("socials")
     if socials is not None:
         if not isinstance(socials, list):
@@ -1661,6 +1668,7 @@ def profile() -> dict[str, Any]:
 
     profile_obj: dict[str, Any] = {
         "id": user_id,
+        "username": _text(user.get("username")),
         "name": _text(user.get("name")),
         "intro": _text(user.get("intro")),
         "location": _text(user.get("location")),
@@ -1709,6 +1717,7 @@ def public_profile(user_id: str) -> dict[str, Any]:
 
     profile_obj: dict[str, Any] = {
         "id": user_id,
+        "username": _text(user.get("username")),
         "name": _text(user.get("name")),
         "intro": _text(user.get("intro")),
         "location": _text(user.get("location")),
@@ -1722,8 +1731,8 @@ def public_profile(user_id: str) -> dict[str, Any]:
 def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Persist a profile update via the API-key-capable `PATCH /auth/profile/update`.
 
-    Accepts name, intro, location, timezone, socials[], notificationPreferences, and
-    an optional avatar URL (produced by `POST /profile/avatar`).
+    Accepts name, username (null clears it), intro, location, timezone, socials[],
+    notificationPreferences, and an optional avatar URL (produced by `POST /profile/avatar`).
     """
     update, validation_error = _sanitize_profile_update(body)
     if validation_error:
