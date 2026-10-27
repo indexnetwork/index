@@ -8,13 +8,16 @@ export class Semaphore {
   }
 
   async run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>((resolve) => { this.waiters.push(resolve); });
-    this.active++;
+    if (this.active < this.limit) this.active++;
+    else await new Promise<void>((resolve) => { this.waiters.push(resolve); });
     try {
       return await work();
     } finally {
-      this.active--;
-      this.waiters.shift()?.();
+      // Hand the slot to the next waiter directly: the count never dips in
+      // between, so a caller arriving mid-handoff cannot over-admit.
+      const waiter = this.waiters.shift();
+      if (waiter) waiter();
+      else this.active--;
     }
   }
 }

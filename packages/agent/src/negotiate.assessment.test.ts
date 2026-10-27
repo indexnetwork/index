@@ -65,6 +65,7 @@ describe("negotiate with assessment", () => {
     const model = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("model must not be called"); } });
     const result = await negotiate(baseInput(model, { assessment: guidance((s) => selections.push(s), null) }));
     expect("stall" in result).toBe(true);
+    if ("stall" in result) expect(result.stall.reason).not.toMatch(/moral\s*mod/i);
     expect(selections).toEqual([{ selectedActionId: null, divergence: "tie", reason: "Exact top tie under selected template." }]);
   });
 

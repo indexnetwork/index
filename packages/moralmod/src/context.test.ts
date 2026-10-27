@@ -46,6 +46,12 @@ describe("assessmentContext", () => {
       .toThrow(new AssessmentError("invalid_assessment"));
   });
 
+  test("an empty action menu is an invalid assessment, never a tie", () => {
+    const empty = { run_id: "run-0", assessment: { ordered_action_ids: [], participant_map: { owner: "native-owner" }, settings: { n_samples: 2 }, actions: [] } };
+    expect(() => assessmentContext(empty, "aggregate-value-mean-hold-v1", "owner", DEFAULT_BYTE_BUDGET))
+      .toThrow(new AssessmentError("invalid_assessment"));
+  });
+
   test("a context past the byte budget is refused", () => {
     expect(() => assessmentContext(result(), "aggregate-value-mean-hold-v1", "owner", 64))
       .toThrow(new AssessmentError("oversize"));

@@ -25,8 +25,9 @@ export function moralmodConfig(env: Record<string, string | undefined> = process
     cpToken: env.MORALMOD_CP_TOKEN || null,
     relayUrl: env.MORALMOD_RELAY_URL || null,
     relayToken: env.MORALMOD_RELAY_TOKEN || '',
-    maxConcurrentConsults: Number(env.MORALMOD_MAX_CONCURRENT_CONSULTS) || 8,
-    consultDeadlineMs: Number(env.MORALMOD_CONSULT_DEADLINE_MS) || 150_000,
+    // Clamped: a mistyped value must degrade, never crash the hosted agents.
+    maxConcurrentConsults: Math.max(1, Math.floor(Number(env.MORALMOD_MAX_CONCURRENT_CONSULTS) || 8)),
+    consultDeadlineMs: Math.max(1_000, Math.floor(Number(env.MORALMOD_CONSULT_DEADLINE_MS) || 150_000)),
     templateId: env.MORALMOD_TEMPLATE_ID || 'aggregate-value-mean-hold-v1',
   };
 }

@@ -47,9 +47,9 @@ export class MoralmodController {
     }
     const parsed = armsSchema.safeParse(raw);
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid assignments' }, { status: 400 });
-    const updated = await upsertArms(parsed.data.assignments);
-    logger.info('MoralMod arms updated', { updated });
-    return Response.json({ updated });
+    const { updated, unknownUserIds } = await upsertArms(parsed.data.assignments);
+    logger.info('MoralMod arms updated', { updated, unknown: unknownUserIds.length });
+    return Response.json({ updated, unknownUserIds });
   }
 
   @Get('/outcomes')

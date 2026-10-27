@@ -44,6 +44,9 @@ export function validateResult(raw: unknown): DecisionRunResult {
   if (!record(assessment.settings) || typeof assessment.settings.n_samples !== "number" || assessment.settings.n_samples < 2) throw new AssessmentError("invalid_assessment");
   if (!record(assessment.participant_map) || !Object.values(assessment.participant_map).every((native) => native === null || typeof native === "string")) throw new AssessmentError("invalid_assessment");
   const count = assessment.settings.n_samples;
+  // An empty menu is a broken run, never a tie: a tie holds the turn and asks
+  // the principal, while a broken run must fall back to the plain negotiator.
+  if (!actions.length) throw new AssessmentError("invalid_assessment");
   if (new Set(ids).size !== actions.length || ids.length !== actions.length) throw new AssessmentError("invalid_assessment");
   const participants = assessment.participant_map as Record<string, string | null>;
   const people = Object.keys(participants).filter((person) => participants[person] !== null).sort();

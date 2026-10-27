@@ -9,6 +9,8 @@ export interface ConsultRequest {
   opportunityId: string;
   turnIndex: number;
   ownerUserId: string;
+  /** Digest of the packet, so a changed source never joins a stale run. */
+  sourceDigest?: string;
   packet: unknown;
 }
 
@@ -53,11 +55,14 @@ export function createAssessmentClient(options: AssessmentClientOptions): Assess
   const sleep = options.sleep ?? defaultSleep;
   const inFlight = new Map<string, Promise<unknown | null>>();
 
-  async function call(path: string, init: RequestInit, signal?: AbortSignal): Promise<unknown | null> {
+  async function call(path: string, init: RequestInit, signal: AbortSignal | undefined, remainingMs: number): Promise<unknown | null> {
+    // Each request is bounded on its own, so a hung socket can never hold a
+    // consult slot past the deadline.
+    const bounded = AbortSignal.timeout(Math.max(1, Math.min(remainingMs, 30_000)));
     const response = await transport(`${options.baseUrl}${path}`, {
       ...init,
       headers: { "content-type": "application/json", authorization: `Bearer ${options.token}`, ...init.headers },
-      ...(signal ? { signal } : {}),
+      signal: signal ? AbortSignal.any([signal, bounded]) : bounded,
     });
     if (!response.ok && response.status !== 202) return null;
     return response.json().catch(() => null);
@@ -65,13 +70,13 @@ export function createAssessmentClient(options: AssessmentClientOptions): Assess
 
   async function run(request: ConsultRequest, { signal, deadlineMs }: ConsultOptions): Promise<unknown | null> {
     const until = now() + deadlineMs;
-    const key = `${request.opportunityId}:${request.turnIndex}`;
-    const started = await call("/runs", { method: "POST", body: JSON.stringify({ key, packet: request.packet, owner_user_id: request.ownerUserId }) }, signal);
+    const key = `${request.opportunityId}:${request.turnIndex}:${request.sourceDigest ?? ""}`;
+    const started = await call("/runs", { method: "POST", body: JSON.stringify({ key, packet: request.packet, owner_user_id: request.ownerUserId, source_digest: request.sourceDigest ?? null }) }, signal, deadlineMs);
     if (!record(started) || typeof started.run_id !== "string") return null;
     for (;;) {
       signal?.throwIfAborted();
       if (now() >= until) return null;
-      const reply = await call(`/runs/${encodeURIComponent(started.run_id)}`, { method: "GET" }, signal);
+      const reply = await call(`/runs/${encodeURIComponent(started.run_id)}`, { method: "GET" }, signal, until - now());
       if (record(reply) && reply.status === "ready") return reply.result ?? null;
       if (!record(reply) || reply.status !== "running") return null;
       if (now() + pollMs >= until) return null;
@@ -81,7 +86,7 @@ export function createAssessmentClient(options: AssessmentClientOptions): Assess
 
   return {
     consult(request, options) {
-      const key = `${request.opportunityId}:${request.turnIndex}:${request.ownerUserId}`;
+      const key = `${request.opportunityId}:${request.turnIndex}:${request.ownerUserId}:${request.sourceDigest ?? ""}`;
       const pending = inFlight.get(key);
       if (pending) return pending;
       const work = run(request, options).finally(() => { inFlight.delete(key); });

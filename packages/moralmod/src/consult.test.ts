@@ -66,7 +66,7 @@ describe("assessment client", () => {
       fetch: scriptedFetch([{ status: 202, body: { run_id: "run-1" } }, { status: 200, body: { status: "running" } }], []),
       sleep: async (ms, signal) => { controller.abort(); signal?.throwIfAborted(); },
     });
-    expect(client.consult({ opportunityId: "opp", turnIndex: 0, ownerUserId: "u", packet: {} }, { deadlineMs: 10_000, signal: controller.signal }))
+    await expect(client.consult({ opportunityId: "opp", turnIndex: 0, ownerUserId: "u", packet: {} }, { deadlineMs: 10_000, signal: controller.signal }))
       .rejects.toThrow();
   });
 

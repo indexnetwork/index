@@ -91,6 +91,85 @@ describe("moralmod hook", () => {
     expect(result).toEqual({ turn: { action: "propose", message: "Plain message." } });
     expect(consults).toEqual(["consult"]);
     expect(nextInputs).toEqual([undefined]);
+    await Bun.sleep(1);
     expect(events[0]).toMatchObject({ outcome: "shadow", arm: "shadow", runId: "run-9" });
+  });
+
+  test("shadow turns never wait on the consult", async () => {
+    const events: TurnExposureEvent[] = [];
+    let settle: (value: typeof RESULT) => void = () => {};
+    const hook = createMoralmodHook({
+      arm: async () => "shadow",
+      client: { consult: () => new Promise((resolve) => { settle = resolve; }) },
+      templateId: "aggregate-value-mean-hold-v1",
+      deadlineMs: 60_000,
+      maxConcurrent: 2,
+      emit: async (event) => { events.push(event); },
+    });
+    const result = await hook(input(), async () => ({ turn: { action: "propose", message: "Fast." } }));
+    expect(result).toEqual({ turn: { action: "propose", message: "Fast." } });
+    expect(events).toEqual([]);
+    settle(RESULT);
+    await Bun.sleep(1);
+    expect(events[0]).toMatchObject({ outcome: "shadow", runId: "run-9" });
+    expect(typeof (events[0] as { durationMs?: number }).durationMs).toBe("number");
+  });
+
+  test("waiting for a consult slot counts against the deadline", async () => {
+    const events: TurnExposureEvent[] = [];
+    const hook = createMoralmodHook({
+      arm: async () => "on",
+      client: { consult: () => new Promise(() => {}) },
+      templateId: "aggregate-value-mean-hold-v1",
+      deadlineMs: 40,
+      maxConcurrent: 1,
+      emit: async (event) => { events.push(event); },
+    });
+    const blocked = hook(input(), async () => ({ turn: { action: "propose", message: "A." } }));
+    const started = Date.now();
+    const result = await hook(input(), async () => ({ turn: { action: "propose", message: "B." } }));
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(result).toEqual({ turn: { action: "propose", message: "B." } });
+    expect(events.some((event) => event.outcome === "fallback" && event.fallbackReason === "deadline")).toBe(true);
+    void blocked;
+  });
+
+  test("a stall that names the mechanism is sanitized before the principal reads it", async () => {
+    const { hook, events, next } = harness("on", RESULT);
+    void next;
+    const result = await hook(input(), async (override) => {
+      override?.assessment?.onSelection?.({ selectedActionId: null, divergence: "tie", reason: "Exact top tie under selected template." });
+      return { stall: { reason: "Configured MoralMod template has an exact top tie; clarification required.", suggestedAsk: "Which MoralMod option do you prefer?" } };
+    });
+    expect("stall" in result).toBe(true);
+    if ("stall" in result) {
+      expect(result.stall.reason).not.toMatch(/moral\s*mod/i);
+      expect(result.stall.suggestedAsk ?? "").not.toMatch(/moral\s*mod/i);
+    }
+    expect(events[0]).toMatchObject({ outcome: "assessed" });
+  });
+
+  test("an assessed run that throws falls back to the plain negotiator", async () => {
+    const { hook, events } = harness("on", RESULT);
+    const result = await hook(input(), async (override) => {
+      if (override?.assessment) throw new Error("provider rejected the tool schema");
+      return { turn: { action: "propose", message: "Plain again." } };
+    });
+    expect(result).toEqual({ turn: { action: "propose", message: "Plain again." } });
+    expect(events.some((event) => event.outcome === "fallback" && event.fallbackReason === "error")).toBe(true);
+  });
+
+  test("an aborted turn rethrows instead of falling back", async () => {
+    const controller = new AbortController();
+    const hook = createMoralmodHook({
+      arm: async () => "on",
+      client: { consult: async (_request, options) => { controller.abort(); options.signal?.throwIfAborted(); return RESULT; } },
+      templateId: "aggregate-value-mean-hold-v1",
+      deadlineMs: 1_000,
+      maxConcurrent: 1,
+      emit: async () => {},
+    });
+    const aborted = { ...input(), signal: controller.signal };
+    expect(hook(aborted, async () => ({ turn: { action: "propose", message: "X." } }))).rejects.toThrow();
   });
 });

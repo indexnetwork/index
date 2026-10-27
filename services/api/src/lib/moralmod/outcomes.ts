@@ -23,7 +23,8 @@ export interface OutcomeRow {
   /** Arms of the enrolled seat(s), keyed by nothing — at most two entries, order meaningless. */
   enrolledArms: string[];
   principalDecisions: { actor: 'enrolled' | 'counterpart'; type: 'committed' | 'declined'; at: string }[];
-  exposures: number;
+  /** Treated, untreated and measured-only turns counted apart, so the ramp gate reads true coverage. */
+  exposures: { assessed: number; fallback: number; shadow: number };
 }
 
 /** @param experimentId - The study. @param since - Only negotiations updated at or after this instant. */
@@ -59,6 +60,7 @@ export async function outcomeExport(experimentId: string, since?: Date): Promise
     type: opportunityEvents.type,
     actorUserId: opportunityEvents.actorUserId,
     at: opportunityEvents.at,
+    outcome: sql<string | null>`${opportunityEvents.data} ->> 'outcome'`,
   }).from(opportunityEvents).where(and(
     inArray(opportunityEvents.opportunityId, opportunityIds),
     inArray(opportunityEvents.type, ['committed', 'declined', EXPOSURE_EVENT_TYPE]),
@@ -87,7 +89,11 @@ export async function outcomeExport(experimentId: string, since?: Date): Promise
           type: event.type as 'committed' | 'declined',
           at: event.at.toISOString(),
         })),
-      exposures: bucket.filter((event) => event.type === EXPOSURE_EVENT_TYPE).length,
+      exposures: {
+        assessed: bucket.filter((event) => event.type === EXPOSURE_EVENT_TYPE && event.outcome === 'assessed').length,
+        fallback: bucket.filter((event) => event.type === EXPOSURE_EVENT_TYPE && event.outcome === 'fallback').length,
+        shadow: bucket.filter((event) => event.type === EXPOSURE_EVENT_TYPE && event.outcome === 'shadow').length,
+      },
     };
   });
 }

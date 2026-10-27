@@ -7,7 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import type { Arm } from '@indexnetwork/moralmod';
 
 import db from '../drizzle/drizzle';
-import { moralmodArms } from '../../schemas/database.schema';
+import { moralmodArms, users } from '../../schemas/database.schema';
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { arm: Arm | null; until: number }>();
@@ -28,16 +28,27 @@ export async function armFor(userId: string): Promise<Arm | null> {
   return arm;
 }
 
-/** @param assignments - The cp's current truth for these residents. @returns How many rows were written. */
-export async function upsertArms(assignments: ArmAssignment[]): Promise<number> {
-  if (!assignments.length) return 0;
-  for (const assignment of assignments) {
-    await db.insert(moralmodArms)
-      .values({ userId: assignment.userId, arm: assignment.arm, experimentId: assignment.experimentId, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: moralmodArms.userId, set: { arm: assignment.arm, experimentId: assignment.experimentId, updatedAt: new Date() } });
-    cache.delete(assignment.userId);
-  }
-  return assignments.length;
+/**
+ * @param assignments - The cp's current truth for these residents.
+ * @returns How many rows were written, and the user ids that do not exist here
+ *   (departed or never provisioned) so the cp can reconcile instead of
+ *   resending them forever. All-or-nothing: one transaction.
+ */
+export async function upsertArms(assignments: ArmAssignment[]): Promise<{ updated: number; unknownUserIds: string[] }> {
+  if (!assignments.length) return { updated: 0, unknownUserIds: [] };
+  const ids = [...new Set(assignments.map((assignment) => assignment.userId))];
+  const result = await db.transaction(async (tx) => {
+    const existing = new Set((await tx.select({ id: users.id }).from(users).where(inArray(users.id, ids))).map((row) => row.id));
+    const known = assignments.filter((assignment) => existing.has(assignment.userId));
+    for (const assignment of known) {
+      await tx.insert(moralmodArms)
+        .values({ userId: assignment.userId, arm: assignment.arm, experimentId: assignment.experimentId, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: moralmodArms.userId, set: { arm: assignment.arm, experimentId: assignment.experimentId, updatedAt: new Date() } });
+    }
+    return { updated: known.length, unknownUserIds: ids.filter((id) => !existing.has(id)) };
+  });
+  for (const assignment of assignments) cache.delete(assignment.userId);
+  return result;
 }
 
 /** @param experimentId - The study. @returns Enrolled user ids, any arm. */

@@ -31,11 +31,27 @@ export function createExposureSink(options: ExposureSinkOptions): (event: TurnEx
       data: event as unknown as Record<string, unknown>,
     });
     if (!options.relayUrl) return;
+    // Identities never leave Index's boundary: the relay sees the opportunity
+    // id the lab already joins on, the run id, and categorical fields — never
+    // user/intent ids or the model's free-text divergence reason. The full
+    // event stays in the opportunity_events row.
+    const relayPayload = {
+      contract: event.contract,
+      opportunityId: event.opportunityId,
+      turnCount: event.turnCount,
+      arm: event.arm,
+      runId: event.runId,
+      outcome: event.outcome,
+      ...(event.fallbackReason ? { fallbackReason: event.fallbackReason } : {}),
+      ...(event.selection ? { selection: { selectedActionId: event.selection.selectedActionId, divergence: event.selection.divergence } } : {}),
+      ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+      at: event.at,
+    };
     try {
       const response = await transport(options.relayUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(options.relayToken ? { authorization: `Bearer ${options.relayToken}` } : {}) },
-        body: JSON.stringify(event),
+        body: JSON.stringify(relayPayload),
         signal: AbortSignal.timeout(5_000),
       });
       if (!response.ok) logger.warn('MoralMod relay refused an exposure event', { status: response.status, opportunityId: event.opportunityId });
