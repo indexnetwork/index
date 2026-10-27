@@ -1,4 +1,4 @@
-import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -6,15 +6,14 @@ import { userService } from '../../services/user.service';
 import { log } from '../log';
 import { callNetworkTool } from '../network-mcp/network-mcp.client';
 
-import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
-import type { McpPrincipal } from './mcp.types';
+import { mcpSuccess } from './mcp.results';
 
 const logger = log.lib.from('mcp/mcp.cosign');
 
 type CosignNetwork = Awaited<ReturnType<ChatDatabaseAdapter['getMemberMcpNetworks']>>[number];
 
 const CONTEXT_TIMEOUT_MS = 6_000;
-const REASON = 'Index Network is acting for the member, who asked their agent about people or lists on Cosign';
+const REASON = 'Index Network is acting for the member, showing Cosign context beside their matches';
 
 interface CosignPerson {
   handle?: string;
@@ -118,35 +117,8 @@ export function cosignLine(context: CosignContext | null): string {
   return `\n  Cosign: ${parts.join(' · ')}`;
 }
 
-const readOnly = (title: string) => ({ title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true });
-
-function guarded(name: string, principal: McpPrincipal, operation: () => Promise<CallToolResult>): Promise<CallToolResult> {
-  return operation().catch((error) => (error instanceof NotSignedIn
-    ? mcpError('cosign_not_signed_in', 'The member has not signed in to Cosign. They can join the Cosign network on Index to connect it.')
-    : captureMcpToolFailure(error, name, principal)));
-}
-
-/** Add the member's Cosign tools, and the demo's two mocked commands, to a fresh MCP server. */
-export function registerCosignTools(server: McpServer, principal: McpPrincipal, network: CosignNetwork): void {
-  const forward = (name: string, tool: string, title: string, description: string, shape: z.ZodRawShape) =>
-    server.registerTool(
-      name,
-      { description, inputSchema: z.object(shape).strict(), annotations: readOnly(title) },
-      (args: Record<string, unknown>) => guarded(name, principal, async () =>
-        mcpSuccess({ cosign: await read(network, principal.userId, tool, args) })),
-    );
-
-  forward('cosign_search_people', 'search_people', 'Search Cosign people', 'Search Cosign for people by name, handle, or description. Returns names, handles, and whether they are on Cosign.', { query: z.string().trim().min(1) });
-  forward(
-    'cosign_get_person',
-    'get_person',
-    'Get a Cosign profile',
-    'Read a person\'s Cosign profile with their cosigns: who vouches for them (cosignedBy) and who they vouch for (cosigned), each with a quote. Give an X handle or a Cosign profile URL.',
-    { handle: z.string().trim().min(1).optional(), profileUrl: z.string().trim().min(1).optional() },
-  );
-  forward('cosign_get_my_profile', 'get_my_profile', 'Get my Cosign profile', 'Read the owner\'s own Cosign profile.', {});
-  forward('cosign_search_lists', 'search_lists', 'Search Cosign lists', 'Search public Cosign lists, such as lists of people to watch in a field.', { term: z.string().trim().min(1), limit: z.number().int().min(1).max(25).optional() });
-
+/** Add the demo's two mocked Cosign commands to a fresh MCP server. */
+export function registerCosignTools(server: McpServer): void {
   server.registerTool(
     'cosign_create_cosign',
     {

@@ -103,7 +103,7 @@ function createIndexMcpServer(principal: McpPrincipal, onboarding: boolean, cosi
     icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
   }, { instructions: mcpInstructions(onboarding, cosign?.networkId ?? null) });
   registerMcpTools(server, { ...principal, cosign: Boolean(cosign) });
-  if (cosign) registerCosignTools(server, principal, cosign);
+  if (cosign) registerCosignTools(server);
   registerMcpEvents(server, principal);
   return server;
 }
