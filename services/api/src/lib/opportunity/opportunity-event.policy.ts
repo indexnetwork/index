@@ -22,11 +22,6 @@ export function parseClientEvent(body: unknown): { ok: true; event: ClientEvent 
   if ((LIFECYCLE_EVENT_TYPES as readonly string[]).includes(type)) {
     return { ok: false, error: `type '${type}' is reserved for the opportunity lifecycle` };
   }
-  // Research records are written server-side only; a client-forged exposure
-  // would inflate the experiment's counts.
-  if (type.startsWith('moralmod.')) {
-    return { ok: false, error: `type '${type}' is reserved for research records` };
-  }
   if (data !== undefined && data !== null && !isPlainObject(data)) {
     return { ok: false, error: 'data must be an object' };
   }

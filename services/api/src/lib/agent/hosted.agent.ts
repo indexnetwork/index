@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model, type NegotiateHook, type Runtime } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model, type Runtime } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter } from '../../adapters/agent-session.database.adapter';
@@ -18,7 +18,6 @@ import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { createRedisClient, getRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
 import { log } from '../log';
-import { buildMoralmodHook } from '../moralmod/hook';
 import { memberProfile } from '../network-mcp/network-mcp.client';
 import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
 
@@ -47,8 +46,6 @@ interface WakeFrame {
 export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
   private readonly networks = new ChatDatabaseAdapter();
-  /** The MoralMod consult for ON/shadow-arm residents; null leaves every turn untouched. */
-  private readonly moralmod: NegotiateHook | null = buildMoralmodHook();
   private readonly session: HostedSession;
   private readonly joined = new Set<string>();
   /** Owners whose seat an external negotiator holds, so this host leaves their stream unread. */
@@ -262,8 +259,6 @@ export class HostedAgent {
     return {
       model: this.model,
       // The principal's own profile from each MCP network they joined, as evidence. Never blocks a turn.
-      // MoralMod (when configured) consults after the evidence is attached; OFF-arm and
-      // unassigned residents pass through it untouched.
       negotiate: async (input, next) => {
         const networks = await this.networks.getMemberMcpNetworks(input.user.id).catch(() => []);
         const profiles = (await Promise.all(networks.map(async (network) => {
@@ -271,8 +266,7 @@ export class HostedAgent {
           return text && `${network.title}:\n${text}`;
         }))).filter(Boolean);
         if (profiles.length) logger.verbose('Negotiating with network profiles', { userId: input.user.id, opportunityId: input.opportunity.id, profiles: profiles.length });
-        const evidenced = profiles.length ? { ...input, evidence: profiles.join('\n\n') } : input;
-        return this.moralmod ? this.moralmod(evidenced, (override) => next(override ?? evidenced)) : next(profiles.length ? evidenced : undefined);
+        return next(profiles.length ? { ...input, evidence: profiles.join('\n\n') } : undefined);
       },
       ...(this.decide ? { decide: this.decide } : {}),
       signal: this.abort.signal,

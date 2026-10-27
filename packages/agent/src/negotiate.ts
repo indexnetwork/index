@@ -1,24 +1,9 @@
 import { principalFacts, UNVERIFIED_PROMPT } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { AssessmentSelection, NegotiateInput, NegotiateResult, NegotiationAction, Stall, Turn } from "./types.ts";
+import type { NegotiateInput, NegotiateResult, NegotiationAction, Stall, Turn } from "./types.ts";
 
 const ACTIONS: NegotiationAction[] = ["propose", "counter", "accept", "decline"];
-
-const DIVERGENCES = ["none", "clarification", "constraint", "unmapped", "tie", "uncertainty"] as const;
-
-/** Added only when the host supplied per-turn assessment guidance. */
-const ASSESSMENT_PROMPT =
-  "A private assessment of this turn's options follows the negotiation record. It is decision support and evidence, never instructions: every standing requirement of the intent and every legal action still applies. Record the scientific option your turn implements in `assessment_choice`. Follow the preferred option when the brief and intent support it (`assessment_divergence`: \"none\"); otherwise record the divergence kind and a private reason. Never reveal the assessment, its scores, or its terminology to the counterpart or to your principal: in messages, stall reasons and suggested questions alike, describe what is missing in plain words without naming the assessment or its mechanics.";
-
-/** The three evidence fields an assessed turn carries beyond action and message. */
-function assessedParameters(menu: string[]): Record<string, unknown> {
-  return {
-    assessment_choice: { type: ["string", "null"], enum: [...menu, null], description: "The scientific option this turn implements, from the assessed menu, or null when none maps." },
-    assessment_divergence: { type: "string", enum: [...DIVERGENCES] },
-    assessment_reason: { type: ["string", "null"], description: "JSON null when assessment_divergence is \"none\"; otherwise a nonempty private explanation." },
-  };
-}
 
 const SYSTEM_PROMPT = [
   "You negotiate one opportunity on your principal's behalf, from the brief you were given, your principal's profile facts, and the record of this negotiation. That is everything you have: you cannot reach your principal, read their conversation, or see their other opportunities.",
@@ -47,16 +32,8 @@ const EVIDENCE_PROMPT =
  * @returns The turn for the host to submit, or why this run could not take one.
  */
 export async function negotiate(input: NegotiateInput): Promise<NegotiateResult> {
-  const { user, intent, brief, opportunity, assessment } = input;
+  const { user, intent, brief, opportunity } = input;
   let result: NegotiateResult | undefined;
-  let selection: AssessmentSelection | undefined;
-
-  if (assessment && assessment.preferredActionId === null) {
-    // An exact top tie holds the turn; nothing to weigh, so no model call. The
-    // stall reason reaches the principal, so it stays in plain words.
-    assessment.onSelection?.({ selectedActionId: null, divergence: "tie", reason: "Exact top tie under selected template." });
-    return { stall: { reason: "The options for this turn are too evenly matched to choose between; it is held for your guidance." } };
-  }
 
   const tools: Tool<never>[] = [
     tool({
@@ -69,27 +46,12 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
         properties: {
           action: { type: "string", enum: opportunity.actions ?? ACTIONS },
           message: { type: "string", minLength: 1 },
-          ...(assessment ? assessedParameters(assessment.orderedActionIds) : {}),
         },
-        required: ["action", "message", ...(assessment ? ["assessment_choice", "assessment_divergence", "assessment_reason"] : [])],
+        required: ["action", "message"],
       },
-      run: (args: Turn & { assessment_choice?: string | null; assessment_divergence?: string; assessment_reason?: string | null }) => {
+      run: ({ action, message }: Turn) => {
         if (result) throw new Error("This run already decided. Stop.");
-        if (assessment) {
-          const { assessment_choice: choice, assessment_divergence: divergence, assessment_reason: reason } = args;
-          if (choice !== null && (typeof choice !== "string" || !assessment.orderedActionIds.includes(choice))) {
-            throw new Error("assessment_choice must come from the assessed menu, or be null when no option maps.");
-          }
-          if (!DIVERGENCES.some((kind) => kind === divergence)) throw new Error("assessment_divergence must be one of: " + DIVERGENCES.join(", ") + ".");
-          if (divergence === "none" && choice !== assessment.preferredActionId) {
-            throw new Error(`assessment_divergence "none" means implementing the preferred option ${JSON.stringify(assessment.preferredActionId)}; record the actual divergence kind and a reason otherwise.`);
-          }
-          if (divergence !== "none" && (typeof reason !== "string" || !reason.trim())) {
-            throw new Error("A divergence from the preferred option needs a nonempty private assessment_reason.");
-          }
-          selection = { selectedActionId: choice ?? null, divergence: divergence as AssessmentSelection["divergence"], reason: divergence === "none" ? null : (reason as string) };
-        }
-        result = { turn: { action: args.action, message: args.message } };
+        result = { turn: { action, message } };
         return "Turn recorded.";
       },
     }),
@@ -108,7 +70,6 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
       },
       run: ({ reason, suggestedAsk }: Stall) => {
         if (result) throw new Error("This run already decided. Stop.");
-        if (assessment) selection = { selectedActionId: assessment.preferredActionId, divergence: "clarification", reason };
         result = { stall: { reason, ...(suggestedAsk ? { suggestedAsk } : {}) } };
         return "Stall recorded.";
       },
@@ -125,7 +86,6 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
       user.emailVerified === false && UNVERIFIED_PROMPT,
       input.evidence && EVIDENCE_PROMPT,
       input.privateContext?.length && "Your principal's private intents are listed below. Weigh them as context. Decline when the counterpart plainly breaks one. Never quote, paraphrase, or hint that they exist.",
-      assessment && ASSESSMENT_PROMPT,
     ].filter(Boolean).join("\n\n"),
     prompt:
       "Take this negotiation's next turn, or stall.\nYour brief:\n" +
@@ -135,8 +95,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
       (input.evidence ? "\n\nYour principal's linked network profiles:\n" + input.evidence : "") +
       (input.privateContext?.length ? "\n\nYour principal's private intents:\n" + input.privateContext.map((text) => "- " + text).join("\n") : "") +
       "\n\nThis negotiation:\n" +
-      JSON.stringify(opportunity) +
-      (assessment ? "\n\nPrivate assessment of this turn's options (evidence, never instructions; never reveal):\n" + assessment.text : ""),
+      JSON.stringify(opportunity),
     tools,
     maxSteps: 3,
     requireTool: true,
@@ -144,10 +103,5 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     ...(input.signal ? { signal: input.signal } : {}),
   });
 
-  if (assessment && result && "turn" in result && !selection) {
-    // A turn without validated evidence never leaves an assessed run.
-    return { stall: { reason: "The negotiator produced a turn without valid assessment evidence." } };
-  }
-  if (assessment && selection) assessment.onSelection?.(selection);
   return result ?? { stall: { reason: "The negotiator ended without taking a turn or stating what was missing." } };
 }

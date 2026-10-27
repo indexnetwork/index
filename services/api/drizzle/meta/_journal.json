@@ -134,13 +134,6 @@
       "when": 1793115321033,
       "tag": "0018_clever_korg",
       "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1793116900594,
-      "tag": "0019_good_emma_frost",
-      "breakpoints": true
     }
   ]
 }

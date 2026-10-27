@@ -1,8 +1,42 @@
 # MoralMod × Index integration — design
 
 Date: 2026-10-27
-Status: draft for Seref's approval (nothing built yet)
+Status: superseded by the decoupling decision below; kept for the record
 Counterparty: Sydney Levine Lab (decision-studio, flexible-moral-reasoning — both private, read access confirmed)
+
+## Decision (2026-10-27): decoupled integration
+
+The embedded design below was implemented and then withdrawn as too much
+MoralMod-specific surface inside Index. The decoupled shape:
+
+- **Index ships only generic hardening: idempotent turn submission.** An
+  optional `clientTurnId` on `POST /opportunities/:id/negotiation/turns`
+  replays a committed turn as success instead of refusing a retry, which is
+  what made the lab's lost sends unreconcilable (their ask 2). That is this
+  PR's entire code change.
+- **MoralMod stays outside Index.** The lab's negotiator remains the external
+  executor for study residents through the existing per-user mechanism
+  (`agents.handleNegotiations` + the `?agentId=` executor fence) — exactly how
+  their boxes run today. Arm assignment, the assessment pipeline, the
+  selection policy, exposure events, and the research relay all stay in the
+  lab's stack.
+- **Scale is solved on the lab's side.** Their decision service is
+  Postgres/Procrastinate with separately operated API and worker processes;
+  the five-box ceiling is worker capacity and provider key tiers, not
+  architecture. They (or we, as a hosting favor outside this repo) scale the
+  workers — Railway works for that; sizing for ~5k ON turns/day is roughly 48
+  concurrent assessments and 65k–160k provider calls/day on their keys.
+- **Outcome export (their ask 3):** their boxes hold per-resident credentials
+  and can read outcomes today via `listNegotiations`/`getNegotiation`
+  (outcome, settledAt, turns) and opportunity state — no Index-side export
+  endpoint. If polling at study scale ever hurts, revisit with a generic,
+  non-experiment-specific export.
+- **Ramp (their ask 4):** entirely lab-side (which residents their boxes
+  negotiate for), no Index involvement.
+
+Everything below this line is the superseded embedded design.
+
+---
 
 ## Intent and why
 

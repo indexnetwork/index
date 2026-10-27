@@ -174,28 +174,6 @@ export interface WakeResult {
   unresolved: string[];
 }
 
-/** How the negotiator's recorded choice relates to the assessment's preferred action. */
-export interface AssessmentSelection {
-  selectedActionId: string | null;
-  divergence: "none" | "clarification" | "constraint" | "unmapped" | "tie" | "uncertainty";
-  reason: string | null;
-}
-
-/**
- * Private per-turn decision support. When present, the negotiator reads the
- * text as evidence, must account for the preferred action in its turn, and the
- * host receives the selection it recorded. Absent, nothing changes.
- */
-export interface AssessmentGuidance {
-  /** Private context block, passed to the model verbatim. Never shown to the counterpart. */
-  text: string;
-  /** The assessed menu of scientific action ids. */
-  orderedActionIds: string[];
-  /** The action the selection policy prefers; null means an exact top tie, which holds the turn. */
-  preferredActionId: string | null;
-  onSelection?: (selection: AssessmentSelection) => void;
-}
-
 /** Everything a negotiator sees. No conversation, no other opportunities. */
 export interface NegotiateInput {
   user: User;
@@ -206,8 +184,6 @@ export interface NegotiateInput {
   evidence?: string;
   /** The principal's other private intents. Weighed, never revealed. */
   privateContext?: string[];
-  /** Private per-turn decision support; absent for every ordinary run. */
-  assessment?: AssessmentGuidance;
   model: Model;
   now?: () => Date;
   signal?: AbortSignal;
