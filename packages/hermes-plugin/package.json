@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "build:desktop": "node desktop/build.mjs",
-    "build:runtime": "bun build ./runtime/src/main.ts --outfile runtime/dist/negotiator.js --target bun --format esm",
+    "build:runtime": "bunx bun@1.2.20 build ./runtime/src/main.ts --outfile runtime/dist/negotiator.js --target bun --format esm",
     "typecheck:runtime": "tsc -p runtime/tsconfig.json"
   },
   "dependencies": {

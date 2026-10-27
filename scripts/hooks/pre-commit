@@ -38,6 +38,29 @@ typecheck_if packages/client/ client packages/client bun run typecheck
 typecheck_if packages/agent/ agent packages/agent bun run typecheck
 typecheck_if apps/web/ web apps/web bun run build
 
+# ── Hermes plugin bundle parity ──────────────────────────────────────
+# CI's typecheck job rebuilds the committed Hermes bundles and fails on
+# any diff, so rebuild and restage them whenever their inputs change.
+# build:runtime pins Bun through bunx so the output matches CI's bytes.
+hermes_runtime=$(printf '%s\n' "$staged" | grep -E '^packages/hermes-plugin/runtime/src/' || true)
+hermes_desktop=$(printf '%s\n' "$staged" | grep -E '^packages/hermes-plugin/(dashboard/dist/|desktop/)' | grep -v 'desktop/plugin\.js$' || true)
+if [[ -n "${hermes_runtime}" ]]; then
+  echo "[pre-commit] Rebuilding Hermes runtime bundle..."
+  (cd packages/hermes-plugin && bun run typecheck:runtime && bun run build:runtime) || {
+    echo "[pre-commit] Hermes runtime bundle rebuild failed." >&2
+    exit 1
+  }
+  git add packages/hermes-plugin/runtime/dist/negotiator.js
+fi
+if [[ -n "${hermes_desktop}" ]]; then
+  echo "[pre-commit] Rebuilding Hermes desktop plugin..."
+  (cd packages/hermes-plugin && bun run build:desktop) || {
+    echo "[pre-commit] Hermes desktop plugin rebuild failed." >&2
+    exit 1
+  }
+  git add packages/hermes-plugin/desktop/plugin.js
+fi
+
 # ── Adapter naming check (only if adapter files are staged) ─────────
 changed_adapters=$(git diff --cached --name-only | grep -E '^services/api/src/adapters/.*\.ts$' || true)
 if [[ -n "${changed_adapters}" ]]; then
