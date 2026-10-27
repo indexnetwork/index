@@ -1,12 +1,7 @@
-import { McpServer } from '@modelcontextprotocol/server';
-import { z } from 'zod-v4';
-
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { userService } from '../../services/user.service';
 import { log } from '../log';
 import { callNetworkTool } from '../network-mcp/network-mcp.client';
-
-import { mcpSuccess } from './mcp.results';
 
 const logger = log.lib.from('mcp/mcp.cosign');
 
@@ -115,37 +110,4 @@ export function cosignLine(context: CosignContext | null): string {
     context.mutuals.length ? `${context.mutuals.length} ${context.mutuals.length === 1 ? 'mutual' : 'mutuals'}` : null,
   ].filter(Boolean);
   return `\n  Cosign: ${parts.join(' · ')}`;
-}
-
-/** Add the demo's two mocked Cosign commands to a fresh MCP server. */
-export function registerCosignTools(server: McpServer): void {
-  server.registerTool(
-    'cosign_create_cosign',
-    {
-      description: 'MOCK. Prepare a cosign (a vouch) for a person. Nothing is saved: Cosign offers no write access yet. Ask the owner first, and tell them it is only prepared.',
-      inputSchema: z.object({
-        person: z.string().trim().min(1),
-        type: z.enum(['would_work_with_anywhere', 'will_be_a_star', 'shaped_my_career']),
-        visibility: z.enum(['private', 'public']).optional(),
-      }).strict(),
-      annotations: { title: 'Prepare a cosign (mock)', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    ({ person, type, visibility = 'private' }) => Promise.resolve(mcpSuccess(
-      { mock: true, saved: false, cosign: { person, type, visibility }, message: 'Prepared only. Nothing was saved to Cosign.' },
-      `Prepared a ${visibility} cosign for ${person}: ${type.replace(/_/g, ' ')}. Mock: not saved.`,
-    )),
-  );
-
-  server.registerTool(
-    'introduce_people',
-    {
-      description: 'MOCK. Ask both people\'s agents to negotiate an introduction between two people the owner knows. Nothing is sent yet. Ask the owner first, and tell them it is only a preview.',
-      inputSchema: z.object({ first: z.string().trim().min(1), second: z.string().trim().min(1), reason: z.string().trim().optional() }).strict(),
-      annotations: { title: 'Introduce two people (mock)', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    ({ first, second, reason }) => Promise.resolve(mcpSuccess(
-      { mock: true, sent: false, introduction: { first, second, reason: reason ?? null }, message: 'Preview only. No agent was contacted.' },
-      `Introduction between ${first} and ${second}: both agents would be asked, and it is surfaced only if both sides agree. Mock: nothing was sent.`,
-    )),
-  );
 }

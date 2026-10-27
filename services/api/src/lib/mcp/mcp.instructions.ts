@@ -34,7 +34,7 @@ They can see this again any time with show_onboarding.`;
 export const onboardingText = (cosign: boolean) => (cosign ? MCP_COSIGN_ONBOARDING : MCP_ONBOARDING);
 
 /** Added for owners who joined the Cosign network. */
-export const mcpCosign = (networkId: string) => `They are on Cosign, where people vouch for each other. Their intents reach the Cosign network (${networkId}) by default, so create them without networkIds; never narrow them to Cosign alone, which has few members. When you present an opportunity, show its cosign field if it has one: a cosigner's name with their quote, how many cosigns, and mutuals; I read those from Cosign myself. cosign_create_cosign and introduce_people are mocks that save and send nothing: ask first, and tell them the result is only prepared.`;
+export const mcpCosign = (networkId: string) => `They are on Cosign, where people vouch for each other. Their intents reach the Cosign network (${networkId}) by default, so create them without networkIds; never narrow them to Cosign alone, which has few members. When you present an opportunity, show its cosign field if it has one: a cosigner's name with their quote, how many cosigns, and mutuals; I read those from Cosign myself.`;
 
 /** Instructions for one connection, with onboarding on every handshake. */
 export function mcpInstructions(onboarding: boolean, cosignNetworkId: string | null = null): string {
