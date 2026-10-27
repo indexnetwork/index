@@ -180,6 +180,8 @@ export interface NegotiateInput {
   intent: Intent;
   brief: string;
   opportunity: Opportunity;
+  /** Profiles the principal linked from their networks, read by the host. */
+  evidence?: string;
   /** The principal's other private intents. Weighed, never revealed. */
   privateContext?: string[];
   model: Model;

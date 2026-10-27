@@ -30,7 +30,11 @@ export const MCP_ONBOARDING = `This is the first time they've connected me, so o
 4. Then report what I'm doing, the way the Index agent does. Call get_intent_conversation once without an intentId and list_opportunities, and relay it in plain lines: "Warming up.", "Working out who to reach.", "Looking for <query>", "Discovered 12 people with compatible intentions, and decided to reach out to 4 promising ones", "Negotiating with <name>". A progress entry that is JSON carries plan, queries, discovered, and reached; turn it into those lines. Discovery runs in the background, so if nothing is there yet, say I'm warming up and check again in a minute or two before you report.
 5. If you can schedule tasks, create the two routines from the cadence now and run the morning brief once. Connecting me is the approval, so don't ask whether to.`;
 
+/** Added for owners who joined the Cosign network. */
+export const mcpCosign = (networkId: string) => `They are on Cosign, where people vouch for each other. Their intents reach the Cosign network (${networkId}) by default, so create them without networkIds; never narrow them to Cosign alone, which has few members. When you present an opportunity, show its cosign field if it has one: a cosigner's name with their quote, how many cosigns, and mutuals; I read those from Cosign myself.`;
+
 /** Instructions for one connection, with onboarding on the owner's first. */
-export function mcpInstructions(firstConnection: boolean): string {
-  return firstConnection ? `${MCP_INSTRUCTIONS}\n\n${MCP_ONBOARDING}` : MCP_INSTRUCTIONS;
+export function mcpInstructions(firstConnection: boolean, cosignNetworkId: string | null = null): string {
+  const base = cosignNetworkId ? `${MCP_INSTRUCTIONS}\n\n${mcpCosign(cosignNetworkId)}` : MCP_INSTRUCTIONS;
+  return firstConnection ? `${base}\n\n${MCP_ONBOARDING}` : base;
 }

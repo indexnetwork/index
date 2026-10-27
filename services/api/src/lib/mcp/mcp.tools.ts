@@ -14,12 +14,16 @@ import { RuntimeConflictError } from '../agent/runtime-errors';
 import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
+import { cosignEnricher, cosignLine } from './mcp.cosign';
 import { MCP_CADENCE, MCP_ONBOARDING } from './mcp.instructions';
+import { clientRequestedProgress, mcpProgress } from './mcp.progress';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
+import { userEventTail, watchIntentDiscovery, type IntentWatchOutcome } from './mcp.watch';
 import type { McpPrincipal } from './mcp.types';
 
 const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, intent, or opportunity name itself, never as a separate "link" word.';
 const CADENCE_HINT = ` ${MCP_CADENCE}`;
+const NARRATION_HINT = ' While this call runs, discovery is live; when the result arrives, lead your reply with what happened during the watch — negotiations opened, opportunities ready, or a question waiting — before anything else. It is the part the owner is waiting to hear.';
 
 /** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
 const hints = (
@@ -287,7 +291,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       }).strict(),
       annotations: hints('Enrich my profile', true, false, true, true),
     },
-    (input) => runTool('enrich_my_profile', principal, async () => {
+    (input, ctx) => runTool('enrich_my_profile', principal, async () => {
+      await mcpProgress(ctx, 1)('Researching your profile...');
       const result = await enrichmentService.prefillPublicProfile(principal.userId, input);
       return mcpSuccess(result);
     }),
@@ -344,7 +349,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
@@ -352,10 +357,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         private: z.boolean().optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
+        watchSeconds: z.number().int().min(0).max(300).optional()
+          .describe('After creating, keep the call open up to this many seconds while discovery runs, streaming progress and returning early once the first opportunity or agent question arrives. Defaults to 60; 0 returns immediately. Shortened when the call carries no progress token.'),
       }).strict(),
       annotations: hints('Create intent', false, false, false, false),
     },
-    ({ description, networkIds, visibility, private: isPrivate, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+    ({ description, networkIds, visibility, private: isPrivate, sourceType = null, sourceId = null, watchSeconds }, ctx) => runTool('create_intent', principal, async () => {
       if (isPrivate) {
         try {
           const created = await intentService.create(principal.userId, description, networkIds ?? [], undefined, { sourceType, sourceId }, { isPrivate: true });
@@ -367,6 +374,8 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           throw error;
         }
       }
+      const step = mcpProgress(ctx);
+      await step('Preparing your intent...');
       let prepared;
       try {
         prepared = await intentService.prepare(principal.userId, { payload: description });
@@ -385,6 +394,11 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       }
 
       try {
+        // Without progress notifications resetting the host's timeout, a long quiet wait looks stalled.
+        const watchFor = Math.min(watchSeconds ?? 60, clientRequestedProgress(ctx) ? 300 : 20);
+        // Snapshot the stream tail before creating: discovery frames can land before create() returns.
+        const sinceId = watchFor > 0 ? await userEventTail(principal.userId) : null;
+        await step('Creating your intent...');
         const created = await intentService.create(
           principal.userId,
           prepared.payload,
@@ -393,11 +407,33 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           { sourceType, sourceId },
           { visibility, isPrivate },
         );
+        await step('Discovering counterparties...');
+        // The intent exists now, so a watch failure must degrade to the plain created result.
+        let watch: IntentWatchOutcome | null = null;
+        if (sinceId) {
+          try {
+            watch = await watchIntentDiscovery({
+              userId: principal.userId, intentId: created.id, sinceId, seconds: watchFor,
+              signal: ctx.mcpReq.signal, step,
+            });
+          } catch { watch = null; }
+        }
         const url = appLink('i', created.id);
         const label = intentLabel(prepared.payload);
+        const lines = [`${mdLink(label, url)} — created`];
+        if (watch?.pendingQuestion) {
+          lines.push(`Your agent has a question: "${watch.pendingQuestion.question}" — read it with get_intent_conversation and answer with principal_send_message.`);
+        }
+        if (watch?.opportunities.length) {
+          lines.push('Live while you waited — ready now:', ...watch.opportunities.map((o) => `- ${mdLink(o.headline, o.url)}`));
+        } else if (watch) {
+          lines.push(watch.negotiating > 0
+            ? `Live while you waited: ${watch.negotiating === 1 ? 'an agent' : `${watch.negotiating} agents`} entered negotiation for this intent. Discovery continues — check list_opportunities in a few minutes.`
+            : `Nothing surfaced in the first ${watch.seconds}s. Discovery continues — check list_opportunities in a few minutes.`);
+        }
         return mcpSuccess(
-          { intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId },
-          `${mdLink(label, url)} — created`,
+          { intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId, ...(watch && { watch }) },
+          lines.join('\n'),
         );
       } catch (error) {
         if (error instanceof IntentNetworkMembershipError) {
@@ -477,9 +513,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       inputSchema: intentIdSchema,
       annotations: hints('Resume intent', false, false, false, true),
     },
-    ({ intentId }) => runTool('resume_intent', principal, async () => {
+    ({ intentId }, ctx) => runTool('resume_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
+      await mcpProgress(ctx, 1)('Resuming discovery...');
       const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'active');
       if (outcome.kind !== 'success') return intentTransitionError(outcome)!;
       const { url, link } = await linkedIntent(outcome.id, principal.userId);
@@ -596,10 +633,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           cta: opportunity.cta,
         };
       });
-      const lines = opportunities.map((opportunity) =>
-        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity, opportunity.viewerCommitted)}`);
+      const enrich = await cosignEnricher(principal.userId);
+      const cosigns = await Promise.all(opportunities.map((opportunity, index) => (enrich && index < 10 ? enrich(opportunity.peer.userId) : null)));
+      const lines = opportunities.map((opportunity, index) =>
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status, opportunity.priorOpportunity, opportunity.viewerCommitted)}${cosignLine(cosigns[index])}`);
       return mcpSuccess({
-        opportunities,
+        opportunities: opportunities.map((opportunity, index) => ({ ...opportunity, cosign: cosigns[index] })),
         pagination: {
           limit,
           offset,
@@ -629,6 +668,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const peer = { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) };
       const otherParties = opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) }));
       const people = otherParties.map((party) => mdLink(party.name, party.url)).join(', ');
+      const cosign = await (await cosignEnricher(principal.userId))?.(opportunity.peer.userId) ?? null;
       return mcpSuccess({
         opportunity: {
           ...opportunity,
@@ -637,9 +677,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           declineUrl,
           peer,
           otherParties,
+          cosign,
         },
         negotiation,
-      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}`);
+      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}${cosignLine(cosign)}`);
     }),
   );
 
@@ -757,12 +798,13 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       }).strict(),
       annotations: hints('Send message', false, false, false, false),
     },
-    ({ intentId, messages }) => runTool('principal_send_message', principal, async () => {
+    ({ intentId, messages }, ctx) => runTool('principal_send_message', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
       const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
       if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
       try {
+        await mcpProgress(ctx, 1)('Sending to your agent...');
         const persisted = await conversationService.answerQuestions({
           userId: principal.userId, intentId: resolved.id, conversationId: conversation.id, answers: messages,
         });
@@ -794,7 +836,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         inputSchema: opportunityActionSchema,
         annotations: hints(accepted ? 'Accept opportunity' : 'Pass on opportunity', false, true, false, false),
       },
-      ({ opportunityId, intentId }) => runTool(name, principal, async () => {
+      ({ opportunityId, intentId }, ctx) => runTool(name, principal, async () => {
         const resolvedOpportunity = await resolveOpportunity(opportunityId, principal);
         if ('error' in resolvedOpportunity) return resolvedOpportunity.error;
         let resolvedIntentId: string | undefined;
@@ -807,6 +849,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         // Like the web app: accepting opens the chat. Someone not on Index has nobody to chat with, so only the accept is recorded.
         const current = accepted ? await opportunityService.getOpportunityWithPresentation(resolvedOpportunity.id, principal.userId) : null;
         const notOnIndex = !!current && !('error' in current) && current.peer.emailVerified === false;
+        if (accepted && !notOnIndex) {
+          const peerName = current && !('error' in current) && current.peer.name !== 'Unknown' ? current.peer.name : null;
+          await mcpProgress(ctx, 1)(peerName ? `Opening your chat with ${peerName}...` : 'Opening your chat...');
+        }
         const result = accepted && !notOnIndex
           ? await opportunityService.startChat(resolvedOpportunity.id, principal.userId, scope)
           : await opportunityService.updateOpportunityStatus(
