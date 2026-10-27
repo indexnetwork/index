@@ -433,6 +433,18 @@ export const negotiationTurns = pgTable('negotiation_turns', {
     .where(sql`${table.clientTurnId} is not null`),
 }));
 
+/**
+ * MoralMod study arm per resident. Mirrored from the lab's control plane,
+ * which stays the source of truth; residents outside the study have no row.
+ */
+export const moralmodArms = pgTable('moralmod_arms', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  /** `on` assesses turns, `shadow` measures without applying, `off` is the untouched control. */
+  arm: text('arm', { enum: ['on', 'off', 'shadow'] }).notNull(),
+  experimentId: text('experiment_id').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),

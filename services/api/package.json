@@ -4,10 +4,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agent build",
+    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/moralmod build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
     "dev:hosted-agents": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/hosted-agents.main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agent build && tsc",
+    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/moralmod build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "start:hosted-agents": "bun --preload ./dist/instrument.js dist/hosted-agents.main.js",
     "lint": "eslint src/",
@@ -28,6 +28,9 @@
     "@aws-sdk/client-s3": "^3.939.0",
     "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@better-auth/api-key": "1.6.11",
+    "@indexnetwork/agent": "workspace:*",
+    "@indexnetwork/client": "workspace:*",
+    "@indexnetwork/moralmod": "workspace:*",
     "@indexnetwork/protocol": "workspace:*",
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.4.12",
@@ -47,9 +50,7 @@
     "resend": "^4.0.1",
     "uuid": "^11.1.0",
     "zod": "^3.22.4",
-    "zod-v4": "npm:zod@^4.2.0",
-    "@indexnetwork/agent": "workspace:*",
-    "@indexnetwork/client": "workspace:*"
+    "zod-v4": "npm:zod@^4.2.0"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "1.4.5",
