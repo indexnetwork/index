@@ -485,12 +485,14 @@ export class IndexClient implements Index {
 
   /**
    * @param id - Opportunity id.
-   * @param turn - Action and message.
+   * @param turn - Action and message. `clientTurnId` (any UUID you mint) makes
+   *   the submission idempotent: a retry carrying the same id returns the
+   *   already-committed turn as success instead of `not_your_turn`.
    * @returns The negotiation after the turn.
    */
   async submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string },
+    turn: { action: NegotiationAction; message: string; clientTurnId?: string },
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,

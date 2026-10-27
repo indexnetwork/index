@@ -7,12 +7,16 @@ export type NegotiationAction = 'propose' | 'counter' | 'accept' | 'decline';
 export const negotiationTurnSchema = z.object({
   action: z.enum(['propose', 'counter', 'accept', 'decline']),
   message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
+  /** Caller-chosen id for this submission. A retry carrying the same id replays the committed turn instead of being refused. */
+  clientTurnId: z.string().uuid().optional(),
 });
 
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
 export interface NegotiationTurn {
   action: NegotiationAction;
   message: string;
+  /** Caller-chosen id: a retry carrying it replays the committed turn instead of being refused. */
+  clientTurnId?: string;
 }
 export interface NegotiationState {
   initiatorUserId: string;
@@ -43,6 +47,8 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   opportunityStatus: 'negotiating' | 'pending';
   /** Why this turn ended its round, leaving nobody to move until a seat resumes it. */
   roundEnded: 'declined' | 'turn_limit' | null;
+  /** The turn had already committed under the same clientTurnId; nothing was appended. */
+  replayed?: true;
 };
 
 /**
