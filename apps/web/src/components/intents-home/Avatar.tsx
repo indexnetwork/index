@@ -1,10 +1,6 @@
-import { useState } from "react";
+import UserAvatar from "@/components/UserAvatar";
 
-/** A 3px-radius square: the photo when there is one, else the initial. */
+/** Keep real photos, with the original colorful geometric faces as fallbacks. */
 export default function Avatar({ name, photo, size = 28 }: { name: string; photo?: string | null; size?: number }) {
-  const [failed, setFailed] = useState(false);
-  if (photo && !failed) {
-    return <img className="ih-avatar" src={photo} alt="" width={size} height={size} style={{ width: size, height: size }} onError={() => setFailed(true)} />;
-  }
-  return <span className="ih-avatar" style={{ width: size, height: size }}>{(name.trim()[0] || "?").toUpperCase()}</span>;
+  return <UserAvatar name={name} avatar={photo} size={size} className="ih-avatar" />;
 }

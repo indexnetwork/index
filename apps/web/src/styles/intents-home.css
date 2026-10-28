@@ -703,3 +703,68 @@
     min-height: 36px;
   }
 }
+
+/* A few traces of the old desktop, kept outside conversation content. */
+.ih-rail {
+  background-color: #faf9f6;
+  background-image: radial-gradient(#25201812 0.7px, transparent 0.7px);
+  background-size: 10px 10px;
+}
+.ih-rail-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.ih-rail-label::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  margin: 5px;
+  background: #ff8a00;
+  box-shadow: -5px 0 #ff8a00, 5px 0 #ff8a00, 0 -5px #ff8a00, 0 5px #ff8a00;
+}
+.ih .ih-intent.on,
+.ih .ih-menu-row.on {
+  background: #fff0dc;
+  box-shadow: inset 3px 0 #ff8a00;
+  border-radius: 0 3px 3px 0;
+}
+.ih-rail .ih-menu,
+.ih-rail .ih-profile-wrap {
+  border-top-style: dashed;
+}
+.ih-avatar {
+  outline: 1px solid #14141420;
+  outline-offset: 2px;
+}
+.ih-agent-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ih-agent-heading .agent-face {
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #14141418;
+}
+.ih button.ih-new > span:first-child {
+  display: inline-block;
+  transition: transform 160ms ease-out;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ih button.ih-new:hover > span:first-child {
+    transform: rotate(90deg);
+  }
+  .ih button:is(.ih-ghost, .ih-filter, .ih-accept, .ih-pass):hover:not(:disabled):not(:active),
+  .ih .ih-row-actions button.ih-link:hover:not(:disabled):not(:active) {
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ih button.ih-new > span:first-child {
+    transition: none;
+  }
+}
