@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { appendClientOpportunityEvent, recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { appendClientOpportunityEvent, committedActorIdsByOpportunity, recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 import type { ClientEvent } from '../lib/opportunity/opportunity-event.policy';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
@@ -127,6 +127,7 @@ interface ChatCardCached {
   peerName: string;
   peerAvatar: string | null;
   acceptedAt: string | null;
+  status?: OpportunityStatus;
 }
 
 /**
@@ -757,7 +758,9 @@ export class OpportunityService {
 
   /**
    * Get chat context for a conversation between two users.
-   * Returns accepted opportunities shared between them and peer user info.
+   * Returns opportunities shared between them that opened the chat: accepted
+   * ones, plus pending ones either side already committed to (startChat opens
+   * the DM on one side's accept, before the opportunity turns accepted).
    *
    * @param userId - The authenticated user ID
    * @param peerUserId - The peer user ID
@@ -767,19 +770,24 @@ export class OpportunityService {
     logger.verbose('Getting chat context', { userId, peerUserId });
 
     const [allRows, peerUser] = await Promise.all([
-      this.db.findOpportunitiesByActors([userId, peerUserId], { includeIntroducers: true, statuses: ['accepted'] }),
+      this.db.findOpportunitiesByActors([userId, peerUserId], { includeIntroducers: true, statuses: ['accepted', 'pending'] }),
       this.db.getUser(peerUserId),
     ]);
 
-    const rows = allRows;
+    const pendingIds = allRows.filter((opp) => opp.status === 'pending').map((opp) => opp.id);
+    const commits = await committedActorIdsByOpportunity(pendingIds);
+    const rows = allRows.filter((opp) => opp.status === 'accepted'
+      || (commits.get(opp.id) ?? []).some((id) => id === userId || id === peerUserId));
 
-    // Check cache for all opportunities (graceful fallback if Redis unavailable)
+    // Check cache for accepted opportunities only: a pending card's copy goes stale on accept.
+    // Graceful fallback if Redis unavailable.
     let cachedResults: (ChatCardCached | null)[] = [];
     try {
       const cacheKeys = rows.map((opp) =>
         buildApiChatCardPresentationCacheKey(opp.id, userId)
       );
-      cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
+      cachedResults = (await this.cache.mget<ChatCardCached>(cacheKeys))
+        .map((cached, idx) => (rows[idx].status === 'accepted' ? cached : null));
     } catch (e) {
       logger.warn('getChatContext cache read failed, skipping', { error: e });
       cachedResults = rows.map(() => null);
@@ -790,8 +798,9 @@ export class OpportunityService {
         // Return cached result if available
         const cached = cachedResults[idx];
         if (cached) {
-          return cached;
+          return { ...cached, status: 'accepted' as const };
         }
+        const accepted = opp.status === 'accepted';
 
         try {
           const presenterInput = await this.gatherPresentationContext(
@@ -799,8 +808,8 @@ export class OpportunityService {
             opp,
             userId,
           );
-          presenterInput.opportunityStatus = 'accepted';
-          presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
+          presenterInput.opportunityStatus = opp.status;
+          presenterInput.matchReasoning += `\n\nCONTEXT: This is shown inside an active chat between the two parties. ${accepted ? 'Both already accepted.' : 'One of them accepted and opened the chat.'} Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.`;
           const presented = await this.getPresenter().present(presenterInput);
           const card: ChatCardCached = {
             opportunityId: opp.id,
@@ -810,7 +819,9 @@ export class OpportunityService {
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
+            status: opp.status,
           };
+          if (!accepted) return card;
           try {
             await this.cache.set(
               buildApiChatCardPresentationCacheKey(opp.id, userId),
