@@ -11,6 +11,7 @@ import { registerMcpEvents } from './mcp.events';
 import { mcpInstructions } from './mcp.instructions';
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
+import { registerMcpUi } from './mcp.ui';
 
 // `src/` and `dist/` sit at the same depth, and `package.json` is outside `rootDir`, so it cannot be imported.
 const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string };
@@ -127,6 +128,7 @@ function createIndexMcpServer(principal: McpPrincipal, onboarding: 'instructions
     icons: [{ src: `${WEB_APP_URL}/favicon-white.png`, mimeType: 'image/png', sizes: ['64x64'] }],
   }, { instructions: mcpInstructions(onboarding === 'instructions', cosign?.networkId ?? null) });
   registerMcpTools(server, onboarding === 'result' ? { ...principal, onboarding: true } : principal);
+  registerMcpUi(server);
   registerMcpEvents(server, principal);
   return server;
 }
