@@ -36,7 +36,7 @@
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words: a cofounder, investors for your round, a founding engineer, a mentor, first users for your product — or simply interesting people, like a reading partner, a dinner table of new friends, or people to meet in a city you're visiting. Index keeps it as an intent, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
+        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words: a cofounder, investors for your round, a founding engineer, a mentor, first users for your product — or simply interesting people: new friends in your city, someone who shares a hobby, or people to meet on your next trip. Index keeps it as an intent, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
         "developerName": "Index Network",
         "category": "Communication",
         "capabilities": [
@@ -50,7 +50,7 @@
         "defaultPrompt": [
           "Find me a technical cofounder on Index.",
           "I'm in SF next week — who should I meet?",
-          "Find me a reading partner in Brooklyn.",
+          "Help me meet new people in my city.",
           "Do I have any new matches on Index?"
         ],
         "brandColor": "#111827",

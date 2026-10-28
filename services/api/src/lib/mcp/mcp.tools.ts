@@ -359,7 +359,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people: a cofounder, investors for a round, a first hire, a mentor, early users — or simply interesting people, like a reading partner, new friends over dinner, or people to meet in a city they are visiting. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people: a cofounder, investors for a round, a first hire, a mentor, early users — or simply interesting people: new friends in their city, someone who shares a hobby, or people to meet on a trip. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
