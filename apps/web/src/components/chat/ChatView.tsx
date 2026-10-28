@@ -366,7 +366,18 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                         fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4,
                         boxShadow: isOwn ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
                       }}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ href, children }) => (
+                              <a href={href} target="_blank" rel="noopener noreferrer">
+                                {children}
+                              </a>
+                            ),
+                          }}
+                        >
+                          {content}
+                        </ReactMarkdown>
                       </div>
                       {!isOwn && clock && <time style={{ fontFamily: "var(--mac-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: 0.2, whiteSpace: "nowrap" }}>{clock}</time>}
                     </div>
