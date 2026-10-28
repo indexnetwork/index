@@ -190,70 +190,69 @@
 }
 
 .wb-btn {
-  padding: 7px 12px;
-  font: 500 12px var(--amiga-sans);
-  letter-spacing: 0;
-  text-transform: none;
-  border: 1px solid var(--wb-control);
+  padding: 5px 18px;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #000;
   background: #fff;
-  color: var(--ink-2);
-  border-radius: 3px;
-  box-shadow: none;
+  color: #000;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
+  font-weight: 500;
 }
-.wb-btn:hover:not(:disabled) {
-  background: var(--wb-hover-2);
-  color: var(--ink);
+.wb-btn:active:not(:disabled) {
+  background: #000;
+  color: #fff;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
 }
 .wb-btn.primary {
-  background: var(--amiga-accent);
-  border-color: var(--amiga-accent);
-  color: var(--ink);
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
 }
-.wb-btn.primary:hover:not(:disabled) {
-  background: var(--wb-accent-hover);
-  border-color: var(--wb-accent-hover);
-  color: var(--ink);
+.wb-btn.primary:active:not(:disabled) {
+  background: #000;
+  color: #ff8a00;
 }
 .wb-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 .wb-btn.small {
-  padding: 4px 10px;
+  padding: 3px 12px;
   font-size: 11px;
 }
 
-/* Tabs read as the filter dropdown's items: quiet chips, selected grey. */
 .wb-segmented {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--wb-control);
-  border-radius: 3px;
-  background: #fff;
+  border: 1px solid #000;
 }
 .wb-segmented button {
-  padding: 3px 10px;
-  background: transparent;
-  color: var(--ink-2);
+  padding: 3px 12px;
+  background: #fff;
+  color: #000;
   border: none;
-  border-radius: 2px;
-  font: 400 12px var(--amiga-sans);
-  text-transform: none;
-  box-shadow: none;
+  border-left: 1px solid #000;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  text-transform: lowercase;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888;
 }
-.wb-segmented button:hover {
-  background: var(--wb-hover-2);
+.wb-segmented button:first-child {
+  border-left: none;
 }
 .wb-segmented button[aria-pressed="true"] {
-  background: var(--wb-selected);
-  color: var(--ink);
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
 }
 .wb-segmented.lg button {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 7px 18px;
+  font-size: 13.5px;
 }
 
-/* Waiting-on-you count: the one place a number takes the accent. */
 .wb-count {
   display: flex;
   align-items: baseline;
@@ -470,20 +469,22 @@
   font-family: var(--wb-code);
 }
 .workbench button.font-sans {
-  font: 500 12px var(--amiga-sans) !important;
-  border: 1px solid var(--wb-control) !important;
-  border-radius: 3px !important;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace !important;
+  text-transform: lowercase;
+  letter-spacing: 0.4px;
+  border: 1px solid #000 !important;
+  border-radius: 0 !important;
   background: #fff !important;
-  color: var(--ink-2) !important;
+  color: #000 !important;
   height: auto !important;
-  box-shadow: none !important;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
 }
 .workbench button.font-sans.bg-\[\#041729\],
 .workbench button.bg-\[\#041729\] {
-  background: var(--amiga-accent) !important;
-  border-color: var(--amiga-accent) !important;
-  color: var(--ink) !important;
-  box-shadow: none !important;
+  background: #ff8a00 !important;
+  color: #000 !important;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
 }
 .workbench .bg-blue-50,
 .workbench .bg-green-50,

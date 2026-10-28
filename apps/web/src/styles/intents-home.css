@@ -655,3 +655,51 @@
     min-height: 520px;
   }
 }
+
+/* The new layout keeps the original raised, square action buttons. Navigation
+   rows and inline text links retain their layout-specific presentation. */
+.ih button:is(.ih-new, .ih-ghost, .ih-filter, .ih-accept, .ih-pass),
+.ih .ih-row-actions button.ih-link {
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: lowercase;
+  text-decoration: none;
+  padding: 5px 18px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih button:is(.ih-filter, .ih-accept, .ih-pass),
+.ih .ih-row-actions button.ih-link {
+  padding: 3px 12px;
+  font-size: 11px;
+}
+.ih button:is(.ih-new, .ih-accept) {
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih button:is(.ih-new, .ih-ghost, .ih-filter, .ih-accept, .ih-pass):active:not(:disabled),
+.ih .ih-row-actions button.ih-link:active:not(:disabled) {
+  background: #000;
+  color: #fff;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.ih button:is(.ih-new, .ih-accept):active:not(:disabled) {
+  color: #ff8a00;
+}
+.ih button:is(.ih-new, .ih-ghost, .ih-filter, .ih-accept, .ih-pass):disabled,
+.ih .ih-row-actions button.ih-link:disabled {
+  opacity: 0.45;
+}
+@media (max-width: 767px) {
+  .ih button:is(.ih-new, .ih-ghost, .ih-filter, .ih-accept, .ih-pass),
+  .ih .ih-row-actions button.ih-link {
+    min-height: 36px;
+  }
+}
