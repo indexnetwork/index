@@ -189,7 +189,7 @@
   background: var(--wb-hairline);
 }
 
-.wb-btn {
+.workbench .wb-btn {
   padding: 5px 18px;
   font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 12px;
@@ -202,34 +202,34 @@
   box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
   font-weight: 500;
 }
-.wb-btn:active:not(:disabled) {
+.workbench .wb-btn:active:not(:disabled) {
   background: #000;
   color: #fff;
   box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
   transform: translate(1px, 1px);
 }
-.wb-btn.primary {
+.workbench .wb-btn.primary {
   background: #ff8a00;
   font-weight: 700;
   box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
 }
-.wb-btn.primary:active:not(:disabled) {
+.workbench .wb-btn.primary:active:not(:disabled) {
   background: #000;
   color: #ff8a00;
 }
-.wb-btn:disabled {
+.workbench .wb-btn:disabled {
   opacity: 0.45;
 }
-.wb-btn.small {
+.workbench .wb-btn.small {
   padding: 3px 12px;
   font-size: 11px;
 }
 
-.wb-segmented {
+.workbench .wb-segmented {
   display: inline-flex;
   border: 1px solid #000;
 }
-.wb-segmented button {
+.workbench .wb-segmented button {
   padding: 3px 12px;
   background: #fff;
   color: #000;
@@ -240,15 +240,15 @@
   text-transform: lowercase;
   box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888;
 }
-.wb-segmented button:first-child {
+.workbench .wb-segmented button:first-child {
   border-left: none;
 }
-.wb-segmented button[aria-pressed="true"] {
+.workbench .wb-segmented button[aria-pressed="true"] {
   background: #ff8a00;
   font-weight: 700;
   box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
 }
-.wb-segmented.lg button {
+.workbench .wb-segmented.lg button {
   padding: 7px 18px;
   font-size: 13.5px;
 }
@@ -566,21 +566,21 @@
     font-size: 16px !important;
   }
 
-  .wb-btn {
+  .workbench .wb-btn {
     min-height: 36px;
   }
-  .wb-btn.small {
+  .workbench .wb-btn.small {
     min-height: 32px;
   }
-  .wb-segmented {
+  .workbench .wb-segmented {
     max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .wb-segmented::-webkit-scrollbar {
+  .workbench .wb-segmented::-webkit-scrollbar {
     display: none;
   }
-  .wb-segmented button {
+  .workbench .wb-segmented button {
     flex: 0 0 auto;
     min-height: 32px;
     padding: 3px 10px;
