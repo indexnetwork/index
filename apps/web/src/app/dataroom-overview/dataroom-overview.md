@@ -144,7 +144,7 @@ Full detail: [Roadmap](/9db20a5fbe/roadmap).
 
 ## Team
 
-**We’re a New York–based team that built the old discovery economy. Now we’re building its future.**
+We’re a New York–based team that built the old discovery economy. Now we’re building its future.
 
 **[Seref Yarar](https://x.com/hyperseref), Co-founder**
 Co-founded [GoWit](https://gowit.com/), EMEA's largest commerce & retail media ecosystem spanning 7,000+ brands and 20+ markets. Led engineering and large-scale recommender systems at Genart through its acquisition by [Aleph](https://alephdigital.com/).
