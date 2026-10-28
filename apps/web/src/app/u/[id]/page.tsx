@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./profile.css";
 import { Check, Copy } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -240,12 +241,12 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   return (
       <Stage width={720} height="min(720px, calc(100vh - 112px))">
       <Window title="profile" onClose={back} style={{ height: "100%" }}>
-      <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
+      <div className="mac-scroll profile-content">
 
           {/* Avatar, Name, Location, Socials */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #000" }}>
+          <div className="profile-header">
             <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="profile-identity">
               <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
               {profileData.username ? (
                 <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12 }}>@{profileData.username}</div>
@@ -256,10 +257,10 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
               {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
             </div>
             {isOtherUser && (
-              <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${profileData.id}/chat`)}>send message</button>
+              <button type="button" className="wb-btn primary small profile-message" onClick={() => navigate(`/u/${profileData.id}/chat`)}>send message</button>
             )}
             {isSelf && (
-              <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+              <div className="profile-actions">
                 <button type="button" className="wb-btn small" onClick={() => navigate("/profile/edit")}>edit profile</button>
                 <button type="button" className="wb-btn small" onClick={copyProfileLink} aria-label={linkCopied ? "link copied" : "copy link"} title={linkCopied ? "copied" : "copy link"} style={{ display: "inline-flex", alignItems: "center" }}>
                   {linkCopied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
@@ -272,7 +273,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           {profileData.intro && (
             <div>
               <h3 style={sectionLabel}>bio</h3>
-              <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{profileData.intro}</p>
+              <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{profileData.intro}</p>
             </div>
           )}
 
@@ -281,7 +282,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
               <h3 style={sectionLabel}>elsewhere</h3>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {socialLinks.map((s) => (
-                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  <a className="profile-social" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
                     {SOCIAL_ICONS[s.platform]}
                     <span>{s.handle}</span>
                   </a>
@@ -366,16 +367,16 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           {isSelf && (
             <div style={{ borderTop: "1px solid #000", paddingTop: 16 }}>
               <h3 style={sectionLabel}>agent analytics</h3>
-              <div style={{ display: "flex", flexWrap: "wrap", border: "1px solid #000", background: "#fff" }}>
+              <div className="profile-stats">
                 {([
                   { label: "paired agents", value: agentStats?.pairedAgents, hint: "people your agent has negotiated with" },
                   { label: "negotiations", value: agentStats?.negotiations, hint: "every conversation, all time" },
                   { label: "in progress", value: agentStats?.inProgress, hint: "still talking" },
                   { label: "connections", value: agentStats?.connected, hint: "both of you said yes" },
-                ]).map((tile, i) => (
-                  <div key={tile.label} title={tile.hint} style={{ flex: "1 1 0", minWidth: 110, display: "flex", alignItems: "baseline", gap: 6, padding: "6px 10px", borderLeft: i ? "1px solid #000" : "none" }}>
+                ]).map((tile) => (
+                  <div className="profile-stat" key={tile.label} title={tile.hint}>
                     <span style={{ fontFamily: "var(--amiga-title)", fontSize: 16, fontWeight: 600 }}>{tile.value ?? "–"}</span>
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, whiteSpace: "nowrap" }}>{tile.label}</span>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>{tile.label}</span>
                   </div>
                 ))}
               </div>
