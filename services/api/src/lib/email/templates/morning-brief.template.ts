@@ -77,26 +77,26 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
   const act = (url: string, label: string) => `<a href="${href(url)}" style="color: #111; font-size: 12px;">${label}</a>`;
   const html = `<div style="font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.7; color: #111; max-width: 560px;">
   <p>Good morning, ${escapeHtml(firstName)}.</p>
+  ${questions.length ? `<p>${ask}</p>
+  ${questions.map((q) => `<p style="margin: 0 0 14px;">${escapeHtml(q.text)}<br />${act(q.url, 'answer →')}</p>`).join('\n  ')}` : ''}
   ${opening ? `<p>${escapeHtml(opening)}</p>` : ''}
   ${waiting.map((person) => `<p style="margin: 0 0 14px;"><a href="${href(person.profile)}" style="color: #111; font-weight: bold; text-decoration: none;">${escapeHtml(person.name)}</a>${person.context ? `<span style="color: #666;">: ${escapeHtml(person.context)}</span>` : ''}<br />${act(person.accept, 'accept')} <span style="color: #ccc;">·</span> ${act(person.pass, 'pass')}</p>`).join('\n  ')}
   ${more ? `<p>${small(p.appUrl, 'and more')}</p>` : ''}
   ${connected.length ? `<p>From someone you're already connected with:</p>
   ${connected.map((person) => `<p style="margin: 0 0 14px;"><b>${escapeHtml(person.name)}</b>${person.context ? `<span style="color: #666;">: ${escapeHtml(person.context)}</span>` : ''}<br /><span style="color: #666; font-size: 12px;">${escapeHtml(person.status)}</span> ${act(person.url, escapeHtml(person.label))}</p>`).join('\n  ')}` : ''}
   ${notes.map((note) => `<p>${escapeHtml(note.text)} ${small(note.url, 'See conversations')}</p>`).join('\n  ')}
-  ${questions.length ? `<p>${ask}</p>
-  ${questions.map((q) => `<p style="margin: 0 0 14px;">${escapeHtml(q.text)}<br />${act(q.url, 'answer →')}</p>`).join('\n  ')}` : ''}
   <p>I'll keep going in the background.<br />Your agent</p>
   <p style="color: #999; font-size: 11px; margin-top: 28px;">I only write when I need you. <a href="${href(offUrl)}" style="color: #999;">Turn off the daily brief</a></p>
 </div>`;
 
   const text = [
     `Good morning, ${firstName}.`,
+    ...(questions.length ? ['', ask, ...questions.flatMap((q) => ['', q.text, `Answer: ${q.url}`])] : []),
     ...(opening ? ['', opening] : []),
     ...waiting.flatMap((person) => ['', `${person.name}${person.context ? `: ${person.context}` : ''}`, `Accept: ${person.accept}`, `Pass: ${person.pass}`]),
     ...(more ? ['', `and more: ${p.appUrl}`] : []),
     ...(connected.length ? ['', "From someone you're already connected with:", ...connected.flatMap((person) => ['', `${person.name}${person.context ? `: ${person.context}` : ''}`, person.status, `${person.label}: ${person.url}`])] : []),
     ...notes.flatMap((note) => ['', note.text, `See conversations: ${note.url}`]),
-    ...(questions.length ? ['', ask, ...questions.flatMap((q) => ['', q.text, `Answer: ${q.url}`])] : []),
     '',
     "I'll keep going in the background.",
     'Your agent',
