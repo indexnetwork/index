@@ -57,7 +57,7 @@ function resolveAvatarSrc(avatar: string): string {
 function BoringFallback({ id, name, size, className, blur }: Omit<UserAvatarProps, 'avatar'>) {
   return (
     <div
-      className={`overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
+      className={`user-avatar overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
       style={{ width: size, height: size, borderRadius: 3 }}
     >
       <div className={blur ? 'blur-[3px]' : undefined}>
@@ -76,7 +76,7 @@ export default function UserAvatar({ id, name, avatar, size, className, blur }: 
 
   return (
     <div
-      className={`overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
+      className={`user-avatar overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
       style={{ width: size, height: size, borderRadius: 3 }}
     >
       <img

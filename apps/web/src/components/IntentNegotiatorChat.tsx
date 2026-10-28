@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import "@/styles/chat.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
-import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, DiscoveryTrace, OptionChip } from "@/components/chat/agent-chat-blocks";
+import { parseDiscovery } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatChatClock } from "@/lib/utils";
@@ -19,7 +21,7 @@ type Provenance = {
   matches?: PrincipalQuestion["matches"];
 };
 
-export type QuestionCard = {
+type QuestionCard = {
   questionId: string;
   text: string;
   options: string[];
@@ -35,7 +37,7 @@ function messageText(message: ConversationMessage): string {
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
 }
 
-export type FeedPiece =
+type FeedPiece =
   | { kind: "user" | "note" | "progress"; id: string; text: string }
   | { kind: "discovery"; id: string; loading: string[]; plan: string; queries: string[]; discovered: number | null; reached: number | null; progress: string }
   | { kind: "open-question"; id: string; question: QuestionCard }
@@ -131,7 +133,7 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
 }
 
 /** One private intent conversation; every open question is answered in a single submit. */
-export function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
+function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
   const people = (question.matches ?? [])
     .map((match) => match.counterparty)
     .filter((person): person is { id: string; name: string } => Boolean(person?.name));
@@ -142,9 +144,9 @@ export function questionAsker(question: { scope?: string; matches?: PrincipalQue
 
 function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch?: (opportunityId: string) => void) {
   const opportunityId = question.matches?.[0]?.opportunityId;
-  const style = { fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase" as const, letterSpacing: "0.08em" };
+  const style = { fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase" as const, letterSpacing: "0.05em" };
   if (!onSelectMatch || !opportunityId) return <span style={style}>{label}</span>;
-  return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{label}</button>;
+  return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
 }
 
 /**
@@ -184,18 +186,18 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
   const own = !options.includes(answer) && answer;
   const write = writing[id] || options.length === 0;
   return (
-    <article className="wb-stamped" style={{ display: "flex", gap: 10 }}>
-      {owner ? <TheirAgentAvatar owner={owner} size={20} style={{ marginTop: 1 }} /> : <MyAgentAvatar size={20} style={{ marginTop: 1 }} />}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
-          <span>QUESTION</span>
-          <span aria-hidden>·</span>
-          {questionAskerLabel(question, asker.label, onSelectMatch)}
-          {at && <time className="wb-stamp" dateTime={at} style={{ letterSpacing: 0 }}>{formatChatClock(at)}</time>}
+    <article className="wb-stamped" style={{ display: "flex", gap: 12 }}>
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
+            <span style={{ background: "#111", color: "#fff", padding: "2px 6px", borderRadius: 3, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>QUESTION</span>
+            {questionAskerLabel(question, asker.label, onSelectMatch)}
+            {at && <time className="wb-stamp" dateTime={at} style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88" }}>{formatChatClock(at)}</time>}
+          </div>
+          <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 600, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
         </div>
-        <div style={{ background: "var(--wb-selected)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{question.text}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {options.map((option) => (
             <OptionChip key={option} label={option} selected={answer === option}
               onClick={() => {
@@ -213,7 +215,7 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
               onKeyDown={(event) => { if (event.key === "Escape" && !event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               placeholder="write your own"
               aria-label="Write your own answer"
-              style={{ flex: "1 1 200px", minWidth: 160, background: "#fff", padding: "4px 10px", fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink)", outline: "none" }}
+              style={{ flex: "1 1 220px", minWidth: 180, minHeight: 36, border: "1px solid #000", padding: "8px 14px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#111", outline: "none" }}
             />
           ) : (
             <OptionChip write label="write your own" onClick={() => {
@@ -221,7 +223,6 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
               setWriting((current) => ({ ...current, [id]: true }));
             }} />
           )}
-        </div>
         </div>
       </div>
     </article>
@@ -236,24 +237,26 @@ function AnsweredQuestion({ question, answer, at }: {
   const asker = questionAsker(question);
   const owner = asker.owner;
   return (
-    <article className="wb-stamped" style={{ display: "flex", gap: 10 }}>
-      {owner ? <TheirAgentAvatar owner={owner} size={20} style={{ marginTop: 1 }} /> : <MyAgentAvatar size={20} style={{ marginTop: 1 }} />}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          <span style={{ color: "var(--wb-live)" }}>✓ answered</span>
-          <span aria-hidden>·</span>
-          <span>{asker.label}</span>
-          {at && <time className="wb-stamp" dateTime={at} style={{ textTransform: "none", letterSpacing: 0 }}>{formatChatClock(at)}</time>}
+    <article className="wb-stamped" style={{ display: "flex", gap: 12 }}>
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <span style={{ color: "#2f7d4f", fontWeight: 600 }}>✓ answered</span>
+            <span style={{ color: "#8f8f88" }}>{asker.label}</span>
+            {at && <time className="wb-stamp" dateTime={at} style={{ color: "#8f8f88", textTransform: "none" }}>{formatChatClock(at)}</time>}
+          </div>
+          <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
         </div>
-        <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{question.text}</div>
-        <div style={{ marginTop: 4, padding: "10px 12px", background: "#fff", border: "1px solid var(--wb-hairline)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{answer}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>{answer}</div>
+        </div>
       </div>
     </article>
   );
 }
 
-/** The intent's private agent conversation: transcript, open questions, and the two ways to write back. */
-export function useIntentAgentChat(intentId: string) {
+export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
@@ -266,6 +269,7 @@ export function useIntentAgentChat(intentId: string) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState(false);
   const requests = useRef({ generation: 0, mounted: false });
+  const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // An answer in the transcript settles its question, even while the server's list still holds it.
   const answered = new Set(messages.map((message) => (message.metadata?.principalMessage as Provenance | undefined)).filter((provenance) => provenance?.kind === "answer").map((provenance) => provenance!.questionId));
@@ -366,26 +370,17 @@ export function useIntentAgentChat(intentId: string) {
   const feed = useMemo(() => intentFeed(messages, questions), [messages, questions]);
   // A piece takes its time from the message it was built from; a live question with no message yet has none.
   const timeById = useMemo(() => new Map(messages.map((message) => [message.id, message.createdAt])), [messages]);
+  // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
   // Only a hosted agent answers here; an external one never will, so nothing waits on it.
   const hosted = agent?.status === "hosted";
   const waiting = hosted && messages.at(-1)?.role === "user";
   let firstWaiting = feed.length;
   while (waiting && firstWaiting > 0 && feed[firstWaiting - 1].kind === "user") firstWaiting--;
 
-  const retry = () => { setLoading(true); void refresh(); };
-
-  return { loading, loadFailed, retry, feed, questions, chosen, selections, setSelections, writing, setWriting, draft, setDraft, send, sendAnswers, sending, waiting, firstWaiting, timeById, inputRef };
-}
-
-export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
-  const { loading, loadFailed, retry, feed, questions, chosen, selections, setSelections, writing, setWriting, draft, setDraft, send, sendAnswers, sending, waiting, firstWaiting, timeById, inputRef } = useIntentAgentChat(intentId);
-  const endRef = useRef<HTMLDivElement>(null);
-  // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
-      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="chat-original" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
       {loading ? <EmptyState tone="loading" align="start" style={{ padding: 0 }} />
         : feed.length === 0 && questions.length === 0 && loadFailed ? (
           <EmptyState
@@ -393,9 +388,9 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             align="start"
             style={{ padding: 0 }}
             message="couldn't load your agent's messages."
-            action={{ label: "try again", onClick: retry }}
+            action={{ label: "try again", onClick: () => { setLoading(true); void refresh(); } }}
           />
-        ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>
+        ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
           ask about your matches, share a preference, or tell your agent what to look for.
         </p> : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
@@ -404,19 +399,16 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           }
           if (piece.kind === "user") {
             return (
-              <div key={piece.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
-                  YOU{at && <time dateTime={at} title={new Date(at).toLocaleString()} style={{ letterSpacing: 0 }}> · {formatChatClock(at)}</time>}
-                </div>
-                <div style={{ padding: "10px 12px", background: "#fff", border: "1px solid var(--wb-hairline)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>
+              <div key={piece.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                <div title={at ? new Date(at).toLocaleString() : undefined} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
-                {waiting && index > firstWaiting && <span style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>queued</span>}
+                {waiting && index > firstWaiting && <span style={{ marginTop: 4, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
               </div>
             );
           }
           if (piece.kind === "progress") {
-            return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· {piece.text}</p>;
+            return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· {piece.text}</p>;
           }
           if (piece.kind === "open-question") {
             return (
@@ -432,30 +424,31 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             </AgentFeedNote>
           );
         })}
-      {waiting && <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· thinking…</p>}
+      {waiting && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· thinking…</p>}
       <div ref={endRef} />
       </div>
 
       {chosen.length > 0 && (
-        <div style={{ borderTop: "1px solid var(--wb-hairline)", padding: "10px 16px", background: "#fff", display: "flex", flexDirection: "row-reverse", alignItems: "center", gap: 12 }}>
-          <button type="button" className="wb-btn small" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}>
-            {sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
-          </button>
-          <span style={{ flex: 1, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
+        <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", flexDirection: "row-reverse", alignItems: "center", gap: 12 }}>
+          <button type="button" disabled={!chosen.length || sending} onClick={() => void sendAnswers()} style={{
+            fontFamily: "var(--mac-mono)", fontSize: 12, padding: "8px 18px",
+            background: !sending ? "#111" : "#fff", color: !sending ? "#fff" : "#999", border: "1px solid #000",
+          }}>{sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}</button>
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88" }}>
             {questions.length - chosen.length > 0 ? `${questions.length - chosen.length} of ${questions.length} unanswered` : "all answered · ready to send"}
           </span>
         </div>
       )}
 
-      <form onSubmit={(event) => { event.preventDefault(); void send(); }} style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px solid var(--wb-hairline)", background: "#fff", padding: "0 8px 0 16px" }}>
+      <form onSubmit={(event) => { event.preventDefault(); void send(); }} style={{ display: "flex", gap: 10, alignItems: "flex-end", borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px" }}>
         <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
           placeholder="message your agent…"
           aria-label="Message your agent"
-          style={{ flex: 1, border: "none", borderRadius: 0, resize: "none", outline: "none", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.4, color: "var(--ink)", background: "transparent", padding: "14px 0" }} />
-        <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: "8px 10px", fontFamily: "var(--wb-code)", fontSize: 13, fontWeight: 500, color: draft.trim() && !sending ? "var(--ink)" : "#aaa", cursor: draft.trim() ? "pointer" : "default" }}>
-          ↑
+          style={{ flex: 1, border: "none", resize: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }} />
+        <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5,12 12,5 19,12" /></svg>
         </button>
       </form>
     </div>

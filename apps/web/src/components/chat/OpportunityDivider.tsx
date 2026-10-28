@@ -39,29 +39,29 @@ export default function OpportunityDivider({ opportunities, defaultExpanded = fa
         aria-expanded={expanded}
         aria-controls={panelId}
         className={cn(
-          'w-full flex items-center gap-2 text-xs text-[#777]',
-          'hover:text-[#555] transition-colors',
+          'w-full flex items-center gap-2 text-xs text-gray-400',
+          'hover:text-gray-600 transition-colors',
         )}
       >
-        <span className="flex-1 h-px bg-[#eeeeec]" />
+        <span className="flex-1 h-px bg-gray-200" />
         <span className="flex items-center gap-1.5 normal-case tracking-normal">
           <Check className="w-3.5 h-3.5" aria-hidden="true" />
           <span>Accepted &ldquo;{headline}&rdquo;</span>
           {extra > 0 && (
-            <span className="text-[#777]">+{extra} more</span>
+            <span className="text-gray-400">+{extra} more</span>
           )}
-          <span className="text-[#777]">&middot; {date}</span>
+          <span className="text-gray-400">&middot; {date}</span>
         </span>
-        <span className="flex-1 h-px bg-[#eeeeec]" />
+        <span className="flex-1 h-px bg-gray-200" />
       </button>
 
       {expanded && (
-        <div id={panelId} className="mt-3 mx-auto max-w-md text-xs text-[#555] space-y-2">
+        <div id={panelId} className="mt-3 mx-auto max-w-md text-xs text-gray-600 space-y-2">
           {opportunities.map((opp) => (
-            <div key={opp.opportunityId} className="bg-[#f7f7f5] border border-[#eeeeec] rounded-[3px] px-3 py-2">
-              <p className="font-medium text-[#141414]">{opp.headline}</p>
+            <div key={opp.opportunityId} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              <p className="font-medium text-gray-700">{opp.headline}</p>
               {opp.personalizedSummary && (
-                <p className="mt-1 text-[#666]">{opp.personalizedSummary}</p>
+                <p className="mt-1 text-gray-500">{opp.personalizedSummary}</p>
               )}
             </div>
           ))}

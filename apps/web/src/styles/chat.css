@@ -1,0 +1,115 @@
+/* Preserve conversation typography and controls without restyling the app shell. */
+.chat-original {
+  --amiga-bg: #0055aa;
+  --amiga-fg: #000000;
+  --amiga-paper: #ffffff;
+  --amiga-accent: #ff8a00;
+  --amiga-light: #ffffff;
+  --ink: #000000;
+  --ink-2: #5a5548;
+  --ink-3: #8a8578;
+  --ink-4: #b5af9f;
+  --ink-warn: #8a0000;
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", "Tahoma", "Geneva", -apple-system, system-ui, sans-serif;
+  --amiga-title: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--mac-sans);
+  line-height: 1.35;
+}
+.workbench .chat-original input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.workbench .chat-original textarea,
+.workbench .chat-original select {
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #fff;
+  font-family: var(--amiga-sans);
+}
+.workbench .chat-original input:focus,
+.workbench .chat-original textarea:focus {
+  border-color: #000;
+}
+.chat-original .user-avatar,
+.chat-original .user-avatar img {
+  border-radius: 0 !important;
+}
+.chat-original .agent-face {
+  border: 1px solid #000;
+  border-radius: 0 !important;
+}
+.workbench .chat-original .text-gray-400,
+.workbench .chat-original .text-gray-500,
+.workbench .chat-original .text-gray-600,
+.workbench .chat-original .text-gray-700,
+.workbench .chat-original .text-gray-900,
+.workbench .chat-original .text-\[\#3D3D3D\],
+.workbench .chat-original .text-\[\#041729\] {
+  color: #000;
+}
+.workbench .chat-original .bg-gray-50,
+.workbench .chat-original .bg-gray-100,
+.workbench .chat-original .bg-gray-200,
+.workbench .chat-original .bg-\[\#F8F8F8\],
+.workbench .chat-original .bg-\[\#FDFDFD\] {
+  background-color: #fff;
+}
+.workbench .chat-original .border-gray-100,
+.workbench .chat-original .border-gray-200,
+.workbench .chat-original .border-gray-300,
+.workbench .chat-original .border-gray-400,
+.workbench .chat-original .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #000;
+}
+.workbench .chat-original .shadow-sm,
+.workbench .chat-original .shadow,
+.workbench .chat-original .shadow-md,
+.workbench .chat-original .shadow-lg,
+.workbench .chat-original .shadow-xl {
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.workbench .chat-original .font-sans,
+.workbench .chat-original .font-ibm-plex-sans {
+  font-family: var(--mac-sans);
+}
+.workbench .chat-original .font-mono,
+.workbench .chat-original .font-ibm-plex-mono {
+  font-family: var(--mac-mono);
+}
+.workbench .chat-original button.font-sans {
+  font-family: var(--mac-mono) !important;
+  text-transform: lowercase;
+  letter-spacing: 0.4px;
+  border: 1px solid #000 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #000 !important;
+  height: auto !important;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
+}
+.workbench .chat-original button.font-sans.bg-\[\#041729\],
+.workbench .chat-original button.bg-\[\#041729\] {
+  background: #ff8a00 !important;
+  color: #000 !important;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
+}
+.workbench .chat-original .bg-blue-50,
+.workbench .chat-original .bg-green-50,
+.workbench .chat-original .bg-amber-50,
+.workbench .chat-original .bg-red-50 {
+  background: #fff;
+}
+.workbench .chat-original .text-blue-700,
+.workbench .chat-original .text-green-700,
+.workbench .chat-original .text-green-600,
+.workbench .chat-original .text-amber-700,
+.workbench .chat-original .text-red-600,
+.workbench .chat-original .text-red-500 {
+  color: #000;
+}
+
+
