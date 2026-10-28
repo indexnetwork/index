@@ -46,7 +46,7 @@ export default function OpportunityDivider({ opportunities, defaultExpanded = fa
         <span className="flex-1 h-px bg-gray-200" />
         <span className="flex items-center gap-1.5 normal-case tracking-normal">
           <Check className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>Accepted &ldquo;{headline}&rdquo;</span>
+          <span>{first.status === 'pending' ? 'Matched' : 'Accepted'} &ldquo;{headline}&rdquo;</span>
           {extra > 0 && (
             <span className="text-gray-400">+{extra} more</span>
           )}

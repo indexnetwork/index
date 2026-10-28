@@ -101,6 +101,7 @@ function toChatContextOpportunity(card: PresentedOpportunity): ChatContextOpport
     peerName: card.peer.name,
     peerAvatar: card.peer.avatar,
     acceptedAt: card.acceptedAt ?? card.updatedAt ?? null,
+    status: card.status,
   };
 }
 
@@ -156,6 +157,8 @@ export interface ChatContextOpportunity {
   peerAvatar: string | null;
   /** ISO-8601 acceptance time (from opportunities.updatedAt). May be null for legacy rows. */
   acceptedAt: string | null;
+  /** `pending` when only one side has accepted so far (the chat opens on the first accept). */
+  status: OpportunityStatus;
 }
 
 const RADAR_VIEW_RECENT_CACHE_TTL_MS = 1500;
@@ -280,8 +283,8 @@ export const createOpportunitiesService = (
   },
 
   /**
-   * Fetch accepted opportunities shared between the authenticated user and
-   * a peer. Used as inline context inside the h2h chat window.
+   * Fetch accepted (or one-side-accepted) opportunities shared between the
+   * authenticated user and a peer. Used as inline context inside the h2h chat window.
    */
   getChatContext: async (
     peerUserId: string,

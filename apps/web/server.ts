@@ -3,12 +3,20 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import { buildMetaMap, resolvePageMeta, ORIGIN, type PageMeta } from "./meta.config";
+import { createProfilePreview } from "./profile-preview";
+import { escapeMarkup } from "./profile-thumbnail";
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "dist");
 const HTML_CACHE_CONTROL = "no-store";
 const HASHED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const STATIC_FILE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 const NOT_FOUND_CACHE_CONTROL = "no-store";
+// Reserved root routes from src/routes.tsx; don't delay app navigation with a
+// public-profile lookup. Marketing routes are also covered by the meta map.
+const APP_ROOT_PATHS = new Set([
+  "/about", "/waitlist", "/9db20a5fbe", "/blog", "/chat", "/negotiations",
+  "/onboarding", "/agents", "/networks", "/settings", "/profile", "/cli-auth", "/login",
+]);
 // Apple app-site-association (universal links). Served directly — Apple
 // rejects redirects and requires an extensionless JSON response.
 const AASA_PATH = "/.well-known/apple-app-site-association";
@@ -59,17 +67,18 @@ interface WebHandlerOptions {
   distDir?: string;
   template?: string;
   metaMap?: Record<string, PageMeta>;
+  profilePreview?: ReturnType<typeof createProfilePreview>;
 }
 
 function replaceMeta(html: string, attr: string, key: string, value: string): string {
   return html.replace(
     new RegExp(`(<meta\\s+${attr}="${key}"\\s+content=")[^"]*(")`, "i"),
-    `$1${value}$2`,
+    (_match, before, after) => `${before}${escapeMarkup(value)}${after}`,
   );
 }
 
 function injectMeta(template: string, meta: PageMeta, pathname: string): string {
-  let html = template.replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`);
+  let html = template.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeMarkup(meta.title)}</title>`);
   html = replaceMeta(html, "name", "description", meta.description);
   html = replaceMeta(html, "property", "og:type", meta.type ?? "website");
   html = replaceMeta(html, "property", "og:url", `${ORIGIN}${pathname}`);
@@ -136,10 +145,11 @@ function notFound(req: Request): Response {
  * then the SPA entrypoint for any other extensionless path. Missing assets
  * fail as real 404s instead of receiving HTML.
  */
-export function createWebHandler(options: WebHandlerOptions = {}): (req: Request) => Response {
+export function createWebHandler(options: WebHandlerOptions = {}): (req: Request) => Promise<Response> {
   const distDir = options.distDir ?? DEFAULT_DIST;
   const template = options.template ?? readFileSync(join(distDir, "index.html"), "utf-8");
   const metaMap = options.metaMap ?? buildMetaMap(distDir);
+  const profilePreview = options.profilePreview ?? createProfilePreview();
   const noscript = Object.fromEntries(
     Object.entries(NOSCRIPT_FRAGMENTS).flatMap(([route, file]) => {
       const path = join(distDir, file);
@@ -147,7 +157,7 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
     }),
   );
 
-  return (req: Request): Response => {
+  return async (req: Request): Promise<Response> => {
     const reqUrl = new URL(req.url);
     const pathname = reqUrl.pathname;
     // `//` is a real pathname. The History API reads it as a protocol-relative
@@ -174,6 +184,10 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
     }
 
     const suppressPreview = reqUrl.searchParams.get("link_preview") === "false";
+    const thumbnail = /^\/profile-preview\/([a-zA-Z0-9-]{1,64})\.png$/.exec(pathname);
+    if (thumbnail && (req.method === "GET" || req.method === "HEAD")) {
+      return profilePreview.image(thumbnail[1], req.method === "HEAD");
+    }
     const relativePath = pathname.replace(/^\/+/, "");
     const filePath = join(distDir, relativePath);
 
@@ -211,7 +225,13 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
       return notFound(req);
     }
 
-    const meta = resolvePageMeta(metaMap, pathname);
+    let meta = resolvePageMeta(metaMap, pathname);
+    const profilePath = /^\/(?:u\/)?([a-zA-Z0-9-]{3,64})\/?$/.exec(pathname);
+    // Static marketing routes take precedence. Public lookups for other root
+    // paths safely return no profile for reserved handles and missing users.
+    if (!meta && profilePath && !suppressPreview && !APP_ROOT_PATHS.has(pathname.replace(/\/$/, ""))) {
+      meta = await profilePreview.meta(profilePath[1]);
+    }
     let html = meta ? injectMeta(template, meta, pathname) : template;
     if (noscript[pathname]) html = injectFragment(html, noscript[pathname], pathname);
     if (suppressPreview) html = stripPreviewSurface(html);
