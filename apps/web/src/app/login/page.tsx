@@ -40,6 +40,9 @@ function LoginPage() {
       title="Sign in to Index"
       meta={<p className="site-p">Index finds the right people for you, before you even think to look.</p>}
     >
+      {['INVALID_TOKEN', 'EXPIRED_TOKEN'].includes(new URLSearchParams(window.location.search).get('error') || '') && (
+        <p className="site-p" role="alert">This sign-in link has expired or has already been used. Request a new link below.</p>
+      )}
       <SiteSignInCard
         bar="Sign in"
         sentTo={linkSentTo}
