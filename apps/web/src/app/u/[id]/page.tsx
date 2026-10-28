@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Check, Copy } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks, useOpportunities } from "@/contexts/APIContext";
@@ -42,7 +43,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   const back = useBack("/");
   const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const [searchParams] = useSearchParams();
-  // `?as=public` renders the page as a signed-out visitor sees it, which is what share profile opens.
+  // `?as=public` renders the page as a signed-out visitor sees it.
   const asPublic = searchParams.get("as") === "public";
   const signedIn = isAuthenticated && !asPublic;
   const usersService = useUsers();
@@ -61,6 +62,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState(false);
   const [agentStats, setAgentStats] = useState<AgentStats | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // `id` is a user id or a username; the loaded profile says whose page this is.
   const profileId = profileData?.id;
@@ -143,10 +145,28 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
     return () => { active = false; };
   }, [isSelf, usersService]);
 
+  // Opens an X compose window with the profile link; X unfurls it into a card.
+  const profileUrl = () =>
+    profileData ? `${window.location.origin}${profileData.username ? `/${profileData.username}` : `/u/${profileData.id}`}` : "";
+
   const shareProfile = () => {
     if (!profileData) return;
-    const path = `${profileData.username ? `/${profileData.username}` : `/u/${profileData.id}`}?as=public`;
-    window.open(path, "_blank", "noopener,noreferrer");
+    const url = profileUrl();
+    const intent = new URL("https://x.com/intent/post");
+    intent.searchParams.set("text", "Have your agent talk to my agent on @indexnetwork_");
+    intent.searchParams.set("url", url);
+    window.open(intent.toString(), "_blank", "noopener,noreferrer");
+  };
+
+  const copyProfileLink = async () => {
+    if (!profileData) return;
+    try {
+      await navigator.clipboard.writeText(profileUrl());
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      logger.error('Failed to copy profile link', { error: err });
+    }
   };
 
   const pair = async () => {
@@ -241,7 +261,10 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
             {isSelf && (
               <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
                 <button type="button" className="wb-btn small" onClick={() => navigate("/profile/edit")}>edit profile</button>
-                <button type="button" className="wb-btn primary small" onClick={shareProfile}>share profile</button>
+                <button type="button" className="wb-btn small" onClick={copyProfileLink} aria-label={linkCopied ? "link copied" : "copy link"} title={linkCopied ? "copied" : "copy link"} style={{ display: "inline-flex", alignItems: "center" }}>
+                  {linkCopied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                </button>
+                <button type="button" className="wb-btn primary small" onClick={shareProfile}>share on X</button>
               </div>
             )}
           </div>
