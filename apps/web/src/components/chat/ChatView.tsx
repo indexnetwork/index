@@ -160,7 +160,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         const conv = await getOrCreateDm(userId);
         if (!mounted) return;
         const cid = initialGroupId ?? conv.id;
-        if (cid && !conversationId) setConversationId(cid);
+        if (cid) setConversationId(cid);
       } catch (err) {
         logger.error('DM init error', { error: err });
       } finally {
@@ -170,7 +170,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
     init();
     return () => { mounted = false; };
-  }, [userId, initialGroupId, getOrCreateDm, conversationId]);
+  }, [userId, initialGroupId, getOrCreateDm]);
 
   useEffect(() => {
     const sameConversation = scrolledConversationRef.current === conversationId;
@@ -325,7 +325,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
             ) : null}
 
-            {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
+            {timeline.map((item, index) => {
                 if (item.type === 'opportunity') {
                   return (
                     <OpportunityDivider
