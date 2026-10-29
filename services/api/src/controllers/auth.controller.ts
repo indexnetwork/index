@@ -69,7 +69,11 @@ export class AuthController {
     if (process.env.EDGEOS_TENANT_ID) {
       providers.push('edge-city');
     }
-    return Response.json({ providers, emailPassword: emailPasswordEnabled });
+    return Response.json({
+      providers,
+      emailPassword: emailPasswordEnabled,
+      emailPasswordRestricted: process.env.NODE_ENV === 'production',
+    });
   }
 
   /**
