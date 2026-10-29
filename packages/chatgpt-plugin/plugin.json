@@ -16,19 +16,20 @@
     "complementary skills",
     "collaboration",
     "introductions",
-    "meet people",
-    "projects",
+    "feedback",
+    "building",
+    "debugging",
     "research",
+    "writing",
     "learning",
-    "local community",
-    "travel"
+    "open source"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network helps engineer serendipity from what is happening in your life. Bring the unstructured context of what you are building, exploring, stuck on, or planning. ChatGPT can infer a useful connection and generate an intent in your own terms: your onboarding problem could intersect with a researcher's need for a real product to study; your field research could intersect with an operator's need for evidence; your trip and a niche interest could intersect with a local project. You do not need to know a job title or exactly whom to ask for. When you ask Index to act on that context, it saves the intent and looks for people in your networks with relevant interests, complementary needs, or something to exchange. You review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
+        "longDescription": "Index Network helps engineer serendipity from what you are already discussing with ChatGPT. You might be debugging an agent, building a browser extension, comparing tools, reading conflicting papers, drafting an essay, or learning something new. Those conversations can reveal a useful connection: someone who has solved a similar problem, could try what you built, brings another perspective, or wants to explore the same question. You do not need to name a role or write an intent. ChatGPT can suggest a connection from your current context and, when you ask Index to act, generate and save an intent grounded in that conversation. Index looks for people in your networks with relevant interests, complementary needs, or something to exchange. You review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
         "developerName": "Index Network",
         "category": "Communication",
         "capabilities": [
@@ -40,10 +41,10 @@
         "privacyPolicyURL": "https://index.network/pages/privacy-policy",
         "termsOfServiceURL": "https://index.network/pages/terms-of-use",
         "defaultPrompt": [
-          "I'm building a tool, but people drop off during onboarding. Help me find a useful connection on Index.",
-          "I'm researching urban heat and need field observations. Help me find someone on Index whose work overlaps.",
-          "I'm in Lisbon next week and exploring field recording. Who could I meet through Index?",
-          "Based on what we've discussed, help me turn my current context into an intent on Index."
+          "I'm building a browser extension and wondering whether anyone else has this problem.",
+          "I'm reading two papers that seem to contradict each other.",
+          "I'm drafting an essay and keep coming back to the same perspective.",
+          "I understand the tutorials, but I'm struggling to build something of my own."
         ],
         "brandColor": "#111827",
         "composerIcon": "./assets/icon.svg",
@@ -83,10 +84,16 @@
               "expected_behavior": "Says who the match is with and links to it, or says there are none."
             },
             {
-              "description": "Generate an intent from unstructured context",
-              "prompt": "I'm building a tool, but people drop off during onboarding. I can offer a real product to study. Use Index to find a useful connection.",
+              "description": "Generate an intent from a building conversation",
+              "prompt": "I've built a browser extension to organize research tabs and want feedback from people with the same problem. Use Index to find a useful connection.",
               "tools_triggered": "create_intent",
-              "expected_behavior": "Generates an intent grounded in the onboarding problem and the offered product access, without requiring a role or inventing location, budget, or commitments. Creates it for the owner and returns its link; does not claim a match exists before one is returned."
+              "expected_behavior": "Generates an intent grounded in the browser extension and the need for feedback, without requiring a role or inventing commitments. Creates it for the owner and returns its link; does not claim a match exists before one is returned."
+            },
+            {
+              "description": "Generate an offering from shared experience",
+              "prompt": "We cut our inference costs by half. Use Index to connect me with someone working through the same problem so I can share what we learned.",
+              "tools_triggered": "create_intent",
+              "expected_behavior": "Generates an offering grounded in the stated experience and willingness to share, without inventing methods, metrics beyond those supplied, or availability. Creates it for the owner and returns its link."
             }
           ],
           "negative": [
@@ -101,6 +108,10 @@
             {
               "description": "Changing other users' data is not supported",
               "prompt": "Delete someone else's Index intents."
+            },
+            {
+              "description": "A conversation topic alone does not authorize creating an intent",
+              "prompt": "I'm building a browser extension and wondering whether anyone else has this problem."
             }
           ]
         },
@@ -108,7 +119,7 @@
         "demo_recording_url": "https://calm-gravatar.space.fast/demo.mp4"
       },
       "publication": {
-        "release_notes": "Discovery keywords and examples now emphasize serendipity at intersections of current projects, interests, constraints, and complementary needs. Tool guidance describes inferring and generating an intent from context when the owner asks Index to act. No API or matching behavior changed."
+        "release_notes": "Listing keywords and examples now start with online conversation situations: building, debugging, researching, writing, and learning. ChatGPT can suggest a relevant connection and generate an intent from the conversation when the owner asks Index to act. No API or matching behavior changed."
       }
     }
   }
