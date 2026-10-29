@@ -35,6 +35,8 @@ export async function decideMcpConsent(code: string, accept: boolean): Promise<s
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
+let pendingToken: Promise<string> | null = null;
+let tokenGeneration = 0;
 
 const JWT_TOKEN_TIMEOUT_MS = 10_000;
 
@@ -75,6 +77,18 @@ export async function getJwtToken(): Promise<string> {
     return cachedToken;
   }
 
+  if (pendingToken) return pendingToken;
+  const generation = tokenGeneration;
+  const request = fetchJwtToken(generation);
+  pendingToken = request;
+  try {
+    return await request;
+  } finally {
+    if (pendingToken === request) pendingToken = null;
+  }
+}
+
+async function fetchJwtToken(generation: number): Promise<string> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const { data, error } = await Promise.race([
@@ -83,7 +97,7 @@ export async function getJwtToken(): Promise<string> {
         timeoutId = setTimeout(() => reject(new AuthSessionError()), JWT_TOKEN_TIMEOUT_MS);
       }),
     ]);
-    if (error || !data?.token) throw new AuthSessionError();
+    if (generation !== tokenGeneration || error || !data?.token) throw new AuthSessionError();
 
     const expiresAt = readTokenExpiry(data.token);
     if (expiresAt <= Date.now()) throw new AuthSessionError();
@@ -92,7 +106,7 @@ export async function getJwtToken(): Promise<string> {
     tokenExpiresAt = expiresAt;
     return cachedToken;
   } catch (error) {
-    clearJwtToken();
+    if (generation === tokenGeneration) clearJwtToken();
     if (error instanceof AuthSessionError) throw error;
     throw new AuthSessionError();
   } finally {
@@ -101,6 +115,8 @@ export async function getJwtToken(): Promise<string> {
 }
 
 export function clearJwtToken() {
+  tokenGeneration += 1;
+  pendingToken = null;
   cachedToken = null;
   tokenExpiresAt = 0;
 }
