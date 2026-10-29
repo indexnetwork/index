@@ -10,33 +10,25 @@
   "homepage": "https://index.network",
   "license": "MIT",
   "keywords": [
-    "cofounder",
-    "investors",
-    "fundraising",
-    "hiring",
-    "founding engineer",
-    "mentorship",
-    "collaborators",
-    "introductions",
-    "networking",
-    "meet people",
-    "new friends",
-    "coffee chat",
-    "beta users",
-    "design partners",
-    "matchmaking",
-    "travel",
-    "community",
+    "serendipity",
     "discovery",
-    "intents",
-    "matching"
+    "shared interests",
+    "complementary skills",
+    "collaboration",
+    "introductions",
+    "meet people",
+    "projects",
+    "research",
+    "learning",
+    "local community",
+    "travel"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network matches you with the right people. Tell ChatGPT who you're looking for in your own words: a cofounder, investors for your round, a founding engineer, a mentor, first users for your product — or simply interesting people: new friends in your city, someone who shares a hobby, or people to meet on your next trip. Index keeps it as an intent, matches it with people in your networks who fit, and you review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
+        "longDescription": "Index Network helps engineer serendipity from what is happening in your life. Bring the unstructured context of what you are building, exploring, stuck on, or planning. ChatGPT can infer a useful connection and generate an intent in your own terms: your onboarding problem could intersect with a researcher's need for a real product to study; your field research could intersect with an operator's need for evidence; your trip and a niche interest could intersect with a local project. You do not need to know a job title or exactly whom to ask for. When you ask Index to act on that context, it saves the intent and looks for people in your networks with relevant interests, complementary needs, or something to exchange. You review, accept, or pass on each match. Index acts only on your own account and never accepts or passes on a match without your confirmation.",
         "developerName": "Index Network",
         "category": "Communication",
         "capabilities": [
@@ -48,10 +40,10 @@
         "privacyPolicyURL": "https://index.network/pages/privacy-policy",
         "termsOfServiceURL": "https://index.network/pages/terms-of-use",
         "defaultPrompt": [
-          "Find me a technical cofounder on Index.",
-          "I'm in SF next week — who should I meet?",
-          "Help me meet new people in my city.",
-          "Do I have any new matches on Index?"
+          "I'm building a tool, but people drop off during onboarding. Help me find a useful connection on Index.",
+          "I'm researching urban heat and need field observations. Help me find someone on Index whose work overlaps.",
+          "I'm in Lisbon next week and exploring field recording. Who could I meet through Index?",
+          "Based on what we've discussed, help me turn my current context into an intent on Index."
         ],
         "brandColor": "#111827",
         "composerIcon": "./assets/icon.svg",
@@ -89,6 +81,12 @@
               "prompt": "Tell me about one of my Index matches.",
               "tools_triggered": "list_opportunities, get_opportunity",
               "expected_behavior": "Says who the match is with and links to it, or says there are none."
+            },
+            {
+              "description": "Generate an intent from unstructured context",
+              "prompt": "I'm building a tool, but people drop off during onboarding. I can offer a real product to study. Use Index to find a useful connection.",
+              "tools_triggered": "create_intent",
+              "expected_behavior": "Generates an intent grounded in the onboarding problem and the offered product access, without requiring a role or inventing location, budget, or commitments. Creates it for the owner and returns its link; does not claim a match exists before one is returned."
             }
           ],
           "negative": [
@@ -110,7 +108,7 @@
         "demo_recording_url": "https://calm-gravatar.space.fast/demo.mp4"
       },
       "publication": {
-        "release_notes": "Listing keywords and example prompts now reflect how members actually ask: cofounders, investors, mentors, first users, and everyday asks like meeting people while traveling. No tool behavior changed."
+        "release_notes": "Discovery keywords and examples now emphasize serendipity at intersections of current projects, interests, constraints, and complementary needs. Tool guidance describes inferring and generating an intent from context when the owner asks Index to act. No API or matching behavior changed."
       }
     }
   }
