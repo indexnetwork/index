@@ -6,6 +6,7 @@ export interface EnrichmentRequest {
   twitter?: string;
   github?: string;
   telegram?: string;
+  bluesky?: string;
   websites?: string[];
 }
 
@@ -28,6 +29,7 @@ export interface EnrichmentResult {
     twitter?: string;
     github?: string;
     telegram?: string;
+    bluesky?: string;
     websites?: string[];
   };
   confidentMatch: boolean;

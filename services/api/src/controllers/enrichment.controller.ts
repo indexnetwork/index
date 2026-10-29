@@ -13,6 +13,7 @@ const enrichBodySchema = z.object({
   twitter: z.string().optional(),
   github: z.string().optional(),
   telegram: z.string().optional(),
+  bluesky: z.string().optional(),
   websites: z.array(z.string()).optional(),
 }).strict();
 
