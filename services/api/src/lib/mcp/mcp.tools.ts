@@ -359,7 +359,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
+      description: 'Use when the owner asks Index to act on a useful connection arising from their current conversation. Context may include debugging, building a product, comparing tools, researching a question, writing, learning, exploring open source, or sharing hard-won experience. A builder could benefit from someone with the same problem who can try their tool; a researcher from someone exploring the same question; a writer from a complementary perspective; someone sharing experience from a person who needs it. Infer the useful connection and generate a concrete intent from supplied context; the owner does not need to name a role or formulate an intent. Include what they need and can offer when stated, leaving room to discover an unexpected counterpart. Do not invent constraints, commitments, or an existing match. When a connection seems relevant but the owner has not asked Index to act, suggest it conversationally first; do not create an intent merely because a topic came up. Prepare and create the intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
