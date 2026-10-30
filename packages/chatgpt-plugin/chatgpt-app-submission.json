@@ -120,6 +120,14 @@
         "open_world_justification": "Reads one match the owner can already see inside Index."
       }
     },
+    "show_opportunity_card": {
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false },
+      "justifications": {
+        "read_only_justification": "Renders one match as an inline card without changing it; the card's buttons call accept_opportunity and reject_opportunity, which carry their own annotations.",
+        "destructive_justification": "Does not accept, pass, or send anything itself.",
+        "open_world_justification": "Reads one match the owner can already see inside Index; the card's CSP allows no external connects or resources."
+      }
+    },
     "accept_opportunity": {
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": false },
       "justifications": {

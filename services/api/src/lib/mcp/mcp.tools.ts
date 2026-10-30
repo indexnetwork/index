@@ -16,6 +16,7 @@ import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { cosignEnricher, cosignLine } from './mcp.cosign';
 import { MCP_CADENCE, MCP_ONBOARDING } from './mcp.instructions';
+import { MATCH_CARD_TOOL_META } from './mcp.ui';
 import { clientRequestedProgress, mcpProgress } from './mcp.progress';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import { userEventTail, watchIntentDiscovery, type IntentWatchOutcome } from './mcp.watch';
@@ -704,6 +705,63 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         },
         negotiation,
       }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}${cosignLine(cosign)}`);
+    }),
+  );
+
+  server.registerTool(
+    'show_opportunity_card',
+    {
+      description: 'Show one visible opportunity as an interactive match card with Accept and Pass buttons, by UUID or supported short ID prefix. Prefer it over get_opportunity in hosts that render MCP UI components; the card\'s buttons call accept_opportunity and reject_opportunity themselves, so don\'t repeat the accept/pass choice in text.' + LINK_HINT,
+      inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
+      outputSchema: z.object({
+        opportunity: z.object({
+          id: z.string(),
+          url: z.string(),
+          status: z.string(),
+          viewerCommitted: z.boolean(),
+          headline: z.string().nullable(),
+          summary: z.string().nullable(),
+          cta: z.string().nullable(),
+          chatUrl: z.string().nullable(),
+          cosignText: z.string().nullable(),
+          peer: z.object({ name: z.string(), url: z.string() }),
+        }),
+      }),
+      annotations: hints('Show match card', true, false, false, true),
+      _meta: { ...MATCH_CARD_TOOL_META },
+    },
+    ({ opportunityId }) => runTool('show_opportunity_card', principal, async () => {
+      const resolved = await resolveOpportunity(opportunityId, principal);
+      if ('error' in resolved) return resolved.error;
+      const opportunity = await opportunityService.getOpportunityWithPresentation(resolved.id, principal.userId);
+      if (!opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
+      if ('error' in opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
+      const url = appLink('o', opportunity.id);
+      const peer = { name: opportunity.peer.name, url: appLink('u', opportunity.peer.userId) };
+      const cosign = await (await cosignEnricher(principal.userId))?.(opportunity.peer.userId) ?? null;
+      const committed = opportunity.viewerCommitted === true;
+      const card = {
+        opportunity: {
+          id: opportunity.id,
+          url,
+          status: opportunity.status,
+          viewerCommitted: committed,
+          headline: opportunity.headline || null,
+          summary: opportunity.mainText || null,
+          cta: opportunity.cta || null,
+          // Like the web app: a committed or accepted match already has its chat.
+          chatUrl: committed || opportunity.status === 'accepted' ? `${peer.url}/chat` : null,
+          cosignText: cosignLine(cosign).trim() || null,
+          peer,
+        },
+      };
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `${opportunityLine(peer.name, url, opportunity.headline || undefined, opportunity.status, null, committed)}\n\n${JSON.stringify({ success: true, ...card })}`,
+        }],
+        structuredContent: card,
+      };
     }),
   );
 
