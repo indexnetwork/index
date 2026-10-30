@@ -4,10 +4,11 @@ import type { UserSocial } from '../../../platform/database.js';
  * Infers a canonical social label from a URL or handle string.
  *
  * @param value - A URL or plain handle string.
- * @returns One of `'linkedin' | 'twitter' | 'github' | 'telegram' | 'custom'`.
+ * @returns One of `'linkedin' | 'twitter' | 'github' | 'telegram' | 'bluesky' | 'custom'`.
  */
 export function detectSocialLabel(value: string): string {
   const lower = value.toLowerCase();
+  if (/^(?:https?:\/\/)?(?:www\.)?bsky\.app\/profile\//.test(lower)) return 'bluesky';
   if (lower.includes('linkedin.com')) return 'linkedin';
   if (lower.includes('x.com') || lower.includes('twitter.com')) return 'twitter';
   if (lower.includes('github.com')) return 'github';
@@ -21,6 +22,7 @@ export interface EnrichmentRequest {
   twitter?: string;
   github?: string;
   telegram?: string;
+  bluesky?: string;
   websites?: string[];
 }
 
@@ -43,6 +45,9 @@ export function socialsToEnrichmentRequest(socials: UserSocial[]): EnrichmentReq
         break;
       case 'github':
         result.github = s.value;
+        break;
+      case 'bluesky':
+        result.bluesky = s.value;
         break;
       case 'telegram':
         result.telegram = s.value;

@@ -268,7 +268,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
      Values arrive in every shape a person or a scraper can produce: a full URL,
      a host with a path, a bare handle, an @handle, and — from enrichment — a
      few of those packed into one field separated by commas. The label is no
-     steadier: the API's vocabulary is linkedin|twitter|github|telegram|custom,
+     steadier: the API's vocabulary is linkedin|twitter|github|telegram|bluesky|custom,
      and 'custom' is also where every website lands, so a LinkedIn URL routinely
      arrives labelled 'custom'.
 
@@ -285,6 +285,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     linkedin: "linkedin.com/in/",
     github: "github.com/",
     telegram: "t.me/",
+    bluesky: "bsky.app/profile/",
   };
 
   /** Labels that name a bucket rather than a platform, so the value decides. */
@@ -295,13 +296,14 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     [/^(mobile\.)?(x\.com|twitter\.com)$/, "x"],
     [/^([a-z0-9-]+\.)?linkedin\.com$/, "linkedin"],
     [/^github\.com$/, "github"],
+    [/^bsky\.app$/, "bluesky"],
     [/^(t\.me|telegram\.me|telegram\.dog)$/, "telegram"],
   ];
 
   const SOCIAL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
   /** The platforms the editor always offers, in the order it shows them. */
-  const EDITABLE_PLATFORMS = ["x", "linkedin", "github", "telegram"];
+  const EDITABLE_PLATFORMS = ["x", "linkedin", "github", "telegram", "bluesky"];
 
   /**
    * The first address in a field that may hold several. Enrichment writes
@@ -355,6 +357,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   function handleFromPath(platform, host, path) {
     if (platform === "website") return host + path;
     const rest = path.replace(/^\//, "").replace(/^@/, "");
+    if (platform === "bluesky") return rest.replace(/^profile\//, "").replace(/^@/, "");
     // LinkedIn keeps people under /in/ and everything else (companies, schools)
     // one segment up, so only /in/ is dropped: what is left still says which.
     return platform === "linkedin" ? rest.replace(/^in\//, "") : rest;
@@ -385,6 +388,13 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const raw = firstSocialValue(entry.handle == null ? entry.value : entry.handle);
     if (!raw) return { platform: fromLabel || "website", handle: "", href: "" };
 
+    // AT Protocol handles are domains, including custom domains. Explicit URLs
+    // still follow host detection; bare domains in this field are handles.
+    if (fromLabel === "bluesky" && !SOCIAL_SCHEME.test(raw) && !/[/?#]/.test(raw)) {
+      const handle = raw.replace(/^@+/, "");
+      return { platform: fromLabel, handle: handle, href: platformHref(fromLabel, handle) };
+    }
+
     if (looksHosted(raw)) {
       const parts = splitSocialHostPath(raw);
       const platform = platformForHost(parts.host) || fromLabel || "website";
@@ -408,7 +418,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
   /**
    * The label to store an entry under. The API's set is fixed
-   * (linkedin|twitter|github|telegram|custom), so 'x' is stored as 'twitter'.
+   * (linkedin|twitter|github|telegram|bluesky|custom), so 'x' is stored as 'twitter'.
    * A label outside the set silently loses the link.
    */
   function socialApiLabelOf(social) {

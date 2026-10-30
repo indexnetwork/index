@@ -4,7 +4,7 @@
  * Values arrive in every shape a person or a scraper can produce: a full URL, a
  * host with a path, a bare handle, an @handle, and — from enrichment — a few of
  * those packed into one field separated by commas. The label is no steadier:
- * the stored set is linkedin|twitter|github|telegram|custom, and 'custom' is
+ * the stored set is linkedin|twitter|github|telegram|bluesky|custom, and 'custom' is
  * also where every website lands, so a LinkedIn URL routinely arrives labelled
  * 'custom'.
  *
@@ -18,7 +18,7 @@
  * macOS app's own bundle.
  */
 
-export type SocialPlatform = 'x' | 'linkedin' | 'github' | 'telegram' | 'website';
+export type SocialPlatform = 'x' | 'linkedin' | 'github' | 'telegram' | 'bluesky' | 'website';
 
 export interface SocialEntry {
   id?: string;
@@ -41,6 +41,7 @@ const PREFIX: Record<string, string> = {
   linkedin: 'linkedin.com/in/',
   github: 'github.com/',
   telegram: 't.me/',
+  bluesky: 'bsky.app/profile/',
 };
 
 /** Labels naming a bucket rather than a platform, so the value decides. */
@@ -50,6 +51,7 @@ const PLATFORM_HOSTS: Array<[RegExp, SocialPlatform]> = [
   [/^(mobile\.)?(x\.com|twitter\.com)$/, 'x'],
   [/^([a-z0-9-]+\.)?linkedin\.com$/, 'linkedin'],
   [/^github\.com$/, 'github'],
+  [/^bsky\.app$/, 'bluesky'],
   [/^(t\.me|telegram\.me|telegram\.dog)$/, 'telegram'],
 ];
 
@@ -103,6 +105,7 @@ function labelPlatform(social: SocialEntry): SocialPlatform | '' {
 function handleFromPath(platform: SocialPlatform, host: string, path: string): string {
   if (platform === 'website') return `${host}${path}`;
   const rest = path.replace(/^\//, '').replace(/^@/, '');
+  if (platform === 'bluesky') return rest.replace(/^profile\//, '').replace(/^@/, '');
   // LinkedIn keeps people under /in/ and everything else (companies, schools)
   // one segment up, so only /in/ is dropped: what is left still says which.
   return platform === 'linkedin' ? rest.replace(/^in\//, '') : rest;
@@ -128,6 +131,13 @@ export function parseSocial(social: SocialEntry = {}): ResolvedSocial {
   const raw = firstSocialValue(social.handle ?? social.value ?? '');
   if (!raw) return { platform: fromLabel || 'website', handle: '', href: '' };
 
+  // AT Protocol handles are domains, including custom domains. In the Bluesky
+  // field a bare domain is a handle; explicit URLs still follow host detection.
+  if (fromLabel === 'bluesky' && !SCHEME.test(raw) && !/[/?#]/.test(raw)) {
+    const handle = raw.replace(/^@+/, '');
+    return { platform: fromLabel, handle, href: platformHref(fromLabel, handle) };
+  }
+
   if (looksHosted(raw)) {
     const { host, path } = splitHostPath(raw);
     const platform = platformForHost(host) || fromLabel || 'website';
@@ -152,7 +162,7 @@ export function socialHrefOf(social: SocialEntry): string {
 }
 
 /** The order the profile shows them in; anything else follows as a website. */
-const PLATFORM_ORDER: SocialPlatform[] = ['x', 'linkedin', 'github', 'telegram', 'website'];
+const PLATFORM_ORDER: SocialPlatform[] = ['x', 'linkedin', 'github', 'telegram', 'bluesky', 'website'];
 
 /**
  * Every social worth drawing, resolved, de-duplicated and in a fixed order.

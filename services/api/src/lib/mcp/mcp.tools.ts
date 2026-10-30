@@ -297,6 +297,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         twitter: z.string().optional(),
         github: z.string().optional(),
         telegram: z.string().optional(),
+        bluesky: z.string().optional(),
         websites: z.array(z.string()).optional(),
       }).strict(),
       annotations: hints('Enrich my profile', true, false, true, true),
