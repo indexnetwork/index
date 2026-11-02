@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { isInviteLanding } from './invite-landing';
+import { isInviteLanding, shouldReleaseIndexEarly } from './invite-landing';
 
 const BASE = 'https://index.network';
 
@@ -35,5 +35,22 @@ describe('isInviteLanding', () => {
   test('missing callback URL', () => {
     expect(isInviteLanding(undefined, BASE)).toBe(false);
     expect(isInviteLanding('', BASE)).toBe(false);
+  });
+});
+
+describe('shouldReleaseIndexEarly', () => {
+  const EARLY = 'early-network-id';
+
+  test('an invitation to another network releases Index Early', () => {
+    expect(shouldReleaseIndexEarly(EARLY, 'bonfires-london')).toBe(true);
+  });
+
+  test('an invitation to Index Early itself keeps the membership', () => {
+    expect(shouldReleaseIndexEarly(EARLY, EARLY)).toBe(false);
+  });
+
+  test('nothing to release when Index Early is not configured', () => {
+    expect(shouldReleaseIndexEarly(undefined, 'bonfires-london')).toBe(false);
+    expect(shouldReleaseIndexEarly('', 'bonfires-london')).toBe(false);
   });
 });

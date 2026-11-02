@@ -19,6 +19,27 @@ export function isInviteLanding(callbackURL: string | undefined, appBaseURL: str
   return false;
 }
 
+/**
+ * How recently an Index Early membership must have been made for an
+ * invitation to undo it. The sign-in auto-join lands seconds before the
+ * invitation is accepted; the window allows for an agent that joins a few
+ * minutes after its owner signs in, and leaves older memberships alone.
+ */
+export const INDEX_EARLY_RELEASE_WINDOW_MINUTES = 15;
+
+/**
+ * Whether accepting an invitation to `invitedNetworkId` should undo a fresh
+ * sign-in auto-join to Index Early. The sign-in check cannot always tell that
+ * someone came from an invitation (a Google sign-in loses the return URL, an
+ * agent signs in before it joins), so the invitation itself settles it.
+ *
+ * @param indexEarlyNetworkId - INDEX_EARLY_NETWORK_ID, when configured.
+ * @param invitedNetworkId - The network the invitation was for.
+ */
+export function shouldReleaseIndexEarly(indexEarlyNetworkId: string | undefined, invitedNetworkId: string): boolean {
+  return !!indexEarlyNetworkId && indexEarlyNetworkId !== invitedNetworkId;
+}
+
 function safeDecode(value: string): string {
   try {
     return decodeURIComponent(value);
