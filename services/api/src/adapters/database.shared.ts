@@ -24,6 +24,7 @@ export const logger = log.lib.from('database.adapter');
 
 export function detectSocialLabel(value: string): string {
   const lower = value.toLowerCase();
+  if (/^(?:https?:\/\/)?(?:www\.)?bsky\.app\/profile\//.test(lower)) return 'bluesky';
   if (lower.includes('linkedin.com')) return 'linkedin';
   if (lower.includes('x.com') || lower.includes('twitter.com')) return 'twitter';
   if (lower.includes('github.com')) return 'github';

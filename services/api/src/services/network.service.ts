@@ -1,6 +1,7 @@
 import { log } from '../lib/log';
 import { authorizeUrl, dropTokens, finishAuth } from '../lib/network-mcp/network-mcp.client';
 import { getNetworkPulseSummary, SUMMARY_MIN_MEMBERS } from '../lib/network-pulse-summary';
+import { INDEX_EARLY_RELEASE_WINDOW_MINUTES, shouldReleaseIndexEarly } from '../lib/betterauth/invite-landing';
 import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { handleDatabaseAdapter, type HandleCheck } from '../adapters/handle.database.adapter';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
@@ -332,7 +333,28 @@ export class NetworkService {
     logger.verbose('Accepting invitation', { userId });
     const network = await this.adapter.getNetworkByShareCode(code);
     if (network && await this.adapter.getNetworkMcp(network.id)) throw new Error(MCP_ONLY);
-    return this.adapter.acceptNetworkInvitation(code, userId);
+    const result = await this.adapter.acceptNetworkInvitation(code, userId);
+    await this.releaseIndexEarlyForInvitee(result.network.id, userId);
+    return result;
+  }
+
+  /**
+   * Someone accepting an invitation belongs to the network that invited them,
+   * not Index Early. The sign-in auto-join cannot always tell (a Google
+   * sign-in loses the invite return URL; an agent signs in before it joins),
+   * so a fresh auto-join is undone here. Best-effort: never fails the join.
+   */
+  private async releaseIndexEarlyForInvitee(invitedNetworkId: string, userId: string): Promise<void> {
+    const indexEarlyId = process.env.INDEX_EARLY_NETWORK_ID?.trim();
+    if (!indexEarlyId || !shouldReleaseIndexEarly(indexEarlyId, invitedNetworkId)) return;
+    try {
+      const released = await this.adapter.releaseFreshIndexEarlyMembership(
+        indexEarlyId, userId, INDEX_EARLY_RELEASE_WINDOW_MINUTES,
+      );
+      if (released) logger.verbose('Released fresh Index Early membership for invitee', { userId, invitedNetworkId });
+    } catch (error) {
+      logger.error('Failed to release Index Early membership for invitee', { userId, error: String(error) });
+    }
   }
 
   /**

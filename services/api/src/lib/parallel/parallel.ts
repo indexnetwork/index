@@ -110,6 +110,7 @@ export interface ParallelSearchRequestStruct {
   twitter?: string;
   github?: string;
   telegram?: string;
+  bluesky?: string;
   websites?: string[];
 }
 
@@ -144,6 +145,7 @@ export async function searchUser(request: ParallelSearchRequest, options?: { sig
     }
     if (request.linkedin) objective += `\nLinkedIn: ${request.linkedin}`;
     if (request.twitter) objective += `\nTwitter: ${request.twitter}`;
+    if (request.bluesky) objective += `\nBluesky: ${request.bluesky}`;
     if (request.github) objective += `\nGitHub: ${request.github}`;
     if (request.websites?.length) objective += `\nWebsites: ${request.websites.join(', ')}`;
   }
@@ -383,6 +385,7 @@ const enrichmentResultSchema = z.object({
     linkedin: z.string().optional(),
     twitter: z.string().optional(),
     github: z.string().optional(),
+    bluesky: z.string().optional(),
     websites: z.array(z.string()).optional(),
   }),
   confidentMatch: z.boolean(),
@@ -435,6 +438,7 @@ const profileEnrichmentSchema = {
         socials: {
           type: "object",
           properties: {
+            bluesky: { type: "string", description: "Bluesky handle (including its domain) or full bsky.app/profile/ URL." },
             linkedin: { type: "string", description: "LinkedIn username only (the part after /in/ in the URL). NOT the full URL." },
             twitter: { type: "string", description: "Twitter/X username only (without @ symbol). NOT the full URL, NOT tweet URLs." },
             github: { type: "string", description: "GitHub username only. NOT the full URL." },
@@ -501,6 +505,7 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
     request.twitter ||
     request.linkedin ||
     request.github ||
+    request.bluesky ||
     request.websites?.length
   );
 
@@ -518,6 +523,7 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
   if (name && email) promptParts.push(`Email: ${email}`);
   if (request.twitter) promptParts.push(`Twitter: ${request.twitter}`);
   if (request.linkedin) promptParts.push(`LinkedIn: ${request.linkedin}`);
+  if (request.bluesky) promptParts.push(`Bluesky: ${request.bluesky}`);
   if (request.github) promptParts.push(`GitHub: ${request.github}`);
   if (request.websites?.length) promptParts.push(`Websites: ${request.websites.join(', ')}`);
 

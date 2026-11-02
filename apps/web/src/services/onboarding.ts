@@ -40,7 +40,7 @@ export function awaitsFirstIntent(user: unknown): boolean {
   return !!onboarding?.profileConfirmedAt && !onboarding.completedAt;
 }
 
-const PLATFORM_LABELS = { twitter: "x", linkedin: "linkedin", github: "github", telegram: "telegram" } as const;
+const PLATFORM_LABELS = { twitter: "x", linkedin: "linkedin", github: "github", telegram: "telegram", bluesky: "bluesky" } as const;
 
 /**
  * The review form's starting point: the account record, with every blank the

@@ -5,7 +5,7 @@
  * Values arrive in every shape a person or a scraper can produce: a full URL,
  * a host with a path, a bare handle, an @handle, and — from enrichment — a
  * few of those packed into a single field separated by commas. The label is no
- * steadier. The API's vocabulary is linkedin|twitter|github|telegram|custom,
+ * steadier. The API's vocabulary is linkedin|twitter|github|telegram|bluesky|custom,
  * and 'custom' is also where every website lands, so a LinkedIn URL routinely
  * arrives labelled 'custom'.
  *
@@ -25,6 +25,7 @@ export const SOCIAL_PREFIX = {
   linkedin: 'linkedin.com/in/',
   github: 'github.com/',
   telegram: 't.me/',
+  bluesky: 'bsky.app/profile/',
 };
 
 /**
@@ -38,6 +39,7 @@ const PLATFORM_HOSTS = [
   [/^(mobile\.)?(x\.com|twitter\.com)$/, 'x'],
   [/^([a-z0-9-]+\.)?linkedin\.com$/, 'linkedin'],
   [/^github\.com$/, 'github'],
+  [/^bsky\.app$/, 'bluesky'],
   [/^(t\.me|telegram\.me|telegram\.dog)$/, 'telegram'],
 ];
 
@@ -99,6 +101,7 @@ function labelPlatform(social) {
 function handleFromPath(platform, host, path) {
   if (platform === 'website') return `${host}${path}`;
   const rest = path.replace(/^\//, '').replace(/^@/, '');
+  if (platform === 'bluesky') return rest.replace(/^profile\//, '').replace(/^@/, '');
   // LinkedIn keeps people under /in/ and everything else (companies, schools)
   // one segment up, so only /in/ is dropped: what is left still says which.
   return platform === 'linkedin' ? rest.replace(/^in\//, '') : rest;
@@ -153,6 +156,13 @@ export function parseSocial(social = {}) {
   const raw = firstSocialValue(social.handle ?? social.value ?? '');
   if (!raw) return { platform: fromLabel || 'website', handle: '', href: '' };
 
+  // AT Protocol handles are domains, including custom domains. In the Bluesky
+  // field a bare domain is a handle; explicit URLs still follow host detection.
+  if (fromLabel === 'bluesky' && !SCHEME.test(raw) && !/[/?#]/.test(raw)) {
+    const handle = raw.replace(/^@+/, '');
+    return { platform: fromLabel, handle, href: platformHref(fromLabel, handle) };
+  }
+
   if (looksHosted(raw)) {
     const { host, path } = splitHostPath(raw);
     const platform = platformForHost(host) || fromLabel || 'website';
@@ -190,7 +200,7 @@ export function socialHrefOf(social = {}) {
 /**
  * The label to store an entry under.
  *
- * The API's set is fixed (linkedin|twitter|github|telegram|custom, see the
+ * The API's set is fixed (linkedin|twitter|github|telegram|bluesky|custom, see the
  * protocol's detectSocialLabel) and every other surface filters on it, so the
  * platform ids used for drawing are translated back on the way out: 'x' is
  * stored as 'twitter'. A label outside the set silently loses the link — it
@@ -211,7 +221,7 @@ export function normalizeSocial(social = {}) {
 }
 
 /** The platforms the editor always offers, in the order it shows them. */
-export const EDITABLE_PLATFORMS = ['x', 'linkedin', 'github', 'telegram'];
+export const EDITABLE_PLATFORMS = ['x', 'linkedin', 'github', 'telegram', 'bluesky'];
 
 /**
  * Bucket a stored social list into the editor's fixed fields plus websites.

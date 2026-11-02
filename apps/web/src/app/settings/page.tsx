@@ -75,7 +75,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     });
     mark();
   };
-  const customSocials = socials.filter(s => !['linkedin', 'twitter', 'github', 'telegram'].includes(s.label));
+  const customSocials = socials.filter(s => !['linkedin', 'twitter', 'github', 'telegram', 'bluesky'].includes(s.label));
 
   const [notificationPreferences, setNotificationPreferences] = useState<{
     opportunity?: boolean;
@@ -298,6 +298,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                   { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial("linkedin") },
                   { prefix: "github.com/", label: "github", value: getSocial("github") },
                   { prefix: "t.me/", label: "telegram", value: getSocial("telegram") },
+                  { prefix: "bsky.app/profile/", label: "bluesky", value: getSocial("bluesky") },
                 ].map(({ prefix, label, value }) => (
                   <label key={label} style={{ display: "flex", alignItems: "center", border: "1px solid #000", background: "#fff", minWidth: 0 }}>
                     <span style={{ padding: "8px 8px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", borderRight: "1px solid #000", whiteSpace: "nowrap" }}>{prefix}</span>

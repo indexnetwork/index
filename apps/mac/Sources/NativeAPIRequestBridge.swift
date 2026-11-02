@@ -652,7 +652,7 @@ final class NativeAPIRequestBridge {
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
         case "/enrichment/enrich":
-            return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
+            return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "bluesky", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
         case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
         case "/auth/devices/revoke":

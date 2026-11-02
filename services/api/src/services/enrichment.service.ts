@@ -12,6 +12,7 @@ export interface ResearchHints {
   twitter?: string;
   github?: string;
   telegram?: string;
+  bluesky?: string;
   websites?: string[];
 }
 
@@ -24,12 +25,13 @@ export interface PrefillProfileResult {
 }
 
 function socialsToRequest(socials: Array<{ label: string; value: string }>) {
-  const out: { linkedin?: string; twitter?: string; github?: string; telegram?: string; websites?: string[] } = {};
+  const out: { linkedin?: string; twitter?: string; github?: string; telegram?: string; bluesky?: string; websites?: string[] } = {};
   for (const s of socials) {
     const label = s.label.toLowerCase();
     if (label === 'linkedin') out.linkedin = s.value;
     else if (label === 'twitter') out.twitter = s.value;
     else if (label === 'github') out.github = s.value;
+    else if (label === 'bluesky') out.bluesky = s.value;
     else if (label === 'telegram') out.telegram = s.value;
     else out.websites = [...(out.websites ?? []), s.value];
   }
@@ -49,6 +51,7 @@ function mapEnrichmentToPrefill(
   const socials: { label: string; value: string }[] = [];
   if (enrichment.socials.twitter) socials.push({ label: 'twitter', value: enrichment.socials.twitter });
   if (enrichment.socials.linkedin) socials.push({ label: 'linkedin', value: enrichment.socials.linkedin });
+  if (enrichment.socials.bluesky) socials.push({ label: 'bluesky', value: enrichment.socials.bluesky });
   if (enrichment.socials.github) socials.push({ label: 'github', value: enrichment.socials.github });
   if (enrichment.socials.websites?.length) {
     for (const w of enrichment.socials.websites) socials.push({ label: 'custom', value: w });
@@ -81,6 +84,7 @@ export class EnrichmentService {
       linkedin: hints.linkedin?.trim() || accountReq.linkedin,
       twitter: hints.twitter?.trim() || accountReq.twitter,
       github: hints.github?.trim() || accountReq.github,
+      bluesky: hints.bluesky?.trim() || accountReq.bluesky,
       telegram: hints.telegram?.trim() || accountReq.telegram,
       websites: hints.websites?.length ? hints.websites : accountReq.websites?.length ? accountReq.websites : undefined,
     });
