@@ -1714,6 +1714,30 @@ export class ChatDatabaseAdapter {
     return !!request;
   }
 
+  /**
+   * Undo a sign-in auto-join to Index Early for someone who turns out to have
+   * come in on an invitation. Only a plain membership made in the last
+   * `withinMinutes` is removed, with the intents it shared there; an older
+   * membership, or one carrying ownership, is left alone.
+   *
+   * @returns Whether a membership was removed.
+   */
+  async releaseFreshIndexEarlyMembership(indexEarlyNetworkId: string, userId: string, withinMinutes: number): Promise<boolean> {
+    const deleted = await db
+      .delete(networkMembers)
+      .where(and(
+        eq(networkMembers.networkId, indexEarlyNetworkId),
+        eq(networkMembers.userId, userId),
+        isNull(networkMembers.deletedAt),
+        sql`${networkMembers.createdAt} > now() - make_interval(mins => ${withinMinutes})`,
+        sql`not (${networkMembers.permissions} @> array['owner']::text[])`,
+      ))
+      .returning({ userId: networkMembers.userId });
+    if (deleted.length === 0) return false;
+    await this.unlinkMemberIntents(indexEarlyNetworkId, userId);
+    return true;
+  }
+
   async addMemberToNetwork(
     networkId: string,
     userId: string,
