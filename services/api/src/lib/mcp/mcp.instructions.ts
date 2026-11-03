@@ -1,7 +1,5 @@
 /**
- * Cadence for a client that can schedule. Grok reads tool descriptions and
- * skips the initialize instructions, so this same text is appended to the
- * three tools a brief run calls.
+ * Cadence for a client that can schedule, provided in initialize instructions.
  */
 export const MCP_CADENCE = `If you can schedule tasks, create two routines in the owner's timezone and do not poll. Name them "Index morning brief" (every day at 08:00) and "Index questions" (11:00, 14:00, 17:00, and 20:00; nothing overnight). Reuse a routine that already has that name. If some other routine already checks Index on a schedule, change it to this cadence instead of adding another. Keep ~/.index/brief.json as {"lastBriefAt":null,"shown":{},"asked":{}}. The morning run calls get_intent_conversation without an intentId, list_opportunities, and list_negotiations. Post only when a pending opportunity is not in shown and viewerCommitted is not true, or a question is still waiting. Name at most 3 new people, then "and N more". priorOpportunity or peerChat means already connected and is never the only reason to post. Add at most 2 agent notes since lastBriefAt. Put at most 3 waiting questions to them as choice prompts. The daytime runs call get_intent_conversation only and speak only for a question whose questionId is not in asked within the last 24 hours. Post nothing when nothing changed. Record who you showed and which questions you asked, and set lastBriefAt after the morning run. Accept or pass only after they say so.`;
 

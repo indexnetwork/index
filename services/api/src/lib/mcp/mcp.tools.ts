@@ -15,15 +15,14 @@ import { actionLink, appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { cosignEnricher, cosignLine } from './mcp.cosign';
-import { MCP_CADENCE, MCP_ONBOARDING } from './mcp.instructions';
+import { MCP_ONBOARDING } from './mcp.instructions';
 import { clientRequestedProgress, mcpProgress } from './mcp.progress';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import { userEventTail, watchIntentDiscovery, type IntentWatchOutcome } from './mcp.watch';
 import type { McpPrincipal } from './mcp.types';
 
-const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, intent, or opportunity name itself, never as a separate "link" word.';
-const CADENCE_HINT = ` ${MCP_CADENCE}`;
-const NARRATION_HINT = ' While this call runs, discovery is live; when the result arrives, lead your reply with what happened during the watch — negotiations opened, opportunities ready, or a question waiting — before anything else. It is the part the owner is waiting to hear.';
+const LINK_HINT = ' The result includes a markdown summary with links on person, intent, or opportunity names.';
+const DISCOVERY_RESULT_HINT = ' Discovery continues during the watch period. The result includes available updates about negotiations, opportunities, and waiting questions.';
 
 /** Every hint is an explicit boolean. Idempotent means the same arguments again change nothing further. */
 const hints = (
@@ -360,7 +359,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + NARRATION_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create an intent for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT + DISCOVERY_RESULT_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
@@ -608,7 +607,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT + CADENCE_HINT,
+      description: 'Use when the owner asks who they should meet or what matches are waiting. List compact opportunity cards across the owner\'s Index or within one owned intent. Defaults to active, actionable statuses and never includes negotiation turns; use list_negotiations for those.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -722,7 +721,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_negotiations',
     {
-      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT + CADENCE_HINT,
+      description: 'List the owner\'s negotiations (the agents\' exchanges behind opportunities), optionally for one owned intent, with whose turn it is and the outcome. Filter by state: open or settled. Turns are not included; read them with get_negotiation.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         state: z.enum(['open', 'settled']).optional(),
@@ -773,7 +772,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Put each one to the owner as a choice prompt built from those fields, never inline in your reply, and save their pick or own words with principal_send_message and that questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT + CADENCE_HINT,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Answers can be saved with principal_send_message using the questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
       inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },
