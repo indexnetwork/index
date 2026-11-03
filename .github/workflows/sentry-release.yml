@@ -52,7 +52,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
         if: steps.config.outputs.enabled == 'true'
         with:
-          bun-version: "1.2.20"
+          bun-version: "1.4.4"
 
       - name: Build API artifacts
         if: steps.config.outputs.enabled == 'true'
