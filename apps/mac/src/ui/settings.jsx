@@ -3,33 +3,51 @@
 // the keys other agents authenticate with.
 
 function EmailChangeField({ email }) {
-  const [editing, setEditing] = useState(false);
+  const dialog = React.useRef(null);
   const [value, setValue] = useState("");
+  const [sentTo, setSentTo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const send = async () => {
     if (busy) return;
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setError("");
     try {
-      await window.IndexApp.changeEmail(value.trim().toLowerCase());
-      setMessage(`Check ${value.trim()} for a verification link. Your current email stays active until verified. If no email arrives, check spam or try another address; it may already be in use.`);
-      setEditing(false); setValue("");
+      const address = value.trim().toLowerCase();
+      await window.IndexApp.changeEmail(address);
+      setSentTo(address);
     } catch (e) { setError(e.message || "Could not request email change. Try again."); }
     finally { setBusy(false); }
   };
-  return <div style={{ fontFamily:"var(--mac-sans)", fontSize:13 }}>
-    <TextField label="email" value={email} disabled />
-    {editing ? <div style={{ display:"grid", gap:8, marginTop:8 }}>
-      <label>new email<input aria-label="new email" type="email" autoComplete="email" value={value} disabled={busy}
-        onChange={e => setValue(e.target.value)} style={{ ...wellStyle(false), width:"100%" }} /></label>
-      <div style={{ display:"flex", gap:12 }}>
-        <button type="button" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) || value.trim().toLowerCase() === (email || "").toLowerCase()} onClick={send}>{busy ? "sending…" : "send verification link"}</button>
-        <button type="button" disabled={busy} onClick={() => { setEditing(false); setError(""); }}>cancel</button>
-      </div>
-    </div> : <button type="button" style={{ marginTop:8, textDecoration:"underline" }} onClick={() => setEditing(true)}>change email</button>}
-    {message && <p role="status">{message}</p>}
-    {error && <p role="alert" style={{ color:"var(--ink-warn)" }}>{error}</p>}
+  return <div style={{ minWidth:0, fontFamily:"var(--mac-sans)", fontSize:13 }}>
+    <FieldLabel>email</FieldLabel>
+    <div style={{ ...wellStyle(true), gap:10 }}>
+      <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:"var(--ink-2)" }}>{email}</span>
+      <button type="button" aria-label="change email" style={{ border:0, borderLeft:"1px solid var(--ink-3)", padding:"0 0 0 10px", background:"transparent", fontFamily:"var(--mac-mono)", fontSize:11, cursor:"pointer" }}
+        onClick={() => { setValue(""); setSentTo(""); setError(""); dialog.current.showModal(); }}>change</button>
+    </div>
+    {ReactDOM.createPortal(<dialog ref={dialog} aria-label="change email" onCancel={e => { e.stopPropagation(); if (busy) e.preventDefault(); }}
+      onKeyDown={e => { if (e.key === "Escape") e.stopPropagation(); }}
+      style={{ padding:0, border:0, width:420, maxWidth:"calc(100vw - 32px)", background:"transparent", color:"#000" }}>
+      <MacWindow title={sentTo ? "check your inbox" : "change email"}>
+        <form onSubmit={e => { e.preventDefault(); if (!sentTo) send(); }}>
+          <div style={{ display:"grid", gap:18, padding:24, fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5 }}>
+            <p style={{ margin:0, overflowWrap:"anywhere" }}>{sentTo ? <>Follow the link sent to <strong>{sentTo}</strong> to finish updating your email.</> : "We’ll send a link to verify your new address."}</p>
+            {sentTo ? <p role="status" style={{ margin:0, color:"var(--ink-2)", fontSize:12 }}>Your current email stays active until you verify.</p> :
+              <label style={{ fontFamily:"var(--mac-mono)", fontSize:11, fontWeight:600 }}>new email
+                <input aria-label="new email" type="email" autoComplete="email" required value={value} disabled={busy} placeholder="you@example.com"
+                  onChange={e => setValue(e.target.value)} style={{ ...wellStyle(false), marginTop:6, width:"100%", boxSizing:"border-box", fontFamily:"var(--mac-sans)", fontSize:13, fontWeight:400 }} />
+              </label>}
+            {error && <p role="alert" style={{ margin:0, color:"var(--ink-warn)", fontSize:12 }}>{error}</p>}
+          </div>
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, borderTop:"1px solid #000", padding:"12px 18px" }}>
+            {sentTo ? <Btn primary onClick={() => dialog.current.close()}>done</Btn> : <>
+              <Btn disabled={busy} onClick={() => dialog.current.close()}>cancel</Btn>
+              <Btn primary type="submit" disabled={busy || !value.trim() || value.trim().toLowerCase() === (email || "").toLowerCase()}>{busy ? "sending…" : "continue"}</Btn>
+            </>}
+          </div>
+        </form>
+      </MacWindow>
+    </dialog>, document.body)}
   </div>;
 }
 
