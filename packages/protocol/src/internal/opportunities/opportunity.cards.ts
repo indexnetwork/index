@@ -21,6 +21,8 @@ const PRESENTATION_CONCURRENCY = 50;
 export interface OpportunityCard {
   opportunityId: string;
   createdAt?: string;
+  /** When the opportunity last changed: arrived, committed, accepted, or closed. Stamped live on every read. */
+  updatedAt?: string;
   /** Lifecycle status of the underlying opportunity at render time. */
   status?: OpportunityStatus;
   userId: string;
@@ -162,7 +164,7 @@ export async function presentOpportunityCard(
     try {
       const hit = await deps.cache.get<OpportunityCard>(cacheKey);
       if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
-        return stampPeerContext(stampViewerCommitted({ ...hit, status: opportunity.status }, viewerCommitted), peerContext);
+        return stampPeerContext(stampViewerCommitted({ ...hit, status: opportunity.status, updatedAt: opportunity.updatedAt.toISOString() }, viewerCommitted), peerContext);
       }
     } catch (error) {
       logger.warn('card cache read failed, presenting', { opportunityId: opportunity.id, error });
@@ -180,6 +182,7 @@ export async function presentOpportunityCard(
   const identity = {
     opportunityId: opportunity.id,
     createdAt: opportunity.createdAt.toISOString(),
+    updatedAt: opportunity.updatedAt.toISOString(),
     status: opportunity.status,
     userId: counterpart.userId,
     name,

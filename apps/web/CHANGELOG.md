@@ -8,6 +8,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **Radar cards show how long ago they changed.** Under the buttons each card
+  reads `status · age`: `awaiting you · 3h`, `in progress · 12m`,
+  `accepted · 1d`, `not a fit · 3d`, or `missed · Oct 12`. The age is the time
+  since the opportunity last changed (arrived, accepted, or closed) and steps
+  12m → 3h → 2d → 3w, then a date. The list is sorted by that time, newest
+  first. An awaiting-you card older than three days fades until hovered. The
+  "chat open" chip is gone: a card you accepted says "accepted".
 - **Continue on web is remembered** for intent and profile links. The next
   external open in this browser skips the launch screen and shows the page.
   Opportunity links still use the launch screen.

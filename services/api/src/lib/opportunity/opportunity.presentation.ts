@@ -68,6 +68,7 @@ export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOppo
     opportunityId: item.opportunityId,
     status: item.status ?? 'pending',
     createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
     peer: {
       userId: item.userId,
       name: item.name,

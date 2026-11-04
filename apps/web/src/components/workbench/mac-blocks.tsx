@@ -29,8 +29,9 @@ export function MatchCard({
   ready,
   negotiating,
   expired,
-  closedLabel,
-  waitingOnThem,
+  statusLabel,
+  age,
+  stale,
   hasChat,
   onOpen,
   onOpenChat,
@@ -47,9 +48,12 @@ export function MatchCard({
   ready: boolean;
   negotiating: boolean;
   expired: boolean;
-  /** Chip on a closed card: "not a fit" or "missed". */
-  closedLabel?: string;
-  waitingOnThem?: boolean;
+  /** Stage word under the buttons: "awaiting you", "in progress", "accepted", "not a fit" or "missed". */
+  statusLabel: string;
+  /** How long ago the card last changed ("3h"), joined to the stage word. */
+  age?: string | null;
+  /** Awaiting the viewer too long: the card fades. */
+  stale?: boolean;
   hasChat: boolean;
   onOpen: () => void;
   onOpenChat: () => void;
@@ -62,6 +66,28 @@ export function MatchCard({
     e.stopPropagation();
     onProfile();
   };
+  const agentLogStyle = { display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" } as const;
+  const actions = accepted ? (
+    <button type="button" className="wb-btn primary small" onClick={onOpen}>
+      {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
+    </button>
+  ) : ready && hasChat ? (
+    <button type="button" className="wb-btn primary small" onClick={onOpenChat}>open chat ›</button>
+  ) : ready ? (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>
+      <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
+    </div>
+  ) : negotiating ? (
+    <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
+      <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
+      agent log ›
+    </button>
+  ) : expired ? (
+    <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
+      agent log ›
+    </button>
+  ) : null;
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
@@ -77,6 +103,7 @@ export function MatchCard({
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
         boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: hover ? "translate(-1px, -1px)" : "none",
+        opacity: stale && !hover ? 0.5 : 1,
         cursor: "pointer",
         transition: "all .12s ease",
       }}>
@@ -94,38 +121,10 @@ export function MatchCard({
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>
       </div>
       <div style={{ display: "grid", gap: 6, alignContent: "start", justifyItems: "end" }} onClick={(e) => e.stopPropagation()}>
-        {accepted ? (
-          <>
-            {waitingOnThem && (
-              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)" }}>chat open</span>
-            )}
-            <button type="button" className="wb-btn primary small" onClick={onOpen}>
-              {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
-            </button>
-          </>
-        ) : ready && hasChat ? (
-          <button type="button" className="wb-btn primary small" onClick={onOpenChat}>open chat ›</button>
-        ) : ready ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>
-            <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
-          </div>
-        ) : negotiating ? (
-          <>
-            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>in progress</span>
-            <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
-              <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
-              agent log ›
-            </button>
-          </>
-        ) : expired ? (
-          <>
-            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>{closedLabel || "missed"}</span>
-            <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
-              agent log ›
-            </button>
-          </>
-        ) : null}
+        {actions}
+        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", whiteSpace: "nowrap" }}>
+          {age ? `${statusLabel} · ${age}` : statusLabel}
+        </span>
       </div>
     </div>
   );
