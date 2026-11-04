@@ -8,8 +8,8 @@ const MUTE = "#5E6F7C";
 const BG = "#FCFEFB";
 /** Milliseconds per animation time unit; higher is slower. */
 const TIME_SCALE_MS = 700;
-/** Blank space left of the leftmost element in the drawing's own coordinates. */
-const LEFT_INSET = 40;
+/** Shift left while leaving room for the label's serif overhang. */
+const LEFT_INSET = 32;
 const NAMES = ["Mira", "Theo", "Zoe", "Omar", "Nina", "Sam"];
 /** Which counterparty matches in each 9s cycle. */
 const HITS = [2, 0, 4, 1, 5, 3];
