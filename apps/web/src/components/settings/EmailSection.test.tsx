@@ -11,6 +11,7 @@ it('requests verification without displaying the new address as the current emai
   changeEmail.mockResolvedValue({ data: { status: true } });
   render(<MemoryRouter><EmailSection email="old@example.com" /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'change email' }));
+  expect(screen.getByRole('dialog').closest('.workbench')).not.toBeNull();
   fireEvent.change(screen.getByLabelText('new email'), { target: { value: 'NEW@example.com' } });
   fireEvent.click(screen.getByText('continue'));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('current email stays active'));

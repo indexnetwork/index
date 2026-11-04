@@ -13,5 +13,3 @@
 .email-dialog-note { margin: 0; color: var(--ink-2); font-size: 12px; }
 .email-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #000; }
 .email-setting-error { margin: 8px 0 0; font-family: var(--mac-sans); font-size: 12px; line-height: 1.5; color: var(--ink-warn); }
-
-.email-dialog-footer .wb-btn.primary { background: #000; color: #fff; box-shadow: none; }
