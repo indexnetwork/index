@@ -14,7 +14,17 @@ export const authClient = createAuthClient({
 
 const authBaseURL = `${protocolOrigin()}/api/auth`;
 
-export async function getMcpConsentDetails(code: string): Promise<{ clientName: string; redirectURI: string }> {
+export type McpConsentDetails = {
+  /** Self-registered by the client; not verified. */
+  clientName: string;
+  redirectURI: string;
+  /** Where approval sends the authorization code. */
+  redirectHost: string;
+  /** Set when the redirect goes to a recognised client's host. */
+  knownClientName: string | null;
+};
+
+export async function getMcpConsentDetails(code: string): Promise<McpConsentDetails> {
   const url = `${authBaseURL}/mcp/consent-details?${new URLSearchParams({ consent_code: code })}`;
   const response = await fetch(url, { credentials: 'include' });
   if (!response.ok) throw new Error('This authorization request is no longer available for this account.');

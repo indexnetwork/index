@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 
-import { decideMcpConsent, getMcpConsentDetails } from '@/lib/auth-client';
+import { decideMcpConsent, getMcpConsentDetails, type McpConsentDetails } from '@/lib/auth-client';
 import { SiteSignInPage, SiteSignInPanel } from '@/components/SiteSignIn';
 
 const consentCode = new URLSearchParams(window.location.search).get('consent_code');
 
-type ClientDetails = Awaited<ReturnType<typeof getMcpConsentDetails>>;
-
 function McpConsentPage() {
-  const [client, setClient] = useState<ClientDetails | null>(null);
+  const [client, setClient] = useState<McpConsentDetails | null>(null);
   const [error, setError] = useState<string | null>(
     consentCode ? null : 'This authorization request is invalid. Start again from your MCP client.',
   );
@@ -38,8 +36,13 @@ function McpConsentPage() {
       <SiteSignInPanel bar="MCP access request" wide>
         {client ? (
           <>
-            <p className="signin-subtitle" style={{ overflowWrap: "anywhere" }}>{client.clientName}</p>
-            <p className="site-p">This client name is unverified. Approving grants this client <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
+            <p className="signin-subtitle" style={{ overflowWrap: "anywhere" }}>{client.knownClientName ?? client.clientName}</p>
+            {client.knownClientName ? (
+              <p className="site-p">Verified: approval returns to <strong>{client.redirectHost}</strong>. Approving grants {client.knownClientName} <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
+            ) : (
+              // Clients name themselves when they register, so only the redirect host says who gets access.
+              <p className="site-p">This client named itself, so the name is unverified. Approval returns to <strong style={{ overflowWrap: "anywhere" }}>{client.redirectHost}</strong>. Approving grants this client <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
+            )}
             {/* Above the actions, so a failed decision reads next to the buttons (and clear of the sticky bar on phones). */}
             {error && <p role="alert" className="signin-error">{error}</p>}
             <div className="signin-actions signin-actions--sticky">
