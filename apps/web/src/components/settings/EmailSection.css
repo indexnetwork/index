@@ -1,0 +1,17 @@
+.email-setting { min-width: 0; font-family: var(--mac-sans); font-size: 13px; }
+.email-setting-label { display: block; margin-bottom: 5px; font-family: var(--mac-mono); font-size: 11px; font-weight: 600; }
+.email-setting-well { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid #000; background: #edeae1; box-shadow: inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff; }
+.email-setting-well > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: normal; color: var(--ink-2); }
+.email-setting-change { flex: none; padding: 0 0 0 10px; border: 0; border-left: 1px solid var(--ink-3); background: transparent; font-family: var(--mac-mono); font-size: 11px; cursor: pointer; }
+.email-setting-change:hover { text-decoration: underline; }
+.email-dialog-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 85, 170, .28); }
+.email-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 201; width: 420px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; background: #fff; }
+.email-dialog-body { display: grid; gap: 18px; padding: 24px; font-family: var(--mac-sans); font-size: 13px; line-height: 1.5; }
+.email-dialog-description { margin: 0; overflow-wrap: anywhere; }
+.email-dialog-description strong { font-weight: 600; }
+.email-dialog-input { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 8px 10px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: inset 1px 1px 0 var(--ink-3); font-family: var(--mac-sans); font-size: 13px; font-weight: 400; }
+.email-dialog-note { margin: 0; color: var(--ink-2); font-size: 12px; }
+.email-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #000; }
+.email-setting-error { margin: 8px 0 0; font-family: var(--mac-sans); font-size: 12px; line-height: 1.5; color: var(--ink-warn); }
+
+.email-dialog-footer .wb-btn.primary { background: #000; color: #fff; box-shadow: none; }
