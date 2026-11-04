@@ -34,6 +34,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
   const [error, setError] = useState<string | null>(null);
   const [socialProviders, setSocialProviders] = useState<string[]>([]);
   const [emailPasswordEnabled, setEmailPasswordEnabled] = useState(false);
+  const [emailPasswordRestricted, setEmailPasswordRestricted] = useState(true);
   const [providersStatus, setProvidersStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [providersRetryKey, setProvidersRetryKey] = useState(0);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -49,10 +50,11 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
           if (!r.ok) throw new Error(`providers request failed: ${r.status}`);
           return r.json();
         })
-        .then((data: { providers?: string[]; emailPassword?: boolean }) => {
+        .then((data: { providers?: string[]; emailPassword?: boolean; emailPasswordRestricted?: boolean }) => {
           if (cancelled) return;
           setSocialProviders(data.providers ?? []);
           setEmailPasswordEnabled(data.emailPassword ?? false);
+          setEmailPasswordRestricted(data.emailPasswordRestricted ?? true);
           setProvidersStatus('ready');
         })
         .catch(() => {
@@ -75,7 +77,8 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
   const hasGoogle = socialProviders.includes('google');
   // The local API enables email/password. Keep its entry point available while
   // the providers probe retries during a backend restart.
-  const canUseEmailPassword = emailPasswordEnabled || import.meta.env.DEV;
+  const canUseEmailPassword = emailPasswordEnabled || (providersStatus !== 'ready' && import.meta.env.DEV);
+  const canSignUpWithPassword = providersStatus === 'ready' ? !emailPasswordRestricted : import.meta.env.DEV;
   const resolvedCallbackURL =
     callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/');
 
@@ -267,7 +270,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 className="av-link"
                 onClick={() => setView('email-password')}
               >
-                sign in with a password
+                {canSignUpWithPassword ? 'sign in with a password' : 'reviewer password sign-in'}
               </button>
             </p>
           )}
@@ -334,7 +337,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
           </form>
 
           <p className="av-alt">
-            {isSignUp ? (
+            {canSignUpWithPassword && (isSignUp ? (
               <>
                 Already have an account?{' '}
                 <button
@@ -356,7 +359,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                   Sign up
                 </button>
               </>
-            )}
+            ))}
           </p>
         </>
       )}

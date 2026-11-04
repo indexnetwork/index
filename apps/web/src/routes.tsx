@@ -205,6 +205,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
       },
       {
+        path: "/login/verify",
+        lazy: lazyRoute("/login/verify", () => import("@/app/login/verify/page")),
+      },
+      {
         path: "/login",
         lazy: lazyRoute("/login", () => import("@/app/login/page")),
       },
