@@ -622,7 +622,6 @@ function AccessPane() {
 
   return (
     <div style={{ display:"grid", gap:22 }}>
-      <EmailChangeField email={ME.email || ""} />
       <div>
         <div style={{
           display:"flex", alignItems:"center", justifyContent:"space-between",
