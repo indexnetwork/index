@@ -2,6 +2,8 @@ import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { z } from "zod";
 
+import { knownMcpClientName, redirectHost } from "./mcp-known-clients";
+
 /**
  * The MCP plugin in Better Auth 1.6.11 only asks for consent when the caller
  * supplies prompt=consent. Its token endpoint consumes even a pending code.
@@ -85,7 +87,14 @@ export const mcpConsentSecurity = (webAppURL: string) => ({
           throw invalidConsent();
         }
         return ctx.json(
-          { clientName: client.name || "Unnamed client", redirectURI: value.redirectURI },
+          {
+            clientName: client.name || "Unnamed client",
+            redirectURI: value.redirectURI,
+            redirectHost: redirectHost(value.redirectURI),
+            // Set only when the code goes to a host we recognise; the page
+            // then shows this name instead of the self-registered one.
+            knownClientName: knownMcpClientName(value.redirectURI),
+          },
           { headers: { "Cache-Control": "no-store" } },
         );
       },
