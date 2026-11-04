@@ -47,6 +47,8 @@ export default function EmailSection({ email }: { email: string }) {
         {verificationFailed && <p role="alert" className="email-setting-error">Verification failed. Sign in to your account and request a new link.</p>}
       </div>
       <Dialog.Portal>
+        {/* Portals leave the app shell; restore its theme tokens for the window chrome. */}
+        <div className="workbench">
         <Dialog.Overlay className="email-dialog-overlay" />
         <Dialog.Content className="email-dialog amiga-window" onEscapeKeyDown={event => { event.stopPropagation(); if (busy) event.preventDefault(); }} onInteractOutside={event => event.preventDefault()}>
           <div className="mac-titlebar"><Dialog.Title className="mac-title"><span className="t">{sentTo ? 'check your inbox' : 'change email'}</span></Dialog.Title></div>
@@ -68,6 +70,7 @@ export default function EmailSection({ email }: { email: string }) {
             </div>
           </form>
         </Dialog.Content>
+        </div>
       </Dialog.Portal>
     </Dialog.Root>
   );
