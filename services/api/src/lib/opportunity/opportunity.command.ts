@@ -4,6 +4,7 @@ import { admitOpportunityEvent, type OpportunityLogEvent } from '@indexnetwork/p
 
 import db from '../drizzle/drizzle';
 import { opportunities, opportunityEvents, type OpportunityActor } from '../../schemas/database.schema';
+import { recordInviteCredits } from '../invite/invite-credit.command';
 import { LIFECYCLE_EVENT_TYPES, type ClientEvent } from './opportunity-event.policy';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -64,6 +65,10 @@ export async function applyOpportunityEvent(
     status: admission.projection.status,
     updatedAt: new Date(),
   }).where(eq(opportunities.id, opportunityId));
+
+  if (admission.projection.status === 'accepted') {
+    await recordInviteCredits(tx, opportunityId, actorIds);
+  }
 
   return {
     ok: true,

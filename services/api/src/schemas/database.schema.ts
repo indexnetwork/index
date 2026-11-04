@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
@@ -108,6 +108,8 @@ export const users = pgTable('users', {
   lastMorningBriefAt: timestamp('last_morning_brief_at'),
   lastMorningEmailAt: timestamp('last_morning_email_at'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
+  /** Direct inviter, set once at first sign-in through an invite link. Never changed. */
+  invitedById: text('invited_by_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
 
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -116,6 +118,34 @@ export const users = pgTable('users', {
 }, (table) => ({
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.username),
+}));
+
+/** One invite code per member, used in `/r/:code` links. */
+export const inviteCodes = pgTable('invite_codes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  code: text('code').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  inviteCodeUnique: uniqueIndex('invite_codes_code_unique').on(table.code),
+  inviteCodeUserUnique: uniqueIndex('invite_codes_user_unique').on(table.userId),
+}));
+
+/**
+ * Credit ledger. One row per (invitee, counterpart): a repeated counterpart
+ * counts once. The inviter is fixed per invitee, so it is not part of the key.
+ * Credit never decays, so rows are never deleted for age.
+ */
+export const inviteCredits = pgTable('invite_credits', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inviterUserId: text('inviter_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  inviteeUserId: text('invitee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  counterpartUserId: text('counterpart_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  inviteeCounterpartUnique: uniqueIndex('invite_credits_invitee_counterpart_unique').on(table.inviteeUserId, table.counterpartUserId),
+  inviterIdx: index('invite_credits_inviter_idx').on(table.inviterUserId),
 }));
 
 export const userSocials = pgTable('user_socials', {
