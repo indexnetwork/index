@@ -167,6 +167,11 @@
   border-left: 1px solid var(--ink-4);
 }
 .wb-chat p { margin: 0; }
+.wb-chat a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .mac-scroll::-webkit-scrollbar-thumb {
   background: var(--amiga-accent);
