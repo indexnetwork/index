@@ -342,7 +342,6 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
           {activeTab === "access" && (
               <div style={{ display: "grid", gap: 22 }}>
-                <EmailSection email={user?.email || ""} />
                 <ApiKeysSection />
                 <DevicesSection />
               </div>
