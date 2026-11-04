@@ -41,6 +41,7 @@ export interface AuthDeps {
   authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
+  sendVerificationEmail: (email: string, url: string) => Promise<void>;
   /**
    * Optional KV store for Better Auth. When omitted, Better Auth uses its
    * built-in in-memory store.
@@ -134,7 +135,16 @@ export function createAuth(deps: AuthDeps) {
         }
       }),
     },
+    emailVerification: {
+      expiresIn: 3600,
+      sendOnSignUp: false,
+      sendOnSignIn: false,
+      sendVerificationEmail: async ({ user, url }) => {
+        await deps.sendVerificationEmail(user.email, url);
+      },
+    },
     user: {
+      changeEmail: { enabled: true, updateEmailWithoutVerification: false },
       fields: {
         image: "avatar",
       },

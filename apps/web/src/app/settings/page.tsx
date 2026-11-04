@@ -8,6 +8,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
 import { ConfirmWindow, RuleLabel, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
+import EmailSection from "@/components/settings/EmailSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
 import { parseSocial } from "@/lib/socials";
@@ -267,7 +268,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                   // Same alphabet the server accepts: lowercase letters, numbers, hyphens.
                   onChange={(v) => { setUsername(v.toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-]/g, "")); mark(); }}
                 />
-                <MacField label="email" value={user?.email || ""} disabled />
+                <EmailSection email={user?.email || ""} />
                 <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
               </div>
 
@@ -341,6 +342,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
           {activeTab === "access" && (
               <div style={{ display: "grid", gap: 22 }}>
+                <EmailSection email={user?.email || ""} />
                 <ApiKeysSection />
                 <DevicesSection />
               </div>

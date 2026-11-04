@@ -350,6 +350,12 @@ window.IndexApp = (function () {
     return response.body;
   }
 
+  function changeEmail(newEmail) {
+    return accessRequest("POST", "/auth/change-email", {
+      newEmail,
+      callbackURL: `${webBaseUrl()}/settings?tab=access&emailChange=1`,
+    });
+  }
   function listApiKeys() { return accessRequest("GET", "/auth/api-key/list"); }
   function createApiKey(name) { return accessRequest("POST", "/auth/api-key/create", { name }); }
   function revokeApiKey(keyId) { return accessRequest("POST", "/auth/api-key/delete", { keyId }); }
@@ -585,6 +591,7 @@ window.IndexApp = (function () {
     confirmOnboardingProfile,
     completeOnboarding,
     triggerEnrichment,
+    changeEmail,
     listApiKeys,
     createApiKey,
     revokeApiKey,
