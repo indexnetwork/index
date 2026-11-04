@@ -2,6 +2,37 @@
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
+function EmailChangeField({ email }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const send = async () => {
+    if (busy) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await window.IndexApp.changeEmail(value.trim().toLowerCase());
+      setMessage(`Check ${value.trim()} for a verification link. Your current email stays active until verified. If no email arrives, check spam or try another address; it may already be in use.`);
+      setEditing(false); setValue("");
+    } catch (e) { setError(e.message || "Could not request email change. Try again."); }
+    finally { setBusy(false); }
+  };
+  return <div style={{ fontFamily:"var(--mac-sans)", fontSize:13 }}>
+    <TextField label="email" value={email} disabled />
+    {editing ? <div style={{ display:"grid", gap:8, marginTop:8 }}>
+      <label>new email<input aria-label="new email" type="email" autoComplete="email" value={value} disabled={busy}
+        onChange={e => setValue(e.target.value)} style={{ ...wellStyle(false), width:"100%" }} /></label>
+      <div style={{ display:"flex", gap:12 }}>
+        <button type="button" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) || value.trim().toLowerCase() === (email || "").toLowerCase()} onClick={send}>{busy ? "sending…" : "send verification link"}</button>
+        <button type="button" disabled={busy} onClick={() => { setEditing(false); setError(""); }}>cancel</button>
+      </div>
+    </div> : <button type="button" style={{ marginTop:8, textDecoration:"underline" }} onClick={() => setEditing(true)}>change email</button>}
+    {message && <p role="status">{message}</p>}
+    {error && <p role="alert" style={{ color:"var(--ink-warn)" }}>{error}</p>}
+  </div>;
+}
+
 /* ---------- shared field chrome ---------- */
 
 function FieldLabel({ children, required, right }) {
@@ -216,13 +247,7 @@ function ProfilePane({ me, form, set, profileOnly = false, onWriteOwnIntro, user
             <div style={{ marginTop:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-warn)" }}>{usernameError}</div>
           )}
         </div>
-        {/* Identity is bound to the email the agent authenticated with. The
-            greyed well and non-editable cursor already say it isn't editable,
-            so the field carries no extra badge. */}
-        <TextField
-          label="email" disabled
-          value={form.email}
-        />
+        <EmailChangeField email={form.email} />
         {/* One column like name/email, a full-width field for "NYC, United
             States" was far more room than the value ever needs. */}
         <TextField
@@ -579,6 +604,7 @@ function AccessPane() {
 
   return (
     <div style={{ display:"grid", gap:22 }}>
+      <EmailChangeField email={ME.email || ""} />
       <div>
         <div style={{
           display:"flex", alignItems:"center", justifyContent:"space-between",

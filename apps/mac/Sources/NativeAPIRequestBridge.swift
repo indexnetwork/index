@@ -278,6 +278,7 @@ final class NativeAPIRequestBridge {
         // only; Better Auth's own list-sessions is deliberately not reachable
         // here because it carries every device's token.
         ("GET", #"^/auth/devices$"#), ("POST", #"^/auth/devices/revoke$"#),
+        ("POST", #"^/auth/change-email$"#),
         ("GET", #"^/auth/api-key/list$"#),
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
@@ -657,6 +658,11 @@ final class NativeAPIRequestBridge {
         case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
         case "/auth/devices/revoke":
             return exactTypedObject(body, required: ["sessionId"]) { identifier($0["sessionId"]) }
+        case "/auth/change-email":
+            return exactTypedObject(body, required: ["newEmail", "callbackURL"]) { item in
+                boundedString(item["newEmail"], maximum: 254)
+                    && boundedString(item["callbackURL"], maximum: 2048)
+            }
         case "/auth/api-key/create":
             return exactTypedObject(body, required: ["name"]) { boundedString($0["name"], maximum: 256) }
         case "/auth/api-key/delete":

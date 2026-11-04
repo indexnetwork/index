@@ -2,6 +2,7 @@ import { AuthDatabaseAdapter } from '../../adapters/auth.adapter';
 import { getRedisClient } from '../../adapters/cache.adapter';
 import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { getTrustedOrigins } from '../cors';
+import { sendVerificationEmail } from '../email/verification.handler';
 import { sendMagicLinkEmail } from '../email/magic-link.handler';
 import { isRedisConfigured } from '../redis-env';
 
@@ -45,6 +46,7 @@ export const auth = createAuth({
   authDb,
   getTrustedOrigins,
   sendMagicLinkEmail,
+  sendVerificationEmail,
   secondaryStorage,
   onEdgeCitySignIn: edgeCityNetworkId
     ? async (userId) => {
