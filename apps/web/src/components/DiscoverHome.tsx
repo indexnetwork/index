@@ -34,19 +34,21 @@ const SHELF_ROW_GAP = 8;
 const SHELF_VISIBLE_ROWS = 6;
 
 function ShelfCount({ n }: { n: number }) {
-  return <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "#000" }}>{n}</span>;
+  return <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "inherit" }}>{n}</span>;
 }
 
 function ShelfRow({ icon, label, aside, rule, onClick }: { icon: ReactNode; label: string; aside?: ReactNode; rule?: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} style={{
-      display: "flex", alignItems: "center", gap: 8.4, width: "100%",
-      padding: "3px 0", cursor: "pointer", textAlign: "left",
-      border: "none", borderTop: rule ? "1px solid #DAD8D4" : "none", background: "transparent", color: "#000",
+    <button type="button" className="wb-link-row bare" onClick={onClick} style={{
+      display: "flex", alignItems: "center", gap: 8.4,
+      // Bleed 6px each side so the hover fill doesn't hug the icon.
+      width: "calc(100% + 12px)", margin: "0 -6px", padding: "3px 6px", textAlign: "left",
+      border: "none", borderTop: rule ? "1px solid #DAD8D4" : "none",
     }}>
       <span style={{ flex: "0 0 auto", width: 20.8, height: 34, display: "grid", placeItems: "center start" }}>{icon}</span>
-      <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "#000" }}>{label}</span>
+      <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "inherit" }}>{label}</span>
       {aside}
+      <span aria-hidden="true" className="wb-row-chevron">›</span>
     </button>
   );
 }

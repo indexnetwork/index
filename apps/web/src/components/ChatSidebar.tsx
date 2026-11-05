@@ -125,6 +125,8 @@ export default function ChatSidebar({ showEmpty = true }: {
               <button
                 key={chat.groupId}
                 type="button"
+                className="wb-link-row"
+                aria-current={chat.peerUserId === activePeerId ? "page" : undefined}
                 onClick={() => {
                   const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
                   if (to === pathname) return;
@@ -141,14 +143,12 @@ export default function ChatSidebar({ showEmpty = true }: {
                   padding: "10px 12px",
                   border: "none",
                   borderBottom: "1px solid var(--ink-4)",
-                  background: chat.peerUserId === activePeerId ? "#F2F0EC" : "#fff",
-                  cursor: "pointer",
                 }}
               >
                 <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={32} />
                 <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
                   <span style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
                     {chat.lastMessage && (
                       <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
                     )}
@@ -168,9 +168,12 @@ export default function ChatSidebar({ showEmpty = true }: {
                     );
                   })()}
                 </span>
-                {chat.showUnreadCount && (
-                  <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, background: "#FF8A00", color: "#000", border: "1px solid #000", padding: "0 6px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
-                )}
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {chat.showUnreadCount && (
+                    <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, background: "#FF8A00", color: "#000", border: "1px solid #000", padding: "0 6px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
+                  )}
+                  <span aria-hidden="true" className="wb-row-chevron">›</span>
+                </span>
               </button>
             ))}
           </div>
