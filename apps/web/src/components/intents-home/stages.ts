@@ -43,6 +43,14 @@ export interface Entry {
 
 export const personKey = (item: RadarCardItem) => item.userId || item.peer?.userId || `name:${item.name || item.peer?.name}`;
 
+/** The agent face's palette. An intent keeps one colour, so its tag reads the same in the rail and on rows. */
+const INTENT_COLORS = ["#0B5FA5", "#2E8B7A", "#E8C84A", "#7B62B8", "#C9518B", "#F26B0F"];
+export function intentColor(intentId: string) {
+  let h = 0;
+  for (let i = 0; i < intentId.length; i++) h = (h * 31 + intentId.charCodeAt(i)) >>> 0;
+  return INTENT_COLORS[h % INTENT_COLORS.length];
+}
+
 export function intentRank(status?: string) {
   const value = (status || "active").toLowerCase();
   if (value === "active") return 0;

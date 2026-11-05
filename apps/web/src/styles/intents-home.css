@@ -1,7 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&display=swap');
 /* The intents screen (rail + people + agent). Quiet hairline layout; orange only on accept. */
 .ih {
   --ih-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
   --ih-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --ih-serif: "Source Serif 4", Georgia, serif;
   --ih-ink: #141414;
   --ih-text-2: #555;
   --ih-text-3: #666;
@@ -767,4 +769,275 @@
   .ih button.ih-new > span:first-child {
     transition: none;
   }
+}
+
+/* Inbox + intents rail (prototype). Intents read as their owner's sentence;
+   the inbox and messages sit above them as places, not as an intent. */
+.ih-brand {
+  font: 600 15px var(--ih-sans);
+  letter-spacing: -0.01em;
+  padding: 0 10px 14px;
+}
+.ih .ih-place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 3px;
+  color: var(--ih-text-2);
+  font-size: 14px;
+}
+.ih .ih-place:hover:not(.on) {
+  background: var(--ih-hover);
+}
+.ih .ih-place.on {
+  background: #fff0dc;
+  box-shadow: inset 3px 0 #ff8a00;
+  border-radius: 0 3px 3px 0;
+  color: var(--ih-ink);
+}
+.ih-place-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+.ih-place-icon.round {
+  border-radius: 50%;
+}
+.ih-place .ih-n {
+  margin-left: auto;
+  color: var(--ih-faint);
+  font-size: 12px;
+}
+.ih-badge {
+  margin-left: auto;
+  background: var(--ih-accent);
+  color: #fff;
+  border-radius: 9px;
+  padding: 0 7px;
+  font: 600 11px/18px var(--ih-sans);
+}
+.ih-rail .ih-rail-label {
+  margin-top: 18px;
+  padding: 0 10px 10px 0;
+  justify-content: flex-start;
+}
+.ih-rail .ih-rail-label .ih-n {
+  margin-left: auto;
+  color: var(--ih-faint);
+  letter-spacing: 0;
+}
+.ih .ih-rail button.ih-new {
+  justify-content: center;
+  margin: 0 0 10px;
+  border-radius: 0;
+}
+.ih-intents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ih .ih-intents .ih-intent {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  color: var(--ih-ink);
+}
+.ih-intent-tag {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  margin-top: 5px;
+  border: 1px solid #141414;
+  box-shadow: 1px 1px 0 #14141420;
+}
+.ih-intent-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ih-intent-sentence {
+  font: 400 15px/1.3 var(--ih-serif);
+  color: var(--ih-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: pretty;
+}
+.ih-intent-meta {
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.ih-intent-meta b {
+  color: var(--ih-accent);
+  font-weight: 600;
+}
+.ih-intents .ih-intent.paused .ih-intent-sentence {
+  color: var(--ih-faint);
+}
+.ih-intents .ih-intent.paused .ih-intent-tag {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+.ih-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ih-live);
+  box-shadow: 0 0 0 3px #3b7a5722;
+}
+
+/* Page heads: the intent (or the inbox's count) in the serif. */
+.ih-title {
+  font: 400 24px/1.25 var(--ih-serif);
+  letter-spacing: -0.01em;
+}
+.ih-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ih-tag-swatch {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  display: inline-block;
+  border: 1px solid #141414;
+}
+.ih .ih-name-line .ih-tag {
+  border: 1px solid var(--ih-hairline);
+  border-radius: 3px;
+  padding: 0 6px;
+  background: #fff;
+}
+.ih-blurb {
+  font: italic 400 14px var(--ih-serif);
+  color: var(--ih-text-3);
+}
+
+/* Inbox: a row is something you can pick to ask your agent about. */
+.ih-row.pickable .ih-row-main {
+  cursor: pointer;
+}
+.ih-row.pickable:hover {
+  background: var(--ih-hover);
+}
+.ih-row.picked {
+  background: #fff0dc;
+  box-shadow: inset 3px 0 #ff8a00;
+}
+.ih-row.pickable,
+.ih-row.picked {
+  margin: 0;
+  padding: 0 32px;
+}
+.ih-row.pickable .ih-row-main:focus-visible {
+  outline: 2px solid var(--ih-accent);
+  outline-offset: 2px;
+}
+.ih .ih-next {
+  display: block;
+  margin-top: 12px;
+  color: var(--ih-accent);
+  font: 500 13px var(--ih-sans);
+}
+.ih .ih-next:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The agent column's head: one face, one name, and what it is about. */
+.ih-agent-head {
+  height: 56px;
+  flex: none;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--ih-hairline);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ih-agent-who {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ih-agent-head .ih-agent-heading {
+  font: 500 11px var(--ih-mono);
+  letter-spacing: 0.1em;
+  color: var(--ih-ink);
+}
+.ih-agent-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ih-agent-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  font: 400 12px var(--ih-sans);
+}
+.ih-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--ih-sans);
+}
+.ih .ih-overview-row {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 10px;
+  border: 1px solid transparent;
+}
+.ih .ih-overview-row:hover {
+  background: #fff;
+  border-color: var(--ih-hairline);
+}
+.ih-overview-row .ih-tag-swatch {
+  transform: translateY(1px);
+}
+.ih-overview-text {
+  font: 400 15px/1.3 var(--ih-serif);
+  color: var(--ih-ink);
+}
+.ih-overview-meta {
+  grid-column: 2;
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-muted);
+}
+.ih-overview-meta b {
+  color: var(--ih-accent);
+  font-weight: 600;
+}
+.ih-overview-row.paused .ih-overview-text {
+  color: var(--ih-faint);
+}
+/* Folded section bars are buttons; keep the bar's own inset over the button reset. */
+.ih .ih-bar.ih-bar-toggle {
+  padding: 0 32px;
+}
+.ih .ih-bar.ih-bar-toggle .ih-n {
+  color: var(--ih-faint);
+  letter-spacing: 0;
 }

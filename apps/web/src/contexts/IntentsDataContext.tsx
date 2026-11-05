@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
-import { STAGE_OF, intentRank, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
+import { STAGE_OF, intentRank, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
 import { useOpportunities } from "@/contexts/APIContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import { apiClient } from "@/lib/api";
@@ -30,8 +30,12 @@ interface IntentsData {
   loadRadar: (intentId: string, mode?: "full" | "skeleton") => Promise<void>;
   /** Each intent's people with their stage, after this session's accept/pass. */
   entriesByIntent: Record<string, Entry[]>;
-  /** People not yet closed, per intent: the rail's counts. */
+  /** People not yet closed, per intent. */
   activeCount: (intentId: string) => number;
+  /** People waiting on the viewer's accept or pass, per intent: the rail's orange counts. */
+  waitingCount: (intentId: string) => number;
+  /** Everyone waiting on the viewer across intents, each person once: the inbox count. */
+  waitingTotal: number;
   opportunityStatusMap: OpportunityActions["opportunityStatusMap"];
   opportunityActionLoading: OpportunityActions["opportunityActionLoading"];
   handleOpportunityAction: OpportunityActions["handleOpportunityAction"];
@@ -186,12 +190,23 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
     (intentId: string) => (entriesByIntent[intentId] ?? []).filter((entry) => entry.stage !== "closed").length,
     [entriesByIntent],
   );
+  const waitingCount = useCallback(
+    (intentId: string) => (entriesByIntent[intentId] ?? []).filter((entry) => entry.stage === "awaiting").length,
+    [entriesByIntent],
+  );
+  const waitingTotal = useMemo(() => {
+    const people = new Set<string>();
+    for (const entries of Object.values(entriesByIntent)) {
+      for (const entry of entries) if (entry.stage === "awaiting") people.add(personKey(entry.item));
+    }
+    return people.size;
+  }, [entriesByIntent]);
 
   const value = useMemo<IntentsData>(() => ({
     intents, intentsLoaded, intentsError, fetchIntents, updateIntents,
-    radar, radarFailed, loadRadar, entriesByIntent, activeCount,
+    radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal,
     opportunityStatusMap, opportunityActionLoading, handleOpportunityAction,
-  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
+  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
 
   return <IntentsDataContext.Provider value={value}>{children}</IntentsDataContext.Provider>;
 }
