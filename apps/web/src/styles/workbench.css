@@ -337,11 +337,10 @@
   color: #000;
 }
 
-/* Rows that open something. Hover/focus inverts the row (black, white text,
-   like a classic menu) and a trailing chevron marks it as clickable before
-   the pointer lands (and on touch, where there is no pointer). Background and
-   text colour live here, not inline, so hover wins; children use inherit or
-   --ink-2/--ink-3, which the hover state redefines. */
+/* Rows that open something. Hover/focus tints the row in pale Index blue and
+   turns the trailing chevron blue; the chevron marks the row as clickable
+   before the pointer lands (and on touch, where there is no pointer).
+   Background lives here, not inline, so hover wins. */
 .wb-link-row {
   background: #fff;
   color: #000;
@@ -350,23 +349,15 @@
 .wb-link-row.bare { background: transparent; }
 /* The open item: a black edge bar, so it never reads like a hovered row. */
 .wb-link-row[aria-current="page"] { box-shadow: inset 4px 0 0 #000; }
-.wb-link-row:focus-visible,
-.wb-link-row:active {
-  background: #000;
-  color: #fff;
-  --ink-2: #d6d3cb;
-  --ink-3: #aaa59a;
-}
-/* Hover only where a pointer hovers, so a tapped row doesn't stay black on touch. */
+.wb-link-row:focus-visible { background: #e3edf8; }
+.wb-link-row:active { background: #cfe0f3; }
+/* Hover only where a pointer hovers, so a tapped row doesn't stay tinted on touch. */
 @media (hover: hover) {
-  .wb-link-row:hover {
-    background: #000;
-    color: #fff;
-    --ink-2: #d6d3cb;
-    --ink-3: #aaa59a;
-  }
+  .wb-link-row:hover { background: #e3edf8; }
+  .wb-link-row:hover .wb-row-chevron { color: var(--amiga-bg); }
 }
-.wb-link-row:focus-visible { outline: 2px solid #ff8a00; outline-offset: -2px; }
+.wb-link-row:focus-visible { outline: 2px solid var(--amiga-bg); outline-offset: -2px; }
+.wb-link-row:focus-visible .wb-row-chevron { color: var(--amiga-bg); }
 .wb-row-chevron {
   flex: 0 0 auto;
   width: 14px;
