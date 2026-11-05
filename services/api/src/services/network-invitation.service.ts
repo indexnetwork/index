@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
+import { linkMemberIntents } from '../adapters/database.shared';
 import { log } from '../lib/log';
 import * as schema from '../schemas/database.schema';
 import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
@@ -187,6 +188,9 @@ class NetworkInvitationService {
       .values({ networkId, userId, permissions: ['member'], autoAssign: true })
       .onConflictDoNothing()
       .returning({ userId: schema.networkMembers.userId });
+
+    // A newly invited member's existing intents join the network with them.
+    if (inserted.length > 0) await linkMemberIntents(db, networkId, userId);
 
     // An owner adding someone settles any request they had waiting.
     await db
