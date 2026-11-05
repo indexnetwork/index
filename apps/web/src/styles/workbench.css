@@ -43,6 +43,11 @@
   :where(.workbench, .workbench *) {
     cursor: default;
   }
+  /* The rule above targets every descendant, so text inside a clickable showed
+     the arrow, not the pointer. Let those descendants take the clickable's cursor. */
+  :where(.workbench :is(a[href], button, summary, label[for], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"]) *) {
+    cursor: inherit;
+  }
   :where(.workbench input, .workbench textarea, .workbench [contenteditable]) {
     cursor: text;
   }
@@ -330,6 +335,45 @@
   font-size: 13px;
   font-weight: 500;
   color: #000;
+}
+
+/* Rows that open something. Hover/focus inverts the row (black, white text,
+   like a classic menu) and a trailing chevron marks it as clickable before
+   the pointer lands (and on touch, where there is no pointer). Background and
+   text colour live here, not inline, so hover wins; children use inherit or
+   --ink-2/--ink-3, which the hover state redefines. */
+.wb-link-row {
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
+.wb-link-row.bare { background: transparent; }
+/* The open item: a black edge bar, so it never reads like a hovered row. */
+.wb-link-row[aria-current="page"] { box-shadow: inset 4px 0 0 #000; }
+.wb-link-row:focus-visible,
+.wb-link-row:active {
+  background: #000;
+  color: #fff;
+  --ink-2: #d6d3cb;
+  --ink-3: #aaa59a;
+}
+/* Hover only where a pointer hovers, so a tapped row doesn't stay black on touch. */
+@media (hover: hover) {
+  .wb-link-row:hover {
+    background: #000;
+    color: #fff;
+    --ink-2: #d6d3cb;
+    --ink-3: #aaa59a;
+  }
+}
+.wb-link-row:focus-visible { outline: 2px solid #ff8a00; outline-offset: -2px; }
+.wb-row-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  font-family: var(--mac-mono);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .wb-invite {

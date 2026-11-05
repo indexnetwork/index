@@ -285,15 +285,16 @@ export default function NetworksPage() {
                         || (viewerRole !== 'member' && user?.id === network.user?.id);
                       const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                       return (
-                        <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+                        <button key={network.id} type="button" className="wb-link-row" onClick={() => navigate(`/networks/${network.id}`)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", textAlign: "left", border: "none", borderBottom: "1px solid #DDD8CC", font: "inherit" }}>
                           <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
-                          <button type="button" onClick={() => navigate(`/networks/${network.id}`)} style={{ flex: 1, minWidth: 0, textAlign: "left", padding: 0, border: "none", background: "transparent", cursor: "pointer" }}>
-                            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "inherit" }}>{network.title}</span>
                             <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{network._count?.members || 0} members</span>
-                          </button>
+                          </span>
                           {pendingJoinCount > 0 && <span className="wb-count">{pendingJoinCount}</span>}
                           <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 }}>{isOwner ? "owner" : "member"}</span>
-                        </div>
+                          <span aria-hidden="true" className="wb-row-chevron">›</span>
+                        </button>
                       );
                     })}
                   </div>
