@@ -243,6 +243,31 @@ export function activeOwnIntentsWhere(userId: string) {
   );
 }
 
+/** The drizzle client or an open transaction on it. */
+type DbExecutor = Pick<typeof db, 'execute'>;
+
+/**
+ * Share a member's existing active intents in a network they just joined.
+ * Every path that creates a membership (joining, invitation, an approved
+ * network request) calls this so a new member never starts with an empty
+ * network while their intents sit elsewhere. Private intents stay unlinked;
+ * an existing link is left as it is.
+ *
+ * @param executor - `db`, or the transaction that created the membership.
+ * @param networkId - The network just joined.
+ * @param userId - The new member.
+ */
+export async function linkMemberIntents(executor: DbExecutor, networkId: string, userId: string): Promise<void> {
+  const eligible = and(activeOwnIntentsWhere(userId), eq(schema.intents.isPrivate, false));
+  await executor.execute(sql`
+    insert into ${schema.intentNetworks} (intent_id, network_id)
+    select ${schema.intents.id}, ${networkId}
+    from ${schema.intents}
+    where ${eligible}
+    on conflict (intent_id, network_id) do nothing
+  `);
+}
+
 /**
  * Canonical predicate for the paginated own-intents list: ownership + an
  * archived toggle (archived rows when `archived` is true, active rows

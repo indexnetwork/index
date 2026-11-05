@@ -133,7 +133,11 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     <>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
         <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>your intents</p>
-        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{overviewLoading ? "…" : `${visible.length} intent${visible.length === 1 ? "" : "s"}`}</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{overviewLoading ? "…" : `${visible.length} intent${visible.length === 1 ? "" : "s"}`}</span>
+          {/* The empty state has its own big button; once intents exist, this keeps adding more one click away. */}
+          {!overviewLoading && visible.length > 0 && <IntentAction label="+ new intent" onClick={() => navigate("/i/new")} />}
+        </span>
       </div>
       {undo && (
         <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #000", background: "#F2F0EC", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
