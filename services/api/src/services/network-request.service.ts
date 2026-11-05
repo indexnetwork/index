@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql, inArray } from 'drizzle-orm/sql';
 import { handleDatabaseAdapter } from '../adapters/handle.database.adapter';
+import { linkMemberIntents } from '../adapters/database.shared';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -268,6 +269,8 @@ export class NetworkRequestService {
           .values({ networkId, userId: requesterId, permissions: ['owner'], prompt: updated.prompt, autoAssign: true })
           .onConflictDoNothing({ target: [schema.networkMembers.networkId, schema.networkMembers.userId] })
           .returning();
+        // The owner's intents from before the request belong in their new network too.
+        if (inserted.length > 0) await linkMemberIntents(tx, networkId, requesterId);
         return { decision, updated, requesterId, membershipCreated: inserted.length > 0 } as const;
       }
 

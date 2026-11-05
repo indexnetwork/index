@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, ne, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { linkMemberIntents, upsertIntentNetworkAssignment, schema, negotiations, negotiationTurns, opportunities, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, ne, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -1763,7 +1763,7 @@ export class ChatDatabaseAdapter {
 
     // A repeat call (sign-in, already a member) must not restore intents the
     // member removed. Only a newly created membership imports existing ones.
-    if (result.length > 0) await this.linkMemberIntents(networkId, userId);
+    if (result.length > 0) await linkMemberIntents(db, networkId, userId);
 
     // Joining Index Early — not any other network — is what marks someone an
     // Index member in the Loops audience. Fire-and-forget: the sync never
@@ -1838,21 +1838,6 @@ export class ChatDatabaseAdapter {
     await this.unlinkMemberIntents(networkId, userId);
 
     return { success: true };
-  }
-
-  /**
-   * Share the member's existing active intents in a network they just joined.
-   * Private intents stay unlinked. An existing link is left as it is.
-   */
-  private async linkMemberIntents(networkId: string, userId: string): Promise<void> {
-    const eligible = and(activeOwnIntentsWhere(userId), eq(intents.isPrivate, false));
-    await db.execute(sql`
-      insert into ${intentNetworks} (intent_id, network_id)
-      select ${intents.id}, ${networkId}
-      from ${intents}
-      where ${eligible}
-      on conflict (intent_id, network_id) do nothing
-    `);
   }
 
   /**
