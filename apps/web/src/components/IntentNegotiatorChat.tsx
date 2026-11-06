@@ -11,7 +11,6 @@ import { parseDiscovery } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatChatClock } from "@/lib/utils";
-import { useDismiss } from "@/components/intents-home/stages";
 
 type Provenance = {
   kind?: string;
@@ -38,22 +37,11 @@ function messageText(message: ConversationMessage): string {
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
 }
 
-type FeedPiece = (
+type FeedPiece =
   | { kind: "user" | "note" | "progress"; id: string; text: string }
   | { kind: "discovery"; id: string; loading: string[]; plan: string; queries: string[]; discovered: number | null; reached: number | null; progress: string }
   | { kind: "open-question"; id: string; question: QuestionCard }
-  | { kind: "answered-question"; id: string; question: QuestionCard; answer: string }
-) & { intentId?: string };
-
-/** One thread across intents: which intent each message belongs to, so the composer can follow along. */
-export interface ChatScope {
-  intents: { id: string; label: string; color: string; paused: boolean }[];
-  /** A hosted agent replies here; an external one never does. */
-  hosted: boolean;
-}
-
-const intentOf = (message: ConversationMessage) =>
-  typeof message.metadata?.intentId === "string" ? message.metadata.intentId : undefined;
+  | { kind: "answered-question"; id: string; question: QuestionCard; answer: string };
 
 function isLoadingLine(text: string) {
   const line = text.endsWith(".") ? text.slice(0, -1) : text;
@@ -86,7 +74,6 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
   for (const message of messages) {
     const text = messageText(message).trim();
     const provenance = message.metadata?.principalMessage as Provenance | undefined;
-    const intentId = intentOf(message);
     if (!text) continue;
     if (provenance?.record === "stall" || provenance?.record === "resolution") continue;
     if (provenance?.kind === "answer" && provenance.questionId && answers.has(provenance.questionId)) continue;
@@ -95,20 +82,20 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
       const question = questionCard(provenance, text, live.get(provenance.questionId));
       seen.add(provenance.questionId);
       const answer = answers.get(provenance.questionId);
-      if (live.has(provenance.questionId)) feed.push({ kind: "open-question", id: message.id, question, intentId });
-      else if (answer) feed.push({ kind: "answered-question", id: message.id, question, answer, intentId });
+      if (live.has(provenance.questionId)) feed.push({ kind: "open-question", id: message.id, question });
+      else if (answer) feed.push({ kind: "answered-question", id: message.id, question, answer });
       continue;
     }
     if (provenance?.record === "brief" || provenance?.record === "decision") continue;
     if (message.role === "user") {
       flush();
-      feed.push({ kind: "user", id: message.id, text, intentId });
+      feed.push({ kind: "user", id: message.id, text });
       continue;
     }
     if (provenance?.record === "progress") {
       if (isLoadingLine(text)) {
         if (!block) {
-          block = { kind: "discovery", id: message.id, loading: [], plan: "", queries: [], discovered: null, reached: null, progress: "", intentId };
+          block = { kind: "discovery", id: message.id, loading: [], plan: "", queries: [], discovered: null, reached: null, progress: "" };
           feed.push(block);
         }
         block.loading.push(text);
@@ -124,15 +111,15 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
           continue;
         }
         flush();
-        feed.push({ kind: "discovery", id: message.id, loading: [], progress: "", ...trace, intentId });
+        feed.push({ kind: "discovery", id: message.id, loading: [], progress: "", ...trace });
         continue;
       }
       flush();
-      feed.push({ kind: "progress", id: message.id, text, intentId });
+      feed.push({ kind: "progress", id: message.id, text });
       continue;
     }
     flush();
-    feed.push({ kind: "note", id: message.id, text, intentId });
+    feed.push({ kind: "note", id: message.id, text });
   }
   for (const question of questions) {
     if (seen.has(question.id)) continue;
@@ -269,18 +256,7 @@ function AnsweredQuestion({ question, answer, at }: {
   );
 }
 
-/**
- * Your agent's conversation. With `intentId` it is that intent's thread; without
- * it, `scope` turns it into the whole thread across intents: each run of
- * messages names its intent, open questions are left to the page, and the
- * composer says which intent a message goes to (the server files every
- * message under one).
- */
-export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }: {
-  intentId?: string;
-  onSelectMatch(opportunityId: string): void;
-  scope?: ChatScope;
-}) {
+export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
@@ -292,31 +268,15 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState(false);
-  /** The intent a message goes to, once picked by hand; until then it follows the thread. */
-  const [pickedIntent, setPickedIntent] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const closePicker = useCallback(() => setPickerOpen(false), []);
-  useDismiss(pickerOpen, pickerRef, closePicker);
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // An answer in the transcript settles its question, even while the server's list still holds it.
-  // The whole thread leaves open questions to the page it sits on.
-  const questions = useMemo(() => {
-    if (!intentId) return [];
-    const answered = new Set(messages.map((message) => (message.metadata?.principalMessage as Provenance | undefined)).filter((provenance) => provenance?.kind === "answer").map((provenance) => provenance!.questionId));
-    return (agent?.questions ?? []).filter((question) => !answered.has(question.id));
-  }, [intentId, agent, messages]);
+  const answered = new Set(messages.map((message) => (message.metadata?.principalMessage as Provenance | undefined)).filter((provenance) => provenance?.kind === "answer").map((provenance) => provenance!.questionId));
+  const questions = (agent?.questions ?? []).filter((question) => !answered.has(question.id));
   // Read off the questions on screen, so a selection whose question is gone
   // counts for nothing and is never sent.
   const chosen = questions.filter((question) => selections[question.id]?.trim());
-
-  // Whole thread: a message goes to the intent picked by hand, else the one the thread is on, else the first live one.
-  const known = new Set(scope?.intents.map((i) => i.id));
-  const threadIntent = [...messages].reverse().map(intentOf).find((id) => id && known.has(id));
-  const target = intentId ?? (pickedIntent && known.has(pickedIntent) ? pickedIntent : threadIntent ?? scope?.intents.find((i) => !i.paused)?.id ?? scope?.intents[0]?.id);
-  const targetIntent = scope?.intents.find((i) => i.id === target);
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
     // A pending message gives way to the real one with the same text (and question, for an answer), whichever arrives first.
@@ -330,7 +290,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
     if (!requests.current.mounted) return;
     const current = ++requests.current.generation;
     try {
-      const loaded = await conversations.getMessages(AGENT_DM_ID, intentId ? { intentId } : { limit: 200 });
+      const loaded = await conversations.getMessages(AGENT_DM_ID, { intentId });
       if (current !== requests.current.generation) return;
       setConversationId(loaded.conversationId);
       mergeMessages(loaded.messages);
@@ -354,22 +314,21 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
   }, [refresh, isConnected, requests]);
 
   useEffect(() => subscribeConversationMessage(({ conversationId: id, message }) => {
-    if (id !== conversationId || (intentId && message.metadata?.intentId !== intentId)) return;
+    if (id !== conversationId || message.metadata?.intentId !== intentId) return;
     mergeMessages([message]);
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending || !target) return;
+    if (!text || sending) return;
     setDraft("");
     setSending(true);
     const parts = [{ kind: "text", text }];
     const pendingId = `${PENDING}${Date.now()}`;
-    mergeMessages([{ id: pendingId, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user", parts, metadata: { intentId: target }, createdAt: new Date().toISOString() }]);
-    setPickedIntent(target);
+    mergeMessages([{ id: pendingId, conversationId: conversationId ?? AGENT_DM_ID, senderId: "", role: "user", parts, metadata: { intentId }, createdAt: new Date().toISOString() }]);
     try {
-      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, parts, { metadata: { intentId: target } })]);
+      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, parts, { metadata: { intentId } })]);
     } catch {
       // The refresh below is the transcript's only truth.
     } finally {
@@ -382,7 +341,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
 
   /** Send every answered question as one write, so the agent decides from all of them at once. */
   const sendAnswers = async () => {
-    if (!chosen.length || sending || !intentId) return;
+    if (!chosen.length || sending) return;
     const answers = chosen.map((question) => ({ questionId: question.id, text: selections[question.id]!.trim() }));
     const previous = { selections, writing };
     // Shown at once; each gives way to the real message, which names the same question.
@@ -414,42 +373,10 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
   // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
   // Only a hosted agent answers here; an external one never will, so nothing waits on it.
-  const hosted = scope ? scope.hosted : agent?.status === "hosted";
+  const hosted = agent?.status === "hosted";
   const waiting = hosted && messages.at(-1)?.role === "user";
   let firstWaiting = feed.length;
   while (waiting && firstWaiting > 0 && feed[firstWaiting - 1].kind === "user") firstWaiting--;
-
-  const renderPiece = (piece: FeedPiece, index: number, at: string | undefined) => {
-    if (piece.kind === "discovery") {
-      return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
-    }
-    if (piece.kind === "user") {
-      return (
-        <div key={piece.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <div title={at ? new Date(at).toLocaleString() : undefined} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
-          </div>
-          {waiting && index > firstWaiting && <span style={{ marginTop: 4, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
-        </div>
-      );
-    }
-    if (piece.kind === "progress") {
-      return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· {piece.text}</p>;
-    }
-    if (piece.kind === "open-question") {
-      return (
-        <OpenQuestion key={piece.id} at={at} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
-      );
-    }
-    if (piece.kind === "answered-question") {
-      return <AnsweredQuestion key={piece.id} at={at} question={piece.question} answer={piece.answer} />;
-    }
-    return (
-      <AgentFeedNote key={piece.id} at={at}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
-      </AgentFeedNote>
-    );
-  };
 
   return (
     <div className="chat-original" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
@@ -467,15 +394,35 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
           ask about your matches, share a preference, or tell your agent what to look for.
         </p> : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
-          // Whole thread: a run of messages about one intent opens with its name.
-          const runIntent = scope && piece.intentId && piece.intentId !== feed[index - 1]?.intentId ? scope.intents.find((i) => i.id === piece.intentId) : undefined;
-          const body = renderPiece(piece, index, at);
-          return runIntent ? (
-            <div key={piece.id} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div className="ih-run" data-testid="chat-intent-run"><span className="ih-tag-swatch" style={{ background: runIntent.color }} />{runIntent.label}</div>
-              {body}
-            </div>
-          ) : body;
+          if (piece.kind === "discovery") {
+            return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
+          }
+          if (piece.kind === "user") {
+            return (
+              <div key={piece.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                <div title={at ? new Date(at).toLocaleString() : undefined} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
+                </div>
+                {waiting && index > firstWaiting && <span style={{ marginTop: 4, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>queued</span>}
+              </div>
+            );
+          }
+          if (piece.kind === "progress") {
+            return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· {piece.text}</p>;
+          }
+          if (piece.kind === "open-question") {
+            return (
+              <OpenQuestion key={piece.id} at={at} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
+            );
+          }
+          if (piece.kind === "answered-question") {
+            return <AnsweredQuestion key={piece.id} at={at} question={piece.question} answer={piece.answer} />;
+          }
+          return (
+            <AgentFeedNote key={piece.id} at={at}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
+            </AgentFeedNote>
+          );
         })}
       {waiting && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· thinking…</p>}
       <div ref={endRef} />
@@ -493,38 +440,14 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch, scope }:
         </div>
       )}
 
-      {scope && targetIntent && (
-        <div ref={pickerRef} className="ih-to" data-testid="chat-intent-picker">
-          <span className="ih-to-label">about</span>
-          <button type="button" className="ih-to-pick" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={() => setPickerOpen((v) => !v)}>
-            <span className="ih-tag-swatch" style={{ background: targetIntent.color }} />
-            <span className="ih-to-text">{targetIntent.label}</span>
-            <span aria-hidden="true">{pickerOpen ? "▾" : "▴"}</span>
-          </button>
-          {pickerOpen && (
-            <div role="listbox" className="ih-pop" style={{ left: 12, right: 12, bottom: "calc(100% + 2px)" }}>
-              {scope.intents.map((option) => (
-                <button key={option.id} type="button" role="option" aria-selected={option.id === target} className={`ih-pop-item${option.id === target ? " on" : ""}`}
-                  onClick={() => { setPickedIntent(option.id); setPickerOpen(false); inputRef.current?.focus(); }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <span className="ih-tag-swatch" style={{ background: option.color }} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{option.label}</span>
-                  </span>
-                  {option.paused && <span className="ih-n">paused</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      <form onSubmit={(event) => { event.preventDefault(); void send(); }} style={{ display: "flex", gap: 10, alignItems: "flex-end", borderTop: scope ? "none" : "1px solid #000", background: "#fff", padding: "7px 12px 8px" }}>
+      <form onSubmit={(event) => { event.preventDefault(); void send(); }} style={{ display: "flex", gap: 10, alignItems: "flex-end", borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px" }}>
         <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
           placeholder="message your agent…"
           aria-label="Message your agent"
           style={{ flex: 1, border: "none", resize: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }} />
-        <button type="submit" disabled={!draft.trim() || sending || !target} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
+        <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5,12 12,5 19,12" /></svg>
         </button>
       </form>

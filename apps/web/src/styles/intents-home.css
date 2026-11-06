@@ -1243,57 +1243,6 @@
   margin-left: auto;
 }
 
-/* home chat: a run of messages names its intent; the composer says where a message goes */
-.ih-run {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: 400 11px var(--ih-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ih-muted);
-}
-.ih-run::after {
-  content: "";
-  flex: 1;
-  border-top: 1px dashed var(--ih-control);
-}
-.ih-to {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px 0;
-  border-top: 1px solid #000;
-  background: #fff;
-}
-.ih-to-label {
-  font: 400 11px var(--ih-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ih-faint);
-}
-.ih .ih-to-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 100%;
-  padding: 2px 8px;
-  border: 1px solid var(--ih-hairline);
-  border-radius: 3px;
-  background: #fff;
-  font: 400 12px var(--ih-sans);
-  color: var(--ih-ink);
-}
-.ih .ih-to-pick:hover {
-  background: var(--ih-hover-2);
-}
-.ih-to-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ih .ih-all .ih-bar.ih-bar-toggle {
   padding: 28px 32px 10px;
   justify-content: flex-start;

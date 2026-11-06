@@ -2,10 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
-import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
-import { AgentPanelHead } from "@/components/intents-home/IntentAgentPanel";
-import { IntentTag, PersonRow, isPaused, labelOf, usePeople } from "@/components/intents-home/people";
-import { intentColor, personKey } from "@/components/intents-home/stages";
+import { IntentTag, PersonRow, isPaused, usePeople } from "@/components/intents-home/people";
+import { personKey } from "@/components/intents-home/stages";
 import { useConversations } from "@/contexts/APIContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -16,14 +14,13 @@ type OpenQuestion = { intentId: string; question: PrincipalQuestion };
 
 /**
  * Home: what needs you today. Your agent's open questions and the people
- * waiting on your accept or pass, on the left; your agent's one conversation,
- * across every intent, on the right.
+ * waiting on your accept or pass.
  */
 export default function HomePage() {
   const navigate = useNavigate();
   const conversations = useConversations();
   const { error: showError } = useNotifications();
-  const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, questionsByIntent, agentHosted, refreshQuestions } = useIntentsData();
+  const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, questionsByIntent, refreshQuestions } = useIntentsData();
   const { sections } = usePeople();
   const waiting = sections.matches;
 
@@ -59,7 +56,7 @@ export default function HomePage() {
     for (const intentId of byIntent.keys()) void refreshQuestions(intentId);
   };
 
-  // The agent can point at a match: someone waiting here lights up; anyone else opens in opportunities.
+  // A question can point at a match: someone waiting here lights up; anyone else opens in opportunities.
   const selectMatch = useCallback((opportunityId: string) => {
     for (const entries of Object.values(entriesByIntent)) {
       const entry = entries.find((e) => e.item.opportunityId === opportunityId);
@@ -74,10 +71,6 @@ export default function HomePage() {
   const live = intents.filter((intent) => !isPaused(intent));
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   const need = questions.length + waiting.length;
-  const scope = useMemo(() => ({
-    intents: intents.map((intent) => ({ id: intent.id, label: labelOf(intent), color: intentColor(intent.id), paused: isPaused(intent) })),
-    hosted: agentHosted,
-  }), [intents, agentHosted]);
 
   return (
     <div className="ih-view">
@@ -102,7 +95,7 @@ export default function HomePage() {
       </header>
 
       <div className="ih-cols">
-        <section className="ih-people">
+        <section className="ih-people ih-all">
           {intentsLoaded && !intents.length ? (
             <div className="ih-empty">
               no intents yet.
@@ -140,16 +133,6 @@ export default function HomePage() {
             </>
           )}
         </section>
-
-        <div className="ih-agent" data-testid="home-agent-chat">
-          <AgentPanelHead
-            sub={intents.length ? `one conversation across your ${intents.length} intent${intents.length === 1 ? "" : "s"}` : undefined}
-            status={<span style={{ color: live.length ? "var(--ih-live)" : "var(--ih-disabled)" }}>● {live.length ? "live" : "idle"}</span>}
-          />
-          {intents.length > 0
-            ? <IntentNegotiatorChat onSelectMatch={selectMatch} scope={scope} />
-            : <div className="ih-agent-body"><div className="ih-mono-sm">start an intent and I&apos;ll go looking for the people it needs.</div></div>}
-        </div>
       </div>
     </div>
   );

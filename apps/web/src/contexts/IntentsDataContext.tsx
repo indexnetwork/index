@@ -43,8 +43,6 @@ interface IntentsData {
   questionsByIntent: Record<string, PrincipalQuestion[]>;
   /** Every open question across intents. */
   questionTotal: number;
-  /** Whether a hosted agent answers in the web chat (an external one never replies there). */
-  agentHosted: boolean;
   /** Re-read the agent's questions for one intent, or for all of them. */
   refreshQuestions: (intentId?: string) => Promise<void>;
   opportunityStatusMap: OpportunityActions["opportunityStatusMap"];
@@ -218,12 +216,10 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   const conversationsService = useConversations();
   const { subscribeConversationMessage } = useConversation();
   const [questionsByIntent, setQuestionsByIntent] = useState<Record<string, PrincipalQuestion[]>>({});
-  const [agentHosted, setAgentHosted] = useState(false);
   const loadQuestions = useCallback(async (intentId: string) => {
     try {
       const { agent } = await conversationsService.getMessages(AGENT_DM_ID, { intentId, limit: 1 });
       if (!mountedRef.current || !agent) return;
-      setAgentHosted(agent.status === "hosted");
       setQuestionsByIntent((prev) => ({ ...prev, [intentId]: agent.questions ?? [] }));
     } catch {
       // Keep what is on screen; the next poll tries again.
@@ -250,9 +246,9 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<IntentsData>(() => ({
     intents, intentsLoaded, intentsError, fetchIntents, updateIntents,
     radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal,
-    questionsByIntent, questionTotal, agentHosted, refreshQuestions,
+    questionsByIntent, questionTotal, refreshQuestions,
     opportunityStatusMap, opportunityActionLoading, handleOpportunityAction,
-  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal, questionsByIntent, questionTotal, agentHosted, refreshQuestions, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
+  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal, questionsByIntent, questionTotal, refreshQuestions, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
 
   return <IntentsDataContext.Provider value={value}>{children}</IntentsDataContext.Provider>;
 }
