@@ -54,6 +54,9 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
   const navigate = useNavigate();
   const compact = useCompact();
   const back = useBack("/");
+  // The edit form is pushed on top of the profile. Leaving it pops back, so the
+  // profile's own close box doesn't land on the form again.
+  const leaveEdit = useBack("/profile");
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
@@ -158,6 +161,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
   const handleSave = async () => {
     setSaving(true);
+    const usernameChanged = username !== (user?.username || "");
     try {
       let avatarFilename = user?.avatar;
       if (avatarFile) avatarFilename = await authService.uploadAvatar(avatarFile);
@@ -167,7 +171,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       await authService.updateProfile({
         name: name || undefined,
         // Only sent when it changed, so an unchanged save never re-checks availability.
-        ...(username !== (user?.username || "") ? { username: username || null } : {}),
+        ...(usernameChanged ? { username: username || null } : {}),
         intro: intro || undefined,
         location: location || undefined,
         avatar: avatarFilename || undefined,
@@ -188,7 +192,11 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       setAvatarPreview(null);
       setIsDirty(false);
       success("Profile saved");
-      if (editProfile) navigate("/profile");
+      // A new username moves the profile, so the page behind this one is stale: replace instead.
+      if (editProfile) {
+        if (usernameChanged) navigate("/profile", { replace: true });
+        else leaveEdit();
+      }
     } catch (err) {
       // A refused username comes back as 400 or 409 with a message worth showing.
       error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : "Failed to save profile");
@@ -224,7 +232,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
         <Window
           title={firstRun ? "getting started" : editProfile ? "edit profile" : "settings"}
           // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
-          onClose={firstRun ? () => void signOut() : editProfile ? () => navigate("/profile") : compact ? back : () => navigate("/")}
+          onClose={firstRun ? () => void signOut() : editProfile ? leaveEdit : compact ? back : () => navigate("/")}
           style={{ height: "100%" }}
         >
         {firstRun && (
@@ -435,7 +443,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
               textDecoration: "underline", cursor: "pointer", opacity: 0.7,
             }}>sign out</button>
           ) : (
-            <button type="button" onClick={() => navigate(editProfile ? "/profile" : "/")} disabled={saving} style={{
+            <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} style={{
               fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
               border: "1px solid #000", background: "#fff", color: "#000",
               boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
