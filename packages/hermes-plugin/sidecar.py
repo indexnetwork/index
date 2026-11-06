@@ -32,7 +32,7 @@ LOCK_FILE = "index-negotiator.lock"
 
 
 def read_state(path: Path) -> dict:
-    """@param path - The state file. @returns `{pid, paused, url, token, morning}` as last written."""
+    """@param path - The state file. @returns `{pid, paused, url, token, morning, auth, recheck}` as last written."""
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -43,6 +43,10 @@ def read_state(path: Path) -> dict:
         "url": state.get("url") or "",
         "token": state.get("token") or "",
         "morning": state.get("morning") or 0,
+        # "unauthorized" while the gateway's Index calls are rejected, "ok" after one succeeds.
+        "auth": state.get("auth") or "",
+        # Bumped by the dashboard after a sign-in so the gateway checks again at once.
+        "recheck": state.get("recheck") or 0,
     }
 
 
