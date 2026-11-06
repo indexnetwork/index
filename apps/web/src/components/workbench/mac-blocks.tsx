@@ -31,7 +31,6 @@ export function MatchCard({
   expired,
   statusLabel,
   age,
-  stale,
   hasChat,
   onOpen,
   onOpenChat,
@@ -52,8 +51,6 @@ export function MatchCard({
   statusLabel: string;
   /** How long ago the card last changed ("3h"), joined to the stage word. */
   age?: string | null;
-  /** Awaiting the viewer too long: the card fades. */
-  stale?: boolean;
   hasChat: boolean;
   onOpen: () => void;
   onOpenChat: () => void;
@@ -103,7 +100,6 @@ export function MatchCard({
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
         boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: hover ? "translate(-1px, -1px)" : "none",
-        opacity: stale && !hover ? 0.5 : 1,
         cursor: "pointer",
         transition: "all .12s ease",
       }}>

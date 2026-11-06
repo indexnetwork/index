@@ -20,7 +20,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, formatRadarAge, isRadarStale, personWindowTitle, radarActivityAt, radarActivityMs, radarBucketForOpportunity, radarEmptyLine, radarStatusLabel, type RadarBucket } from "@/lib/radar-buckets";
+import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, formatRadarAge, personWindowTitle, radarActivityAt, radarActivityMs, radarBucketForOpportunity, radarEmptyLine, radarStatusLabel, type RadarBucket } from "@/lib/radar-buckets";
 import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
@@ -569,7 +569,6 @@ function IntentDetail() {
             expired={bucket === "closed"}
             statusLabel={radarStatusLabel(bucket, item.status)}
             age={formatRadarAge(activityAt, now)}
-            stale={isRadarStale(bucket, activityAt, now)}
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
             onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
             onOpenChat={() => navigate(`/u/${item.userId || peer?.userId}/chat`)}
