@@ -3,7 +3,7 @@ import { Navigate } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { needsOnboarding } from "@/services/onboarding";
 import DiscoverHome from "@/components/DiscoverHome";
-import IntentsHome from "@/components/intents-home/IntentsHome";
+import HomePage from "@/components/intents-home/HomePage";
 import { useCompact } from "@/hooks/useCompact";
 import LandingPage from "@/app/landing/page";
 
@@ -21,8 +21,8 @@ function RootPage() {
   if (isAuthenticated) {
     // Same durable gate as the Mac app: an unconfirmed profile reviews it first.
     if (needsOnboarding(user)) return <Navigate to="/onboarding" replace />;
-    // Desktop: the intents screen with every intent selected. Phones keep the shelf.
-    return compact ? <DiscoverHome /> : <IntentsHome />;
+    // Desktop: home (questions, people waiting, your agent). Phones keep the shelf.
+    return compact ? <DiscoverHome /> : <HomePage />;
   }
 
   return <LandingPage />;

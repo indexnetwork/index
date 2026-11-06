@@ -29,6 +29,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }, [pathname, isAuthenticated]);
 
   const isAppRoute = useMemo(() => {
+    // Exact: /opportunities/:id/skip is an emailed link with its own page.
+    if (pathname === '/opportunities' || pathname === '/intents') return true;
     return appRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );

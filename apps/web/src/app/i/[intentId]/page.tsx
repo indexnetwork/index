@@ -3,7 +3,6 @@ import { Navigate, useNavigate, useParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
-import IntentsHome from "@/components/intents-home/IntentsHome";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import ChatView from "@/components/chat/ChatView";
 import UserAvatar from "@/components/UserAvatar";
@@ -61,7 +60,8 @@ function IntentWeb() {
     const next = window.location.pathname + window.location.search;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
-  return <IntentsHome selectedId={intentId} />;
+  // Desktop has no page per intent: an intent link opens its people.
+  return <Navigate to={`/opportunities?intent=${encodeURIComponent(intentId ?? "")}`} replace />;
 }
 
 function IntentDetail() {
@@ -604,7 +604,7 @@ function IntentDetail() {
     />
   ) : null;
 
-  // Phones only (desktop renders IntentsHome): one window. The intent switches
+  // Phones only (desktop opens /opportunities?intent=): one window. The intent switches
   // between the agent chat and the radar, and an open person drills in full
   // screen with back to the intent.
   return (

@@ -1041,3 +1041,263 @@
   color: var(--ih-faint);
   letter-spacing: 0;
 }
+
+/* Home · opportunities · intents. One agent conversation, on home only. */
+.ih-places {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ih-place-icon.diamond {
+  transform: rotate(45deg) scale(0.85);
+}
+.ih-place-icon.lines {
+  border-width: 1.5px 0;
+  border-radius: 0;
+  height: 11px;
+  background: linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat;
+}
+.ih-all {
+  margin: 0;
+}
+
+/* home: the agent's questions */
+.ih-q {
+  margin: 0 32px;
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--ih-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ih-q-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ih .ih-q-meta .ih-tag {
+  border: 1px solid var(--ih-hairline);
+  border-radius: 3px;
+  padding: 0 6px;
+  background: #fff;
+}
+.ih .ih-q-who {
+  font: 400 11px var(--ih-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ih-muted);
+}
+.ih button.ih-q-who:hover {
+  color: var(--ih-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ih-q-text {
+  font: 400 17px/1.4 var(--ih-serif);
+  color: var(--ih-ink);
+  text-wrap: pretty;
+  max-width: 620px;
+}
+.ih .ih-option-write {
+  border-style: dashed;
+  color: var(--ih-muted);
+}
+.ih .ih-option.on {
+  background: #fff0dc;
+  border-color: #ff8a00;
+  color: var(--ih-ink);
+}
+.ih-q-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  border: 1px solid #141414;
+  padding: 4px 10px;
+  font: 400 13px var(--ih-mono);
+  color: var(--ih-ink);
+  outline: none;
+  background: #fff;
+}
+.ih-answers-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 32px;
+  padding: 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--ih-divider);
+  font: 400 12px var(--ih-mono);
+  color: var(--ih-muted);
+}
+.ih-empty.ih-empty-sm {
+  padding: 14px 32px 18px;
+  font-size: 13px;
+}
+.ih .ih-see-all {
+  margin: 16px 32px 0;
+}
+
+/* opportunities: intent chips */
+.ih-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 32px 16px;
+  flex: none;
+}
+.ih .ih-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--ih-control);
+  border-radius: 3px;
+  background: #fff;
+  font: 400 13px var(--ih-sans);
+  color: var(--ih-text-2);
+  white-space: nowrap;
+}
+.ih .ih-chip .ih-n {
+  color: var(--ih-faint);
+  font-size: 12px;
+}
+.ih .ih-chip:hover {
+  background: var(--ih-hover-2);
+}
+.ih .ih-chip.on {
+  background: #fff0dc;
+  border-color: #ff8a00;
+  color: var(--ih-ink);
+}
+.ih .ih-chip.paused {
+  color: var(--ih-faint);
+}
+.ih-title-for {
+  color: var(--ih-muted);
+}
+
+/* intents: one card per intent */
+.ih-intent-list {
+  padding-top: 0;
+}
+.ih-intent-card {
+  margin: 0 32px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ih-divider);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ih-intent-card .ih-intent-tag {
+  margin-top: 7px;
+}
+.ih-intent-card-body {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ih-intent-card-text {
+  margin: 0;
+  font: 400 19px/1.35 var(--ih-serif);
+  color: var(--ih-ink);
+  text-wrap: pretty;
+}
+.ih-intent-card.paused .ih-intent-card-text {
+  color: var(--ih-faint);
+}
+.ih-intent-card.paused .ih-intent-tag {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+.ih-intent-counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.ih .ih-count {
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-text-2);
+  padding: 2px 8px;
+  border: 1px solid var(--ih-hairline);
+  border-radius: 3px;
+  background: #fff;
+}
+.ih .ih-count:hover {
+  border-color: var(--ih-control);
+  color: var(--ih-ink);
+}
+.ih .ih-count.hot {
+  color: var(--ih-accent);
+  border-color: #ffd7a0;
+  font-weight: 600;
+}
+.ih-intent-card-actions {
+  margin-left: auto;
+}
+
+/* home chat: a run of messages names its intent; the composer says where a message goes */
+.ih-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 11px var(--ih-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ih-muted);
+}
+.ih-run::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--ih-control);
+}
+.ih-to {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+  border-top: 1px solid #000;
+  background: #fff;
+}
+.ih-to-label {
+  font: 400 11px var(--ih-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ih-faint);
+}
+.ih .ih-to-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--ih-hairline);
+  border-radius: 3px;
+  background: #fff;
+  font: 400 12px var(--ih-sans);
+  color: var(--ih-ink);
+}
+.ih .ih-to-pick:hover {
+  background: var(--ih-hover-2);
+}
+.ih-to-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ih .ih-all .ih-bar.ih-bar-toggle {
+  padding: 28px 32px 10px;
+  justify-content: flex-start;
+}
+.ih-all {
+  padding-top: 0;
+}

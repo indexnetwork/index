@@ -2,11 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation } from "react-router";
 
 import { STAGE_OF, intentRank, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
-import { useOpportunities } from "@/contexts/APIContext";
+import { useConversations, useOpportunities } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import { apiClient } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
+import { AGENT_DM_ID, type PrincipalQuestion } from "@/services/conversation";
 import type { OpportunityLifecycleStatus, RadarCardItem } from "@/services/opportunities";
 
 const logger = log.context.from("IntentsData");
@@ -14,6 +16,7 @@ const logger = log.context.from("IntentsData");
 /** Same lifecycle set as the intent radar. Rejected and expired both land in closed. */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = ["pending", "negotiating", "accepted", "rejected", "expired"];
 const RADAR_POLL_MS = 10_000;
+const QUESTIONS_POLL_MS = 15_000;
 
 type OpportunityActions = ReturnType<typeof useOpportunityActions>;
 
@@ -36,6 +39,14 @@ interface IntentsData {
   waitingCount: (intentId: string) => number;
   /** Everyone waiting on the viewer across intents, each person once: the inbox count. */
   waitingTotal: number;
+  /** What your agent is asking you, per intent, oldest first. */
+  questionsByIntent: Record<string, PrincipalQuestion[]>;
+  /** Every open question across intents. */
+  questionTotal: number;
+  /** Whether a hosted agent answers in the web chat (an external one never replies there). */
+  agentHosted: boolean;
+  /** Re-read the agent's questions for one intent, or for all of them. */
+  refreshQuestions: (intentId?: string) => Promise<void>;
   opportunityStatusMap: OpportunityActions["opportunityStatusMap"];
   opportunityActionLoading: OpportunityActions["opportunityActionLoading"];
   handleOpportunityAction: OpportunityActions["handleOpportunityAction"];
@@ -132,8 +143,8 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   // is an LLM call per person (never cached while negotiating), so it is read
   // once per intent; after that only skeletons are polled, plus full text for
   // the intent that is open.
-  const { pathname } = useLocation();
-  const openIntentId = /^\/i\/([^/]+)/.exec(pathname)?.[1];
+  const { pathname, search } = useLocation();
+  const openIntentId = pathname === "/opportunities" ? new URLSearchParams(search).get("intent") ?? undefined : undefined;
   const intentIds = intents.map((intent) => intent.id).join(",");
   useEffect(() => {
     if (!intentIds) return;
@@ -202,11 +213,46 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
     return people.size;
   }, [entriesByIntent]);
 
+  // The agent's open questions live per intent on the server (one agent DM,
+  // each message tagged with its intent), so they are read one intent at a time.
+  const conversationsService = useConversations();
+  const { subscribeConversationMessage } = useConversation();
+  const [questionsByIntent, setQuestionsByIntent] = useState<Record<string, PrincipalQuestion[]>>({});
+  const [agentHosted, setAgentHosted] = useState(false);
+  const loadQuestions = useCallback(async (intentId: string) => {
+    try {
+      const { agent } = await conversationsService.getMessages(AGENT_DM_ID, { intentId, limit: 1 });
+      if (!mountedRef.current || !agent) return;
+      setAgentHosted(agent.status === "hosted");
+      setQuestionsByIntent((prev) => ({ ...prev, [intentId]: agent.questions ?? [] }));
+    } catch {
+      // Keep what is on screen; the next poll tries again.
+    }
+  }, [conversationsService]);
+  const refreshQuestions = useCallback(async (intentId?: string) => {
+    if (intentId) return loadQuestions(intentId);
+    await Promise.all(intentIds.split(",").filter(Boolean).map(loadQuestions));
+  }, [intentIds, loadQuestions]);
+  useEffect(() => {
+    const first = setTimeout(() => { void refreshQuestions(); }, 0);
+    const timer = setInterval(() => { void refreshQuestions(); }, QUESTIONS_POLL_MS);
+    return () => { clearTimeout(first); clearInterval(timer); };
+  }, [refreshQuestions]);
+  useEffect(() => subscribeConversationMessage(({ message }) => {
+    const intentId = message.metadata?.intentId;
+    if (typeof intentId === "string" && intentIds.split(",").includes(intentId)) void loadQuestions(intentId);
+  }), [subscribeConversationMessage, intentIds, loadQuestions]);
+  const questionTotal = useMemo(
+    () => intents.reduce((total, intent) => total + (questionsByIntent[intent.id]?.length ?? 0), 0),
+    [intents, questionsByIntent],
+  );
+
   const value = useMemo<IntentsData>(() => ({
     intents, intentsLoaded, intentsError, fetchIntents, updateIntents,
     radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal,
+    questionsByIntent, questionTotal, agentHosted, refreshQuestions,
     opportunityStatusMap, opportunityActionLoading, handleOpportunityAction,
-  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
+  }), [intents, intentsLoaded, intentsError, fetchIntents, updateIntents, radar, radarFailed, loadRadar, entriesByIntent, activeCount, waitingCount, waitingTotal, questionsByIntent, questionTotal, agentHosted, refreshQuestions, opportunityStatusMap, opportunityActionLoading, handleOpportunityAction]);
 
   return <IntentsDataContext.Provider value={value}>{children}</IntentsDataContext.Provider>;
 }

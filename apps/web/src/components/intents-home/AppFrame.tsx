@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import Avatar from "@/components/intents-home/Avatar";
-import { intentColor, useDismiss, type HomeIntent } from "@/components/intents-home/stages";
+import { usePeople } from "@/components/intents-home/people";
+import { useDismiss } from "@/components/intents-home/stages";
 import InviteNetworksModal from "@/components/modals/InviteNetworksModal";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
@@ -12,15 +13,12 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 
-/** The intent as its owner wrote it; the rail clamps it to two lines. */
-const sentenceOf = (intent: HomeIntent) => (intent.payload?.trim() || intent.summary?.trim() || "your intent");
-
 /** Which rail row the current page belongs to. */
 function railKey(pathname: string): string {
-  if (pathname === "/") return "inbox";
+  if (pathname === "/") return "home";
   if (pathname === "/i/new") return "new";
-  const intent = /^\/i\/([^/]+)/.exec(pathname);
-  if (intent) return `intent:${intent[1]}`;
+  if (pathname === "/opportunities" || pathname.startsWith("/i/")) return "opportunities";
+  if (pathname === "/intents") return "intents";
   for (const root of ["/chat", "/u/", "/networks", "/agents", "/settings", "/negotiations"]) {
     if (pathname.startsWith(root)) return root === "/u/" ? "/chat" : root;
   }
@@ -28,8 +26,8 @@ function railKey(pathname: string): string {
 }
 
 /**
- * The rail beside every signed-in desktop page: the inbox and messages, then
- * every intent in its owner's words, then the app's other places and you.
+ * The rail beside every signed-in desktop page: a new intent, then the three
+ * places (home, opportunities, intents) and messages, then the rest and you.
  */
 function AppRail({ onInvite }: { onInvite: () => void }) {
   const navigate = useNavigate();
@@ -38,7 +36,8 @@ function AppRail({ onInvite }: { onInvite: () => void }) {
   const agentsService = useAgents();
   const { networks } = useNetworksState();
   const { conversations } = useConversation();
-  const { intents, intentsError, fetchIntents, activeCount, waitingCount, waitingTotal } = useIntentsData();
+  const { intents, waitingTotal, questionTotal } = useIntentsData();
+  const { people } = usePeople();
   const [agentCount, setAgentCount] = useState(1);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -58,49 +57,37 @@ function AppRail({ onInvite }: { onInvite: () => void }) {
     .reduce((total, conv) => total + (conv.unreadCount > 0 ? conv.unreadCount : 0), 0);
   const here = railKey(pathname);
   const row = (key: string) => (here === key ? " on" : "");
+  const needsYou = questionTotal + waitingTotal;
+  // Each person once, however many intents they came up for.
+  const found = people.filter((person) => person.entries[0].stage !== "closed").length;
+  const live = intents.filter((intent) => (intent.status || "").toLowerCase() !== "paused").length;
 
   return (
     <nav className="ih-rail" aria-label="Main">
       <div className="ih-brand">index</div>
-      <button type="button" className={`ih-place${row("inbox")}`} onClick={() => navigate("/")}>
-        <span className="ih-place-icon" aria-hidden="true" />
-        <span>inbox</span>
-        {waitingTotal > 0 && <span className="ih-badge" title={`${waitingTotal} waiting on you`}>{waitingTotal}</span>}
-      </button>
-      <button type="button" className={`ih-place${row("/chat")}`} onClick={() => navigate("/chat")}>
-        <span className="ih-place-icon round" aria-hidden="true" />
-        <span>messages</span>
-        {unreadMessages > 0 && <span className="ih-n" title={`${unreadMessages} unread`}>{unreadMessages} unread</span>}
-      </button>
-
-      <div className="ih-rail-label"><span>YOUR INTENTS</span><span className="ih-n">{intents.length || ""}</span></div>
       <button type="button" className={`ih-new${row("new")}`} onClick={() => navigate("/i/new")}><span>+</span><span>new intent</span></button>
-      <div className="ih-intents">
-        {intents.map((intent) => {
-          const isPaused = (intent.status || "").toLowerCase() === "paused";
-          const waiting = waitingCount(intent.id);
-          const found = activeCount(intent.id);
-          return (
-            <button key={intent.id} type="button" title={intent.payload} className={`ih-intent${row(`intent:${intent.id}`)}${isPaused ? " paused" : ""}`} onClick={() => navigate(`/i/${intent.id}`)}>
-              <span className="ih-intent-tag" style={{ background: intentColor(intent.id) }} aria-hidden="true" />
-              <span className="ih-intent-text">
-                <span className="ih-intent-sentence">{sentenceOf(intent)}</span>
-                <span className="ih-intent-meta">
-                  {isPaused ? "paused"
-                    : waiting > 0 ? <><b>{waiting} waiting</b>{found > waiting && ` · ${found - waiting} in progress`}</>
-                    : found > 0 ? `${found} in progress`
-                    : <><span className="ih-live-dot" aria-hidden="true" />looking</>}
-                </span>
-              </span>
-            </button>
-          );
-        })}
+      <div className="ih-places">
+        <button type="button" className={`ih-place${row("home")}`} onClick={() => navigate("/")}>
+          <span className="ih-place-icon" aria-hidden="true" />
+          <span>home</span>
+          {needsYou > 0 && <span className="ih-badge" title={`${questionTotal} questions, ${waitingTotal} people waiting on you`}>{needsYou}</span>}
+        </button>
+        <button type="button" className={`ih-place${row("opportunities")}`} onClick={() => navigate("/opportunities")}>
+          <span className="ih-place-icon diamond" aria-hidden="true" />
+          <span>opportunities</span>
+          {found > 0 && <span className="ih-n">{found}</span>}
+        </button>
+        <button type="button" className={`ih-place${row("intents")}`} onClick={() => navigate("/intents")}>
+          <span className="ih-place-icon lines" aria-hidden="true" />
+          <span>intents</span>
+          {intents.length > 0 && <span className="ih-n">{live === intents.length ? intents.length : `${live} of ${intents.length} live`}</span>}
+        </button>
+        <button type="button" className={`ih-place${row("/chat")}`} onClick={() => navigate("/chat")}>
+          <span className="ih-place-icon round" aria-hidden="true" />
+          <span>messages</span>
+          {unreadMessages > 0 && <span className="ih-n">{unreadMessages} unread</span>}
+        </button>
       </div>
-      {intentsError && !intents.length && (
-        <div className="ih-intent" style={{ cursor: "default" }}>
-          <span>couldn&apos;t load. <button type="button" className="ih-link" onClick={() => void fetchIntents()}>try again</button></span>
-        </div>
-      )}
 
       <div className="ih-menu">
         <button type="button" className={`ih-menu-row${row("/networks")}`} onClick={() => navigate("/networks")}>

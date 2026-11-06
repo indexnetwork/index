@@ -94,7 +94,7 @@ export default function DiscoverHome() {
     </button>
   );
 
-  // Phones only (desktop renders IntentsHome): intents are the whole screen.
+  // Phones only (desktop renders HomePage): intents are the whole screen.
   // Conversations, agents and the profile menu sit in the tab bar; networks and
   // settings in its "you" sheet.
   return (
