@@ -36,9 +36,4 @@ describe("MatchCard", () => {
     expect(screen.getByText("accepted")).toBeInTheDocument();
     expect(screen.queryByText("chat open")).not.toBeInTheDocument();
   });
-
-  it("fades a stale card", () => {
-    const { container } = renderCard({ age: "5d", stale: true });
-    expect((container.querySelector("div[style]") as HTMLElement).style.opacity).toBe("0.5");
-  });
 });

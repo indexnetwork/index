@@ -42,9 +42,6 @@ export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "
   return "profile";
 }
 
-/** An awaiting-you card older than this fades: it has been waiting on the viewer too long. */
-export const RADAR_STALE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
-
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -88,15 +85,4 @@ export function radarStatusLabel(
   if (bucket === "negotiating") return "in progress";
   if (bucket === "accepted") return "accepted";
   return status === "rejected" ? "not a fit" : "missed";
-}
-
-/** Whether an awaiting-you card has waited on the viewer long enough to fade. Other stages never fade. */
-export function isRadarStale(
-  bucket: Exclude<RadarBucket, "all">,
-  iso: string | undefined,
-  now: number = Date.now(),
-): boolean {
-  if (bucket !== "awaiting you") return false;
-  const at = Date.parse(iso ?? "");
-  return Number.isFinite(at) && now - at > RADAR_STALE_AFTER_MS;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRadarAge, isRadarStale, radarActivityAt, radarActivityMs, radarStatusLabel } from "./radar-buckets";
+import { formatRadarAge, radarActivityAt, radarActivityMs, radarStatusLabel } from "./radar-buckets";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -45,16 +45,5 @@ describe("radarStatusLabel", () => {
     expect(radarStatusLabel("accepted", "accepted")).toBe("accepted");
     expect(radarStatusLabel("closed", "rejected")).toBe("not a fit");
     expect(radarStatusLabel("closed", "expired")).toBe("missed");
-  });
-});
-
-describe("isRadarStale", () => {
-  it("fades only awaiting-you cards older than three days", () => {
-    expect(isRadarStale("awaiting you", ago(2 * DAY), NOW)).toBe(false);
-    expect(isRadarStale("awaiting you", ago(4 * DAY), NOW)).toBe(true);
-    expect(isRadarStale("negotiating", ago(9 * DAY), NOW)).toBe(false);
-    expect(isRadarStale("accepted", ago(9 * DAY), NOW)).toBe(false);
-    expect(isRadarStale("closed", ago(9 * DAY), NOW)).toBe(false);
-    expect(isRadarStale("awaiting you", undefined, NOW)).toBe(false);
   });
 });
