@@ -1,4 +1,4 @@
-import { buildProfileFromUser, schema, Conversation, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
+import { buildProfileFromUser, schema, Conversation, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, lte, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 import { publishConversationMessageEvent } from '../lib/user-events';
@@ -14,6 +14,19 @@ interface PeerChat {
 
 /** Inactivity gap that opens a new durable H2A/H2H conversation session. */
 const CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a viewer may see a message. A message sent while its sender was
+ * shadowbanned is visible to that sender alone.
+ * @param viewerId - The participant reading.
+ * @returns A condition on `messages`.
+ */
+function visibleTo(viewerId: string) {
+  return sql`(${schema.messages.senderId} = ${viewerId} OR NOT EXISTS (
+    SELECT 1 FROM ${schema.users} shadow
+    WHERE shadow.id = ${schema.messages.senderId} AND shadow.shadowbanned_at <= ${schema.messages.createdAt}
+  ))`;
+}
 
 interface MatchProvenanceEntry {
   opportunityId: string;
@@ -158,8 +171,7 @@ export class ConversationDatabaseAdapter {
       db
         .select()
         .from(schema.conversations)
-        .where(inArray(schema.conversations.id, ids))
-        .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`),
+        .where(inArray(schema.conversations.id, ids)),
       db
         .select()
         .from(schema.conversationParticipants)
@@ -180,7 +192,7 @@ export class ConversationDatabaseAdapter {
           createdAt: schema.messages.createdAt,
         })
         .from(schema.messages)
-        .where(inArray(schema.messages.conversationId, ids))
+        .where(and(inArray(schema.messages.conversationId, ids), visibleTo(participantId)))
         .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt)),
       db
         .select()
@@ -205,6 +217,7 @@ export class ConversationDatabaseAdapter {
         .where(and(
           inArray(schema.messages.conversationId, ids),
           ne(schema.messages.senderId, participantId),
+          visibleTo(participantId),
           or(
             isNull(schema.conversationParticipants.lastReadAt),
             gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
@@ -332,8 +345,14 @@ export class ConversationDatabaseAdapter {
     }
 
 
+    // A shadowbanned sender's messages leave `lastMessageAt` alone, so report
+    // and order by the latest message this viewer can see.
+    const activityAt = (c: Conversation) => lastMessageByConv.get(c.id)?.createdAt ?? c.lastMessageAt;
+    convs.sort((a, b) => (activityAt(b)?.getTime() ?? 0) - (activityAt(a)?.getTime() ?? 0));
+
     return convs.map((c) => ({
       ...c,
+      lastMessageAt: activityAt(c),
       participants: participantsByConv.get(c.id) ?? [],
       lastMessage: lastMessageByConv.get(c.id) ?? null,
       metadata: metaByConv.get(c.id) ?? null,
@@ -407,8 +426,9 @@ export class ConversationDatabaseAdapter {
       SELECT c.dm_pair AS "dmPair", c.id AS "conversationId", lm.sender_id AS "fromUserId", lm.created_at AS at
       FROM conversations c
       LEFT JOIN LATERAL (
-        SELECT m.sender_id, m.created_at FROM messages m
-        WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1
+        SELECT ${schema.messages.senderId}, ${schema.messages.createdAt} FROM ${schema.messages}
+        WHERE ${schema.messages.conversationId} = c.id AND ${visibleTo(viewerId)}
+        ORDER BY ${schema.messages.createdAt} DESC LIMIT 1
       ) lm ON true
       WHERE c.dm_pair = ANY(ARRAY[${sql.join([...peerByPair.keys()].map((pair) => sql`${pair}`), sql`, `)}]::text[])
     `);
@@ -552,10 +572,12 @@ export class ConversationDatabaseAdapter {
       // The owner's agent has no `users` row, so it needs its name spelled out;
       // this is what the agent DM notification is titled with.
       const [sender] = senderUserId === SYSTEM_AGENT_ID ? [] : await db
-        .select({ name: schema.users.name, avatar: schema.users.avatar })
+        .select({ name: schema.users.name, avatar: schema.users.avatar, shadowbannedAt: schema.users.shadowbannedAt })
         .from(schema.users)
         .where(eq(schema.users.id, senderUserId))
         .limit(1);
+      const participants = await this.getParticipants(message.conversationId);
+      const shadowed = sender?.shadowbannedAt != null && sender.shadowbannedAt <= message.createdAt;
       const senderName = senderUserId === SYSTEM_AGENT_ID ? 'Your agent' : sender?.name?.trim();
       await publishConversationMessageEvent(
         {
@@ -563,7 +585,7 @@ export class ConversationDatabaseAdapter {
           ...(senderName ? { senderName } : {}),
           ...(sender?.avatar?.trim() ? { senderAvatar: sender.avatar.trim() } : {}),
         },
-        await this.getParticipants(message.conversationId),
+        shadowed ? participants.filter((p) => p.participantId === message.senderId) : participants,
       );
     } catch (error) {
       logger.error('Failed to publish conversation SSE event', {
@@ -635,10 +657,19 @@ export class ConversationDatabaseAdapter {
       .values({ ...data, sessionId, createdAt: now })
       .returning();
 
-    await tx
-      .update(schema.conversations)
-      .set({ lastMessageAt: now, updatedAt: now })
-      .where(eq(schema.conversations.id, data.conversationId));
+    // A shadowbanned sender's message must not resurface the conversation for
+    // anyone else, so it leaves the conversation's activity time alone.
+    const [shadowbanned] = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, data.senderId), lte(schema.users.shadowbannedAt, now)))
+      .limit(1);
+    if (!shadowbanned) {
+      await tx
+        .update(schema.conversations)
+        .set({ lastMessageAt: now, updatedAt: now })
+        .where(eq(schema.conversations.id, data.conversationId));
+    }
     await tx
       .update(schema.conversationParticipants)
       .set({ hiddenAt: null })
@@ -681,6 +712,7 @@ export class ConversationDatabaseAdapter {
       if (participant?.hiddenAt) {
         conditions.push(gt(schema.messages.createdAt, participant.hiddenAt));
       }
+      conditions.push(visibleTo(opts.userId));
     }
 
     if (opts?.before) {
@@ -739,7 +771,12 @@ export class ConversationDatabaseAdapter {
     messages: Message[];
     hasPreviousSession: boolean;
   }> {
+    // Skip sessions that hold only messages this viewer cannot see.
+    const hasVisibleMessage = opts?.userId
+      ? sql`EXISTS (SELECT 1 FROM ${schema.messages} WHERE ${schema.messages.sessionId} = ${schema.conversationSessions.id} AND ${visibleTo(opts.userId)})`
+      : undefined;
     const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (hasVisibleMessage) conditions.push(hasVisibleMessage);
     if (opts?.beforeSessionId) {
       const [cursor] = await db
         .select({
@@ -789,6 +826,7 @@ export class ConversationDatabaseAdapter {
       if (participant?.hiddenAt) {
         messageConditions.push(gt(schema.messages.createdAt, participant.hiddenAt));
       }
+      messageConditions.push(visibleTo(opts.userId));
     }
 
     const messages = await db
@@ -798,6 +836,7 @@ export class ConversationDatabaseAdapter {
       .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     const previousConditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (hasVisibleMessage) previousConditions.push(hasVisibleMessage);
     const previousSessionCondition = or(
       lt(schema.conversationSessions.startedAt, session.startedAt),
       and(

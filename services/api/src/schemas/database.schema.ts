@@ -108,7 +108,12 @@ export const users = pgTable('users', {
   lastMorningBriefAt: timestamp('last_morning_brief_at'),
   lastMorningEmailAt: timestamp('last_morning_email_at'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
-
+  /**
+   * Set by staff in the database. Messages this user sends from this moment on
+   * reach only themselves: other people never see, count, or get notified of
+   * them, and the sender is not told. Clearing it reveals those messages.
+   */
+  shadowbannedAt: timestamp('shadowbanned_at', { withTimezone: true }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
