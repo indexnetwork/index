@@ -76,6 +76,10 @@ async function dueMessage(recipientId: string, conversationId: string): Promise<
       LEFT JOIN ${schema.users} sender ON sender.id = m.sender_id
       WHERE m.conversation_id = ${conversationId}
         AND m.sender_id <> u.id
+        AND NOT EXISTS (
+          SELECT 1 FROM ${schema.users} shadow
+          WHERE shadow.id = m.sender_id AND shadow.shadowbanned_at <= m.created_at
+        )
         AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
     ) unread ON true
     WHERE u.id = ${recipientId} AND u.deleted_at IS NULL
