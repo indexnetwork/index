@@ -218,11 +218,11 @@ export class ConversationService {
   /**
    * Retrieves messages for a conversation.
    * @param conversationId - Conversation ID
-   * @param opts - Optional limit, cursor (before), intent filter, or userId for authorization
+   * @param opts - Optional limit, cursor (before), intent or scope filter, or userId for authorization
    * @returns Ordered list of messages
    * @throws Error if opts.userId is provided and is not a participant
    */
-  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; userId?: string; intentId?: string }) {
+  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; userId?: string; intentId?: string; scope?: string }) {
     if (opts?.userId) {
       await this.verifyParticipant(opts.userId, conversationId);
     }

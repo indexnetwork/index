@@ -1,0 +1,487 @@
+/* Home and intents: an early web page with the workbench's fun bits.
+   Blue underlined links, mono rule headings, beveled boxes and buttons, orange for go. */
+.ih .pl {
+  overflow: auto;
+  font-family: "IBM Plex Sans", "Helvetica Neue", Tahoma, Geneva, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #000;
+  background: #fff;
+}
+.pl-page {
+  max-width: 720px;
+  padding: 20px 28px 56px;
+}
+.pl h1 {
+  font: 700 32px/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: -0.5px;
+  margin: 12px 0 12px;
+}
+/* Section heads: small caps mono label, then a double rule to the edge. */
+.pl h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin: 22px 0 12px;
+}
+.pl h2::after {
+  content: "";
+  flex: 1;
+  height: 3px;
+  border-top: 1px solid #000;
+  border-bottom: 1px solid #000;
+}
+.pl p {
+  margin: 0 0 10px;
+}
+.pl hr {
+  display: none;
+}
+.pl ul,
+.pl ol {
+  margin: 0;
+  padding-left: 24px;
+}
+.pl li {
+  margin: 0 0 12px;
+}
+.pl a {
+  color: #0000ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pl a:visited {
+  color: #551a8b;
+}
+.pl a:hover {
+  background: #ffff66;
+}
+.pl-dim {
+  color: #5a5548;
+}
+.pl-small {
+  font-size: 13px;
+}
+.pl-blurb {
+  margin-top: 4px;
+  color: #333;
+}
+.pl-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+/* beveled buttons; .go is the orange one */
+.ih .pl button {
+  padding: 4px 14px;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.3px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.ih .pl button:hover:not(:disabled) {
+  background: #fff6e8;
+}
+.ih .pl button.go {
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ih .pl button.go:hover:not(:disabled) {
+  background: #ff9d2b;
+}
+.ih .pl button.big {
+  padding: 9px 18px;
+  font-size: 14px;
+  border-width: 2px;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -2px -2px 0 #8a4500, 3px 3px 0 rgba(0, 0, 0, 0.3);
+}
+.ih .pl button:active:not(:disabled) {
+  background: #000;
+  color: #ff8a00;
+  box-shadow: none;
+  transform: translate(1px, 1px);
+}
+.ih .pl button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ih .pl input[type="text"] {
+  width: 240px;
+  padding: 4px 8px;
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #888;
+  font: 400 13px "JetBrains Mono", ui-monospace, monospace;
+  outline: none;
+}
+.ih .pl input[type="text"]:focus {
+  background: #fffbe6;
+}
+.ih .pl input[type="radio"] {
+  accent-color: #ff8a00;
+}
+
+/* cards: one beveled box per person (home) or intent (intents), colored stripe on the left.
+   Avatar on the left, a bold name line, body text, then actions. */
+.pl-cards {
+  list-style: none;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pl-cards > li.pl-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #000;
+  border-left: 6px solid #ff8a00;
+  background: #fff;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl-cards > li.pl-card.live {
+  border-left-color: #33aa33;
+}
+.pl-cards > li.pl-card.paused {
+  border-left-color: #999;
+  background: #f6f4ee;
+}
+.pl-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.pl-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pl-card-head > .pl-status {
+  margin-left: auto;
+}
+.pl-intent-text {
+  margin: 4px 0 0;
+  color: #333;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pl-faces {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+.pl-card-foot {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* in progress: a bordered table, one person per row */
+.pl-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl-table th,
+.pl-table td {
+  border: 1px solid #000;
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.pl-table th {
+  background: #000;
+  color: #fff;
+  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.pl-table tbody tr:nth-child(even) td {
+  background: #f6f4ee;
+}
+.pl-status {
+  white-space: nowrap;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+}
+.pl-status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border: 1px solid #000;
+  vertical-align: 0;
+}
+.pl-status.talks::before {
+  background: #ffcc00;
+}
+.pl-status.chat::before,
+.pl-status.live::before {
+  background: #33aa33;
+}
+.pl-status.waiting::before {
+  background: #ff8a00;
+}
+.pl-status.paused::before {
+  background: #ccc;
+}
+.pl-go {
+  white-space: nowrap;
+  width: 1%;
+}
+
+/* questions: one classic form box each, with an orange tag on the border */
+.pl-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pl-q fieldset {
+  /* A fieldset is min-content wide by default, so a long label would stretch it. */
+  min-width: 0;
+  margin: 0;
+  border: 2px solid #000;
+  padding: 8px 14px 12px;
+  background: #fffbe6;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
+}
+.pl-q legend {
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  padding: 2px 8px;
+  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+  background: #fff;
+  border: 1px solid #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl .pl-q legend a,
+.pl .pl-q legend a:visited {
+  color: #0000ee;
+}
+.pl .pl-q legend a:hover {
+  background: #ffff66;
+}
+.pl-q-text {
+  font-size: 16px;
+  margin: 6px 0 10px;
+}
+.pl-q-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.pl-q-options label {
+  cursor: pointer;
+}
+.pl-q-options input[type="text"] {
+  margin: 2px 0 0 22px;
+}
+.pl-q-send {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #000;
+}
+.pl h2[id] {
+  scroll-margin-top: 16px;
+}
+
+/* agent avatars: the person's photo with their agent's face in the bottom-right corner */
+.pl-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.pl-q-face {
+  display: inline-block;
+  vertical-align: -4px;
+  margin-right: 6px;
+}
+
+/* "+N" after the top two intents */
+.ih .pl button.pl-more {
+  padding: 0 6px;
+  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  vertical-align: 1px;
+  background: #ff8a00;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
+}
+
+/* the agent chat: a window on the right of Home, closed until asked for */
+.pl-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  min-height: 100%;
+}
+.pl-wrap > .pl-page {
+  flex: 0 1 720px;
+  min-width: 0;
+}
+.ih .pl button.pl-agent-toggle {
+  position: sticky;
+  top: 20px;
+  margin: 20px 24px 0 auto;
+  flex: none;
+}
+.pl-agent {
+  position: sticky;
+  top: 16px;
+  flex: 1 1 380px;
+  max-width: 460px;
+  min-width: 320px;
+  height: calc(100vh - 120px);
+  margin: 16px 20px 16px auto;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
+}
+.pl-agent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  background: #000;
+  color: #fff;
+  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 2px;
+}
+.ih .pl button.pl-agent-close {
+  padding: 0 7px;
+  font-size: 14px;
+  line-height: 18px;
+}
+.pl-agent-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #f6f4ee;
+}
+.pl-agent-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pl-agent-line.mine {
+  justify-content: flex-end;
+}
+.pl-agent-bubble {
+  max-width: 85%;
+  padding: 7px 10px;
+  border: 1px solid #000;
+  background: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pl-agent-bubble.mine {
+  background: #fffbe6;
+}
+.pl-agent-meta {
+  font: 400 10.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+  margin-bottom: 2px;
+}
+.pl-agent-md {
+  white-space: normal;
+}
+.pl-agent-md p {
+  margin: 0 0 6px;
+}
+.pl-agent-md p:last-child {
+  margin-bottom: 0;
+}
+.pl-agent-md ul,
+.pl-agent-md ol {
+  padding-left: 18px !important;
+  margin: 0 0 6px;
+}
+.pl-agent-md li {
+  margin: 0 0 2px;
+}
+.pl-agent-done {
+  margin-top: 6px;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #1f7a1f;
+}
+.pl-agent-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0 30px;
+}
+.pl-agent-error {
+  margin: 0;
+  font-size: 13px;
+  color: #8a0000;
+}
+.pl-agent-compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border-top: 2px solid #000;
+  background: #fff;
+}
+.pl-agent-compose textarea {
+  flex: 1;
+  resize: none;
+  padding: 6px 8px;
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #888;
+  font: 400 14px "IBM Plex Sans", sans-serif;
+  outline: none;
+}
+.pl-agent-compose textarea:focus {
+  background: #fffbe6;
+}
+.pl-blink {
+  animation: pl-blink 1s steps(1) infinite;
+}
+@keyframes pl-blink {
+  50% { opacity: 0; }
+}
+@media (max-width: 1100px) {
+  .pl-wrap {
+    flex-direction: column;
+  }
+  .pl-agent {
+    position: static;
+    width: auto;
+    max-width: none;
+    height: 520px;
+    margin: 0 28px 40px;
+  }
+  .ih .pl button.pl-agent-toggle {
+    position: static;
+    margin: 0 28px 40px;
+  }
+}

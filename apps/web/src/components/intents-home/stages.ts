@@ -1,5 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
+import { intentShort } from "@/lib/intent-display";
+
 import type { RadarBucket } from "@/lib/radar-buckets";
 import type { RadarCardItem } from "@/services/opportunities";
 
@@ -11,6 +13,9 @@ export interface HomeIntent {
   status?: string;
   warming?: boolean;
 }
+
+/** An intent's short name, 4 to 5 words, from its summary or else what was typed. */
+export const intentLabel = (intent?: HomeIntent) => intent ? intentShort(intent.summary?.trim() || intent.payload?.trim() || "") : "";
 
 export type Stage = "awaiting" | "chat" | "talks" | "closed";
 export type Filter = "matches" | "in progress" | "closed";

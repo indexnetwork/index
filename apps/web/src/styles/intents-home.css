@@ -47,115 +47,161 @@
   opacity: 0.6;
 }
 
-/* rail */
-.ih-rail {
-  width: 280px;
+/* desktop + windows: the workbench look (blue dotted desktop, black frames, striped title bars) */
+.ih.ih {
+  background-color: #0055aa;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  background-size: 4px 4px;
+  padding: 20px;
+  gap: 16px;
+  box-sizing: border-box;
+}
+.ih-rail,
+.ih-main {
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #6e6e6e, 4px 4px 0 rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.ih-titlebar {
+  height: 24px;
   flex: none;
-  border-right: 1px solid var(--ih-hairline);
-  padding: 24px 16px;
+  display: flex;
+  border-bottom: 2px solid #000;
+  background: #fff;
+  user-select: none;
+}
+.ih-titlebar-box {
+  width: 24px;
+  flex: none;
+  border-right: 2px solid #000;
+  position: relative;
+}
+.ih-titlebar-box::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 2px solid #000;
+}
+.ih-titlebar-box::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  background: #000;
+}
+.ih-titlebar-stripes {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px);
+  background-position: 0 4px;
+}
+.ih-titlebar-stripes .t {
+  background: #fff;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 8px;
+  margin-left: 4px;
+  font: 500 13px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.3px;
+}
+
+/* sidebar window */
+.ih-rail {
+  width: 200px;
+  flex: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+.ih-rail-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-}
-.ih-rail-label {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  color: var(--ih-text-2);
-  padding: 0 10px 12px;
-}
-.ih .ih-new {
+  padding: 14px 10px 12px;
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ih .ih-nav {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 9px 10px;
-  font-size: 14px;
-  border-radius: 3px 3px 0 0;
-  border-bottom: 1px solid var(--ih-hairline);
-  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  font: 500 13px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
 }
-.ih .ih-intent {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 9px 10px;
-  font-size: 14px;
-  border-radius: 3px;
-  color: var(--ih-text-2);
-}
-.ih-intent .ih-intent-label {
+.ih-nav-label {
+  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.ih-intent .ih-n {
-  color: var(--ih-faint);
+.ih .ih-nav:hover {
+  background: #fff6e8;
+  border-color: #000;
 }
-.ih .ih-intent.on {
-  background: var(--ih-selected);
-  color: var(--ih-ink);
+.ih .ih-nav.on {
+  background: #ff8a00;
+  border-color: #000;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
 }
-.ih-intent.on .ih-n {
-  color: var(--ih-muted);
+.ih-badge {
+  padding: 2px 6px;
+  border: 1px solid #000;
+  background: #ff8a00;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
+  font: 700 11px "IBM Plex Sans", sans-serif;
+  line-height: 1;
 }
-.ih-intent.paused .ih-intent-label {
-  color: var(--ih-faint);
+.ih-nav.on .ih-badge {
+  background: #fff;
+  box-shadow: none;
+}
+/* Home's sections, as a little tree under "home" */
+.ih-sub {
+  list-style: none;
+  margin: 2px 0 6px 14px;
+  padding: 0 0 0 10px;
+  border-left: 1px dotted #000;
+}
+.ih .ih-sub-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #0000ee;
+}
+.ih .ih-sub-link::before {
+  content: "\25B8";
+  color: #ff8a00;
+}
+.ih .ih-sub-link .ih-nav-label {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ih .ih-sub-link:hover {
+  background: #ffff66;
+}
+.ih-sub-n {
+  font: 700 11px "IBM Plex Sans", sans-serif;
+  color: #000;
 }
 .ih-menu {
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--ih-hairline);
+  padding-top: 10px;
+  border-top: 2px solid #000;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 14px;
+  gap: 4px;
 }
-.ih .ih-menu-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 10px;
-  color: var(--ih-text-2);
-  border-radius: 3px;
-}
-.ih-menu-row .ih-n {
-  color: var(--ih-faint);
-}
-.ih .ih-new:hover,
-.ih .ih-intent:not(.on):hover,
-.ih .ih-profile:not(.on):hover {
-  background: var(--ih-hover);
-}
-/* The page you are on: same grey as a selected intent. */
-.ih .ih-new.on,
-.ih .ih-menu-row.on,
-.ih .ih-profile.on {
-  background: var(--ih-selected);
-  color: var(--ih-ink);
-}
-.ih .ih-menu-row:hover {
-  background: var(--ih-hover);
-  color: var(--ih-ink);
-}
-.ih-profile-wrap {
-  position: relative;
-  margin-top: 6px;
-  border-top: 1px solid var(--ih-hairline);
-}
-.ih .ih-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  margin-top: 6px;
-  border-radius: 3px;
-}
-.ih-profile-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.ih-me {
+  margin-top: 8px;
+  padding: 0 10px;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #5a5548;
 }
 
 /* dropdowns (people filter, profile menu) */

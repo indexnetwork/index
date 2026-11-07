@@ -11,7 +11,7 @@ import ConsentGate from "@/components/ConsentGate";
 import AppFrame from "@/components/intents-home/AppFrame";
 import { IntentsDataProvider } from "@/contexts/IntentsDataContext";
 
-const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/onboarding'];
+const appRoutes = ['/', '/i', '/intents', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/onboarding'];
 // /l is the chrome-free web invite join.
 const bareRoutes = ['/', '/l', '/login', '/download', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
 

@@ -125,6 +125,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
       },
       {
+        path: "/intents",
+        lazy: lazyRoute("/intents", () => import("@/app/intents/page")),
+      },
+      {
         path: "/i/new",
         lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
       },

@@ -653,14 +653,20 @@ export class ConversationDatabaseAdapter {
   /**
    * Retrieves messages for a conversation, ordered by creation time ascending.
    * @param conversationId - Conversation ID
-   * @param opts - Optional limit, cursor (before), or intent filter
+   * @param opts - Optional limit, cursor (before), intent filter, or scope filter
    * @returns Ordered list of messages
    */
   async getMessages(
     conversationId: string,
-    opts?: { limit?: number; before?: string; userId?: string; intentId?: string },
+    opts?: { limit?: number; before?: string; userId?: string; intentId?: string; scope?: string },
   ): Promise<Message[]> {
     const conditions = [eq(schema.messages.conversationId, conversationId)];
+
+    // The home agent's chat shares the agent DM but is tagged `scope: 'home'`
+    // and carries no intent, so it reads back on its own.
+    if (opts?.scope) {
+      conditions.push(sql`${schema.messages.metadata}->>'scope' = ${opts.scope}`);
+    }
 
     // The agent DM is one conversation carrying every intent's questions, so a
     // message belongs to the intent it is tagged with and to no other.

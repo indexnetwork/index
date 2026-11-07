@@ -298,7 +298,7 @@ export default function IntentsHome({ selectedId }: { selectedId?: string }) {
     try {
       await intentsService.archiveIntent(current.id);
       updateIntents((prev) => prev.filter((intent) => intent.id !== current.id));
-      navigate("/");
+      navigate("/intents");
     } catch {
       showError("couldn't archive this intent.");
     } finally {
@@ -326,7 +326,7 @@ export default function IntentsHome({ selectedId }: { selectedId?: string }) {
         {current ? (
           <>
             <div style={{ flex: 1, minWidth: 240 }}>
-              <div className="ih-eyebrow">INTENT</div>
+              <div className="ih-eyebrow"><Link to="/intents" className="ih-crumb">INTENTS</Link> / INTENT</div>
               <h1 className="ih-title">{current.payload?.trim() || current.summary?.trim() || "your intent"}</h1>
               <div className="ih-status">
                 <span className="ih-status-dot" style={{ background: paused ? "var(--ih-closed)" : "var(--ih-live)" }} />
@@ -347,7 +347,7 @@ export default function IntentsHome({ selectedId }: { selectedId?: string }) {
           </>
         ) : (
           <div>
-            <div className="ih-eyebrow">INTENT</div>
+            <div className="ih-eyebrow"><Link to="/intents" className="ih-crumb">INTENTS</Link> / INTENT</div>
             <h1 className="ih-title" style={{ color: "var(--ih-muted)" }}>{missing ? "this intent doesn't exist or was removed." : "loading…"}</h1>
           </div>
         )}
