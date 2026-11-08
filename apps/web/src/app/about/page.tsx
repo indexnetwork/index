@@ -3,7 +3,7 @@ import SiteLayout from "@/app/site/SiteLayout";
 type Person = { name: string; href: string };
 
 const TEAM: Person[] = [
-  { name: "Seref Yarar", href: "https://x.com/hyperseref" },
+  { name: "Seref Yarar", href: "https://x.com/serefyarar" },
   { name: "Seren Sandikci", href: "https://x.com/serensandikci" },
   { name: "Vicky Gu", href: "https://linkedin.com/in/vickygu" },
   { name: "Ashish Uppala", href: "https://ashishuppala.com/" },
