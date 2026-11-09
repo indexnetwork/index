@@ -14,6 +14,8 @@ import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import "@/styles/plain.css";
 
 const logger = log.page.from('networks/[id]');
 
@@ -54,6 +56,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const params = useParams();
   const navigate = useNavigate();
   const compact = useCompact();
+  const plain = useInAppFrame();
   const { user } = useAuthContext();
   const { networks } = useNetworksState();
   const networksService = useNetworks();
@@ -165,6 +168,67 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const handleLeft = () => navigate('/networks');
 
   const isPublic = network?.permissions?.joinPolicy === 'anyone';
+
+  // Signed in on desktop: the plain page, like the networks list.
+  if (plain) {
+    const tabs = isOwner ? (['overview', 'settings', 'access'] as const) : null;
+    const initial = String(network?.title || networkId || "#").trim().charAt(0).toUpperCase();
+    return (
+      <div className="ih-view pl">
+        <div className="pl-page pl-netdetail">
+          <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ networks</button>
+          {loading ? (
+            <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+          ) : notFound ? (
+            <div className="pl-profile-empty">
+              <p>this network doesn&apos;t exist, or you don&apos;t have access to it.</p>
+              <button type="button" onClick={() => navigate('/networks')}>back to networks</button>
+            </div>
+          ) : loadFailed ? (
+            <div className="pl-profile-empty">
+              <p>couldn&apos;t load this network.</p>
+              <button type="button" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
+            </div>
+          ) : network ? (
+            <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange}>
+              <div className="pl-netdetail-head">
+                {network.imageUrl
+                  ? <img className="pl-net-mark img big" src={resolveNetworkImageSrc(network.imageUrl)} alt="" />
+                  : <span className="pl-net-mark c0 big" aria-hidden>{initial}</span>}
+                <div className="pl-netdetail-who">
+                  <h1>{network.title}</h1>
+                  <div className="pl-dim">
+                    {[isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "you own it" : null].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                {!isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
+              </div>
+              {tabs && (
+                <Tabs.List className="pl-tabs pl-netdetail-tabs">
+                  {tabs.map((tab) => (
+                    <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{tab}</Tabs.Trigger>
+                  ))}
+                </Tabs.List>
+              )}
+              <Tabs.Content value="overview">
+                <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+              </Tabs.Content>
+              {isOwner && (
+                <>
+                  <Tabs.Content value="settings" className="pl-netdetail-panel">
+                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" />
+                  </Tabs.Content>
+                  <Tabs.Content value="access" className="pl-netdetail-panel">
+                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" />
+                  </Tabs.Content>
+                </>
+              )}
+            </Tabs.Root>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -14,6 +14,8 @@ import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import "@/styles/plain.css";
 
 const logger = log.page.from('networks');
 
@@ -38,9 +40,19 @@ function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: 
   );
 }
 
+/** A network's picture, or its first letter on one of Home's colors. */
+function PlainMark({ id, name, photo, index }: { id?: string; name?: string; photo?: string | null; index: number }) {
+  const [broken, setBroken] = useState(false);
+  if (photo && !broken) {
+    return <img className="pl-net-mark img" src={resolveNetworkImageSrc(photo)} alt="" onError={() => setBroken(true)} />;
+  }
+  return <span className={`pl-net-mark c${index % 4}`} aria-hidden>{String(name || id || "#").trim().charAt(0).toUpperCase()}</span>;
+}
+
 export default function NetworksPage() {
   const navigate = useNavigate();
   const compact = useCompact();
+  const plain = useInAppFrame();
   const back = useBack("/");
   const { user } = useAuthContext();
   const { success, error } = useNotifications();
@@ -176,6 +188,183 @@ export default function NetworksPage() {
     }
   };
   const openDiscover = () => { setActiveTab('discover'); void loadPublicNetworks(); };
+
+  const modals = (
+    <>
+      <CreateNetworkModal
+        open={createNetworkModalOpen}
+        onOpenChange={setCreateNetworkModalOpen}
+        onSubmit={handleCreateNetwork}
+        uploadNetworkImage={networksService.uploadNetworkImage}
+      />
+      {/* Keyed so each open remounts the form with fresh state seeded from
+          `initial`, instead of the modal resetting itself in an effect. */}
+      <RequestNetworkModal
+        key={requestModalOpen ? (editingRequest?.id ?? 'new') : 'closed'}
+        open={requestModalOpen}
+        onOpenChange={(open) => {
+          setRequestModalOpen(open);
+          if (!open) setEditingRequest(null);
+        }}
+        onSubmit={handleRequestSubmit}
+        initial={editingRequest}
+      />
+    </>
+  );
+
+  // Signed in on desktop: the plain page, like Home, Intents and profiles.
+  if (plain) {
+    const requestStatus = (r: NetworkRequest) => (r.status === 'needs_changes' ? 'needs changes' : 'in review');
+    return (
+      <div className="ih-view pl">
+        <div className="pl-page pl-netlist">
+          <div className="pl-tabbar">
+            <div className="pl-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={activeTab === 'mine'} className={activeTab === 'mine' ? 'on' : undefined} onClick={() => setActiveTab('mine')}>my networks ({allNetworks.length})</button>
+              <button type="button" role="tab" aria-selected={activeTab === 'discover'} className={activeTab === 'discover' ? 'on' : undefined} onClick={openDiscover}>discover</button>
+            </div>
+            <button type="button" className="go" title={canReview ? 'start a new network' : 'request a new network'} onClick={openCreate}>+ new network</button>
+          </div>
+
+          {activeTab === 'mine' && (
+            <>
+              {canReview && pendingRequests.length > 0 && (
+                <>
+                  <h2>requests to review ({pendingRequests.length})</h2>
+                  <ul className="pl-cards">
+                    {pendingRequests.map((r) => (
+                      <li key={r.id} className="pl-card">
+                        <div className="pl-card-body">
+                          <div className="pl-card-head">
+                            <b>{r.title}</b>
+                            <span className={`pl-status ${r.status === 'needs_changes' ? 'waiting' : 'talks'}`}>{requestStatus(r)}</span>
+                          </div>
+                          {r.requestedBy && <div className="pl-dim">{r.requestedBy.name}{r.requestedBy.email ? ` · ${r.requestedBy.email}` : ''}</div>}
+                          {r.purpose && <div className="pl-blurb">{r.purpose}</div>}
+                          {(r.audience || r.expectedSize) && <div className="pl-dim">{[r.audience, r.expectedSize].filter(Boolean).join(' · ')}</div>}
+                          {r.notes && <div className="pl-dim">{r.notes}</div>}
+                          <div className="pl-actions">
+                            <button type="button" className="go" onClick={() => handleReview(r.id, 'approve')}>approve</button>
+                            <button type="button" onClick={() => handleReview(r.id, 'needs_changes')}>needs changes</button>
+                            <button type="button" onClick={() => handleReview(r.id, 'skip')}>skip</button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {myRequests.length > 0 && (
+                <>
+                  <h2>your requests</h2>
+                  <ul className="pl-cards">
+                    {myRequests.map((r) => (
+                      <li key={r.id} className={r.status === 'needs_changes' ? 'pl-card' : 'pl-card talks'}>
+                        <div className="pl-card-body">
+                          <div className="pl-card-head">
+                            <b>{r.title}</b>
+                            <span className={`pl-status ${r.status === 'needs_changes' ? 'waiting' : 'talks'}`}>{requestStatus(r)}</span>
+                          </div>
+                          {r.status === 'needs_changes' && r.reviewNote ? (
+                            <>
+                              <div className="pl-blurb">the index team says: &ldquo;{r.reviewNote}&rdquo;</div>
+                              <div className="pl-actions">
+                                <button type="button" className="go" onClick={() => { setEditingRequest(r); setRequestModalOpen(true); }}>update</button>
+                                <button type="button" onClick={() => handleDismissRequest(r.id)}>dismiss</button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="pl-blurb">your request is in review.</div>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              <h2>my networks</h2>
+              {networksLoading ? (
+                <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+              ) : networksError && allNetworks.length === 0 ? (
+                <div className="pl-profile-empty">
+                  <p>couldn&apos;t load your networks.</p>
+                  <button type="button" onClick={() => void refreshNetworks()}>try again</button>
+                </div>
+              ) : allNetworks.length > 0 ? (
+                <ul className="pl-nets big">
+                  {allNetworks.map((network, index) => {
+                    const viewerRole = (network as { role?: 'owner' | 'member' }).role;
+                    const isOwner = viewerRole === 'owner' || (viewerRole !== 'member' && user?.id === network.user?.id);
+                    const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
+                    return (
+                      <li key={network.id}>
+                        <a href={`/networks/${network.id}`} className="pl-net" onClick={(event) => { event.preventDefault(); navigate(`/networks/${network.id}`); }}>
+                          <PlainMark id={network.id} name={network.title} photo={network.imageUrl} index={index} />
+                          <span className="pl-net-text">
+                            <span className="pl-net-name" title={network.title}>{network.title}</span>
+                            <span className="pl-net-n">{network._count?.members || 0} people · {isOwner ? 'owner' : 'member'}</span>
+                          </span>
+                          {pendingJoinCount > 0 && <span className="ih-badge" title={`${pendingJoinCount} waiting to join`}>{pendingJoinCount}</span>}
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="pl-profile-empty">
+                  <p>{myRequests.length > 0 ? "no networks yet. yours shows up here once it's approved." : "you're not in any networks yet."}</p>
+                  <div className="pl-actions">
+                    {myRequests.length === 0 && <button type="button" className="go" onClick={openCreate}>+ new network</button>}
+                    <button type="button" onClick={openDiscover}>discover networks</button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'discover' && (
+            <>
+              <h2>public networks</h2>
+              {loadingPublic && publicNetworks.length === 0 ? (
+                <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+              ) : publicError && publicNetworks.length === 0 ? (
+                <div className="pl-profile-empty">
+                  <p>couldn&apos;t load public networks.</p>
+                  <button type="button" onClick={() => void loadPublicNetworks()}>try again</button>
+                </div>
+              ) : publicNetworks.length > 0 ? (
+                <ul className="pl-nets big">
+                  {publicNetworks.map((network, index) => (
+                    <li key={network.id}>
+                      <div className="pl-net">
+                        <PlainMark id={network.id} name={network.title} photo={network.imageUrl} index={index} />
+                        <span className="pl-net-text">
+                          <span className="pl-net-name" title={network.title}>{network.title}</span>
+                          <span className="pl-net-n">{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} people</span>
+                        </span>
+                        {network.isMember ? (
+                          <span className="pl-net-n">member</span>
+                        ) : (
+                          <button type="button" className="go" onClick={() => handleJoinNetwork(network.id)} disabled={joiningNetwork === network.id}>
+                            {joiningNetwork === network.id ? 'joining…' : 'join'}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="pl-dim">no public networks to discover right now.</p>
+              )}
+            </>
+          )}
+        </div>
+        {modals}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -357,25 +546,7 @@ export default function NetworksPage() {
       </Window>
       </Stage>
 
-      <CreateNetworkModal
-        open={createNetworkModalOpen}
-        onOpenChange={setCreateNetworkModalOpen}
-        onSubmit={handleCreateNetwork}
-        uploadNetworkImage={networksService.uploadNetworkImage}
-      />
-
-      {/* Keyed so each open remounts the form with fresh state seeded from
-          `initial`, instead of the modal resetting itself in an effect. */}
-      <RequestNetworkModal
-        key={requestModalOpen ? (editingRequest?.id ?? 'new') : 'closed'}
-        open={requestModalOpen}
-        onOpenChange={(open) => {
-          setRequestModalOpen(open);
-          if (!open) setEditingRequest(null);
-        }}
-        onSubmit={handleRequestSubmit}
-        initial={editingRequest}
-      />
+      {modals}
     </>
   );
 }

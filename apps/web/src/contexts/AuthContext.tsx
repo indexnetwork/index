@@ -10,13 +10,6 @@ import { log } from '@/lib/logger';
 const logger = log.context.from('AuthContext');
 
 /**
- * The loading splash is light on every route, in the marketing site's
- * background (src/app/site/site.css). The site and the signed-in app (#FDFDFD)
- * are both light, so no route flashes a different colour before painting.
- */
-const SPLASH_BACKGROUND = '#FCFEFB';
-
-/**
  * Server-driven feature flags returned alongside the user on GET /auth/me
  * (sibling of `user`, not part of it).
  */
@@ -189,23 +182,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {isLoading ? (
-        <div
-          className="min-h-screen flex items-center justify-center"
-          style={{ backgroundColor: SPLASH_BACKGROUND }}
-        >
-          {/* The leaf clip is drawn on pure white; multiply drops the white so
-              only the drawing sits on the off-white ground. It sits a little
-              below centre. */}
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-40 h-40"
-            style={{ mixBlendMode: 'multiply', transform: 'translateY(8vh)' }}
-          >
-            <source src="/loading-leaf.mp4" type="video/mp4" />
-          </video>
+        // The workbench blue with a white segmented bar filling while auth settles.
+        <div className="index-splash" role="status" aria-label="loading">
+          <div className="index-splash-bar" aria-hidden>
+            {Array.from({ length: 12 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 0.1}s` }} />)}
+          </div>
+          <div className="index-splash-label">loading<span className="index-splash-blink">_</span></div>
         </div>
       ) : error ? (
         <StatusPage bar="error" title="Something went wrong" message={error}>

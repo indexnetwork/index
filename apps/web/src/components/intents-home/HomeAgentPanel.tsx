@@ -3,16 +3,25 @@ import ReactMarkdown from "react-markdown";
 import { Link } from "react-router";
 import remarkGfm from "remark-gfm";
 
+import IntentActivity from "@/components/intents-home/IntentActivity";
+import NewIntentSteps from "@/components/intents-home/NewIntentSteps";
+import { intentLabel } from "@/components/intents-home/stages";
 import { useHomeAgentChat } from "@/components/intents-home/useHomeAgentChat";
+import { useNewIntentFlow } from "@/components/intents-home/useNewIntentFlow";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
+import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { formatChatClock } from "@/lib/utils";
 
+/** "start a new intent" runs the intents page's new intent flow right here in the chat; the rest go to the agent. */
+const NEW_INTENT = "start a new intent";
 const SUGGESTIONS = [
-  "start a new intent",
+  NEW_INTENT,
   "what's waiting on me?",
   "pause one of my intents",
   "update my profile",
 ];
+/** Typing just "new intent" (or "start a new intent") opens the flow too. */
+const NEW_INTENT_ASK = /^(please\s+)?((start|create|make|add)\s+)?(a\s+)?new\s+intent[.!]?$/i;
 
 /** Index links the agent writes (index.network/i/…) open in the app instead of a new tab. */
 function AgentLink({ href = "", children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -29,21 +38,43 @@ function AgentLink({ href = "", children, ...rest }: AnchorHTMLAttributes<HTMLAn
 }
 
 /**
- * The agent chat on the right of Home: talk to your agent to start, change,
+ * The agent chat in its own window beside Home: talk to your agent to start, change,
  * pause or archive intents, check matches, or update your profile. It acts
  * with the Index tools; `onChanged` refreshes the page after it changes something.
  */
-export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => void; onChanged: (tools: string[]) => void }) {
-  const { messages, loaded, loadFailed, sending, error, send, retry } = useHomeAgentChat(onChanged);
+export default function HomeAgentPanel({ onChanged, onClose }: { onChanged: (tools: string[]) => void; onClose?: () => void }) {
+  const { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry } = useHomeAgentChat(onChanged);
   const [draft, setDraft] = useState("");
+  const { intents } = useIntentsData();
+  // Live activity shows under the most recent intents started here, not every one ever.
+  const liveIntents = new Set(messages.filter((m) => m.intentCreated).slice(-3).map((m) => m.intentCreated));
+  // The server writes the agent's "started …" line into the chat once the intent exists.
+  const flow = useNewIntentFlow(({ id, asked }) => {
+    void recordIntent(id, asked);
+    onChanged(["create_intent"]);
+  });
+  const flowWaits = flow.active && flow.stage === "opening";
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, sending]);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, sending, flow.active, flow.stage, flow.turns.length]);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const startFlow = () => { flow.start(); inputRef.current?.focus(); };
 
   const submit = async (text = draft) => {
     if (!text.trim() || sending) return;
+    if (flowWaits) {
+      setDraft("");
+      flow.submitOpening(text);
+      return;
+    }
+    if (flow.active) return;
+    if (NEW_INTENT_ASK.test(text.trim())) {
+      setDraft("");
+      startFlow();
+      return;
+    }
     setDraft("");
     const ok = await send(text);
     if (!ok) setDraft(text);
@@ -51,10 +82,12 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
   };
 
   return (
-    <aside className="pl-agent" aria-label="your agent">
+    <div className="pl pl-agent">
       <div className="pl-agent-head">
-        <span>YOUR AGENT</span>
-        <button type="button" className="pl-agent-close" aria-label="close" title="close" onClick={onClose}>×</button>
+        <span>talk to me about your intents, matches or profile</span>
+        <button type="button" className="pl-agent-new" disabled={sending || flow.stage === "creating" || (!messages.length && !flow.active)} title="start a new chat"
+          onClick={() => { setDraft(""); flow.cancel(); void newChat().then(() => inputRef.current?.focus()); }}>+ new chat</button>
+        {onClose && <button type="button" className="pl-win-close" aria-label="collapse" title="collapse" onClick={onClose}>▸</button>}
       </div>
 
       <div className="pl-agent-log">
@@ -62,7 +95,7 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
           <p className="pl-dim pl-small">loading…</p>
         ) : loadFailed && !messages.length ? (
           <p className="pl-dim pl-small">couldn&apos;t load this chat. <button type="button" onClick={() => void retry()}>try again</button></p>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !flow.active ? (
           <div className="pl-agent-hello">
             <div className="pl-agent-line">
               <MyAgentAvatar size={22} />
@@ -72,7 +105,10 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
             </div>
             <div className="pl-agent-suggest">
               {SUGGESTIONS.map((text) => (
-                <button key={text} type="button" onClick={() => void submit(text)} disabled={sending}>{text}</button>
+                <button key={text} type="button" className={text === NEW_INTENT ? "go" : undefined} disabled={sending}
+                  onClick={() => (text === NEW_INTENT ? startFlow() : void submit(text))}>
+                  {text === NEW_INTENT ? `+ ${text}` : text}
+                </button>
               ))}
             </div>
           </div>
@@ -83,8 +119,14 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
               <div className="pl-agent-bubble">
                 <div className="pl-agent-meta">your agent · {formatChatClock(message.createdAt)}</div>
                 <div className="pl-agent-md">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>
+                  {message.intentCreated ? (() => {
+                    const intent = intents.find((i) => i.id === message.intentCreated);
+                    return intent
+                      ? <p>started <Link to={`/i/${intent.id}`} title={intent.payload}>{intentLabel(intent)}</Link>{intentLabel(intent).endsWith("…") ? "" : "."} i&apos;ll start looking for people now.</p>
+                      : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>;
+                  })() : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>}
                 </div>
+                {message.intentCreated && liveIntents.has(message.intentCreated) && <IntentActivity intentId={message.intentCreated} />}
                 {message.changed?.length ? <div className="pl-agent-done">✓ {message.changed.map((name) => name.replace(/_/g, " ")).join(", ")}</div> : null}
               </div>
             </div>
@@ -97,6 +139,12 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
             </div>
           )
         ))}
+        {flow.active && <NewIntentSteps flow={flow} />}
+        {!flow.active && messages.length > 0 && !sending && (
+          <div className="pl-agent-suggest pl-agent-again">
+            <button type="button" className="go" onClick={startFlow}>+ start a new intent</button>
+          </div>
+        )}
         {sending && (
           <div className="pl-agent-line">
             <MyAgentAvatar size={22} />
@@ -119,11 +167,12 @@ export default function HomeAgentPanel({ onClose, onChanged }: { onClose: () => 
               void submit();
             }
           }}
-          placeholder="tell your agent…"
+          disabled={flow.active && !flowWaits}
+          placeholder={flowWaits ? "what are you looking for?" : flow.active ? "answer above…" : "tell your agent…"}
           aria-label="Message your agent"
         />
-        <button type="submit" className="go" disabled={!draft.trim() || sending}>send</button>
+        <button type="submit" className="go" disabled={!draft.trim() || sending || (flow.active && !flowWaits)}>send</button>
       </form>
-    </aside>
+    </div>
   );
 }

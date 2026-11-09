@@ -7,7 +7,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
 import ChatSidebar from "@/components/ChatSidebar";
-import { Stage, Window } from "@/components/workbench/Workbench";
+import { ChatFrame } from "@/components/chat/ChatFrame";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -90,44 +90,33 @@ export default function ChatPage() {
   const showMissingUser = Boolean(error && !profile && !cachedPeer);
 
   return (
-    <Stage width={860} height="min(660px, calc(100vh - 112px))">
-      <Window title="conversations" onClose={leave} style={{ height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
-          {!compact && (
-            <div style={{ borderRight: "1px solid var(--wb-hairline)", minHeight: 0, overflow: "hidden" }}>
-              <ChatSidebar />
-            </div>
+    <ChatFrame list={compact ? undefined : <ChatSidebar />} onClose={leave}>
+      {showMissingUser ? (
+        <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
+          {error === "notFound" ? (
+            <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
+          ) : (
+            <EmptyState
+              tone="error"
+              message="couldn't load this person."
+              action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+            />
           )}
-          <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {showMissingUser ? (
-              <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
-                {error === "notFound" ? (
-                  <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
-                ) : (
-                  <EmptyState
-                    tone="error"
-                    message="couldn't load this person."
-                    action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
-                  />
-                )}
-              </div>
-            ) : id ? (
-              <ChatView
-                key={id}
-                userId={id}
-                userName={userName || "someone"}
-                userAvatar={profile?.avatar || cachedPeer?.avatar || undefined}
-                initialGroupId={initialGroupId}
-                initialMessage={prefillMessage}
-                autoSend={autoSend}
-                onClose={leave}
-                onBack={leave}
-              />
-            ) : null}
-          </div>
         </div>
-      </Window>
-    </Stage>
+      ) : id ? (
+        <ChatView
+          key={id}
+          userId={id}
+          userName={userName || "someone"}
+          userAvatar={profile?.avatar || cachedPeer?.avatar || undefined}
+          initialGroupId={initialGroupId}
+          initialMessage={prefillMessage}
+          autoSend={autoSend}
+          onClose={leave}
+          onBack={leave}
+        />
+      ) : null}
+    </ChatFrame>
   );
 }
 

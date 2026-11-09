@@ -651,6 +651,27 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Retag every message in a conversation from one scope to another, so a
+   * scoped read (like the home agent chat) starts empty without deleting anything.
+   *
+   * @param conversationId - Conversation ID
+   * @param from - Current `metadata.scope`
+   * @param to - New `metadata.scope`
+   * @returns How many messages moved
+   */
+  async rescopeMessages(conversationId: string, from: string, to: string): Promise<number> {
+    const moved = await db
+      .update(schema.messages)
+      .set({ metadata: sql`jsonb_set(${schema.messages.metadata}, '{scope}', to_jsonb(${to}::text))` })
+      .where(and(
+        eq(schema.messages.conversationId, conversationId),
+        sql`${schema.messages.metadata}->>'scope' = ${from}`,
+      ))
+      .returning({ id: schema.messages.id });
+    return moved.length;
+  }
+
+  /**
    * Retrieves messages for a conversation, ordered by creation time ascending.
    * @param conversationId - Conversation ID
    * @param opts - Optional limit, cursor (before), intent filter, or scope filter

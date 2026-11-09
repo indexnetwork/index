@@ -30,7 +30,7 @@
   background: #fff;
   color: var(--ih-ink);
   font-family: var(--ih-sans);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
 }
 .ih button {
@@ -47,11 +47,9 @@
   opacity: 0.6;
 }
 
-/* desktop + windows: the workbench look (blue dotted desktop, black frames, striped title bars) */
+/* desktop + windows: plain grey desktop, black-framed windows */
 .ih.ih {
-  background-color: #0055aa;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
-  background-size: 4px 4px;
+  background: #ececec;
   padding: 20px;
   gap: 16px;
   box-sizing: border-box;
@@ -103,7 +101,7 @@
   align-items: center;
   padding: 0 12px 0 8px;
   margin-left: 4px;
-  font: 500 13px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: 0.3px;
 }
 
@@ -129,7 +127,7 @@
   gap: 8px;
   padding: 6px 10px;
   border: 1px solid transparent;
-  font: 500 13px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
   color: #000;
 }
 .ih-nav-label {
@@ -151,7 +149,7 @@
   border: 1px solid #000;
   background: #ff8a00;
   box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
-  font: 700 11px "IBM Plex Sans", sans-serif;
+  font: 700 10px "IBM Plex Sans", sans-serif;
   line-height: 1;
 }
 .ih-nav.on .ih-badge {
@@ -171,7 +169,7 @@
   gap: 6px;
   width: 100%;
   padding: 3px 4px;
-  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
   color: #0000ee;
 }
 .ih .ih-sub-link::before {
@@ -186,8 +184,18 @@
   background: #ffff66;
 }
 .ih-sub-n {
-  font: 700 11px "IBM Plex Sans", sans-serif;
+  font: 700 10px "IBM Plex Sans", sans-serif;
   color: #000;
+}
+/* a count being refreshed, e.g. "in progress" right after you answer a question */
+.ih-blink {
+  animation: ih-blink 1s steps(1) infinite;
+}
+@keyframes ih-blink {
+  50% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ih-blink { animation: none; }
 }
 .ih-menu {
   margin-top: auto;
@@ -200,7 +208,7 @@
 .ih-me {
   margin-top: 8px;
   padding: 0 10px;
-  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  font: 400 10px "JetBrains Mono", ui-monospace, monospace;
   color: #5a5548;
 }
 
@@ -225,7 +233,7 @@
   padding: 6px 10px;
   border-radius: 2px;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ih-text-2);
 }
 .ih-pop-item .ih-n {
@@ -264,19 +272,19 @@
   flex-wrap: wrap;
 }
 .ih-eyebrow {
-  font: 500 12px var(--ih-sans);
+  font: 500 11px var(--ih-sans);
   letter-spacing: 0.1em;
   color: var(--ih-text-2);
   margin-bottom: 8px;
 }
 .ih-title {
-  font: 500 18px/1.4 var(--ih-sans);
+  font: 500 16.5px/1.4 var(--ih-sans);
   max-width: 640px;
   text-wrap: pretty;
   margin: 0;
 }
 .ih-status {
-  font: 400 13px var(--ih-sans);
+  font: 400 12px var(--ih-sans);
   color: var(--ih-text-2);
   margin-top: 8px;
   display: flex;
@@ -292,7 +300,7 @@
 .ih-actions {
   display: flex;
   gap: 8px;
-  font: 500 13px var(--ih-sans);
+  font: 500 12px var(--ih-sans);
   white-space: nowrap;
 }
 .ih .ih-ghost {
@@ -328,7 +336,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font: 400 12px var(--ih-sans);
+  font: 400 11px var(--ih-sans);
   letter-spacing: 0.1em;
   color: var(--ih-text-2);
 }
@@ -341,7 +349,7 @@
   border-radius: 3px;
   background: #fff;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0;
   color: var(--ih-ink);
 }
@@ -350,7 +358,7 @@
 }
 .ih-empty {
   padding: 48px 32px;
-  font: 400 14px var(--ih-mono);
+  font: 400 13px var(--ih-mono);
   color: var(--ih-muted);
 }
 .ih .ih-link {
@@ -419,7 +427,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 500 13px var(--ih-sans);
+  font: 500 12px var(--ih-sans);
   border-radius: 3px;
   overflow: hidden;
   object-fit: cover;
@@ -435,7 +443,7 @@
   flex-wrap: wrap;
 }
 .ih-name {
-  font: 500 14px var(--ih-sans);
+  font: 500 13px var(--ih-sans);
   color: var(--ih-ink);
   text-decoration: none;
 }
@@ -444,7 +452,7 @@
   text-underline-offset: 3px;
 }
 .ih-pill {
-  font: 400 12px var(--ih-sans);
+  font: 400 11px var(--ih-sans);
   background: var(--ih-selected);
   padding: 1px 6px;
   border-radius: 2px;
@@ -457,7 +465,7 @@
   margin-top: 4px;
 }
 .ih .ih-tag {
-  font: 400 12px var(--ih-sans);
+  font: 400 11px var(--ih-sans);
   color: var(--ih-muted);
   white-space: nowrap;
   display: flex;
@@ -474,7 +482,7 @@
   display: inline-block;
 }
 .ih-blurb {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ih-text-3);
   margin-top: 1px;
   overflow: hidden;
@@ -491,13 +499,13 @@
   flex: none;
   margin-left: auto;
   white-space: nowrap;
-  font: 500 12px var(--ih-sans);
+  font: 500 11px var(--ih-sans);
 }
 .ih .ih-accept {
   background: var(--ih-accent);
   border: 1px solid var(--ih-accent);
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 11px;
 }
 .ih .ih-accept:hover {
   background: var(--ih-accent-hover);
@@ -506,7 +514,7 @@
   border: 1px solid var(--ih-control);
   color: var(--ih-text-2);
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 11px;
   background: #fff;
 }
 .ih .ih-pass:hover {
@@ -540,14 +548,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font: 400 13px/1.6 var(--ih-mono);
+  font: 400 12px/1.6 var(--ih-mono);
 }
 .ih-log-line {
   display: flex;
   gap: 12px;
 }
 .ih-log-from {
-  font: 400 12px var(--ih-mono);
+  font: 400 11px var(--ih-mono);
   color: var(--ih-muted);
   width: 88px;
   flex: none;
@@ -566,7 +574,7 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  font: 500 12px var(--ih-sans);
+  font: 500 11px var(--ih-sans);
 }
 
 /* agent column */
@@ -591,20 +599,20 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font: 400 12.5px/1.6 var(--ih-mono);
+  font: 400 11.5px/1.6 var(--ih-mono);
 }
 .ih-mono-sm {
-  font: 400 13px var(--ih-mono);
+  font: 400 12px var(--ih-mono);
   color: var(--ih-text-2);
 }
 .ih-query {
   padding-left: 12px;
   border-left: 1px solid var(--ih-closed);
-  font: 400 13px var(--ih-mono);
+  font: 400 12px var(--ih-mono);
   color: var(--ih-text-3);
 }
 .ih-found {
-  font: 400 13px/1.6 var(--ih-mono);
+  font: 400 12px/1.6 var(--ih-mono);
   margin-top: 4px;
 }
 .ih-msg {
@@ -613,14 +621,14 @@
   gap: 4px;
 }
 .ih-msg-meta {
-  font: 400 12px var(--ih-mono);
+  font: 400 11px var(--ih-mono);
   color: var(--ih-muted);
   letter-spacing: 0.08em;
 }
 .ih-msg-body {
   background: var(--ih-selected);
   padding: 10px 12px;
-  font: 400 12.5px/1.6 var(--ih-mono);
+  font: 400 11.5px/1.6 var(--ih-mono);
   text-wrap: pretty;
   word-break: break-word;
 }
@@ -653,7 +661,7 @@
   background: #fff;
   border-radius: 3px;
   padding: 4px 10px;
-  font: 400 13px var(--ih-mono);
+  font: 400 12px var(--ih-mono);
   color: var(--ih-text-2);
 }
 .ih .ih-option:hover {
@@ -671,7 +679,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font: 400 12px var(--ih-mono);
+  font: 400 11px var(--ih-mono);
   color: var(--ih-muted);
 }
 .ih-compose {
@@ -683,7 +691,7 @@
   background: var(--ih-agent-bg);
 }
 .ih .ih-send {
-  font: 500 14px var(--ih-mono);
+  font: 500 13px var(--ih-mono);
   padding: 8px 10px;
   color: var(--ih-text-2);
 }
@@ -700,4 +708,351 @@
     max-height: none;
     min-height: 520px;
   }
+}
+
+/* the agent's own window beside Home, same chrome as the sidebar and page windows */
+.ih-agentwin {
+  /* grows with the screen: about a third of it, between 420 and 600px */
+  width: clamp(420px, 34vw, 600px);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #6e6e6e, 4px 4px 0 rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+/* a conversation log opened from Home, in the agent window's place */
+.ih-logwin-head {
+  flex: none;
+  padding: 10px 14px;
+  border-bottom: 2px solid #000;
+  background: #fff;
+}
+.ih-logwin-title {
+  font: 700 13px "IBM Plex Sans", sans-serif;
+}
+.ih-logwin-sub {
+  font: 400 11.5px "IBM Plex Sans", sans-serif;
+  color: var(--ih-muted);
+  margin-top: 2px;
+}
+.ih-logwin-sub a {
+  color: #000;
+}
+.ih-logwin-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ih-logwin .ih-log {
+  margin: 0;
+  min-height: 100%;
+  box-sizing: border-box;
+  border-left: none;
+  padding: 12px 14px;
+  gap: 10px;
+}
+button.ih-titlebar-box.ih-titlebar-close {
+  display: block;
+  box-sizing: content-box;
+  align-self: stretch;
+  height: auto;
+  margin: 0;
+  appearance: none;
+  padding: 0;
+  border: none;
+  border-right: 2px solid #000;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+button.ih-titlebar-close:hover {
+  background: #ff8a00;
+}
+button.ih-titlebar-close:active::after {
+  background: #fff;
+}
+@media (max-width: 1180px) {
+  .ih-agentwin {
+    width: 360px;
+  }
+}
+
+/* a person's photo opens their profile */
+.ih a.ih-face {
+  display: block;
+  flex: none;
+  line-height: 0;
+}
+
+/* Old-style dialogs (new network, request a network) opened inside the shell:
+   drawn as the shell's own windows, with a striped title bar, a black frame,
+   and the plain buttons and fields used on every page. */
+.ih .amiga-window[role="dialog"] {
+  border: 2px solid #000 !important;
+  border-radius: 0 !important;
+  background: #fff;
+  box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #6e6e6e, 4px 4px 0 rgba(0, 0, 0, 0.35) !important;
+  overflow: hidden;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar {
+  height: 24px;
+  padding: 0;
+  gap: 0;
+  border-bottom: 2px solid #000;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-close {
+  order: 0;
+  width: 24px;
+  align-self: stretch;
+  padding: 0;
+  border-right: 2px solid #000;
+  position: relative;
+  font-size: 0;
+  text-decoration: none;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-close::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 2px solid #000;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-close::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  background: #000;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-close:hover {
+  background: #ff8a00;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-title {
+  align-self: stretch;
+  background-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px);
+  background-position: 0 4px;
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+.ih .amiga-window[role="dialog"] .mac-titlebar .mac-title > .t {
+  background: #fff;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 8px;
+  margin-left: 4px;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+}
+.ih .amiga-window[role="dialog"] .wb-body {
+  font-family: "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih .amiga-window[role="dialog"] label,
+.ih .amiga-window[role="dialog"] .wb-body p[style] {
+  color: #000 !important;
+}
+.ih .amiga-window[role="dialog"] input:not([type="file"]):not([type="radio"]):not([type="checkbox"]),
+.ih .amiga-window[role="dialog"] textarea,
+.ih .amiga-window[role="dialog"] select {
+  border: 1px solid #000 !important;
+  border-radius: 0 !important;
+  background: #fff;
+  font: 400 13px "IBM Plex Sans", sans-serif !important;
+  box-shadow: inset 1px 1px 0 #ccc;
+}
+.ih .amiga-window[role="dialog"] input:focus,
+.ih .amiga-window[role="dialog"] textarea:focus {
+  outline: 2px solid #ff8a00;
+  outline-offset: 0;
+}
+.ih .amiga-window[role="dialog"] button.wb-btn,
+.ih .amiga-window[role="dialog"] .wb-segmented button {
+  padding: 4px 14px;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.ih .amiga-window[role="dialog"] button.wb-btn.primary {
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ih .amiga-window[role="dialog"] button.wb-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ih .amiga-window[role="dialog"] .wb-segmented {
+  gap: 0;
+  padding: 0;
+  border: 1px solid #000;
+  border-radius: 0;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.ih .amiga-window[role="dialog"] .wb-segmented button {
+  border: none;
+  box-shadow: none;
+}
+.ih .amiga-window[role="dialog"] .wb-segmented button + button {
+  border-left: 1px solid #000;
+}
+.ih .amiga-window[role="dialog"] .wb-segmented button[aria-pressed="true"] {
+  background: #000;
+  color: #fff;
+}
+
+
+/* Windows without title bars: a plain wordmark on the sidebar, a × to close side windows. */
+.ih-brand {
+  flex: none;
+  padding: 14px 20px 4px;
+  font: 700 15px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: -0.3px;
+}
+.ih-logwin-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ih button.pl-win-close,
+.ih .pl button.pl-win-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #000;
+  background: #fff;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  color: #000;
+  font: 400 15px/1 "IBM Plex Sans", sans-serif;
+  text-align: center;
+}
+.ih button.pl-win-close:hover,
+.ih .pl button.pl-win-close:hover:not(:disabled) {
+  background: #fff6e8;
+}
+
+/* Home's agent chat, collapsed: a thin window docked on the right that opens on click. */
+.ih button.ih-agentdock {
+  width: 44px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #6e6e6e, 4px 4px 0 rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.ih button.ih-agentdock:hover {
+  background: #fff6e8;
+}
+.ih-agentdock-arrow {
+  font-size: 16px;
+  line-height: 1;
+}
+.ih-agentdock-label {
+  writing-mode: vertical-rl;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+
+/* Flat shell: no desktop, no framed windows. Panels sit edge to edge with thin separators. */
+.ih.ih {
+  background: #fff;
+  padding: 0;
+  gap: 0;
+}
+.ih-rail,
+.ih-main,
+.ih-agentwin {
+  border: 0;
+  box-shadow: none;
+}
+.ih-rail {
+  border-right: 1px solid #e6e6e6;
+}
+.ih-agentwin {
+  border-left: 1px solid #e6e6e6;
+}
+.ih button.ih-agentdock {
+  border: 0;
+  border-left: 1px solid #e6e6e6;
+  box-shadow: none;
+}
+.ih button.ih-agentdock:hover {
+  background: #f6f6f6;
+}
+.ih-menu {
+  border-top: 1px solid #e6e6e6;
+}
+.ih .ih-nav {
+  border: 0;
+}
+.ih .ih-nav:hover {
+  background: #f4f4f4;
+}
+.ih .ih-nav.on {
+  background: #ececec;
+  box-shadow: none;
+}
+.ih-badge {
+  border: 0;
+  box-shadow: none;
+  border-radius: 2px;
+  padding: 2px 6px;
+  color: #000;
+}
+.ih-nav.on .ih-badge {
+  background: #ff8a00;
+}
+.ih-logwin-head {
+  border-bottom: 1px solid #e6e6e6;
+}
+
+/* The collapsed agent strip on the right: the old desktop blue, white text. */
+.ih button.ih-agentdock {
+  background-color: #0055aa;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  background-size: 4px 4px;
+  border-left: 0;
+  color: #fff;
+}
+.ih button.ih-agentdock:hover {
+  background-color: #0a63bd;
+}
+
+/* Agent strip: just a black edge against the page, and a label that reads easily. */
+.ih button.ih-agentdock {
+  border-left: 2px solid #000;
+  padding: 16px 0;
+  gap: 14px;
+}
+/* the same boxed arrow as the open chat's collapse button, pointing the other way */
+.ih-agentdock-arrow {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 400 15px/1 "IBM Plex Sans", sans-serif;
+}
+.ih-agentdock-label {
+  font: 600 13px "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  letter-spacing: 0.2px;
 }

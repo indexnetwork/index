@@ -3,13 +3,24 @@ import { HISTORY_TURNS, messageText, runHomeAgent } from '../lib/home-agent/home
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AGENT_DM_ID, ConversationService } from '../services/conversation.service';
+import { intentService } from '../services/intent.service';
 
 const logger = log.controller.from('home-agent');
 
 /** Tag on every home chat message: it lives in the agent DM but belongs to no intent. */
 const HOME_SCOPE = 'home';
+/** Where a finished home chat goes on "new chat": kept, but no longer read back. */
+const HOME_PAST_SCOPE = 'home-past';
 const MAX_TEXT = 4000;
 const PAGE = 60;
+/** Words of an intent kept in the agent's "started …" line. */
+const LABEL_WORDS = 6;
+
+/** A short label for an intent: its summary (or text), cut to a few words. */
+function intentLabel(intent: { summary?: string | null; payload?: string | null }): string {
+  const words = (intent.summary?.trim() || intent.payload?.trim() || 'your intent').replace(/[[\]]/g, '').split(/\s+/);
+  return words.length > LABEL_WORDS ? `${words.slice(0, LABEL_WORDS).join(' ')}…` : words.join(' ');
+}
 
 /**
  * The home screen's agent chat: one conversation where the owner's agent
@@ -36,6 +47,63 @@ export class HomeAgentController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getMessages failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /** Start a new home chat: the current one is set aside and the agent starts fresh. */
+  @Post('/new')
+  @UseGuards(SessionOnlyGuard)
+  async newChat(_req: Request, user: AuthenticatedUser) {
+    if (this.busy.has(user.id)) return Response.json({ error: 'Your agent is still working on your last message.' }, { status: 409 });
+    try {
+      const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
+      if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+      const moved = await this.conversationService.rescopeMessages(resolved.id, user.id, HOME_SCOPE, HOME_PAST_SCOPE);
+      return Response.json({ ok: true, moved });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('newChat failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * Record an intent the owner just created with the new intent flow inside
+   * the home chat, so the chat (and the agent, on later turns) remembers it.
+   * The agent's line is written here from the stored intent, never from the client.
+   *
+   * @returns The stored owner line (when `asked` was sent) and the agent's line.
+   */
+  @Post('/intent-created')
+  @UseGuards(SessionOnlyGuard)
+  async intentCreated(req: Request, user: AuthenticatedUser) {
+    let body: { intentId?: unknown; asked?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const intentId = typeof body.intentId === 'string' ? body.intentId : '';
+    const asked = typeof body.asked === 'string' ? body.asked.trim().slice(0, MAX_TEXT) : '';
+    if (!intentId) return Response.json({ error: 'intentId is required' }, { status: 400 });
+    try {
+      const intent = await intentService.getById(intentId, user.id);
+      if (!intent) return Response.json({ error: 'Intent not found' }, { status: 404 });
+      const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
+      if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+
+      const message = asked
+        ? await this.conversationService.sendMessage(resolved.id, user.id, 'user', [{ kind: 'text', text: `start a new intent: ${asked}` }], { metadata: { scope: HOME_SCOPE } })
+        : null;
+      const text = `started [${intentLabel(intent)}](https://index.network/i/${intentId}). i'll start looking for people now.`;
+      const reply = await this.conversationService.sendAgentMessage(resolved.id, [{ kind: 'text', text }], {
+        metadata: { scope: HOME_SCOPE, changed: ['create_intent'], intentCreated: intentId },
+      });
+      return Response.json({ message, reply }, { status: 201 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('intentCreated failed', { userId: user.id, intentId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

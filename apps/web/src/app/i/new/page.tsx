@@ -5,8 +5,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
 import { Btn, Window } from "@/components/workbench/Workbench";
-import { intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
-import { APIError } from "@/lib/api";
+import { createFailureReason, intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
@@ -454,9 +453,3 @@ function Calibrating() {
 
 export const Component = NewIntentPage;
 
-/** A server reason worth showing ("Intent limit reached."), or "try again." for transport noise. */
-function createFailureReason(error: unknown): string {
-  const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
-  if (!raw || /^HTTP \d/.test(raw)) return "try again.";
-  return /[.!?]$/.test(raw) ? raw : `${raw}.`;
-}

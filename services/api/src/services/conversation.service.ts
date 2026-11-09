@@ -230,6 +230,20 @@ export class ConversationService {
   }
 
   /**
+   * Set aside one scope of a participant's conversation (the home agent's "new chat").
+   * @param conversationId - Conversation ID
+   * @param userId - Participant asking
+   * @param from - Scope to set aside
+   * @param to - Scope it moves to
+   * @returns How many messages moved
+   * @throws Error if userId is not a participant
+   */
+  async rescopeMessages(conversationId: string, userId: string, from: string, to: string) {
+    await this.verifyParticipant(userId, conversationId);
+    return this.db.rescopeMessages(conversationId, from, to);
+  }
+
+  /**
    * Loads one durable timeline session for an authorized conversation.
    *
    * @param conversationId - Conversation identifier.

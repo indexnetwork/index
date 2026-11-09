@@ -10,6 +10,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 
 const logger = log.ui.from('NetworkOverviewPanel');
 
@@ -28,6 +29,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
   const networksService = useNetworks();
+  const plain = useInAppFrame();
 
   // The parent can also ask for the dialog via `onLeaveRequest`; both sources
   // are combined during render rather than mirrored into state by an effect.
@@ -129,6 +131,64 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
 
   const visible = intents.filter((intent) => !hiddenIds.includes(intent.id));
 
+  const leaveDialog = showLeaveConfirmation && (
+    <ConfirmWindow
+      title="leave"
+      body={`leave ${network.title}? you can rejoin later if the network is public or you are invited again.`}
+      confirmLabel={isLeaving ? "leaving" : "leave"}
+      busy={isLeaving}
+      onCancel={() => { if (!isLeaving) setLeaveConfirmation(false); }}
+      onConfirm={() => void handleLeaveNetwork()}
+    />
+  );
+
+  // Inside the desktop shell: plain rows like the rest of the app.
+  if (plain) {
+    return (
+      <>
+        <h2>your intents here {!overviewLoading && `(${visible.length})`}</h2>
+        {undo && (
+          <div className="pl-netdetail-undo">
+            <span>removed from {network.title}. the intent is still running everywhere else.</span>
+            <button type="button" onClick={() => { void handlePutBack(); }}>put it back</button>
+          </div>
+        )}
+        {overviewLoading ? (
+          <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+        ) : overviewFailed && visible.length === 0 ? (
+          <div className="pl-profile-empty">
+            <p>couldn&apos;t load your intents in this network.</p>
+            <button type="button" onClick={() => { setOverviewLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="pl-profile-empty">
+            <p>you haven&apos;t shared any intents in this network yet.</p>
+            <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+          </div>
+        ) : (
+          <ul className="pl-rows pl-netdetail-intents">
+            {visible.map((intent) => {
+              const text = intent.payload?.trim() || intent.summary?.trim() || "untitled intent";
+              const date = intent.createdAt ? new Date(intent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+              return (
+                <li key={intent.id}>
+                  <div className="pl-netdetail-intent">
+                    <button type="button" className="pl-row" onClick={() => handleOpenIntent(intent)} title="open this intent">
+                      <span className="pl-row-title">{text}</span>
+                      {date && <span className="pl-net-n">{date}</span>}
+                    </button>
+                    <button type="button" className="pl-netdetail-remove" title={`stop sharing this intent with ${network.title}. it keeps running elsewhere`} onClick={() => { void handleRemove(intent.id); }}>remove</button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {leaveDialog}
+      </>
+    );
+  }
+
   return (
     <>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
@@ -180,16 +240,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
         </div>
       )}
 
-      {showLeaveConfirmation && (
-        <ConfirmWindow
-          title="leave"
-          body={`leave ${network.title}? you can rejoin later if the network is public or you are invited again.`}
-          confirmLabel={isLeaving ? "leaving" : "leave"}
-          busy={isLeaving}
-          onCancel={() => { if (!isLeaving) setLeaveConfirmation(false); }}
-          onConfirm={() => void handleLeaveNetwork()}
-        />
-      )}
+      {leaveDialog}
     </>
   );
 }

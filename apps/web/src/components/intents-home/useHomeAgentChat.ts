@@ -13,6 +13,8 @@ export interface HomeAgentMessage {
   createdAt: string;
   /** Tools that changed something in this turn (agent messages only). */
   changed?: string[];
+  /** The intent this message announces, when it was started with the in-chat flow. */
+  intentCreated?: string;
 }
 
 function toMessage(message: ConversationMessage): HomeAgentMessage {
@@ -20,13 +22,15 @@ function toMessage(message: ConversationMessage): HomeAgentMessage {
     .filter((part) => part?.kind === "text" && typeof part.text === "string")
     .map((part) => part.text)
     .join("\n");
-  const changed = (message.metadata as { changed?: unknown } | undefined)?.changed;
+  const meta = message.metadata as { changed?: unknown; intentCreated?: unknown } | undefined;
+  const changed = meta?.changed;
   return {
     id: message.id,
     role: message.role,
     text,
     createdAt: message.createdAt,
     changed: Array.isArray(changed) ? changed.map(String) : undefined,
+    intentCreated: typeof meta?.intentCreated === "string" ? meta.intentCreated : undefined,
   };
 }
 
@@ -81,5 +85,28 @@ export function useHomeAgentChat(onChanged: (tools: string[]) => void) {
     }
   }, [sending, load]);
 
-  return { messages, loaded, loadFailed, sending, error, send, retry: load };
+  /** Set the current chat aside and start an empty one. */
+  const newChat = useCallback(async () => {
+    if (sending) return;
+    setError(null);
+    try {
+      await apiClient.post("/home-agent/new", {});
+      setMessages([]);
+    } catch (err) {
+      setError(err instanceof APIError && err.status !== 0 ? err.message : "couldn't start a new chat.");
+    }
+  }, [sending]);
+
+  /** Save an intent made with the in-chat new intent flow, so the chat and the agent remember it. */
+  const recordIntent = useCallback(async (intentId: string, asked: string) => {
+    try {
+      const res = await apiClient.post<{ message: ConversationMessage | null; reply: ConversationMessage }>("/home-agent/intent-created", { intentId, asked });
+      setMessages((prev) => [...prev, ...(res.message ? [toMessage(res.message)] : []), toMessage(res.reply)]);
+    } catch {
+      // The intent exists either way; the chat just won't mention it. Reread in case it was saved.
+      await load();
+    }
+  }, [load]);
+
+  return { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry: load };
 }

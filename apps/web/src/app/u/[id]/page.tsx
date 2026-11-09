@@ -9,6 +9,9 @@ import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import PlainProfile from "@/components/profile/PlainProfile";
+import type { ReactNode } from "react";
 import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import NegotiationConversation from "@/components/NegotiationConversation";
@@ -51,6 +54,7 @@ function UserProfile() {
   const [pairError, setPairError] = useState(false);
 
   const isOtherUser = !!user?.id && user.id !== id;
+  const inFrame = useInAppFrame();
 
   useEffect(() => {
     // /u/ is a public route, so authLoading clears before /auth/me resolves; wait for the viewer too.
@@ -120,8 +124,7 @@ function UserProfile() {
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
     return (
-      <Stage width={480}>
-        <Window title="profile" onClose={back}>
+      <ProfileFrame width={480} onClose={back}>
           <div style={{ padding: "36px 24px" }}>
             {authLoading || isLoading ? (
               <EmptyState tone="loading" />
@@ -135,8 +138,7 @@ function UserProfile() {
               <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: back }} />
             )}
           </div>
-        </Window>
-      </Stage>
+      </ProfileFrame>
     );
   }
 
@@ -145,9 +147,27 @@ function UserProfile() {
   // vanishing, and anything that resolves to no address is left out entirely.
   const socialLinks = resolveSocials(profileData.socials);
 
+  // Signed in on desktop: the plain page, like Home and Intents.
+  if (inFrame) {
+    return (
+      <PlainProfile
+        profile={profileData}
+        socials={socialLinks}
+        isOwn={!isOtherUser}
+        networks={sharedNetworks}
+        matches={sharedOpportunities}
+        matchesLoaded={oppsLoaded}
+        pairing={pairing}
+        pairError={pairError}
+        onPair={() => void pair()}
+        onMessage={() => navigate(`/u/${id}/chat`)}
+        onSaved={(saved) => setProfileData((prev: typeof profileData) => (prev ? { ...prev, ...saved } : prev))}
+      />
+    );
+  }
+
   return (
-      <Stage width={720} height="min(720px, calc(100vh - 112px))">
-      <Window title="profile" onClose={back} style={{ height: "100%" }}>
+      <ProfileFrame width={720} height="min(720px, calc(100vh - 112px))" onClose={back}>
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
 
           {/* Avatar, Name, Location, Socials */}
@@ -254,9 +274,29 @@ function UserProfile() {
           )}
 
       </div>
-      </Window>
-      </Stage>
+      </ProfileFrame>
   );
 }
 
 export const Component = UserProfilePage;
+
+/**
+ * Where the profile sits. Signed in on desktop, the app's main window already
+ * says "profile", so it fills that window like Home and Intents. Elsewhere
+ * (phones, signed out) it keeps its own window on the desktop.
+ */
+function ProfileFrame({ width, height, onClose, children }: { width: number; height?: string; onClose: () => void; children: ReactNode }) {
+  const inFrame = useInAppFrame();
+  if (inFrame) {
+    return (
+      <div className="ih-view pl">
+        <div className="pl-wrap"><div className="pl-page">{children}</div></div>
+      </div>
+    );
+  }
+  return (
+    <Stage width={width} height={height}>
+      <Window title="profile" onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
+    </Stage>
+  );
+}

@@ -3,17 +3,22 @@
 .ih .pl {
   overflow: auto;
   font-family: "IBM Plex Sans", "Helvetica Neue", Tahoma, Geneva, sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.45;
   color: #000;
   background: #fff;
 }
+/* One content width for every plain page (home, intents, profile, networks). */
+.pl {
+  --pl-width: 880px;
+}
 .pl-page {
-  max-width: 720px;
+  max-width: var(--pl-width);
+  box-sizing: border-box;
   padding: 20px 28px 56px;
 }
 .pl h1 {
-  font: 700 32px/1.2 "JetBrains Mono", ui-monospace, monospace;
+  font: 700 30px/1.2 "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: -0.5px;
   margin: 12px 0 12px;
 }
@@ -22,7 +27,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: 2px;
   text-transform: uppercase;
   margin: 22px 0 12px;
@@ -63,7 +68,7 @@
   color: #5a5548;
 }
 .pl-small {
-  font-size: 13px;
+  font-size: 12px;
 }
 .pl-blurb {
   margin-top: 4px;
@@ -78,7 +83,7 @@
 /* beveled buttons; .go is the orange one */
 .ih .pl button {
   padding: 4px 14px;
-  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: 0.3px;
   border: 1px solid #000;
   background: #fff;
@@ -99,7 +104,7 @@
 }
 .ih .pl button.big {
   padding: 9px 18px;
-  font-size: 14px;
+  font-size: 13px;
   border-width: 2px;
   box-shadow: inset 1px 1px 0 #ffd7a0, inset -2px -2px 0 #8a4500, 3px 3px 0 rgba(0, 0, 0, 0.3);
 }
@@ -118,7 +123,7 @@
   padding: 4px 8px;
   border: 1px solid #000;
   box-shadow: inset 1px 1px 0 #888;
-  font: 400 13px "JetBrains Mono", ui-monospace, monospace;
+  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
   outline: none;
 }
 .ih .pl input[type="text"]:focus {
@@ -150,6 +155,9 @@
 }
 .pl-cards > li.pl-card.live {
   border-left-color: #33aa33;
+}
+.pl-cards > li.pl-card.talks {
+  border-left-color: #ffcc00;
 }
 .pl-cards > li.pl-card.paused {
   border-left-color: #999;
@@ -194,7 +202,7 @@
 .pl-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 14px;
+  font-size: 13px;
   border: 2px solid #000;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
 }
@@ -208,7 +216,7 @@
 .pl-table th {
   background: #000;
   color: #fff;
-  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -217,7 +225,7 @@
 }
 .pl-status {
   white-space: nowrap;
-  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
 }
 .pl-status::before {
   content: "";
@@ -265,7 +273,7 @@
   max-width: calc(100% - 16px);
   box-sizing: border-box;
   padding: 2px 8px;
-  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 10.5px "JetBrains Mono", ui-monospace, monospace;
   color: #000;
   background: #fff;
   border: 1px solid #000;
@@ -281,7 +289,7 @@
   background: #ffff66;
 }
 .pl-q-text {
-  font-size: 16px;
+  font-size: 15px;
   margin: 6px 0 10px;
 }
 .pl-q-options {
@@ -321,7 +329,7 @@
 /* "+N" after the top two intents */
 .ih .pl button.pl-more {
   padding: 0 6px;
-  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
   vertical-align: 1px;
   background: #ff8a00;
   box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
@@ -329,49 +337,77 @@
 
 /* the agent chat: a window on the right of Home, closed until asked for */
 .pl-wrap {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 24px;
   min-height: 100%;
 }
 .pl-wrap > .pl-page {
-  flex: 0 1 720px;
+  flex: 0 1 var(--pl-width);
   min-width: 0;
 }
+/* Every plain page's column sits in the middle of its window, so the spare
+   room splits evenly on both sides instead of piling up on the right. */
+.ih-view.pl > .pl-page,
+.ih-view.pl > .pl-prof,
+.pl-wrap > .pl-page {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Home's column: an optional toolbar row on top, then the page, centered together. */
+.pl-col {
+  width: 100%;
+  max-width: var(--pl-width);
+  margin: 0 auto;
+}
+.pl-col > .pl-page {
+  max-width: none;
+}
+/* A page's head on plain pages, matching the intent detail page (PageHead.tsx). */
+.pl-col > .ih-head {
+  padding: 24px 28px 4px;
+}
+.pl h1.ih-title {
+  font: 500 16.5px/1.4 var(--ih-sans);
+  letter-spacing: normal;
+  margin: 0;
+}
+.pl-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 28px 0;
+}
+.pl-toolbar + .pl-page {
+  padding-top: 0;
+}
 .ih .pl button.pl-agent-toggle {
-  position: sticky;
-  top: 20px;
-  margin: 20px 24px 0 auto;
-  flex: none;
+  margin: 0;
 }
 .pl-agent {
-  position: sticky;
-  top: 16px;
-  flex: 1 1 380px;
-  max-width: 460px;
-  min-width: 320px;
-  height: calc(100vh - 120px);
-  margin: 16px 20px 16px auto;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  border: 2px solid #000;
-  background: #fff;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
 }
 .pl-agent-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px 4px 10px;
-  background: #000;
-  color: #fff;
-  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: 2px;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid #e6e6e6;
+  background: #fff;
+  font: 400 10.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
 }
-.ih .pl button.pl-agent-close {
+.pl-agent-head > span { flex: 1; }
+.ih .pl button.pl-agent-new {
+  margin-right: 6px;
   padding: 0 7px;
-  font-size: 14px;
-  line-height: 18px;
+  font: 500 10px/18px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0;
 }
 .pl-agent-log {
   flex: 1;
@@ -396,7 +432,7 @@
   padding: 7px 10px;
   border: 1px solid #000;
   background: #fff;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.45;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
   white-space: pre-wrap;
@@ -406,7 +442,7 @@
   background: #fffbe6;
 }
 .pl-agent-meta {
-  font: 400 10.5px "JetBrains Mono", ui-monospace, monospace;
+  font: 400 10px "JetBrains Mono", ui-monospace, monospace;
   color: #8a8578;
   margin-bottom: 2px;
 }
@@ -429,7 +465,7 @@
 }
 .pl-agent-done {
   margin-top: 6px;
-  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+  font: 500 10px "JetBrains Mono", ui-monospace, monospace;
   color: #1f7a1f;
 }
 .pl-agent-suggest {
@@ -440,7 +476,7 @@
 }
 .pl-agent-error {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #8a0000;
 }
 .pl-agent-compose {
@@ -448,7 +484,7 @@
   align-items: flex-end;
   gap: 8px;
   padding: 8px;
-  border-top: 2px solid #000;
+  border-top: 1px solid #e6e6e6;
   background: #fff;
 }
 .pl-agent-compose textarea {
@@ -457,7 +493,7 @@
   padding: 6px 8px;
   border: 1px solid #000;
   box-shadow: inset 1px 1px 0 #888;
-  font: 400 14px "IBM Plex Sans", sans-serif;
+  font: 400 13px "IBM Plex Sans", sans-serif;
   outline: none;
 }
 .pl-agent-compose textarea:focus {
@@ -473,15 +509,1082 @@
   .pl-wrap {
     flex-direction: column;
   }
-  .pl-agent {
-    position: static;
-    width: auto;
-    max-width: none;
-    height: 520px;
-    margin: 0 28px 40px;
-  }
   .ih .pl button.pl-agent-toggle {
     position: static;
     margin: 0 28px 40px;
   }
+}
+
+/* chat: the conversation list beside the thread, in the same look as the agent panel.
+   Desktop only (inside the .ih shell); the chat components keep their own inline styles on compact,
+   so these overrides need !important. */
+.ih .ih-chat {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  font: 400 14px/1.5 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih .ih-chat.solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ih .ih-chat-list {
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid #000;
+  background: #fff;
+}
+.ih .ih-chat-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+/* conversation list: plain rows, thin rules, the open one in light grey */
+.ih .ih-chat .chat-row {
+  border-bottom: 1px solid #e6e6e6 !important;
+  border-left: none !important;
+  padding: 10px 12px !important;
+  background: #fff !important;
+}
+.ih .ih-chat .chat-row:hover {
+  background: #f6f6f6 !important;
+}
+.ih .ih-chat .chat-row.on {
+  background: #eeeeee !important;
+}
+.ih .ih-chat .chat-row-name {
+  font: 600 13px "IBM Plex Sans", sans-serif !important;
+  color: #000 !important;
+}
+.ih .ih-chat .chat-row-time,
+.ih .ih-chat .chat-clock {
+  font: 400 10.5px "IBM Plex Sans", sans-serif !important;
+  color: #999 !important;
+}
+.ih .ih-chat .chat-row-preview {
+  font-size: 12.5px !important;
+  color: #666 !important;
+}
+.ih .ih-chat .chat-unread {
+  font: 700 10px/16px "IBM Plex Sans", sans-serif !important;
+  background: #ff8a00 !important;
+  border-radius: 0 !important;
+}
+/* header: name, then one quiet line */
+.ih .ih-chat .chat-head {
+  border-bottom: 1px solid #e6e6e6 !important;
+  padding: 10px 16px !important;
+}
+.ih .ih-chat .chat-head-name {
+  font: 600 14px "IBM Plex Sans", sans-serif !important;
+  color: #000 !important;
+  text-decoration: none !important;
+}
+.ih .ih-chat .chat-head-name:hover {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+.ih .ih-chat .chat-head-sub {
+  font: 400 12px "IBM Plex Sans", sans-serif !important;
+  color: #888 !important;
+}
+.ih .ih-chat .chat-head-sub a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+.ih .ih-chat .chat-head-sub a:hover {
+  color: #000 !important;
+  text-decoration: underline !important;
+}
+.ih .ih-chat .chat-log {
+  padding: 16px 20px !important;
+}
+/* day marks: a small grey date between two hairlines */
+.ih .ih-chat .chat-day span:nth-child(2) {
+  font: 400 11px "IBM Plex Sans", sans-serif !important;
+  letter-spacing: 0 !important;
+  text-transform: lowercase !important;
+  color: #999 !important;
+}
+.ih .ih-chat .chat-day span:first-child,
+.ih .ih-chat .chat-day span:last-child {
+  height: 1px !important;
+  background: #ececec !important;
+  border: none;
+}
+/* messages: flat tinted bubbles, no frames or shadows */
+.ih .ih-chat .wb-chat {
+  border: none !important;
+  border-radius: 0 !important;
+  background: #f2f2f2 !important;
+  box-shadow: none;
+  font: 400 13.5px/1.45 "IBM Plex Sans", sans-serif !important;
+  padding: 7px 11px !important;
+}
+.ih .ih-chat .wb-chat.mine {
+  background: #ffefc7 !important;
+}
+.ih .ih-chat .wb-chat a {
+  color: #0000ee;
+}
+.ih .ih-chat .chat-opener {
+  border: 1px solid #e6e6e6 !important;
+  border-left: 3px solid #ff8a00 !important;
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+.ih .ih-chat .chat-compose {
+  border-top: 1px solid #e6e6e6 !important;
+  padding: 10px 12px !important;
+  gap: 8px !important;
+  align-items: flex-end !important;
+}
+.ih .ih-chat .chat-compose textarea {
+  border: 1px solid #bbb !important;
+  background: #fff !important;
+  box-shadow: none;
+  padding: 7px 9px !important;
+  font: 400 13.5px "IBM Plex Sans", sans-serif !important;
+  min-height: 34px;
+}
+.ih .ih-chat .chat-compose textarea:focus {
+  border-color: #000 !important;
+  outline: none;
+}
+.ih .ih-chat .chat-send {
+  height: 34px;
+  padding: 0 14px !important;
+  border: 1px solid #000 !important;
+  background: #ff8a00 !important;
+  color: #000 !important;
+  box-shadow: none;
+  cursor: pointer;
+}
+.ih .ih-chat .chat-send:disabled {
+  opacity: 0.35;
+  cursor: default !important;
+}
+.ih .ih-chat .chat-send {
+  font-size: 0 !important;
+}
+.ih .ih-chat .chat-send::after {
+  content: "send";
+  font: 600 12px "IBM Plex Sans", sans-serif;
+}
+
+/* the new intent flow inside the agent chat */
+.pl-ni {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 8px 12px;
+  border: 2px solid #000;
+  border-left: 6px solid #ff8a00;
+  background: #fff;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.15);
+}
+.pl-ni-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 2px;
+}
+.ih .pl button.pl-ni-cancel {
+  padding: 1px 7px;
+  font: 500 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0;
+}
+.pl-ni-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pl-ni .pl-agent-suggest {
+  margin-top: 0;
+}
+.pl-ni .pl-agent-bubble .pl-agent-suggest {
+  margin: 6px 0 0;
+}
+.ih .pl .pl-agent-suggest button.on {
+  background: #fffbe6;
+  border-color: #ff8a00;
+  box-shadow: inset 0 0 0 1px #ff8a00;
+}
+.pl-ni-text,
+.pl-ni-own {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #888;
+  font: 400 13px/1.45 "IBM Plex Sans", sans-serif;
+  background: #fff;
+  outline: none;
+  resize: vertical;
+  white-space: normal;
+}
+.pl-ni-text:focus,
+.pl-ni-own:focus {
+  background: #fffbe6;
+}
+.pl-ni-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+  white-space: normal;
+}
+.pl-ni-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+.pl-ni-actions {
+  margin-top: 10px;
+}
+.pl-agent-again {
+  margin-top: 0;
+}
+.pl-agent-compose textarea:disabled {
+  background: #f0eee8;
+  color: #8a8578;
+}
+
+/* "what i'm doing": an intent's live progress under the agent's "started …" line */
+.pl-act {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #000;
+  border-left: 4px solid #ffcc00;
+  background: #fffdf3;
+  white-space: normal;
+}
+.pl-act-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 1.5px;
+}
+.pl-act-dot {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #000;
+  background: #33aa33;
+}
+.pl-act-dot.on {
+  background: #ffcc00;
+  animation: pl-blink 1s steps(1) infinite;
+}
+.pl .pl-act-lines,
+.pl .pl-act-sub {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pl .pl-act-lines > li {
+  margin: 0;
+  padding: 1px 0;
+  font: 400 11.5px/1.5 "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
+}
+.pl .pl-act-lines > li::before {
+  content: "· ";
+  color: #999;
+}
+.pl .pl-act-lines > li.strong {
+  color: #000;
+  font-weight: 600;
+}
+.pl .pl-act-sub > li {
+  margin: 2px 0 0 12px;
+  padding-left: 8px;
+  border-left: 1px solid #bbb;
+  color: #777;
+}
+.pl-act-status {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--pl-line, #e6e6e6);
+  font: 600 11.5px "JetBrains Mono", ui-monospace, monospace;
+}
+.pl-act-open {
+  display: inline-block;
+  margin-top: 6px;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* a person's name links to their profile: plain black text, underlined only on hover */
+.ih .pl a.pl-name,
+.ih .pl a.pl-name:visited {
+  color: inherit;
+  text-decoration: none;
+}
+.ih .pl a.pl-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+}
+/* a card's face links to the person's profile */
+.ih .pl a.pl-card-face {
+  display: block;
+  flex: none;
+  line-height: 0;
+}
+
+/* a person's profile in the desktop shell */
+.pl-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+.pl-profile-who {
+  flex: 1;
+  min-width: 0;
+}
+.pl-profile .pl-profile-who h1 {
+  margin: 0 0 2px;
+  font-size: 22px;
+}
+.pl-profile-bio {
+  margin-top: 14px !important;
+  white-space: pre-wrap;
+}
+.pl-profile-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pl .pl-profile-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  text-decoration: none;
+  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl .pl-profile-links a:hover {
+  background: #ffff66;
+}
+.pl-profile-empty {
+  padding: 14px;
+  border: 1px dashed var(--pl-line, #e6e6e6);
+  background: #fffbe6;
+}
+/* networks you share: a grid of small tiles, each opening the network */
+.pl-nets {
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.pl-nets > li {
+  margin: 0;
+}
+.pl .pl-nets a.pl-net {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  text-decoration: none;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl .pl-nets a.pl-net:hover {
+  background: #ffff66;
+}
+.pl-net-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #000;
+  font: 700 13px "JetBrains Mono", ui-monospace, monospace;
+}
+.pl-net-mark.c0 { background: #ff8a00; }
+.pl-net-mark.c1 { background: #ffcc00; }
+.pl-net-mark.c2 { background: #33aa33; color: #fff; }
+.pl-net-mark.c3 { background: #0055cc; color: #fff; }
+.pl-net-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pl-net-name {
+  font: 600 13px/1.3 "IBM Plex Sans", sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-net-n {
+  font: 500 10.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
+}
+/* matches between you: one line each, opening to the log */
+.pl-rows {
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+  border: 1px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+.pl-rows > li {
+  margin: 0;
+}
+.pl-rows > li + li {
+  border-top: 1px solid #000;
+}
+.ih .pl button.pl-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 12px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font: 400 13px/1.4 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih .pl button.pl-row:hover,
+.ih .pl .pl-rows > li.open > button.pl-row {
+  background: #ffff66;
+}
+.pl-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-row-arrow {
+  font-size: 11px;
+}
+.pl-row-more {
+  padding: 4px 12px 12px;
+  border-top: 1px dashed var(--pl-line, #e6e6e6);
+}
+.pl-row-more .pl-blurb {
+  margin: 6px 0 8px;
+}
+.pl-profile .ih-log {
+  margin: 0;
+}
+
+/* back out of a drill-in page (a profile) */
+.ih .pl button.pl-back {
+  margin: 0 0 6px;
+  padding: 2px 0;
+  border: none;
+  box-shadow: none;
+  background: none;
+  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #0000ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ih .pl button.pl-back:hover {
+  background: #ffff66;
+}
+
+/* profile: who they are on the left, you and them on the right */
+.pl-prof {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 32px;
+  padding: 20px 28px 56px;
+  max-width: var(--pl-width);
+  box-sizing: border-box;
+  align-items: start;
+}
+.pl-prof-side {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.pl-prof-side h1 {
+  margin: 10px 0 0;
+  font-size: 22px;
+}
+.ih .pl button.pl-prof-cta {
+  margin-top: 10px;
+  align-self: stretch;
+  text-align: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.pl-prof-side .pl-profile-bio {
+  margin: 8px 0 0 !important;
+}
+.pl-prof-side h2 {
+  align-self: stretch;
+}
+.pl-prof-side .pl-nets {
+  align-self: stretch;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.pl-prof-main > h2:first-child {
+  margin-top: 6px;
+}
+.pl-prof-log {
+  margin-top: 16px;
+  border: 1px solid #000;
+  border-left: 6px solid #ffcc00;
+  background: #fff;
+  padding: 12px 14px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl-prof-log.waiting { border-left-color: #ff8a00; }
+.pl-prof-log.live { border-left-color: #33aa33; }
+.pl-prof-log.paused { border-left-color: #999; }
+.pl-prof-log-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.pl-prof-log-head > .pl-status {
+  margin-left: auto;
+}
+.pl-prof-log .ih-log {
+  margin: 8px 0 0;
+}
+@media (max-width: 1000px) {
+  .pl-prof {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pl-prof-side {
+    position: static;
+  }
+}
+
+/* networks page */
+.pl-tabbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 4px;
+}
+.pl-tabbar > .go {
+  margin-left: auto;
+}
+.pl-tabs {
+  display: inline-flex;
+  border: 1px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.ih .pl .pl-tabs > button {
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  background: #fff;
+}
+.ih .pl .pl-tabs > button + button {
+  border-left: 1px solid #000;
+}
+.ih .pl .pl-tabs > button.on {
+  background: #000;
+  color: #fff;
+}
+.pl-nets.big {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.pl-nets.big .pl-net {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  text-decoration: none;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+.pl-nets.big .pl-net-mark {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+.pl-net-mark.img {
+  object-fit: cover;
+  display: block;
+  padding: 0;
+}
+.ih .pl .pl-nets.big .pl-net > button {
+  margin: 0;
+  flex: none;
+}
+
+/* a single network */
+.pl-netdetail-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+.pl-netdetail-who {
+  flex: 1;
+  min-width: 0;
+}
+.pl-netdetail .pl-netdetail-who h1 {
+  margin: 0 0 2px;
+  font-size: 22px;
+}
+.pl-net-mark.big {
+  width: 52px;
+  height: 52px;
+  font-size: 20px;
+}
+.pl-netdetail-tabs {
+  margin-top: 16px;
+}
+.ih .pl .pl-netdetail-tabs > button[data-state="active"] {
+  background: #000;
+  color: #fff;
+}
+.pl-netdetail-panel {
+  margin-top: 16px;
+}
+.pl-netdetail-undo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px dashed var(--pl-line, #e6e6e6);
+  background: #fffbe6;
+  font-size: 12.5px;
+}
+.pl-netdetail-undo > span {
+  flex: 1;
+}
+.pl-netdetail-intent {
+  display: flex;
+  align-items: center;
+}
+.pl-netdetail-intent > .pl-row {
+  flex: 1;
+  min-width: 0;
+}
+.ih .pl button.pl-netdetail-remove {
+  flex: none;
+  margin: 0 10px 0 0;
+  padding: 2px 10px;
+  font-size: 10.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Flat pass: no boxes, bevels or drop shadows. Content sits on the page,
+   split by thin grey separators; controls get a plain 1px outline.
+   (Later rules win over the workbench rules above.)
+   --------------------------------------------------------------------------- */
+.pl {
+  --pl-line: #e6e6e6;
+  --pl-edge: #cfcfcf;
+}
+.pl h2::after {
+  height: 0;
+  border-top: 1px solid var(--pl-line);
+  border-bottom: 0;
+}
+
+/* controls: every button is a small raised box, like the window arrows and the × */
+.ih .pl button {
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ih .pl button:hover:not(:disabled) {
+  background: #fff6e8;
+}
+.ih .pl button.go {
+  border-color: #000;
+  background: #ff8a00;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ih .pl button.go:hover:not(:disabled) {
+  background: #ff9d2b;
+}
+.ih .pl button.big {
+  border-width: 1px;
+}
+/* pressed: the bevel flips and the box sinks into its shadow */
+.ih .pl button:active:not(:disabled) {
+  background: #f0f0f0;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.ih .pl button.go:active:not(:disabled) {
+  background: #f08000;
+  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+}
+/* a pressed toggle (a picked tab, an "on" chip) stays sunk */
+.ih .pl button.on,
+.ih .pl button[aria-pressed="true"]:not(.pl-row) {
+  background: #ececec;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+}
+.ih .pl input[type="text"],
+.pl-agent-compose textarea {
+  border: 1px solid var(--pl-edge);
+  border-radius: 2px;
+  box-shadow: none;
+}
+.ih .pl button.pl-more,
+.ih .pl button.pl-row,
+.ih .pl button.pl-back,
+.ih .pl button.pl-edit-photo {
+  box-shadow: none;
+}
+.ih .pl button.pl-more:active,
+.ih .pl button.pl-row:active,
+.ih .pl button.pl-back:active,
+.ih .pl button.pl-edit-photo:active {
+  box-shadow: none;
+  transform: none;
+}
+
+/* cards become rows with a line between them */
+.pl-cards > li.pl-card,
+.pl-cards > li.pl-card.live,
+.pl-cards > li.pl-card.talks,
+.pl-cards > li.pl-card.paused {
+  border: 0;
+  border-bottom: 1px solid var(--pl-line);
+  box-shadow: none;
+  background: transparent;
+  padding: 14px 0;
+}
+.pl-cards > li.pl-card:first-child {
+  border-top: 1px solid var(--pl-line);
+}
+
+/* questions keep their framed yellow card, minus the grey drop shadow */
+.pl-q fieldset {
+  box-shadow: none;
+}
+.ih .pl .pl-q-send button.go {
+  border: 1px solid #000;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
+}
+
+/* everything else that was a framed box */
+.pl-table,
+.pl-ni,
+.pl-act,
+.pl-rows,
+.pl-prof-log,
+.pl .pl-nets a.pl-net,
+.pl-nets.big .pl-net,
+.pl .pl-profile-links a {
+  border: 1px solid var(--pl-line);
+  border-radius: 2px;
+  box-shadow: none;
+}
+.pl-table td {
+  border-color: var(--pl-line);
+}
+.pl-net-mark {
+  border: 0;
+  border-radius: 2px;
+}
+.pl-agent-bubble {
+  border: 1px solid var(--pl-line);
+  border-radius: 2px;
+  box-shadow: none;
+}
+.ih .pl .pl-agent-suggest button.on {
+  box-shadow: none;
+}
+.pl-tabs {
+  border-color: var(--pl-edge);
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.ih .pl .pl-tabs > button {
+  border-radius: 0;
+}
+.ih .pl .pl-tabs > button + button {
+  border-left-color: var(--pl-edge);
+}
+
+/* One button height everywhere (text links, list rows and the tiny "+N" pill excluded). */
+.ih .pl button:not(.pl-row):not(.pl-back):not(.pl-more):not(.pl-edit-photo) {
+  height: 28px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+.ih .pl button.pl-win-close {
+  width: 28px;
+}
+
+/* your profile, edited in place */
+.pl-edit {
+  display: grid;
+  gap: 14px;
+  align-self: stretch;
+}
+.ih .pl button.pl-edit-photo {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.pl-edit-photo img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+}
+.pl-edit-photo-tag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font: 500 11px var(--ih-sans);
+  text-align: center;
+}
+.pl-edit-field {
+  display: grid;
+  gap: 5px;
+}
+.pl-edit-field > span {
+  font: 500 11px var(--ih-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+}
+.ih .pl .pl-edit input[type="text"],
+.pl-edit textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--pl-edge);
+  border-radius: 2px;
+  box-shadow: none;
+  background: #fff;
+  font: 400 13px/1.45 var(--ih-sans);
+  outline: none;
+}
+.pl-edit textarea {
+  resize: vertical;
+}
+.ih .pl .pl-edit input[type="text"]:focus,
+.pl-edit textarea:focus {
+  border-color: #000;
+  background: #fff;
+}
+.pl-edit-social {
+  display: flex;
+  align-items: stretch;
+}
+.pl-edit-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--pl-edge);
+  border-right: 0;
+  border-radius: 2px 0 0 2px;
+  background: #f6f6f6;
+  font: 400 11.5px var(--ih-sans);
+  color: #777;
+  white-space: nowrap;
+}
+.ih .pl .pl-edit-social input[type="text"] {
+  min-width: 0;
+  border-radius: 0 2px 2px 0;
+}
+.pl-edit-err {
+  margin: 0;
+  font: 400 12px var(--ih-sans);
+  color: #c00;
+}
+.pl-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* Home cards open their match beside Home */
+.pl-cards > li.pl-card.pl-card-open {
+  cursor: pointer;
+}
+.pl-cards > li.pl-card.pl-card-open:hover {
+  background: #fafafa;
+}
+.pl-cards > li.pl-card.pl-card-open.on {
+  background: #f2f2f2;
+  box-shadow: inset 3px 0 0 #000;
+  padding-left: 12px;
+}
+
+/* one match, in the agent window's place */
+.ih-matchwin .ih-match-head {
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.ih-matchwin a.ih-match-name {
+  color: #000;
+  text-decoration: none;
+}
+.ih-matchwin a.ih-match-name:hover {
+  text-decoration: underline;
+}
+.ih-match-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ih-match-stage .ih-status-dot {
+  border: 1px solid #000;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  display: inline-block;
+}
+.ih-matchwin .ih-match-body {
+  padding: 4px 18px 20px;
+  font: 400 13.5px/1.55 var(--ih-sans);
+}
+.ih-match-body > section {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--pl-line);
+}
+.ih-match-body > section:last-child {
+  border-bottom: 0;
+}
+.ih-match-body h3 {
+  margin: 0 0 8px;
+  font: 600 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #000;
+}
+.ih-match-body p {
+  margin: 0 0 8px;
+}
+.ih-match-body p:last-child {
+  margin-bottom: 0;
+}
+.ih-match-body p.ih-match-lead {
+  font-weight: 600;
+}
+.ih-match-dim {
+  color: #777;
+  font-size: 12.5px;
+}
+.ih-match-remark {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid #ffcc00;
+  background: #fffbe6;
+  font-style: italic;
+}
+.ih-match-remark cite {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  font-size: 11.5px;
+  color: #777;
+}
+.ih-match-remark cite::before {
+  content: "from ";
+}
+.ih-matchwin ul.ih-match-intents {
+  margin: 6px 0 0;
+  padding: 0;
+  margin-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.ih-match-intents li::before {
+  content: "▸ ";
+  color: #ff8a00;
+  font-size: 10px;
+}
+.ih-match-intents a {
+  color: #0000ee;
+}
+.ih-match-bio {
+  white-space: pre-wrap;
+}
+.ih-match-links {
+  margin-top: 10px;
+}
+.ih-matchwin a.ih-match-more {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: #0000ee;
+}
+.ih-match-body .ih-log {
+  margin: 0;
+  border-left: none;
+  padding: 0;
+}
+.ih-match-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--pl-line);
+  background: #fff;
+}
+.ih-match-foot .ih-match-dim {
+  margin-right: auto;
+}
+
+/* a drill-in page's way back, above its eyebrow */
+.ih .pl button.pl-back.ih-head-back {
+  display: block;
+  margin: -8px 0 10px;
 }

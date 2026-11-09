@@ -1,7 +1,7 @@
 /** Client for preparing an intent and saving its final revision. */
 import type { PrepareAnswer, PrepareResult as ProtocolPrepareResult, RecoveryField } from "@indexnetwork/protocol";
 
-import { apiClient } from "@/lib/api";
+import { APIError, apiClient } from "@/lib/api";
 
 export type { PrepareAnswer, RecoveryField };
 
@@ -29,3 +29,10 @@ export const intentService = {
   create: (description: string, preparationReceipt?: string) =>
     apiClient.post<{ intentId: string }>("/intents", preparationReceipt ? { description, preparationReceipt } : { description }),
 };
+
+/** A server reason worth showing ("Intent limit reached."), or "try again." for transport noise. */
+export function createFailureReason(error: unknown): string {
+  const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
+  if (!raw || /^HTTP \d/.test(raw)) return "try again.";
+  return /[.!?]$/.test(raw) ? raw : `${raw}.`;
+}

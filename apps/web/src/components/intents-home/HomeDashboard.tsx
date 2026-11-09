@@ -1,19 +1,25 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import "@/styles/intents-home.css";
+import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
 import { RANK, intentLabel, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
-import HomeAgentPanel from "@/components/intents-home/HomeAgentPanel";
+import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { useAgentQuestions, type AgentQuestion } from "@/components/intents-home/useAgentQuestions";
 import { questionAsker } from "@/components/IntentNegotiatorChat";
+import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar, TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import type { RadarCardItem } from "@/services/opportunities";
+
+/** How often to reread an intent right after an answer, and for how long. */
+const ANSWER_POLL_MS = 3_000;
+const ANSWER_REFRESH_MS = 60_000;
 
 interface Person {
   key: string;
@@ -23,13 +29,6 @@ interface Person {
   notOnIndex: boolean;
   /** Every intent this person shows up in, best stage first. */
   entries: Entry[];
-}
-
-const AGENT_OPEN_KEY = "index.home.agentOpen";
-
-/** Whether this viewer left the agent chat open last time. Closed by default. */
-function readAgentOpen(): boolean {
-  try { return localStorage.getItem(AGENT_OPEN_KEY) === "1"; } catch { return false; }
 }
 
 /** Dev-only sample matches for trying the page (`?demo=off` hides them). Never in a production build. */
@@ -83,24 +82,21 @@ export default function HomeDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { conversations } = useConversation();
-  const { intents, intentsLoaded, fetchIntents, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
-  const [agentOpen, setAgentOpen] = useState(readAgentOpen);
-  const toggleAgent = (open: boolean) => {
-    setAgentOpen(open);
-    try { localStorage.setItem(AGENT_OPEN_KEY, open ? "1" : "0"); } catch { /* a per-viewer convenience only */ }
-  };
-  // After the agent changes something, show it: reread intents and everyone's stage.
-  const onAgentChanged = useCallback(() => {
-    void fetchIntents();
-    for (const intent of intents) void loadRadar(intent.id, "skeleton");
-  }, [fetchIntents, intents, loadRadar]);
+  const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
+  // The agent has its own window on the desktop (see AppFrame); Home only opens it.
+  const { setOpen: toggleAgent, log: openLog, setLog } = useAgentWindow();
   const withAgent = (page: ReactNode) => (
     <div className="ih-view pl">
-      <div className="pl-wrap">
+      <div className="pl-col">
+        <PageHead
+          eyebrow="HOME"
+          title={user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "home"}
+          dot="var(--ih-live)"
+          status="your agents are looking in the background"
+        >
+          <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+        </PageHead>
         {page}
-        {agentOpen
-          ? <HomeAgentPanel onClose={() => toggleAgent(false)} onChanged={onAgentChanged} />
-          : <button type="button" className="go pl-agent-toggle" onClick={() => toggleAgent(true)}>talk to your agent ▸</button>}
       </div>
     </div>
   );
@@ -110,6 +106,29 @@ export default function HomeDashboard() {
     [intents],
   );
   const { questions, loaded: questionsLoaded, answer } = useAgentQuestions(liveIds);
+
+  // After an answer my agent goes back to work on that intent, so "in progress"
+  // shows as loading until its people change (or a while passes), rereading
+  // the intent every few seconds instead of waiting for the slow poll.
+  const stagesOf = useCallback(
+    (intentId: string) => (entriesByIntent[intentId] ?? []).map((e) => `${e.item.opportunityId}:${e.stage}`).sort().join(","),
+    [entriesByIntent],
+  );
+  const [refreshing, setRefreshing] = useState<Record<string, string>>({});
+  const refreshingIds = Object.keys(refreshing).filter((id) => refreshing[id] === stagesOf(id));
+  const refreshKey = refreshingIds.join(",");
+  useEffect(() => {
+    if (!refreshKey) return;
+    const ids = refreshKey.split(",");
+    const poll = setInterval(() => { for (const id of ids) void loadRadar(id, "skeleton"); }, ANSWER_POLL_MS);
+    const stop = setTimeout(() => setRefreshing({}), ANSWER_REFRESH_MS);
+    return () => { clearInterval(poll); clearTimeout(stop); };
+  }, [refreshKey, loadRadar]);
+  const answerAndRefresh = async (intentId: string, questionId: string, text: string) => {
+    await answer(intentId, questionId, text);
+    setRefreshing((prev) => ({ ...prev, [intentId]: stagesOf(intentId) }));
+    void loadRadar(intentId, "skeleton");
+  };
   const intentById = useMemo(() => new Map(intents.map((intent) => [intent.id, intent])), [intents]);
 
   // One line per person, across intents; their best stage decides where they sit.
@@ -178,8 +197,32 @@ export default function HomeDashboard() {
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : awaiting.length },
-        ...(moving.length ? [{ id: "progress", label: "in progress", count: moving.length }] : []),
+        ...(moving.length || refreshingIds.length ? [{ id: "progress", label: "in progress", count: moving.length, loading: refreshingIds.length > 0 }] : []),
   ]);
+
+  // A card opens its match beside Home; links and buttons inside it keep their own jobs.
+  const openMatch = (person: Person) => {
+    const lead = person.entries[0];
+    setLog({
+      opportunityId: lead.item.opportunityId,
+      intentId: lead.intentId,
+      name: person.name,
+      userId: person.userId,
+      avatar: person.avatar,
+      notOnIndex: person.notOnIndex,
+      entries: person.entries,
+    });
+  };
+  const cardProps = (person: Person, className: string) => {
+    const on = !!openLog && person.entries.some((e) => e.item.opportunityId === openLog.opportunityId);
+    return {
+      className: `${className} pl-card-open${on ? " on" : ""}`,
+      onClick: (event: React.MouseEvent) => {
+        if ((event.target as HTMLElement).closest("a, button")) return;
+        if (on) setLog(null); else openMatch(person);
+      },
+    };
+  };
 
   const forIntents = (person: Person) => (
     <>{" "}for <IntentLinks entries={person.entries} intentById={intentById} /></>
@@ -208,7 +251,7 @@ export default function HomeDashboard() {
         ) : (
           <div className="pl-questions">
             {questions.map((question, index) => (
-              <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answer} />
+              <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
             ))}
           </div>
         )}
@@ -228,10 +271,13 @@ export default function HomeDashboard() {
               const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
               const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
               return (
-                <li key={person.key} className="pl-card">
-                  <TheirAgentAvatar owner={{ id: person.userId || person.key, name: person.name, photo: person.avatar }} size={44} />
+                <li key={person.key} {...cardProps(person, "pl-card")}>
+                  {/* The person themselves here, not their agent: this is who you'd meet. */}
+                  {person.userId
+                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={44} /></Link>
+                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={44} />}
                   <div className="pl-card-body">
-                  <b>{person.userId ? <Link to={`/u/${person.userId}`}>{person.name}</Link> : person.name}</b>
+                  <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
                   {forIntents(person)}
                   {blurb && <div className="pl-blurb">{blurb}</div>}
@@ -252,51 +298,70 @@ export default function HomeDashboard() {
           </ul>
         )}
 
-        {moving.length > 0 && (
+        {(moving.length > 0 || refreshingIds.length > 0) && (
           <>
             <hr />
-            <h2 id="progress">in progress ({moving.length})</h2>
-            <table className="pl-table">
-              <thead>
-                <tr><th>who</th><th>for</th><th>status</th><th /></tr>
-              </thead>
-              <tbody>
-                {moving.map((person) => {
-                  const lead = person.entries[0];
-                  const talking = lead.stage === "talks";
-                  return (
-                    <tr key={person.key}>
-                      <td>
-                        <span className="pl-who">
-                          <TheirAgentAvatar owner={{ id: person.userId || person.key, name: person.name, photo: person.avatar }} size={26} />
-                          <b>{person.userId ? <Link to={`/u/${person.userId}`}>{person.name}</Link> : person.name}</b>
+            <h2 id="progress">
+              in progress ({moving.length})
+              {refreshingIds.length > 0 && <span className="pl-dim"> updating<span className="pl-blink">_</span></span>}
+            </h2>
+            <ul className="pl-cards">
+              {moving.map((person) => {
+                const lead = person.entries[0];
+                const talking = lead.stage === "talks";
+                const blurb = lead.item.headline || lead.item.mainText || "";
+                return (
+                  <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
+                    {person.userId
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={44} /></Link>
+                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={44} />}
+                    <div className="pl-card-body">
+                      <div className="pl-card-head">
+                        <span>
+                          <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
+                          {forIntents(person)}
                         </span>
-                      </td>
-                      <td>
-                        <IntentLinks entries={person.entries} intentById={intentById} />
-                      </td>
-                      <td>
                         <span className={`pl-status ${talking ? "talks" : "chat"}`}>
                           {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
                         </span>
-                      </td>
-                      <td className="pl-go">
+                      </div>
+                      {blurb && <div className="pl-blurb">{blurb}</div>}
+                      <div className="pl-actions">
                         {talking ? (
-                          <Link to={`/i/${lead.intentId}`}>read log</Link>
+                          <button type="button" onClick={() => openMatch(person)}>read the log</button>
                         ) : person.notOnIndex ? (
-                          <Link to={`/i/${lead.intentId}`}>send invite</Link>
+                          <button type="button" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
                         ) : (
-                          person.userId && <Link to={`/u/${person.userId}/chat`}>go to chat</Link>
+                          person.userId && <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </>
         )}
       </div>,
+  );
+}
+
+/** Who's asking, with each person's name linked to their profile. */
+function AskerName({ question, fallback }: { question: AgentQuestion; fallback: string }) {
+  const people = (question.matches ?? [])
+    .map((match) => match.counterparty)
+    .filter((person): person is { id: string; name: string } => Boolean(person?.id && person.name && !/^unknown$/i.test(person.name.trim())));
+  if (!people.length) return <>{fallback}</>;
+  return (
+    <>
+      {people.map((person, index) => (
+        <span key={person.id}>
+          {index > 0 && ", "}
+          <Link to={`/u/${person.id}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link>
+        </span>
+      ))}
+      &apos;s {people.length === 1 ? "agent" : "agents"}
+    </>
   );
 }
 
@@ -331,9 +396,11 @@ function QuestionItem({ number, question, intent, onAnswer }: {
       <fieldset>
         <legend>
           <span className="pl-q-face">
-            {asker.owner ? <TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={18} /> : <MyAgentAvatar size={18} />}
+            {asker.owner
+              ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={18} /></Link>
+              : <MyAgentAvatar size={18} />}
           </span>
-          #{number} · {asker.label}
+          #{number} · <AskerName question={question} fallback={asker.label} />
           {intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>}
         </legend>
         <p className="pl-q-text">{question.question}</p>

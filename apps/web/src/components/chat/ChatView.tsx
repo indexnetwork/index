@@ -288,12 +288,12 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   return (
     <>
       {!embedded && (
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--wb-hairline)", display: "flex", gap: 12, alignItems: "center" }}>
+        <div className="chat-head" style={{ padding: "12px 16px", borderBottom: "1px solid var(--wb-hairline)", display: "flex", gap: 12, alignItems: "center" }}>
           <Link to={`/u/${userId}`} style={{ display: "flex" }}><UserAvatar avatar={userAvatar} id={userId} name={userName} size={34} /></Link>
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <Link to={`/u/${userId}`} style={{ fontFamily: "var(--amiga-sans)", fontSize: 14, fontWeight: 500, color: "var(--ink)", textDecoration: "none" }}>{userName}</Link>
+            <Link to={`/u/${userId}`} className="chat-head-name" style={{ fontFamily: "var(--amiga-sans)", fontSize: 14, fontWeight: 500, color: "var(--ink)", textDecoration: "none" }}>{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (
-              <div style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div className="chat-head-sub" style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
                 {conversationSummary?.createdAt && latestVia ? " · " : ""}
                 {latestVia ? <Link to={`/i/${latestVia.intentId}`} style={{ color: "inherit", textDecoration: "none" }}>{latestVia.title}</Link> : null}
@@ -304,13 +304,13 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       )}
 
       {/* Messages */}
-      <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+      <div className="mac-scroll chat-log" style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {history?.hasPreviousSession && conversationId && history.loadingPrevious && (
               <p style={{ textAlign: "center", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
             )}
             {openerBody && (
-              <div style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
+              <div className="chat-opener" style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
                 {showOpenerHeadline && (
                   <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.35 }}>{openerHeadline}</span>
                 )}
@@ -349,15 +349,15 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 return (
                   <div key={message.id}>
                     {day && day !== prevDay && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: index === 0 ? "0 0 2px" : "6px 0 2px" }}>
+                      <div className="chat-day" style={{ display: "flex", alignItems: "center", gap: 8, margin: index === 0 ? "0 0 2px" : "6px 0 2px" }}>
                         <span style={{ flex: 1, height: 1, background: "var(--wb-divider)" }} />
                         <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{day}</span>
                         <span style={{ flex: 1, height: 1, background: "var(--wb-divider)" }} />
                       </div>
                     )}
                     <div style={{ display: "flex", alignItems: "baseline", gap: 6, justifyContent: isOwn ? "flex-end" : "flex-start" }}>
-                      {isOwn && clock && <time style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{clock}</time>}
-                      <div className="wb-chat" style={{
+                      {isOwn && clock && <time className="chat-clock" style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{clock}</time>}
+                      <div className={isOwn ? "wb-chat mine" : "wb-chat theirs"} style={{
                         maxWidth: "82%",
                         border: isOwn ? "1px solid var(--wb-hairline)" : "1px solid transparent",
                         borderRadius: 3,
@@ -368,7 +368,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                       }}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
                       </div>
-                      {!isOwn && clock && <time style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{clock}</time>}
+                      {!isOwn && clock && <time className="chat-clock" style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{clock}</time>}
                     </div>
                   </div>
                 );
@@ -377,7 +377,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           </div>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} style={{ borderTop: "1px solid var(--wb-hairline)", background: "#fff", padding: "7px 12px 8px", display: "flex", gap: 10, alignItems: "flex-end" }}>
+      <form className="chat-compose" onSubmit={(e) => { e.preventDefault(); handleSend(); }} style={{ borderTop: "1px solid var(--wb-hairline)", background: "#fff", padding: "7px 12px 8px", display: "flex", gap: 10, alignItems: "flex-end" }}>
         <textarea
           ref={inputRef}
           rows={1}
@@ -389,7 +389,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           autoFocus
           style={{ flex: 1, minWidth: 0, border: "none", outline: "none", resize: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }}
         />
-        <button type="submit" disabled={!messageText.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: "2px 4px", cursor: messageText.trim() ? "pointer" : "default", color: messageText.trim() ? "var(--ink)" : "#aaa", fontFamily: "var(--amiga-sans)", fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
+        <button type="submit" className="chat-send" disabled={!messageText.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: "2px 4px", cursor: messageText.trim() ? "pointer" : "default", color: messageText.trim() ? "var(--ink)" : "#aaa", fontFamily: "var(--amiga-sans)", fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
           ↑
         </button>
       </form>

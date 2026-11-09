@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
+import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
 import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { MyAgentAvatar, TheirAgentAvatar } from "@/components/workbench/agent-avatar";
@@ -15,12 +16,21 @@ const FACES = 5;
 export default function IntentsIndex() {
   const navigate = useNavigate();
   const { intents, intentsLoaded, intentsError, fetchIntents, entriesByIntent, radar, radarFailed } = useIntentsData();
+  const paused = intents.filter((intent) => (intent.status || "").toLowerCase() === "paused").length;
+  const live = intents.length - paused;
 
   return (
     <div className="ih-view pl">
+      <div className="pl-col">
+      <PageHead
+        eyebrow="INTENTS"
+        title="your intents"
+        dot={live > 0 ? "var(--ih-live)" : "var(--ih-closed)"}
+        status={intentsLoaded ? `${live} live${paused ? ` · ${paused} paused` : ""} · your agent looks for people for each one` : "loading…"}
+      >
+        <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+      </PageHead>
       <div className="pl-page">
-        <h2>your intents {intentsLoaded && `(${intents.length})`}</h2>
-        <p><button type="button" className="go big" onClick={() => navigate("/i/new")}>+ new intent</button></p>
         {intentsError && !intents.length ? (
           <p>couldn&apos;t load your intents. <button type="button" onClick={() => void fetchIntents()}>try again</button></p>
         ) : !intentsLoaded ? (
@@ -79,6 +89,7 @@ export default function IntentsIndex() {
             })}
           </ul>
         )}
+      </div>
       </div>
     </div>
   );
