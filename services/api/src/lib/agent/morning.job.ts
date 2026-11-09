@@ -8,13 +8,13 @@ import { createRedisClient } from '../../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { opportunityService } from '../../services/opportunity.service';
 import { MAX_WAITING, morningBriefTemplate } from '../email/templates';
-import { executeSendEmail } from '../email/transport.helper';
+import { EmailRefusedError, executeSendEmail } from '../email/transport.helper';
 import { log } from '../log';
 
 import { describeFailure } from './failure-line';
 import { HostedIndex } from './hosted.index';
-import { createMorningBrief } from './morning';
-import { claimMorningBrief, claimMorningEmails, listHostedOwners, networkedIntentIds, owedForEmail } from './morning.store';
+import { createMorningBrief, deliverMorningEmails } from './morning';
+import { claimMorningBrief, claimMorningEmails, listHostedOwners, networkedIntentIds, owedForEmail, releaseMorningEmail } from './morning.store';
 
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
 let emailing = false;
@@ -46,27 +46,45 @@ export async function composeMorningEmail(userId: string, name: string, since: D
   return morningBriefTemplate({ viewerId: userId, name, ...owed, waiting, connected, appUrl: WEB_APP_URL });
 }
 
+/** After a pass stops on refusals, the next one waits this long, so a broken key is not hammered every minute. */
+const REFUSED_PAUSE_MS = 10 * 60_000;
+let pausedUntil = 0;
+
 /**
  * Email each owner whose morning is due one, when their agent needs them.
  * Claiming stamps the morning, so an owner with nothing owed is not looked at
- * again until their next morning.
+ * again until their next morning. A morning that sent nothing because the
+ * email could not be built, or because Resend refused it, is handed back and
+ * tried again on a later pass.
  */
 async function sendMorningEmails(logger: ReturnType<typeof log.agent.from>): Promise<void> {
   if (process.env.EMAIL_PRODUCTION_MODE !== 'true') return;
-  if (emailing) return;
+  if (emailing || Date.now() < pausedUntil) return;
   emailing = true;
   try {
-    for (const claim of await claimMorningEmails(new Date())) {
-      if (claim.off) continue;
-      try {
-        const email = await composeMorningEmail(claim.id, claim.name, claim.since);
-        if (email) await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', kind: 'morning_brief', userId: claim.id, ...email });
-      } catch (error) {
-        logger.error(describeFailure('Morning email failed', error), {
+    const { stopped } = await deliverMorningEmails(await claimMorningEmails(new Date()), {
+      compose: (claim) => composeMorningEmail(claim.id, claim.name, claim.since),
+      send: async (claim, email) => {
+        await executeSendEmail({
+          to: claim.email,
+          from: 'Your agent <updates@agent.index.network>',
+          kind: 'morning_brief',
+          userId: claim.id,
+          ...email,
+        });
+      },
+      release: releaseMorningEmail,
+      refused: (error) => error instanceof EmailRefusedError,
+      onError: (title, claim, error) => {
+        logger.error(describeFailure(title, error), {
           userId: claim.id,
           error: error instanceof Error ? error.message : String(error),
         });
-      }
+      },
+    });
+    if (stopped) {
+      pausedUntil = Date.now() + REFUSED_PAUSE_MS;
+      logger.error('Morning emails paused: Resend refused several in a row; the rest are handed back for a later pass');
     }
   } finally {
     emailing = false;

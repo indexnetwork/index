@@ -19,6 +19,38 @@ function emailTags(kind?: EmailKind, userId?: string): { name: string; value: st
   return tags;
 }
 
+/**
+ * Resend answered 4xx: it refused the email, so nothing reached the recipient.
+ * 5xx answers and network failures are left out. The email may have gone out
+ * before the error, and resending it could deliver twice.
+ */
+const REFUSED = new Set([
+  'missing_required_field',
+  'invalid_idempotency_key',
+  'invalid_access',
+  'invalid_parameter',
+  'invalid_region',
+  'rate_limit_exceeded',
+  'daily_quota_exceeded',
+  'monthly_quota_exceeded',
+  'missing_api_key',
+  'invalid_api_Key',
+  'invalid_api_key',
+  'restricted_api_key',
+  'invalid_from_address',
+  'validation_error',
+  'not_found',
+  'method_not_allowed',
+]);
+
+/** Resend refused the email. Nothing was delivered, so sending again cannot duplicate it. */
+export class EmailRefusedError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(`Resend error: ${message}`);
+    this.name = 'EmailRefusedError';
+  }
+}
+
 export const executeSendEmail = async (options: {
   to: string | string[];
   subject: string;
@@ -102,6 +134,7 @@ ${options.html}
         recipient: String(recipient),
         subject: options.subject,
       });
+      if (REFUSED.has(result.error.name)) throw new EmailRefusedError(result.error.name, result.error.message);
       throw new Error(`Resend error: ${result.error.message}`);
     }
 

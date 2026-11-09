@@ -64,20 +64,34 @@ export interface MorningEmailClaim {
   /** The window starts at the previous email, or at this morning when there was none. */
   since: Date;
   off: boolean;
+  /** The stamp this claim replaced. Releasing the claim puts it back. */
+  previous: Date | null;
+  /** The stamp this claim wrote. */
+  claimedAt: Date;
 }
 
 /**
+ * A morning whose email Resend refused is tried again until this long after the
+ * brief. After that the next morning's email covers it, because its window
+ * starts at the last email that went out.
+ */
+const EMAIL_RETRY_HOURS = 4;
+
+/**
  * Claim every morning whose email is due. Each morning is claimed once, also
- * across replicas, whether or not an email follows.
+ * across replicas. A claim stays taken whether or not an email follows, unless
+ * releaseMorningEmail hands it back.
  */
 export async function claimMorningEmails(now: Date): Promise<MorningEmailClaim[]> {
   const cutoff = new Date(now.getTime() - EMAIL_DELAY_MINUTES * 60_000).toISOString();
+  const oldest = new Date(now.getTime() - EMAIL_RETRY_HOURS * 3_600_000).toISOString();
   const rows = await db.execute(sql`
     WITH due AS (
-      SELECT u.id, coalesce(u.last_morning_email_at, u.last_morning_brief_at) AS since
+      SELECT u.id, coalesce(u.last_morning_email_at, u.last_morning_brief_at) AS since, u.last_morning_email_at AS previous
       FROM ${schema.users} u
       WHERE u.deleted_at IS NULL
         AND u.last_morning_brief_at < ${cutoff}::timestamp
+        AND u.last_morning_brief_at > ${oldest}::timestamp
         AND (u.last_morning_email_at IS NULL OR u.last_morning_email_at < u.last_morning_brief_at)
       FOR UPDATE SKIP LOCKED
     )
@@ -85,6 +99,7 @@ export async function claimMorningEmails(now: Date): Promise<MorningEmailClaim[]
     FROM due
     WHERE u.id = due.id
     RETURNING u.id, u.email, u.name, due.since AT TIME ZONE 'UTC' AS since,
+      due.previous AT TIME ZONE 'UTC' AS previous,
       (
         EXISTS (
           SELECT 1 FROM ${schema.userNotificationSettings} s
@@ -95,8 +110,25 @@ export async function claimMorningEmails(now: Date): Promise<MorningEmailClaim[]
           WHERE m.user_id = u.id AND m.network_id = ${NO_MORNING_NETWORK} AND m.deleted_at IS NULL
         )
       ) AS off
-  `) as unknown as Array<{ id: string; email: string; name: string; since: Date | string; off: boolean }>;
-  return rows.map((row) => ({ ...row, since: new Date(row.since) }));
+  `) as unknown as Array<{ id: string; email: string; name: string; since: Date | string; previous: Date | string | null; off: boolean }>;
+  return rows.map((row) => ({
+    ...row,
+    since: new Date(row.since),
+    previous: row.previous === null ? null : new Date(row.previous),
+    claimedAt: now,
+  }));
+}
+
+/**
+ * Hand a claimed morning back so a later pass emails it. Call it only when no
+ * email went out. It does nothing if the stamp has changed since the claim.
+ */
+export async function releaseMorningEmail(claim: Pick<MorningEmailClaim, 'id' | 'previous' | 'claimedAt'>): Promise<void> {
+  const previous = claim.previous ? sql`${claim.previous.toISOString()}::timestamp` : sql`NULL`;
+  await db.execute(sql`
+    UPDATE ${schema.users} SET last_morning_email_at = ${previous}
+    WHERE id = ${claim.id} AND last_morning_email_at = ${claim.claimedAt.toISOString()}::timestamp
+  `);
 }
 
 export interface MorningOwed {

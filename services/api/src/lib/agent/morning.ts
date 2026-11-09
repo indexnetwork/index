@@ -139,3 +139,69 @@ export function createMorningBrief(deps: MorningBriefDeps): { tick: (now?: Date)
     },
   };
 }
+
+/** A pass refused this many times in a row stops and hands the rest back. */
+export const MAX_REFUSED_IN_A_ROW = 3;
+
+export interface MorningEmailDelivery<Claim, Email> {
+  /** @returns The email, or null when the owner is owed nothing. */
+  compose: (claim: Claim) => Promise<Email | null>;
+  send: (claim: Claim, email: Email) => Promise<void>;
+  /** Hand a morning back so a later pass emails it. Only for mornings that sent nothing. */
+  release: (claim: Claim) => Promise<void>;
+  /** @returns Whether the provider refused the email, so nothing went out. */
+  refused: (error: unknown) => boolean;
+  onError: (title: string, claim: Claim, error: unknown) => void;
+}
+
+/**
+ * Email each claimed morning once. A morning goes back for a retry only when
+ * nothing went out: the email could not be built, or the provider refused it.
+ * Any other send failure keeps the claim, because the email may have gone out
+ * and a retry could send it twice.
+ *
+ * @returns Whether the pass stopped because the provider kept refusing.
+ */
+export async function deliverMorningEmails<Claim extends { off: boolean }, Email>(
+  claims: Claim[],
+  deps: MorningEmailDelivery<Claim, Email>,
+): Promise<{ stopped: boolean }> {
+  let refusedInARow = 0;
+  const giveBack = async (claim: Claim) => {
+    try {
+      await deps.release(claim);
+    } catch (error) {
+      deps.onError('Morning email release failed', claim, error);
+    }
+  };
+
+  for (const [index, claim] of claims.entries()) {
+    if (refusedInARow >= MAX_REFUSED_IN_A_ROW) {
+      for (const rest of claims.slice(index)) if (!rest.off) await giveBack(rest);
+      return { stopped: true };
+    }
+    if (claim.off) continue;
+
+    let email: Email | null;
+    try {
+      email = await deps.compose(claim);
+    } catch (error) {
+      deps.onError('Morning email failed', claim, error);
+      await giveBack(claim);
+      continue;
+    }
+    if (!email) continue;
+
+    try {
+      await deps.send(claim, email);
+      refusedInARow = 0;
+    } catch (error) {
+      deps.onError('Morning email failed', claim, error);
+      if (deps.refused(error)) {
+        refusedInARow += 1;
+        await giveBack(claim);
+      }
+    }
+  }
+  return { stopped: false };
+}
