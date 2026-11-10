@@ -101,6 +101,7 @@ export default function HomeDashboard() {
       <div className="pl-col">
         <PageHead
           title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} <RotatingLine lines={HOME_STATUS_LINES} /></>}
+          centered
         >
           <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
         </PageHead>
