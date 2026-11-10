@@ -2,6 +2,7 @@ import { useCallback, useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
+import "@/styles/buttons.css";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
@@ -70,7 +71,7 @@ function AppRail({ here }: { here: RailKey }) {
             ))}
         </ul>
         {item("intents", "intents", "/intents")}
-        {item("chat", "chat", "/chat", unread)}
+        {item("chat", "conversations", "/chat", unread)}
 
         <div className="ih-menu">
           {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}

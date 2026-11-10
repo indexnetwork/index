@@ -152,14 +152,14 @@ export default function MatchWindow() {
       <div className="ih-match-foot">
         {stage === "awaiting" && (
           <>
-            <button type="button" className="wb-btn primary" disabled={busy} onClick={() => act("accepted")}>{busy ? "sending…" : "accept"}</button>
-            <button type="button" className="wb-btn" disabled={busy} onClick={() => act("rejected")}>pass</button>
+            <button type="button" className="wb-btn primary small" disabled={busy} onClick={() => act("accepted")}>{busy ? "sending…" : "accept"}</button>
+            <button type="button" className="wb-btn small" disabled={busy} onClick={() => act("rejected")}>pass</button>
           </>
         )}
-        {stage === "chat" && match.notOnIndex && <button type="button" className="wb-btn" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>}
-        {stage === "chat" && !match.notOnIndex && match.userId && <button type="button" className="wb-btn primary" onClick={() => navigate(`/u/${match.userId}/chat`)}>go to chat</button>}
+        {stage === "chat" && match.notOnIndex && <button type="button" className="wb-btn small" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>}
+        {stage === "chat" && !match.notOnIndex && match.userId && <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${match.userId}/chat`)}>go to chat</button>}
         {canLog && (
-          <button type="button" className="wb-btn" aria-pressed={showLog} onClick={() => {
+          <button type="button" className="wb-btn small" aria-pressed={showLog} onClick={() => {
             const next = !showLog;
             setShowLog(next);
             if (next) setTimeout(() => document.getElementById("ih-match-log")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);

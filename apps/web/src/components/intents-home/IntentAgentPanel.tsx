@@ -160,7 +160,7 @@ export default function IntentAgentPanel({ intentId, paused, onSelectMatch }: {
           <span>
             {questions.length - chosen.length > 0 ? `${questions.length - chosen.length} of ${questions.length} unanswered` : "all answered · ready to send"}
           </span>
-          <button type="button" className="ih-ghost" style={{ padding: "4px 10px", font: "500 11px var(--ih-sans)" }} disabled={sending} onClick={() => void sendAnswers()}>
+          <button type="button" className="ih-ghost" disabled={sending} onClick={() => void sendAnswers()}>
             {sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
           </button>
         </div>
@@ -177,7 +177,7 @@ export default function IntentAgentPanel({ intentId, paused, onSelectMatch }: {
           aria-label="Message your agent"
           style={{ flex: 1, border: "none", outline: "none", resize: "none", background: "transparent", padding: "14px 0", font: "400 12.5px var(--ih-mono)", color: "var(--ih-ink)" }}
         />
-        <button type="submit" className="ih-send" aria-label="send" title="send" disabled={!draft.trim() || sending}>↑</button>
+        <button type="submit" className="ih-send" disabled={!draft.trim() || sending}>send</button>
       </form>
     </div>
   );

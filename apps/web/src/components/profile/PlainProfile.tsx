@@ -14,6 +14,14 @@ import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import type { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
 
+/** Each stage's status chip, in Home's colors. */
+const OPP_CHIP: Record<NonNullable<ReturnType<typeof radarBucketForOpportunity>>, string> = {
+  "awaiting you": "waiting",
+  negotiating: "talks",
+  accepted: "chat",
+  closed: "paused",
+};
+
 /** The parts of a profile this view shows. */
 interface Profile {
   id: string;
@@ -127,15 +135,24 @@ export default function PlainProfile({
 
         {!isOwn && (
           <section>
-            <h3 className="profile-label">networks</h3>
+            <h3 className="profile-label">networks you share</h3>
             {networks.length === 0 && <div className="profile-dim">no shared networks.</div>}
-            <div className="profile-chips">
-              {networks.map((network) => (
-                <Link key={network.id} to={`/networks/${network.id}`} className="profile-social">
-                  {network.title} · {network._count.members}
-                </Link>
-              ))}
-            </div>
+            {/* The same tiles as the networks page: a colored initial, the name, how many people. */}
+            {networks.length > 0 && (
+              <ul className="pl-nets">
+                {networks.map((network, index) => (
+                  <li key={network.id}>
+                    <Link to={`/networks/${network.id}`} className="pl-net">
+                      <span className={`pl-net-mark c${index % 4}`} aria-hidden>{network.title.trim().charAt(0).toUpperCase() || "#"}</span>
+                      <span className="pl-net-text">
+                        <span className="pl-net-name" title={network.title}>{network.title}</span>
+                        <span className="pl-net-n">{network._count.members} {network._count.members === 1 ? "person" : "people"}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 
@@ -156,17 +173,18 @@ export default function PlainProfile({
         {!isOwn && matches.length > 0 && (
           <section>
             <h3 className="profile-label">opportunities</h3>
+            {/* One line each, between thin rules like Home; a line opens to the agents' conversation. */}
             <div className="profile-opps">
               {matches.map((o) => {
-                const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted);
+                const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted) ?? "negotiating";
                 const open = openId === o.opportunityId;
                 const toggle = () => setOpenId(open ? null : o.opportunityId);
                 return (
-                  <div key={o.opportunityId} className="profile-opp">
-                    <div role="button" tabIndex={0} className={open ? "profile-opp-row open" : "profile-opp-row"} onClick={toggle}
+                  <div key={o.opportunityId} className={open ? "profile-opp open" : "profile-opp"}>
+                    <div role="button" tabIndex={0} className="profile-opp-row" aria-expanded={open} onClick={toggle}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
                       <div className="profile-opp-title">{o.headline || o.mainText}</div>
-                      <span className="profile-opp-stage">
+                      <span className={`pl-status ${OPP_CHIP[bucket]}`}>
                         {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
                       </span>
                       <span className="profile-opp-arrow">{open ? "▾" : "›"}</span>

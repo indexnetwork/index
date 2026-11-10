@@ -65,7 +65,7 @@ export default function MobileTabBar() {
     <>
       <nav className="wb-tabbar" aria-label="primary">
         <Tab label="intents" icon={<IntentGlyph />} active={active === "intents"} onClick={() => navigate("/")} />
-        <Tab label="chats" icon={<ChatGlyph size={19} />} active={active === "chats"} badge={unread} onClick={() => navigate("/chat")} />
+        <Tab label="conversations" icon={<ChatGlyph size={19} />} active={active === "chats"} badge={unread} onClick={() => navigate("/chat")} />
         <Tab label="agents" icon={<AgentGlyph size={22} />} active={active === "agents"} onClick={() => navigate("/agents")} />
         <Tab
           label="you"

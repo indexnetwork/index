@@ -2002,3 +2002,127 @@
   gap: 10px;
   padding: 14px 22px;
 }
+.ih-matchwin .ih-match-foot {
+  gap: 6px;
+  padding: 10px 22px;
+}
+
+/* "skip" beside "send answer": a plain text button */
+.ih .pl .pl-actions button.pl-skip {
+  height: auto;
+  margin-left: 10px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ih .pl .pl-actions button.pl-skip:hover:not(:disabled) {
+  background: none;
+  color: #000;
+}
+.ih .pl .pl-actions button.pl-skip:active:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Profile and match windows: soft lines, like the rest of the app (black stays on buttons only). */
+.ih .ih-profile .profile-header,
+.ih .ih-matchwin .ih-match-top {
+  border-bottom: 1px solid var(--pl-line, #e6e6e6);
+}
+.ih .ih-profile .profile-ruled {
+  border-top: 1px solid var(--pl-line, #e6e6e6);
+}
+.ih .ih-matchwin .ih-match-foot {
+  border-top: 1px solid var(--pl-line, #e6e6e6);
+}
+.ih .ih-profile .profile-social,
+.ih .ih-profile .profile-box,
+.ih .ih-profile .profile-opp {
+  border-color: var(--pl-edge, #cfcfcf);
+  border-radius: 2px;
+}
+.ih .ih-profile .profile-social:hover {
+  background: #f4f4f4;
+}
+.ih .ih-profile .profile-opp-log {
+  border-top-color: var(--pl-line, #e6e6e6);
+}
+.ih .ih-matchwin .ih-match-quote {
+  border-left-color: #ff8a00;
+}
+/* The agent log list (NegotiationHistory, taken from main) sets its black lines inline. */
+.ih .ih-profile .profile-ruled [style*="solid #000"],
+.ih .ih-profile .profile-ruled [style*="solid rgb(0, 0, 0)"] {
+  border-color: var(--pl-line, #e6e6e6) !important;
+}
+
+/* networks you share, on a profile: the same tiles as elsewhere (they're styled under .pl there) */
+.ih .ih-profile .pl-nets a.pl-net {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  text-decoration: none;
+}
+.ih .ih-profile .pl-nets a.pl-net:hover {
+  background: #f4f4f4;
+}
+
+/* opportunities on a profile: one line each between thin rules, hover tint, Home's status chip */
+.ih .ih-profile .profile-opps {
+  display: block;
+  border-top: 1px solid var(--pl-line, #e6e6e6);
+}
+.ih .ih-profile .profile-opp {
+  border: 0;
+  border-bottom: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 0;
+  background: transparent;
+}
+.ih .ih-profile .profile-opp-row {
+  align-items: center;
+  padding: 12px 8px;
+  transition: background 0.1s;
+}
+.ih .ih-profile .profile-opp-row:hover,
+.ih .ih-profile .profile-opp.open .profile-opp-row {
+  background: #f4f4f4;
+}
+.ih .ih-profile .profile-opp-row .pl-status {
+  flex: none;
+  font: 500 10.5px "JetBrains Mono", ui-monospace, monospace;
+  white-space: nowrap;
+}
+.ih .ih-profile .profile-opp-arrow {
+  color: #8a8578;
+}
+.ih .ih-profile .profile-opp-log {
+  border-top: 0;
+  padding: 0 8px 12px;
+}
+
+
+/* Intents page: the intent itself is the title, wrapping beside its status chip. */
+.pl-card-head > .pl-intent-title {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+.pl-card-head:has(> .pl-intent-title) {
+  flex-wrap: nowrap;
+}
+.pl-card-head:has(> .pl-intent-title) > .pl-status {
+  flex: none;
+  white-space: nowrap;
+}

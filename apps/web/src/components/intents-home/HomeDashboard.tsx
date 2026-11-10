@@ -17,6 +17,9 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import type { RadarCardItem } from "@/services/opportunities";
 
+/** What "skip" sends the agent in place of an answer. */
+const SKIP_ANSWER = "skip this one. use your best judgement.";
+
 /** How often to reread an intent right after an answer, and for how long. */
 const ANSWER_POLL_MS = 3_000;
 const ANSWER_REFRESH_MS = 60_000;
@@ -406,6 +409,16 @@ function QuestionItem({ question, onAnswer }: {
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
 }) {
   const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
+  // No skip endpoint: skipping answers for you, so the agent stops waiting and decides on its own.
+  const [skipping, setSkipping] = useState(false);
+  const skip = async () => {
+    setSkipping(true);
+    try {
+      await onAnswer(question.intentId, question.id, SKIP_ANSWER);
+    } catch {
+      setSkipping(false);
+    }
+  };
   const asker = questionAsker(question);
   const name = `q-${question.id}`;
   return (
@@ -432,7 +445,8 @@ function QuestionItem({ question, onAnswer }: {
           )}
         </div>
         <div className="pl-actions">
-          <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
+          <button type="submit" className="go" disabled={!text || sending || skipping}>{sending ? "sending…" : "send answer"}</button>
+          <button type="button" className="pl-skip" disabled={sending || skipping} onClick={() => void skip()}>{skipping ? "skipping…" : "skip"}</button>
         </div>
       </form>
     </li>

@@ -3,15 +3,13 @@ import { Link, useNavigate } from "react-router";
 import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
-import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
-import { MyAgentAvatar, TheirAgentAvatar } from "@/components/workbench/agent-avatar";
+import { intentLabel, type Stage } from "@/components/intents-home/stages";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 
-const FACES = 5;
-
 /**
- * Every intent as a card, the same card as Home's matches: your agent on the
- * left, the short name, the intent itself, who it has found, and a way in.
+ * Every intent as a row, with the same lines and hover as Home's cards: the
+ * intent in full, how it's going, and a way in. A click on
+ * the row opens the intent.
  */
 export default function IntentsIndex() {
   const navigate = useNavigate();
@@ -22,11 +20,14 @@ export default function IntentsIndex() {
   return (
     <div className="ih-view pl">
       <div className="pl-col">
+      {/* One centered line like Home's: what this page is, then how many are live. */}
       <PageHead
-        eyebrow="INTENTS"
-        title="your intents"
-        dot={live > 0 ? "var(--ih-live)" : "var(--ih-closed)"}
-        status={intentsLoaded ? `${live} live${paused ? ` · ${paused} paused` : ""} · your agent looks for people for each one` : "loading…"}
+        title={<>your intents. {intentsLoaded && (intents.length === 0
+          ? "none yet."
+          : live === 0
+            ? "all paused for now."
+            : `${live} live${paused ? `, ${paused} paused` : ""}. your agent is looking for each one.`)}</>}
+        centered
       >
         <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
       </PageHead>
@@ -45,7 +46,6 @@ export default function IntentsIndex() {
               const counts: Record<Stage, number> = { awaiting: 0, talks: 0, chat: 0, closed: 0 };
               for (const entry of entries) counts[entry.stage] += 1;
               const loading = !radar[intent.id] && !radarFailed[intent.id];
-              const found = uniquePeople(entries.filter((entry) => entry.stage !== "closed"));
               const bits = [
                 counts.talks && `${counts.talks} in talks`,
                 counts.chat && `${counts.chat} chatting`,
@@ -53,31 +53,17 @@ export default function IntentsIndex() {
               const state = paused ? "paused" : counts.awaiting > 0 ? "waiting" : "live";
               const text = intent.payload?.trim() || intent.summary?.trim() || "";
               return (
-                <li key={intent.id} className={`pl-card${state === "waiting" ? "" : ` ${state}`}`}>
-                  <MyAgentAvatar size={44} />
+                <li key={intent.id} className={`pl-card pl-card-open${state === "waiting" ? "" : ` ${state}`}`}
+                  onClick={(event) => { if (!(event.target as HTMLElement).closest("a, button")) navigate(`/i/${intent.id}`); }}>
                   <div className="pl-card-body">
                     <div className="pl-card-head">
-                      <b><Link to={`/i/${intent.id}`} title={text}>{intentLabel(intent)}</Link></b>
+                      <b className="pl-intent-title"><Link to={`/i/${intent.id}`}>{text || intentLabel(intent)}</Link></b>
                       <span className={`pl-status ${state}`}>
                         {paused ? "paused" : counts.awaiting > 0 ? `${counts.awaiting} waiting on you` : "live"}
                       </span>
                     </div>
-                    {text && <p className="pl-intent-text">{text}</p>}
                     <div className="pl-card-foot">
                       <button type="button" className="go" onClick={() => navigate(`/i/${intent.id}`)}>open</button>
-                      {found.length > 0 && (
-                        <span className="pl-faces" aria-label={`${found.length} people found`}>
-                          {found.slice(0, FACES).map((entry) => {
-                            const item = entry.item;
-                            const name = item.name || item.peer?.name || "someone";
-                            return (
-                              <TheirAgentAvatar key={personKey(item)} size={22}
-                                owner={{ id: item.userId || item.peer?.userId, name, photo: item.avatar ?? item.peer?.avatar }} />
-                            );
-                          })}
-                          {found.length > FACES && <span className="ih-badge">+{found.length - FACES}</span>}
-                        </span>
-                      )}
                       <span className="pl-dim pl-small">
                         {loading ? "loading…" : bits.length ? bits.join(", ") : counts.awaiting ? "new matches" : paused ? "not looking" : "still looking"}
                         {intent.createdAt && ` · since ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
@@ -93,14 +79,4 @@ export default function IntentsIndex() {
       </div>
     </div>
   );
-}
-
-/** One entry per person, best stage first, so a face shows once. */
-function uniquePeople(entries: Entry[]): Entry[] {
-  const best = new Map<string, Entry>();
-  for (const entry of [...entries].sort((a, b) => RANK[a.stage] - RANK[b.stage])) {
-    const key = personKey(entry.item);
-    if (!best.has(key)) best.set(key, entry);
-  }
-  return [...best.values()];
 }
