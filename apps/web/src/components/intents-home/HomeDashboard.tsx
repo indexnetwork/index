@@ -262,6 +262,13 @@ export default function HomeDashboard() {
                 <QuestionItem variant={option.id} number={1} question={questions[0]} intent={intentById.get(questions[0].intentId)} onAnswer={answerAndRefresh} />
               </div>
             ))}
+            {QUESTION_ROW_OPTIONS.map((option, index) => (
+              <div key={option.id} className="pl-q-option">
+                <div className="pl-q-option-label">border option {QUESTION_BORDER_OPTIONS.length + index + 1}: {option.label}</div>
+                <QuestionRow variant={option.id} chips={option.chips} question={questions[0]} intent={intentById.get(questions[0].intentId)} onAnswer={answerAndRefresh} />
+              </div>
+            ))}
+            <div className="pl-q-option-label">current</div>
             {questions.map((question, index) => (
               <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
             ))}
@@ -383,6 +390,98 @@ const QUESTION_BORDER_OPTIONS = [
   { id: "dashed", label: "dashed hairline, warm tint" },
   { id: "lift", label: "hairline box with a soft shadow" },
 ] as const;
+
+/**
+ * Candidate question cards drawn like Home's opportunity rows (preview only, to
+ * pick one): the asker's agent face on the left, a name line, the question as
+ * the blurb, and the card's small buttons.
+ */
+const QUESTION_ROW_OPTIONS = [
+  { id: "row", label: "opportunity row, radio answers", chips: false },
+  { id: "row-chips", label: "opportunity row, answers as buttons", chips: true },
+  { id: "row-fill", label: "opportunity row in the hover fill", chips: true },
+  { id: "row-title", label: "question as the title, asker under it", chips: true },
+  { id: "row-compact", label: "compact row, small face, one line of answers", chips: true },
+  { id: "row-warm", label: "opportunity row on a warm tint", chips: true },
+] as const;
+
+/** One answer in progress: the picked option or your own words, and sending it. */
+function useQuestionAnswer(question: AgentQuestion, onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>) {
+  const { error: showError } = useNotifications();
+  const [choice, setChoice] = useState("");
+  const [own, setOwn] = useState("");
+  const [sending, setSending] = useState(false);
+  const options = question.options ?? [];
+  const text = (choice === "__own" || options.length === 0 ? own : choice).trim();
+  const submit = async () => {
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      await onAnswer(question.intentId, question.id, text);
+    } catch {
+      showError("couldn't send your answer.");
+      setSending(false);
+    }
+  };
+  return { choice, setChoice, own, setOwn, sending, options, text, submit };
+}
+
+function QuestionRow({ question, intent, variant, chips, onAnswer }: {
+  question: AgentQuestion;
+  intent?: HomeIntent;
+  variant: (typeof QUESTION_ROW_OPTIONS)[number]["id"];
+  chips: boolean;
+  onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
+}) {
+  const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
+  const asker = questionAsker(question);
+  const compact = variant === "row-compact";
+  const size = compact ? 28 : 44;
+  const name = `qr-${variant}-${question.id}`;
+  const face = asker.owner
+    ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={size} /></Link>
+    : <span className="pl-card-face"><MyAgentAvatar size={size} /></span>;
+  const about = intent && <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link>;
+  const who = <b><AskerName question={question} fallback={asker.label} /></b>;
+  return (
+    <ul className="pl-cards">
+      <li className={`pl-card pl-q-row pl-q-${variant}`}>
+        {face}
+        <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          {variant === "row-title" ? (
+            <>
+              <b className="pl-q-row-title">{question.question}</b>
+              <div className="pl-q-row-meta">{who}{about && <> · {about}</>}</div>
+            </>
+          ) : (
+            <>
+              <div className="pl-q-row-meta">{who}{about && <> · {about}</>}</div>
+              <div className="pl-blurb pl-q-row-text">{question.question}</div>
+            </>
+          )}
+          <div className={chips ? "pl-q-options pl-q-chips" : "pl-q-options"}>
+            {options.map((option) => (
+              <label key={option}>
+                <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
+              </label>
+            ))}
+            {options.length > 0 && (
+              <label>
+                <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
+              </label>
+            )}
+            {(options.length === 0 || choice === "__own") && (
+              <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
+            )}
+          </div>
+          <div className="pl-actions">
+            <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
+          </div>
+        </form>
+      </li>
+    </ul>
+  );
+}
 
 function QuestionItem({ number, question, intent, variant, onAnswer }: {
   number: number;

@@ -1731,3 +1731,119 @@
   padding: 14px 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
 }
+
+/* ---------------------------------------------------------------------------
+   Question options 6-11 (preview only): drawn like Home's opportunity rows.
+   --------------------------------------------------------------------------- */
+.pl-q-row .pl-q-row-meta {
+  color: #555;
+}
+.pl-q-row .pl-q-row-meta b {
+  color: #000;
+}
+.pl-q-row .pl-q-row-text {
+  margin-top: 4px;
+  font-size: 15px;
+  color: #000;
+}
+.pl-q-row .pl-q-options {
+  margin-top: 10px;
+}
+/* answers as the card's small buttons; a picked one stays pressed */
+.pl-q-row .pl-q-chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pl-q-row .pl-q-chips label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+.pl-q-row .pl-q-chips label:hover {
+  background: #fff6e8;
+}
+.pl-q-row .pl-q-chips label:has(input:checked) {
+  background: #ececec;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.pl-q-row .pl-q-chips label:has(input:focus-visible) {
+  outline: 2px solid #ff8a00;
+  outline-offset: 2px;
+}
+.pl-q-row .pl-q-chips input[type="radio"] {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ih .pl .pl-q-row .pl-q-chips input[type="text"] {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+}
+.pl-q-row .pl-q-options:not(.pl-q-chips) input[type="text"] {
+  margin: 2px 0 0 22px;
+}
+
+/* 8. the row in the hover fill */
+.pl-cards > li.pl-card.pl-q-row-fill {
+  background: #f7f7f5;
+}
+/* 11. the row on a warm tint, a nod to the old yellow card */
+.pl-cards > li.pl-card.pl-q-row-warm {
+  background: #fffbe6;
+}
+.pl-cards > li.pl-card.pl-q-row-fill::before,
+.pl-cards > li.pl-card.pl-q-row-fill::after,
+.pl-cards > li.pl-card.pl-q-row-warm::before,
+.pl-cards > li.pl-card.pl-q-row-warm::after {
+  opacity: 0;
+}
+
+/* 9. the question is the title, the asker sits under it like a blurb */
+.pl-q-row-title {
+  display: block;
+  font-size: 15px;
+  color: #000;
+}
+.pl-q-row-title + .pl-q-row-meta {
+  margin-top: 4px;
+}
+
+/* 10. compact: small face, the answers and send on one line */
+.pl-cards > li.pl-card.pl-q-row-compact {
+  gap: 10px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.pl-q-row-compact .pl-q-row-text {
+  font-size: 14px;
+  margin-top: 2px;
+}
+.pl-q-row-compact .pl-q-options {
+  margin-top: 8px;
+}
+.pl-q-row-compact form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+}
+.pl-q-row-compact form > .pl-q-row-meta,
+.pl-q-row-compact form > .pl-q-row-text {
+  flex-basis: 100%;
+}
+.pl-q-row-compact form > .pl-actions {
+  margin-top: 8px;
+}
