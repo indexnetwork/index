@@ -254,61 +254,6 @@
   width: 1%;
 }
 
-/* questions: one classic form box each, with an orange tag on the border */
-.pl-questions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.pl-q fieldset {
-  /* A fieldset is min-content wide by default, so a long label would stretch it. */
-  min-width: 0;
-  margin: 0;
-  border: 2px solid #000;
-  padding: 8px 14px 12px;
-  background: #fffbe6;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
-}
-.pl-q legend {
-  max-width: calc(100% - 16px);
-  box-sizing: border-box;
-  padding: 2px 8px;
-  font: 500 10.5px "JetBrains Mono", ui-monospace, monospace;
-  color: #000;
-  background: #fff;
-  border: 1px solid #000;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pl .pl-q legend a,
-.pl .pl-q legend a:visited {
-  color: #0000ee;
-}
-.pl .pl-q legend a:hover {
-  background: #ffff66;
-}
-.pl-q-text {
-  font-size: 15px;
-  margin: 6px 0 10px;
-}
-.pl-q-options {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.pl-q-options label {
-  cursor: pointer;
-}
-.pl-q-options input[type="text"] {
-  margin: 2px 0 0 22px;
-}
-.pl-q-send {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed #000;
-}
 .pl h2[id] {
   scroll-margin-top: 16px;
 }
@@ -319,11 +264,6 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-.pl-q-face {
-  display: inline-block;
-  vertical-align: -4px;
-  margin-right: 6px;
 }
 
 /* "+N" after the top two intents */
@@ -1289,16 +1229,6 @@
   border-top: 1px solid var(--pl-line);
 }
 
-/* questions keep their framed yellow card, minus the grey drop shadow */
-.pl-q fieldset {
-  box-shadow: none;
-}
-.ih .pl .pl-q-send button.go {
-  border: 1px solid #000;
-  border-radius: 0;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
-}
-
 /* everything else that was a framed box */
 .pl-table,
 .pl-ni,
@@ -1659,196 +1589,41 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Question card border options (preview only, to pick one). The legend is
-   floated so it sits inside the card instead of on the border.
+   Home questions: drawn like an opportunity row (the asker's agent face on
+   the left, a name line, the question as the blurb, the card's small
+   buttons) on a warm tint, so a question reads apart from a person.
    --------------------------------------------------------------------------- */
-.pl-q-option-label {
-  margin: 0 0 6px;
-  font: 500 11px var(--ih-sans, "IBM Plex Sans", sans-serif);
-  color: #777;
+.pl-cards.pl-q-list {
+  gap: 8px;
 }
-/* Questions put the asker's face on the left, like an opportunity row. */
-.pl-q-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-.pl-q-layout .pl-q-text {
-  margin: 4px 0 10px;
-}
-.pl-q:not([class*="pl-q-"]) .pl-q-layout {
-  margin-top: 6px;
-}
-.pl-q-row .pl-q-row-meta,
-.pl-q .pl-q-row-meta {
-  color: #555;
-}
-.pl-q .pl-q-row-meta b {
-  color: #000;
-}
-.pl-q[class*="pl-q-"] fieldset {
-  box-shadow: none;
-}
-.pl-q[class*="pl-q-"] .pl-q-send {
-  border-top: 1px solid #eeeeec;
-}
-
-/* 1. hairline box */
-.pl-q.pl-q-hairline fieldset {
-  border: 1px solid #e3e3e0;
-  border-radius: 6px;
-  background: #fff;
-  padding: 12px 16px 14px;
-}
-/* 2. soft fill, no border */
-.pl-q.pl-q-fill fieldset {
-  border: 0;
-  border-radius: 8px;
-  background: #f7f7f5;
-  padding: 14px 16px;
-}
-.pl-q.pl-q-fill .pl-q-send {
-  border-top-color: #e8e8e5;
-}
-/* 3. top and bottom rules */
-.pl-q.pl-q-rules fieldset {
-  border: 0;
-  border-top: 1px solid #e3e3e0;
-  border-bottom: 1px solid #e3e3e0;
-  border-radius: 0;
-  background: transparent;
-  padding: 14px 0;
-}
-/* 4. dashed hairline, warm tint */
-.pl-q.pl-q-dashed fieldset {
-  border: 1px dashed #d9d3bf;
-  border-radius: 6px;
-  background: #fffdf5;
-  padding: 12px 16px 14px;
-}
-.pl-q.pl-q-dashed .pl-q-send {
-  border-top: 1px dashed #e6dfc8;
-}
-/* 5. hairline box with a soft shadow */
-.pl-q.pl-q-lift fieldset {
-  border: 1px solid #ececea;
-  border-radius: 8px;
-  background: #fff;
-  padding: 14px 16px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
-}
-
-/* ---------------------------------------------------------------------------
-   Question options 6-11 (preview only): drawn like Home's opportunity rows.
-   --------------------------------------------------------------------------- */
-.pl-q-row .pl-q-row-meta {
-  color: #555;
-}
-.pl-q-row .pl-q-row-meta b {
-  color: #000;
-}
-.pl-q-row .pl-q-row-text {
-  margin-top: 4px;
-  font-size: 15px;
-  color: #000;
-}
-.pl-q-row .pl-q-options {
-  margin-top: 10px;
-}
-/* answers as the card's small buttons; a picked one stays pressed */
-.pl-q-row .pl-q-chips {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.pl-q-row .pl-q-chips label {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 12px;
-  border: 1px solid #000;
-  border-radius: 2px;
-  background: #fff;
-  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: 0.5px;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
-  user-select: none;
-}
-.pl-q-row .pl-q-chips label:hover {
-  background: #fff6e8;
-}
-.pl-q-row .pl-q-chips label:has(input:checked) {
-  background: #ececec;
-  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
-  transform: translate(1px, 1px);
-}
-.pl-q-row .pl-q-chips label:has(input:focus-visible) {
-  outline: 2px solid #ff8a00;
-  outline-offset: 2px;
-}
-.pl-q-row .pl-q-chips input[type="radio"] {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.ih .pl .pl-q-row .pl-q-chips input[type="text"] {
-  flex-basis: 100%;
-  margin: 4px 0 0;
-}
-.pl-q-row .pl-q-options:not(.pl-q-chips) input[type="text"] {
-  margin: 2px 0 0 22px;
-}
-
-/* 8. the row in the hover fill */
-.pl-cards > li.pl-card.pl-q-row-fill {
-  background: #f7f7f5;
-}
-/* 11. the row on a warm tint, a nod to the old yellow card */
-.pl-cards > li.pl-card.pl-q-row-warm {
+.pl-cards > li.pl-card.pl-q-row {
   background: #fffbe6;
 }
-.pl-cards > li.pl-card.pl-q-row-fill::before,
-.pl-cards > li.pl-card.pl-q-row-fill::after,
-.pl-cards > li.pl-card.pl-q-row-warm::before,
-.pl-cards > li.pl-card.pl-q-row-warm::after {
+.pl-cards > li.pl-card.pl-q-row::before,
+.pl-cards > li.pl-card.pl-q-row::after {
   opacity: 0;
 }
-
-/* 9. the question is the title, the asker sits under it like a blurb */
-.pl-q-row-title {
-  display: block;
+.pl-q-row-meta {
+  color: #555;
+}
+.pl-q-row-meta b {
+  color: #000;
+}
+.pl-q-row-text {
+  margin-top: 4px;
   font-size: 15px;
   color: #000;
 }
-.pl-q-row-title + .pl-q-row-meta {
-  margin-top: 4px;
-}
-
-/* 10. compact: small face, the answers and send on one line */
-.pl-cards > li.pl-card.pl-q-row-compact {
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-.pl-q-row-compact .pl-q-row-text {
-  font-size: 14px;
-  margin-top: 2px;
-}
-.pl-q-row-compact .pl-q-options {
-  margin-top: 8px;
-}
-.pl-q-row-compact form {
+.pl-q-options {
+  margin-top: 10px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
-.pl-q-row-compact form > .pl-q-row-meta,
-.pl-q-row-compact form > .pl-q-row-text {
-  flex-basis: 100%;
+.pl-q-options label {
+  cursor: pointer;
 }
-.pl-q-row-compact form > .pl-actions {
-  margin-top: 8px;
+.pl-q-options input[type="text"] {
+  margin: 2px 0 0 22px;
 }

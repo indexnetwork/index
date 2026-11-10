@@ -254,25 +254,11 @@ export default function HomeDashboard() {
         ) : questions.length === 0 ? (
           <p className="pl-dim">none right now.</p>
         ) : (
-          <div className="pl-questions">
-            {/* Preview only: the first question in each candidate border, to pick one. */}
-            {QUESTION_BORDER_OPTIONS.map((option, index) => (
-              <div key={option.id} className="pl-q-option">
-                <div className="pl-q-option-label">border option {index + 1}: {option.label}</div>
-                <QuestionItem variant={option.id} number={1} question={questions[0]} intent={intentById.get(questions[0].intentId)} onAnswer={answerAndRefresh} />
-              </div>
+          <ul className="pl-cards pl-q-list">
+            {questions.map((question) => (
+              <QuestionItem key={question.id} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
             ))}
-            {QUESTION_ROW_OPTIONS.map((option, index) => (
-              <div key={option.id} className="pl-q-option">
-                <div className="pl-q-option-label">border option {QUESTION_BORDER_OPTIONS.length + index + 1}: {option.label}</div>
-                <QuestionRow variant={option.id} chips={option.chips} question={questions[0]} intent={intentById.get(questions[0].intentId)} onAnswer={answerAndRefresh} />
-              </div>
-            ))}
-            <div className="pl-q-option-label">current</div>
-            {questions.map((question, index) => (
-              <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
-            ))}
-          </div>
+          </ul>
         )}
 
         <hr />
@@ -382,29 +368,6 @@ function AskerName({ question, fallback }: { question: AgentQuestion; fallback: 
   );
 }
 
-/** Candidate borders for the question card (preview only, to pick one). */
-const QUESTION_BORDER_OPTIONS = [
-  { id: "hairline", label: "hairline box" },
-  { id: "fill", label: "soft fill, no border" },
-  { id: "rules", label: "top and bottom rules" },
-  { id: "dashed", label: "dashed hairline, warm tint" },
-  { id: "lift", label: "hairline box with a soft shadow" },
-] as const;
-
-/**
- * Candidate question cards drawn like Home's opportunity rows (preview only, to
- * pick one): the asker's agent face on the left, a name line, the question as
- * the blurb, and the card's small buttons.
- */
-const QUESTION_ROW_OPTIONS = [
-  { id: "row", label: "opportunity row, radio answers", chips: false },
-  { id: "row-chips", label: "opportunity row, answers as buttons", chips: true },
-  { id: "row-fill", label: "opportunity row in the hover fill", chips: true },
-  { id: "row-title", label: "question as the title, asker under it", chips: true },
-  { id: "row-compact", label: "compact row, answers and send on one line", chips: true },
-  { id: "row-warm", label: "opportunity row on a warm tint", chips: true },
-] as const;
-
 /** One answer in progress: the picked option or your own words, and sending it. */
 function useQuestionAnswer(question: AgentQuestion, onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>) {
   const { error: showError } = useNotifications();
@@ -434,104 +397,47 @@ function AskerFace({ question, size }: { question: AgentQuestion; size: number }
     : <span className="pl-card-face"><MyAgentAvatar size={size} /></span>;
 }
 
-function QuestionRow({ question, intent, variant, chips, onAnswer }: {
-  question: AgentQuestion;
-  intent?: HomeIntent;
-  variant: (typeof QUESTION_ROW_OPTIONS)[number]["id"];
-  chips: boolean;
-  onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
-}) {
-  const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
-  const asker = questionAsker(question);
-  const name = `qr-${variant}-${question.id}`;
-  const face = <AskerFace question={question} size={44} />;
-  const about = intent && <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link>;
-  const who = <b><AskerName question={question} fallback={asker.label} /></b>;
-  return (
-    <ul className="pl-cards">
-      <li className={`pl-card pl-q-row pl-q-${variant}`}>
-        {face}
-        <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          {variant === "row-title" ? (
-            <>
-              <b className="pl-q-row-title">{question.question}</b>
-              <div className="pl-q-row-meta">{who}{about && <> · {about}</>}</div>
-            </>
-          ) : (
-            <>
-              <div className="pl-q-row-meta">{who}{about && <> · {about}</>}</div>
-              <div className="pl-blurb pl-q-row-text">{question.question}</div>
-            </>
-          )}
-          <div className={chips ? "pl-q-options pl-q-chips" : "pl-q-options"}>
-            {options.map((option) => (
-              <label key={option}>
-                <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
-              </label>
-            ))}
-            {options.length > 0 && (
-              <label>
-                <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
-              </label>
-            )}
-            {(options.length === 0 || choice === "__own") && (
-              <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
-            )}
-          </div>
-          <div className="pl-actions">
-            <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
-          </div>
-        </form>
-      </li>
-    </ul>
-  );
-}
-
-function QuestionItem({ number, question, intent, variant, onAnswer }: {
-  number: number;
-  /** A candidate border from QUESTION_BORDER_OPTIONS; omit for the current card. */
-  variant?: (typeof QUESTION_BORDER_OPTIONS)[number]["id"];
+/**
+ * One question from an agent, drawn like an opportunity row on a warm tint:
+ * the asker's face on the left, who's asking and about which intent, the
+ * question, its answers as radios, and the card's small send button.
+ */
+function QuestionItem({ question, intent, onAnswer }: {
   question: AgentQuestion;
   intent?: HomeIntent;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
 }) {
   const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
-  const name = `q-${variant ?? "current"}-${question.id}`;
   const asker = questionAsker(question);
-  const about = intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>;
-
+  const name = `q-${question.id}`;
   return (
-    <form className={variant ? `pl-q pl-q-${variant}` : "pl-q"} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <fieldset>
-        {/* The current card keeps its tag on the border; the options put the asker on the name line. */}
-        {!variant && <legend>#{number} · <AskerName question={question} fallback={asker.label} />{about}</legend>}
-        {/* Laid out like an opportunity row: the face on the left, top-aligned with the first line. */}
-        <div className="pl-q-layout">
-          <AskerFace question={question} size={44} />
-          <div className="pl-card-body">
-            {variant && <div className="pl-q-row-meta"><b><AskerName question={question} fallback={asker.label} /></b>{about}</div>}
-            <p className="pl-q-text">{question.question}</p>
-            <div className="pl-q-options">
-              {options.map((option) => (
-                <label key={option}>
-                  <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
-                </label>
-              ))}
-              {options.length > 0 && (
-                <label>
-                  <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
-                </label>
-              )}
-              {(options.length === 0 || choice === "__own") && (
-                <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
-              )}
-            </div>
-            <div className="pl-q-send">
-              <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
-            </div>
-          </div>
+    <li className="pl-card pl-q-row">
+      <AskerFace question={question} size={44} />
+      <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <div className="pl-q-row-meta">
+          <b><AskerName question={question} fallback={asker.label} /></b>
+          {intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>}
         </div>
-      </fieldset>
-    </form>
+        <div className="pl-blurb pl-q-row-text">{question.question}</div>
+        <div className="pl-q-options">
+          {options.map((option) => (
+            <label key={option}>
+              <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
+            </label>
+          ))}
+          {options.length > 0 && (
+            <label>
+              <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
+            </label>
+          )}
+          {(options.length === 0 || choice === "__own") && (
+            <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
+          )}
+        </div>
+        <div className="pl-actions">
+          <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
+        </div>
+      </form>
+    </li>
   );
 }
