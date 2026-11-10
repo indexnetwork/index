@@ -256,7 +256,7 @@ export default function HomeDashboard() {
         ) : (
           <ul className="pl-cards pl-q-list">
             {questions.map((question) => (
-              <QuestionItem key={question.id} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
+              <QuestionItem key={question.id} question={question} onAnswer={answerAndRefresh} />
             ))}
           </ul>
         )}
@@ -398,13 +398,12 @@ function AskerFace({ question, size }: { question: AgentQuestion; size: number }
 }
 
 /**
- * One question from an agent, drawn like an opportunity row:
- * the asker's face on the left, who's asking and about which intent, the
- * question, its answers as radios, and the card's small send button.
+ * One question from an agent, drawn like an opportunity row: the asker's face
+ * on the left, who's asking, the question, its answers as radios, and the
+ * card's small send button.
  */
-function QuestionItem({ question, intent, onAnswer }: {
+function QuestionItem({ question, onAnswer }: {
   question: AgentQuestion;
-  intent?: HomeIntent;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
 }) {
   const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
@@ -416,7 +415,6 @@ function QuestionItem({ question, intent, onAnswer }: {
       <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="pl-q-row-meta">
           <b><AskerName question={question} fallback={asker.label} /></b>
-          {intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>}
         </div>
         <div className="pl-blurb pl-q-row-text">{question.question}</div>
         <div className="pl-q-options">
