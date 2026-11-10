@@ -1606,8 +1606,8 @@
    face on the left, a name line, the question as the blurb, the card's
    small buttons), with the same lines between rows.
    --------------------------------------------------------------------------- */
-/* Like the question card on main: the asker quiet and grey, the question in
-   semibold; every line of the question at 13px. */
+/* Like the question card on main: the asker quiet and grey at 13px, the
+   question in semibold; the question and its answers at 14px. */
 .pl-q-row .pl-card-body {
   font-size: 13px;
 }
@@ -1621,13 +1621,14 @@
 }
 .pl-q-row-text {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.55;
   color: #2a2a2a;
 }
 .pl-q-options {
   margin-top: 10px;
+  font-size: 14px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1638,5 +1639,5 @@
 }
 .pl-q-options input[type="text"] {
   margin: 2px 0 0 22px;
-  font-size: 13px;
+  font-size: 14px;
 }
