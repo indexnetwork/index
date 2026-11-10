@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { Check, Copy } from "lucide-react";
 
 import "@/styles/plain.css";
-import AgentLog from "@/components/intents-home/AgentLog";
-import PageHead from "@/components/intents-home/PageHead";
-import ProfileEditor from "@/components/profile/ProfileEditor";
+import NegotiationConversation from "@/components/NegotiationConversation";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import ProfileEditor from "@/components/profile/ProfileEditor";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import UserAvatar from "@/components/UserAvatar";
+import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import { useBack, atHistoryEntry } from "@/hooks/useBack";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import type { resolveSocials } from "@/lib/socials";
@@ -23,20 +24,11 @@ interface Profile {
   emailVerified?: boolean;
 }
 
-type Bucket = ReturnType<typeof radarBucketForOpportunity>;
-
-/** Card stripe and status chip for each stage, in Home's colors. */
-const STAGE: Record<NonNullable<Bucket>, { chip: string; label: string }> = {
-  "awaiting you": { chip: "waiting", label: "waiting on you" },
-  negotiating: { chip: "talks", label: "agents talking" },
-  accepted: { chip: "live", label: "connected" },
-  closed: { chip: "paused", label: "closed" },
-};
-
 /**
- * A person's profile inside the signed-in desktop shell, drawn like Home:
- * a big name, plain section heads with the double rule, and one short row
- * per match between you that opens to its agent log.
+ * A profile inside the signed-in desktop shell, in the classic profile look
+ * (as on main): photo, name and actions over a black rule, then bio,
+ * elsewhere, and your agent log or what's between you and them. It fills
+ * the page beside the sidebar instead of sitting in its own window.
  */
 export default function PlainProfile({
   profile, socials, isOwn, networks, matches, matchesLoaded, pairing, pairError, onPair, onMessage, onSaved,
@@ -55,139 +47,148 @@ export default function PlainProfile({
   onSaved?: (profile: Profile) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
-  const first = (profile.name || "them").split(" ")[0];
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   // Back to wherever they came from (a card, a question, a chat); home when opened fresh.
   const back = useBack("/");
   const fresh = atHistoryEntry();
 
-  // The log beside the list: the one you picked, else the live one, else the newest.
-  const rows = matches.map((match) => {
-    const bucket = radarBucketForOpportunity(match.status, match.viewerCommitted) ?? "negotiating";
-    const stage = STAGE[bucket];
-    return {
-      match,
-      bucket,
-      chip: stage.chip,
-      label: bucket === "closed" ? (match.status === "rejected" ? "not a fit" : "missed") : stage.label,
-      title: match.headline || match.mainText || "a possible match",
-    };
-  });
-  const shown = rows.find((row) => row.match.opportunityId === picked)
-    ?? rows.find((row) => row.bucket === "negotiating")
-    ?? rows[0];
+  const profileUrl = () => `${window.location.origin}/u/${profile.id}`;
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(profileUrl());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* the clipboard can be blocked; nothing to undo */ }
+  };
+  const share = () => {
+    const intent = new URL("https://x.com/intent/post");
+    intent.searchParams.set("text", "Have your agent talk to my agent on @indexnetwork_");
+    intent.searchParams.set("url", profileUrl());
+    window.open(intent.toString(), "_blank", "noopener,noreferrer");
+  };
 
   return (
-    <div className="ih-view pl">
-      <div className="pl-col">
-      <PageHead
-        eyebrow={isOwn ? "YOUR PROFILE" : "PROFILE"}
-        title={profile.name}
-        status={[profile.location, profile.emailVerified === false ? "not on index yet" : null].filter(Boolean).join(" · ") || undefined}
-        back={isOwn ? undefined : { label: fresh ? "home" : "back", onClick: back }}
-      >
-        {isOwn
-          ? !editing && <button type="button" onClick={() => setEditing(true)}>edit profile</button>
-          : <button type="button" className="go" onClick={onMessage}>send message</button>}
-      </PageHead>
-      <div className="pl-prof">
-        <aside className="pl-prof-side">
-          {editing ? (
+    <div className="ih-view ih-classic ih-profile">
+      <div className="mac-scroll profile-content">
+        {!isOwn && <button type="button" className="profile-back" onClick={back}>◂ {fresh ? "home" : "back"}</button>}
+
+        <div className="profile-header">
+          <UserAvatar id={profile.id} name={profile.name} avatar={profile.avatar} size={54} />
+          <div className="profile-identity">
+            <div className="profile-name">{profile.name}</div>
+            {profile.emailVerified === false && <NotOnIndexTag />}
+            {profile.location && <div className="profile-location">{profile.location}</div>}
+          </div>
+          {isOwn ? (
+            <div className="profile-actions">
+              {!editing && <button type="button" className="wb-btn small" onClick={() => setEditing(true)}>edit profile</button>}
+              <button type="button" className="wb-btn small profile-icon-btn" onClick={() => void copyLink()} aria-label={copied ? "link copied" : "copy link"} title={copied ? "copied" : "copy link"}>
+                {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+              </button>
+              <button type="button" className="wb-btn primary small" onClick={share}>share on X</button>
+            </div>
+          ) : (
+            <button type="button" className="wb-btn primary small profile-message" onClick={onMessage}>send message</button>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="pl profile-editing">
             <ProfileEditor<Profile>
               onCancel={() => setEditing(false)}
               onSaved={(saved) => { setEditing(false); onSaved?.(saved); }}
             />
-          ) : (
+          </div>
+        ) : (
           <>
-          <UserAvatar id={profile.id} name={profile.name} avatar={profile.avatar} size={96} />
-          {profile.intro
-            ? <p className="pl-profile-bio">{profile.intro}</p>
-            : isOwn && <p className="pl-dim">no bio yet. add one so other agents know what you&apos;re about.</p>}
-          {socials.length > 0 && (
-            <div className="pl-profile-links">
-              {socials.map((s) => (
-                <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">
-                  {SOCIAL_ICONS[s.platform]}
-                  <span>{s.handle}</span>
-                </a>
+            {profile.intro && (
+              <section>
+                <h3 className="profile-label">bio</h3>
+                <p className="profile-bio">{profile.intro}</p>
+              </section>
+            )}
+
+            {socials.length > 0 && (
+              <section>
+                <h3 className="profile-label">elsewhere</h3>
+                <div className="profile-chips">
+                  {socials.map((s) => (
+                    <a className="profile-social" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">
+                      {SOCIAL_ICONS[s.platform]}
+                      <span>{s.handle}</span>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        {!isOwn && (
+          <section>
+            <h3 className="profile-label">networks</h3>
+            {networks.length === 0 && <div className="profile-dim">no shared networks.</div>}
+            <div className="profile-chips">
+              {networks.map((network) => (
+                <Link key={network.id} to={`/networks/${network.id}`} className="profile-social">
+                  {network.title} · {network._count.members}
+                </Link>
               ))}
             </div>
-          )}
-          </>
-          )}
-          {!isOwn && (
-            <>
-              <h2>networks you share</h2>
-              {networks.length === 0 ? (
-                <p className="pl-dim">none yet.</p>
-              ) : (
-                <ul className="pl-nets">
-                  {networks.map((network, index) => (
-                    <li key={network.id}>
-                      <Link to={`/networks/${network.id}`} className="pl-net">
-                        <span className={`pl-net-mark c${index % 4}`} aria-hidden>{network.title.trim().charAt(0).toUpperCase() || "#"}</span>
-                        <span className="pl-net-text">
-                          <span className="pl-net-name" title={network.title}>{network.title}</span>
-                          <span className="pl-net-n">{network._count.members} {network._count.members === 1 ? "person" : "people"}</span>
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </aside>
+          </section>
+        )}
 
-        <section className="pl-prof-main">
-          {isOwn ? (
-            <>
-              <h2>agent log</h2>
-              <NegotiationHistory userId={profile.id} />
-            </>
-          ) : (
-            <>
-              <h2>you and {first}</h2>
-              {!matchesLoaded ? (
-                <p className="pl-dim">checking<span className="pl-blink">_</span></p>
-              ) : rows.length === 0 ? (
-                <div className="pl-profile-empty">
-                  <p>my agent hasn&apos;t talked to {first}&apos;s yet. pair them and they&apos;ll keep talking in the background, and I&apos;ll bring you anything worth meeting about.</p>
-                  {pairError && <p className="pl-dim">no intents to pair in a network you share.</p>}
-                  <button type="button" className="go" disabled={pairing} onClick={onPair}>{pairing ? "pairing…" : "pair our agents"}</button>
-                </div>
-              ) : (
-                <>
-                  <ul className="pl-rows">
-                    {rows.map((row) => {
-                      const on = row === shown;
-                      return (
-                        <li key={row.match.opportunityId} className={on ? "open" : undefined}>
-                          <button type="button" className="pl-row" aria-pressed={on} onClick={() => setPicked(row.match.opportunityId)}>
-                            <span className="pl-row-title" title={row.title}>{row.title}</span>
-                            <span className={`pl-status ${row.chip}`}>{row.label}</span>
-                            <span className="pl-row-arrow" aria-hidden>{on ? "▾" : "▸"}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {shown && (
-                    <div className={`pl-prof-log ${shown.chip}`}>
-                      <div className="pl-prof-log-head">
-                        <b>my agent and {first}&apos;s agent</b>
-                        <span className={`pl-status ${shown.chip}`}>{shown.label}</span>
-                      </div>
-                      {shown.match.mainText && shown.match.mainText !== shown.title && <p className="pl-blurb">{shown.match.mainText}</p>}
-                      <AgentLog key={shown.match.opportunityId} opportunityId={shown.match.opportunityId} name={profile.name || "them"} />
+        {!isOwn && matchesLoaded && matches.length === 0 && (
+          <section>
+            <h3 className="profile-label">opportunities</h3>
+            <div className="profile-box">
+              <div className="profile-box-title">our agents haven&apos;t talked yet.</div>
+              pair them and they&apos;ll keep talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over.
+              {pairError && <div className="profile-dim">no intents to pair in a network you share.</div>}
+              <div style={{ marginTop: 10 }}>
+                <button type="button" className="wb-btn primary small" disabled={pairing} onClick={onPair}>{pairing ? "pairing…" : "pair agents"}</button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {!isOwn && matches.length > 0 && (
+          <section>
+            <h3 className="profile-label">opportunities</h3>
+            <div className="profile-opps">
+              {matches.map((o) => {
+                const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted);
+                const open = openId === o.opportunityId;
+                const toggle = () => setOpenId(open ? null : o.opportunityId);
+                return (
+                  <div key={o.opportunityId} className="profile-opp">
+                    <div role="button" tabIndex={0} className={open ? "profile-opp-row open" : "profile-opp-row"} onClick={toggle}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
+                      <div className="profile-opp-title">{o.headline || o.mainText}</div>
+                      <span className="profile-opp-stage">
+                        {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
+                      </span>
+                      <span className="profile-opp-arrow">{open ? "▾" : "›"}</span>
                     </div>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </section>
-      </div>
+                    {open && (
+                      <div className="profile-opp-log">
+                        <NegotiationConversation opportunityId={o.opportunityId} expanded onToggle={toggle} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {isOwn && (
+          <section className="profile-ruled">
+            <h3 className="profile-label">agent log</h3>
+            <NegotiationHistory userId={profile.id} />
+          </section>
+        )}
       </div>
     </div>
   );

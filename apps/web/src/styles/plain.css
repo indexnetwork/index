@@ -455,164 +455,6 @@
   }
 }
 
-/* chat: the conversation list beside the thread, in the same look as the agent panel.
-   Desktop only (inside the .ih shell); the chat components keep their own inline styles on compact,
-   so these overrides need !important. */
-.ih .ih-chat {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  font: 400 14px/1.5 "IBM Plex Sans", sans-serif;
-  color: #000;
-}
-.ih .ih-chat.solo {
-  grid-template-columns: minmax(0, 1fr);
-}
-.ih .ih-chat-list {
-  min-height: 0;
-  overflow: hidden;
-  border-right: 1px solid #000;
-  background: #fff;
-}
-.ih .ih-chat-pane {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-}
-/* conversation list: plain rows, thin rules, the open one in light grey */
-.ih .ih-chat .chat-row {
-  border-bottom: 1px solid #e6e6e6 !important;
-  border-left: none !important;
-  padding: 10px 12px !important;
-  background: #fff !important;
-}
-.ih .ih-chat .chat-row:hover {
-  background: #f6f6f6 !important;
-}
-.ih .ih-chat .chat-row.on {
-  background: #eeeeee !important;
-}
-.ih .ih-chat .chat-row-name {
-  font: 600 13px "IBM Plex Sans", sans-serif !important;
-  color: #000 !important;
-}
-.ih .ih-chat .chat-row-time,
-.ih .ih-chat .chat-clock {
-  font: 400 10.5px "IBM Plex Sans", sans-serif !important;
-  color: #999 !important;
-}
-.ih .ih-chat .chat-row-preview {
-  font-size: 12.5px !important;
-  color: #666 !important;
-}
-.ih .ih-chat .chat-unread {
-  font: 700 10px/16px "IBM Plex Sans", sans-serif !important;
-  background: #ff8a00 !important;
-  border-radius: 0 !important;
-}
-/* header: name, then one quiet line */
-.ih .ih-chat .chat-head {
-  border-bottom: 1px solid #e6e6e6 !important;
-  padding: 10px 16px !important;
-}
-.ih .ih-chat .chat-head-name {
-  font: 600 14px "IBM Plex Sans", sans-serif !important;
-  color: #000 !important;
-  text-decoration: none !important;
-}
-.ih .ih-chat .chat-head-name:hover {
-  text-decoration: underline !important;
-  text-underline-offset: 2px;
-}
-.ih .ih-chat .chat-head-sub {
-  font: 400 12px "IBM Plex Sans", sans-serif !important;
-  color: #888 !important;
-}
-.ih .ih-chat .chat-head-sub a {
-  color: inherit !important;
-  text-decoration: none !important;
-}
-.ih .ih-chat .chat-head-sub a:hover {
-  color: #000 !important;
-  text-decoration: underline !important;
-}
-.ih .ih-chat .chat-log {
-  padding: 16px 20px !important;
-}
-/* day marks: a small grey date between two hairlines */
-.ih .ih-chat .chat-day span:nth-child(2) {
-  font: 400 11px "IBM Plex Sans", sans-serif !important;
-  letter-spacing: 0 !important;
-  text-transform: lowercase !important;
-  color: #999 !important;
-}
-.ih .ih-chat .chat-day span:first-child,
-.ih .ih-chat .chat-day span:last-child {
-  height: 1px !important;
-  background: #ececec !important;
-  border: none;
-}
-/* messages: flat tinted bubbles, no frames or shadows */
-.ih .ih-chat .wb-chat {
-  border: none !important;
-  border-radius: 0 !important;
-  background: #f2f2f2 !important;
-  box-shadow: none;
-  font: 400 13.5px/1.45 "IBM Plex Sans", sans-serif !important;
-  padding: 7px 11px !important;
-}
-.ih .ih-chat .wb-chat.mine {
-  background: #ffefc7 !important;
-}
-.ih .ih-chat .wb-chat a {
-  color: #0000ee;
-}
-.ih .ih-chat .chat-opener {
-  border: 1px solid #e6e6e6 !important;
-  border-left: 3px solid #ff8a00 !important;
-  border-radius: 0 !important;
-  box-shadow: none;
-}
-.ih .ih-chat .chat-compose {
-  border-top: 1px solid #e6e6e6 !important;
-  padding: 10px 12px !important;
-  gap: 8px !important;
-  align-items: flex-end !important;
-}
-.ih .ih-chat .chat-compose textarea {
-  border: 1px solid #bbb !important;
-  background: #fff !important;
-  box-shadow: none;
-  padding: 7px 9px !important;
-  font: 400 13.5px "IBM Plex Sans", sans-serif !important;
-  min-height: 34px;
-}
-.ih .ih-chat .chat-compose textarea:focus {
-  border-color: #000 !important;
-  outline: none;
-}
-.ih .ih-chat .chat-send {
-  height: 34px;
-  padding: 0 14px !important;
-  border: 1px solid #000 !important;
-  background: #ff8a00 !important;
-  color: #000 !important;
-  box-shadow: none;
-  cursor: pointer;
-}
-.ih .ih-chat .chat-send:disabled {
-  opacity: 0.35;
-  cursor: default !important;
-}
-.ih .ih-chat .chat-send {
-  font-size: 0 !important;
-}
-.ih .ih-chat .chat-send::after {
-  content: "send";
-  font: 600 12px "IBM Plex Sans", sans-serif;
-}
-
 /* the new intent flow inside the agent chat */
 .pl-ni {
   display: flex;
@@ -1640,4 +1482,523 @@
 .pl-q-options input[type="text"] {
   margin: 2px 0 0 22px;
   font-size: 14px;
+}
+
+/* chat: the classic look (as on main) in the full-height layout beside the sidebar.
+   The old tokens are set back here only, so the rest of the app keeps its own. */
+.ih .ih-chat {
+  --amiga-bg: #0055aa;
+  --amiga-fg: #000000;
+  --amiga-accent: #ff8a00;
+  --ink: #000000;
+  --ink-2: #5a5548;
+  --ink-3: #8a8578;
+  --ink-4: #b5af9f;
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  flex-direction: row;
+  background: #fff;
+  color: #000;
+}
+.ih .ih-chat.solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ih .ih-chat-list {
+  min-height: 0;
+  overflow: hidden;
+  border-right: 2px solid #000;
+}
+.ih .ih-chat-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ih .ih-chat .wb-chat p { margin: 0; }
+.ih .ih-chat .wb-chat a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* conversation rows: mono names, black rules, a chevron; the open one gets a black edge bar */
+.ih .ih-chat .wb-link-row {
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
+.ih .ih-chat .wb-link-row[aria-current="page"] {
+  box-shadow: inset 4px 0 0 #000;
+}
+.ih .ih-chat .wb-link-row:focus-visible {
+  background: #e3edf8;
+  outline: 2px solid var(--amiga-bg);
+  outline-offset: -2px;
+}
+.ih .ih-chat .wb-link-row:active {
+  background: #cfe0f3;
+}
+@media (hover: hover) {
+  .ih .ih-chat .wb-link-row:hover { background: #e3edf8; }
+  .ih .ih-chat .wb-link-row:hover .wb-row-chevron { color: var(--amiga-bg); }
+}
+.ih .ih-chat .wb-row-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  font-family: var(--mac-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* the orange scrollbar */
+.ih .ih-chat .mac-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+  background: #fff;
+}
+.ih .ih-chat .mac-scroll::-webkit-scrollbar-track {
+  background: #fff;
+}
+.ih .ih-chat .mac-scroll::-webkit-scrollbar-thumb {
+  background: var(--amiga-accent);
+  border: 0;
+  border-radius: 0;
+  min-height: 28px;
+}
+
+/* a chat with a person, drawn like the agent chat (ChatView.tsx in the desktop shell) */
+.ih .ih-chat .pl-dm {
+  font-family: "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.pl-dm-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e6e6e6;
+  background: #fff;
+}
+.pl-dm-face {
+  display: flex;
+}
+.pl-dm-who {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.pl a.pl-dm-name {
+  font: 600 13.5px "IBM Plex Sans", sans-serif;
+  color: #000;
+  text-decoration: none;
+}
+.pl a.pl-dm-name:hover {
+  text-decoration: underline;
+}
+.pl-dm-sub {
+  font: 400 10.5px "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl .pl-dm-sub a {
+  color: inherit;
+  text-decoration: none;
+}
+.pl .pl-dm-sub a:hover {
+  text-decoration: underline;
+}
+.pl-dm-opener {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 2px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.pl-dm-opener > span {
+  color: #555;
+}
+.pl-dm-item {
+  display: grid;
+  gap: 12px;
+}
+.pl-dm-day {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 10px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+}
+.pl-dm-day::before,
+.pl-dm-day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #ddd8cc;
+}
+.pl-dm .pl-agent-bubble a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pl-dm .pl-agent-line > .pl-agent-bubble {
+  max-width: 75%;
+}
+
+/* "accepted ..." marks in a chat with a person: a small centered chip, not a full-width bar */
+.pl-dm .opp-divider {
+  margin: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ih .pl.pl-dm .opp-divider > button {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: 3px 10px;
+  border: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: none;
+  transform: none;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #555;
+}
+.ih .pl.pl-dm .opp-divider > button:hover:not(:disabled) {
+  background: #fffbe6;
+  color: #000;
+}
+.ih .pl.pl-dm .opp-divider > button[aria-expanded="true"] {
+  background: #fff;
+  box-shadow: none;
+}
+.pl-dm .opp-divider > button > span.flex-1 {
+  display: none;
+}
+.pl-dm .opp-divider > button > span:not(.flex-1) {
+  min-width: 0;
+}
+.pl-dm .opp-divider > button > span > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* a message's time, beside its bubble */
+.pl-dm-clock {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 8px;
+  font: 400 10px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+  white-space: nowrap;
+}
+
+/* the summary under an "accepted ..." chip: wider, and drawn like a chat bubble */
+.pl-dm .opp-divider > div[id] {
+  width: 100%;
+  max-width: 640px;
+  box-sizing: border-box;
+}
+.pl-dm .opp-divider > div[id] > div {
+  background: #fff;
+  border: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 2px;
+  padding: 10px 14px;
+}
+
+/* a chat with a person: more room around the thread */
+.pl-dm .pl-dm-head {
+  padding: 12px 28px;
+}
+.pl-dm .pl-agent-log {
+  padding: 24px 28px;
+  gap: 14px;
+}
+.pl-dm .pl-agent-compose {
+  padding: 12px 28px 16px;
+}
+
+/* profile: the classic look (as on main), full height beside the sidebar.
+   The old tokens are set back here only, like chat above. */
+.ih .ih-classic {
+  --amiga-bg: #0055aa;
+  --amiga-fg: #000000;
+  --amiga-paper: #ffffff;
+  --amiga-accent: #ff8a00;
+  --ink: #000000;
+  --ink-2: #5a5548;
+  --ink-3: #8a8578;
+  --ink-4: #b5af9f;
+  --ink-warn: #8a0000;
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --amiga-title: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+  background: #fff;
+  color: #000;
+}
+.ih .ih-classic .wb-btn {
+  padding: 5px 18px;
+  font-family: var(--mac-mono);
+  font-size: 12px;
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
+  font-weight: 500;
+  cursor: pointer;
+}
+.ih .ih-classic .wb-btn:active:not(:disabled) {
+  background: #000;
+  color: #fff;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.ih .ih-classic .wb-btn.primary {
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih .ih-classic .wb-btn.primary:active:not(:disabled) {
+  background: #000;
+  color: #ff8a00;
+}
+.ih .ih-classic .wb-btn:disabled {
+  opacity: 0.45;
+}
+.ih .ih-classic .wb-btn.small {
+  padding: 3px 12px;
+  font-size: 11px;
+}
+.ih .ih-classic .wb-btn.profile-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.ih .ih-classic .mac-scroll::-webkit-scrollbar {
+  width: 5px;
+  background: #fff;
+}
+.ih .ih-classic .mac-scroll::-webkit-scrollbar-thumb {
+  background: var(--amiga-accent);
+  min-height: 28px;
+}
+
+.ih-profile .profile-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 32px 48px;
+  display: grid;
+  /* Home's column: 880px wide with 28px inside each edge, so the content lines up with Home's. */
+  grid-template-columns: minmax(0, calc(880px - 56px));
+  justify-content: center;
+  gap: 22px;
+  align-content: start;
+}
+.ih .ih-profile button.profile-back {
+  justify-self: start;
+  margin-bottom: -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 11.5px var(--mac-mono);
+  color: #0000ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ih-profile .profile-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #000;
+}
+.ih-profile .profile-identity { min-width: 0; overflow-wrap: anywhere; }
+.ih-profile .profile-name {
+  font: 600 20px var(--amiga-title);
+}
+.ih-profile .profile-location {
+  margin-top: 2px;
+  font: 400 11px var(--mac-mono);
+  color: var(--ink-2);
+}
+.ih-profile .profile-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ih-profile .profile-label {
+  margin: 0 0 8px;
+  font: 400 11px var(--mac-mono);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.ih-profile .profile-bio {
+  margin: 0;
+  font: 400 13px/1.5 var(--mac-sans);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ih-profile .profile-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ih-profile .profile-social {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #000;
+  padding: 4px 9px;
+  font: 400 11px var(--mac-mono);
+  color: #000;
+  text-decoration: none;
+}
+.ih-profile .profile-social:hover { background: #e3edf8; }
+.ih-profile .profile-social svg { flex-shrink: 0; }
+.ih-profile .profile-dim {
+  font: 400 11px var(--mac-mono);
+  color: var(--ink-2);
+}
+.ih-profile .profile-box {
+  border: 1px solid #000;
+  background: #fff;
+  padding: 14px 16px;
+  font: 400 13px/1.5 var(--mac-sans);
+}
+.ih-profile .profile-box-title {
+  font: 700 12px var(--mac-mono);
+  margin-bottom: 4px;
+}
+.ih-profile .profile-opps { display: grid; gap: 8px; }
+.ih-profile .profile-opp { border: 1px solid #000; background: #fff; }
+.ih-profile .profile-opp-row {
+  padding: 12px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  cursor: pointer;
+}
+.ih-profile .profile-opp-row.open { background: #f2f0ec; }
+.ih-profile .profile-opp-title {
+  flex: 1;
+  min-width: 0;
+  font: 400 13px/1.45 var(--mac-sans);
+}
+.ih-profile .profile-opp-stage { font: 400 10px var(--mac-mono); white-space: nowrap; }
+.ih-profile .profile-opp-arrow { font: 400 12px var(--mac-mono); }
+.ih-profile .profile-opp-log { border-top: 1px solid #000; }
+.ih-profile .profile-ruled {
+  border-top: 1px solid #000;
+  padding-top: 18px;
+}
+.ih .ih-profile .profile-editing {
+  max-width: 520px;
+  overflow: visible;
+  background: transparent;
+}
+@media (max-width: 900px) {
+  .ih-profile .profile-header { grid-template-columns: auto minmax(0, 1fr); }
+  .ih-profile .profile-actions, .ih-profile .profile-message { grid-column: 1 / -1; }
+  .ih-profile .profile-message { justify-self: start; }
+}
+
+/* a match beside Home, drawn like the classic profile */
+.ih .ih-matchwin.ih-profile .ih-match-content {
+  padding: 20px 22px 24px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.ih-matchwin .profile-header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+.ih-matchwin a.ih-match-name {
+  color: #000;
+  text-decoration: none;
+}
+.ih-matchwin a.ih-match-name:hover {
+  text-decoration: underline;
+}
+.ih-matchwin .ih-match-stage .ih-status-dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border: 1px solid #000;
+  box-sizing: border-box;
+  display: inline-block;
+  vertical-align: 0;
+}
+.ih-matchwin .profile-bio.ih-match-lead {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.ih-matchwin .profile-bio.ih-match-para {
+  margin-bottom: 6px;
+}
+.ih-matchwin .ih-match-quote {
+  margin-top: 10px;
+  border-left-width: 4px;
+  border-left-color: #ff8a00;
+  font-style: italic;
+}
+.ih-matchwin .ih-match-quote .profile-dim {
+  margin-top: 4px;
+  font-style: normal;
+}
+.ih-matchwin .ih-match-meta {
+  margin-top: 8px;
+}
+.ih-matchwin a.ih-match-more {
+  justify-self: start;
+  font: 400 11.5px var(--mac-mono);
+  color: #0000ee;
+}
+.ih-matchwin .ih-match-foot {
+  border-top: 1px solid #000;
+  gap: 6px;
+}
+.ih-matchwin .ih-match-wait {
+  margin-right: auto;
+}
+.ih-matchwin .ih-log {
+  margin: 0;
+}
+
+/* match window: the header stays put, the profile scrolls, buttons sit at the bottom (as on main) */
+.ih .ih-matchwin .ih-match-top {
+  flex: none;
+  padding: 18px 22px 16px;
+  margin: 0;
+}
+.ih .ih-matchwin.ih-profile .ih-match-content {
+  padding: 18px 22px 24px;
+  gap: 22px;
+}
+.ih-matchwin .ih-match-label {
+  margin: 0 0 6px;
+  font: 600 13.5px var(--amiga-title);
+  color: #000;
+}
+.ih-matchwin .ih-match-foot {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 14px 22px;
 }

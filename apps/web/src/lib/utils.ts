@@ -34,6 +34,13 @@ export function formatChatDayLabel(iso: string): string {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase();
 }
 
+/** A message's time of day only ("1:53 pm"), for threads that mark each day above. */
+export function formatChatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+}
+
 export function formatChatClock(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';

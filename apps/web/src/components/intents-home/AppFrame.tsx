@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
@@ -111,7 +111,20 @@ function AgentWindow() {
 
 /** Beside Home: an open match takes the agent window's place until it's closed. */
 function RightWindow() {
-  const { log } = useAgentWindow();
+  const { log, setLog, open, setOpen } = useAgentWindow();
+  // Esc closes what's open on the right: an opened match first, then the agent chat.
+  // A half-typed message in the chat keeps it open, so Esc never throws a draft away.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (log) { setLog(null); return; }
+      const target = event.target as HTMLElement | null;
+      const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT") && (target as HTMLTextAreaElement).value.trim() !== "";
+      if (open && !typing) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [log, setLog, open, setOpen]);
   return log ? <MatchWindow /> : <AgentWindow />;
 }
 
