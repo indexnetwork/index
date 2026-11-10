@@ -1589,20 +1589,10 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Home questions: drawn like an opportunity row (the asker's agent face on
-   the left, a name line, the question as the blurb, the card's small
-   buttons) on a warm tint, so a question reads apart from a person.
+   Home questions: drawn exactly like an opportunity row (the asker's agent
+   face on the left, a name line, the question as the blurb, the card's
+   small buttons), with the same lines between rows.
    --------------------------------------------------------------------------- */
-.pl-cards.pl-q-list {
-  gap: 8px;
-}
-.pl-cards > li.pl-card.pl-q-row {
-  background: #fffbe6;
-}
-.pl-cards > li.pl-card.pl-q-row::before,
-.pl-cards > li.pl-card.pl-q-row::after {
-  opacity: 0;
-}
 .pl-q-row-meta {
   color: #555;
 }

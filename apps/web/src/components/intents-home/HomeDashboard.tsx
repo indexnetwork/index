@@ -398,7 +398,7 @@ function AskerFace({ question, size }: { question: AgentQuestion; size: number }
 }
 
 /**
- * One question from an agent, drawn like an opportunity row on a warm tint:
+ * One question from an agent, drawn like an opportunity row:
  * the asker's face on the left, who's asking and about which intent, the
  * question, its answers as radios, and the card's small send button.
  */
