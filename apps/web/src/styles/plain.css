@@ -1563,7 +1563,7 @@
 }
 /* Sections breathe: more room above every heading after the first. */
 .pl-page > h2:not(:first-child) {
-  margin-top: 48px;
+  margin-top: 24px;
 }
 .pl-page > h2 {
   margin-bottom: 8px;
