@@ -1555,6 +1555,19 @@
   right: 12px;
   border-top: 1px solid var(--pl-line);
 }
+/* Lines go between rows only: the section heading's rule already sits above
+   the first row, and the space before the next heading closes the last. */
+.pl-cards > li.pl-card:first-child::before,
+.pl-cards > li.pl-card:last-child::after {
+  content: none;
+}
+/* Sections breathe: more room above every heading after the first. */
+.pl-page > h2:not(:first-child) {
+  margin-top: 48px;
+}
+.pl-page > h2 {
+  margin-bottom: 8px;
+}
 /* A filled row hides the lines that would cut through its fill. */
 .pl-cards > li.pl-card.pl-card-open:hover::before,
 .pl-cards > li.pl-card.pl-card-open:hover + li.pl-card::before,
