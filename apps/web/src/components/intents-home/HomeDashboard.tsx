@@ -233,10 +233,6 @@ export default function HomeDashboard() {
     };
   };
 
-  const forIntents = (person: Person) => (
-    <>{" "}for <IntentLinks entries={person.entries} intentById={intentById} /></>
-  );
-
   if (intentsLoaded && intents.length === 0) {
     return withAgent(
       <div className="pl-page">
@@ -259,6 +255,13 @@ export default function HomeDashboard() {
           <p className="pl-dim">none right now.</p>
         ) : (
           <div className="pl-questions">
+            {/* Preview only: the first question in each candidate border, to pick one. */}
+            {QUESTION_BORDER_OPTIONS.map((option, index) => (
+              <div key={option.id} className="pl-q-option">
+                <div className="pl-q-option-label">border option {index + 1}: {option.label}</div>
+                <QuestionItem variant={option.id} number={1} question={questions[0]} intent={intentById.get(questions[0].intentId)} onAnswer={answerAndRefresh} />
+              </div>
+            ))}
             {questions.map((question, index) => (
               <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
             ))}
@@ -288,7 +291,6 @@ export default function HomeDashboard() {
                   <div className="pl-card-body">
                   <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
-                  {forIntents(person)}
                   {blurb && <div className="pl-blurb">{blurb}</div>}
                   <div className="pl-actions">
                     {hasChat ? (
@@ -328,7 +330,6 @@ export default function HomeDashboard() {
                       <div className="pl-card-head">
                         <span>
                           <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                          {forIntents(person)}
                         </span>
                         <span className={`pl-status ${talking ? "talks" : "chat"}`}>
                           {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
@@ -374,8 +375,19 @@ function AskerName({ question, fallback }: { question: AgentQuestion; fallback: 
   );
 }
 
-function QuestionItem({ number, question, intent, onAnswer }: {
+/** Candidate borders for the question card (preview only, to pick one). */
+const QUESTION_BORDER_OPTIONS = [
+  { id: "hairline", label: "hairline box" },
+  { id: "fill", label: "soft fill, no border" },
+  { id: "rules", label: "top and bottom rules" },
+  { id: "dashed", label: "dashed hairline, warm tint" },
+  { id: "lift", label: "hairline box with a soft shadow" },
+] as const;
+
+function QuestionItem({ number, question, intent, variant, onAnswer }: {
   number: number;
+  /** A candidate border from QUESTION_BORDER_OPTIONS; omit for the current card. */
+  variant?: (typeof QUESTION_BORDER_OPTIONS)[number]["id"];
   question: AgentQuestion;
   intent?: HomeIntent;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
@@ -401,7 +413,7 @@ function QuestionItem({ number, question, intent, onAnswer }: {
   };
 
   return (
-    <form className="pl-q" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+    <form className={variant ? `pl-q pl-q-${variant}` : "pl-q"} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <fieldset>
         <legend>
           <span className="pl-q-face">
@@ -433,41 +445,5 @@ function QuestionItem({ number, question, intent, onAnswer }: {
         </div>
       </fieldset>
     </form>
-  );
-}
-
-/** The intents someone matched on: the top two, then "+N" to show the rest. */
-function IntentLinks({ entries, intentById }: { entries: Entry[]; intentById: Map<string, HomeIntent> }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? entries : entries.slice(0, 2);
-  const rest = entries.length - shown.length;
-  return (
-    <>
-      {shown.map((entry, i) => (
-        <span key={entry.intentId}>
-          {i > 0 && ", "}
-          <Link to={`/i/${entry.intentId}`} title={intentById.get(entry.intentId)?.payload}>{intentLabel(intentById.get(entry.intentId))}</Link>
-        </span>
-      ))}
-      {rest > 0 && (
-        <>
-          {" "}
-          <button
-            type="button"
-            className="pl-more"
-            title={entries.slice(2).map((entry) => intentLabel(intentById.get(entry.intentId))).join("\n")}
-            onClick={() => setOpen(true)}
-          >
-            +{rest}
-          </button>
-        </>
-      )}
-      {open && entries.length > 2 && (
-        <>
-          {" "}
-          <button type="button" className="pl-more" onClick={() => setOpen(false)}>less</button>
-        </>
-      )}
-    </>
   );
 }

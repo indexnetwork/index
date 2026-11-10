@@ -1588,3 +1588,146 @@
   display: block;
   margin: -8px 0 10px;
 }
+
+/* ---------------------------------------------------------------------------
+   Home cards: rows with inner padding, so the hover and selected fill has
+   room around the avatar and text. A negative margin keeps the text on the
+   column's edge, and the separators are inset to the same edge.
+   --------------------------------------------------------------------------- */
+.pl-cards {
+  gap: 0;
+}
+.pl-cards > li.pl-card,
+.pl-cards > li.pl-card.live,
+.pl-cards > li.pl-card.talks,
+.pl-cards > li.pl-card.paused,
+.pl-cards > li.pl-card:first-child {
+  position: relative;
+  margin: 0 -12px;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 6px;
+  transition: background-color 0.12s ease;
+}
+.pl-cards > li.pl-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  border-top: 1px solid var(--pl-line);
+}
+.pl-cards > li.pl-card:last-child::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  border-top: 1px solid var(--pl-line);
+}
+/* A filled row hides the lines that would cut through its fill. */
+.pl-cards > li.pl-card.pl-card-open:hover::before,
+.pl-cards > li.pl-card.pl-card-open:hover + li.pl-card::before,
+.pl-cards > li.pl-card.pl-card-open:hover::after,
+.pl-cards > li.pl-card.pl-card-open.on::before,
+.pl-cards > li.pl-card.pl-card-open.on + li.pl-card::before,
+.pl-cards > li.pl-card.pl-card-open.on::after {
+  opacity: 0;
+}
+.pl-cards > li.pl-card.pl-card-open:hover {
+  background: #f7f7f5;
+}
+/* Selected: a quiet fill, no bar on the left. */
+.pl-cards > li.pl-card.pl-card-open.on {
+  background: #f0f0ed;
+  box-shadow: none;
+  padding-left: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-cards > li.pl-card {
+    transition: none;
+  }
+}
+
+/* Home card buttons: the size of main's opportunity card buttons (wb-btn small). */
+.ih .pl .pl-cards .pl-actions button:not(.pl-row):not(.pl-more) {
+  height: auto;
+  padding: 3px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Question card border options (preview only, to pick one). The legend is
+   floated so it sits inside the card instead of on the border.
+   --------------------------------------------------------------------------- */
+.pl-q-option-label {
+  margin: 0 0 6px;
+  font: 500 11px var(--ih-sans, "IBM Plex Sans", sans-serif);
+  color: #777;
+}
+.pl-q[class*="pl-q-"] legend {
+  float: left;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0 0 2px;
+  border: 0;
+  background: none;
+  color: #555;
+}
+.pl-q[class*="pl-q-"] .pl-q-text {
+  clear: both;
+}
+.pl-q[class*="pl-q-"] fieldset {
+  box-shadow: none;
+}
+.pl-q[class*="pl-q-"] .pl-q-send {
+  border-top: 1px solid #eeeeec;
+}
+
+/* 1. hairline box */
+.pl-q.pl-q-hairline fieldset {
+  border: 1px solid #e3e3e0;
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px 16px 14px;
+}
+/* 2. soft fill, no border */
+.pl-q.pl-q-fill fieldset {
+  border: 0;
+  border-radius: 8px;
+  background: #f7f7f5;
+  padding: 14px 16px;
+}
+.pl-q.pl-q-fill .pl-q-send {
+  border-top-color: #e8e8e5;
+}
+/* 3. top and bottom rules */
+.pl-q.pl-q-rules fieldset {
+  border: 0;
+  border-top: 1px solid #e3e3e0;
+  border-bottom: 1px solid #e3e3e0;
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 0;
+}
+/* 4. dashed hairline, warm tint */
+.pl-q.pl-q-dashed fieldset {
+  border: 1px dashed #d9d3bf;
+  border-radius: 6px;
+  background: #fffdf5;
+  padding: 12px 16px 14px;
+}
+.pl-q.pl-q-dashed .pl-q-send {
+  border-top: 1px dashed #e6dfc8;
+}
+/* 5. hairline box with a soft shadow */
+.pl-q.pl-q-lift fieldset {
+  border: 1px solid #ececea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+}
