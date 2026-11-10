@@ -1606,16 +1606,25 @@
    face on the left, a name line, the question as the blurb, the card's
    small buttons), with the same lines between rows.
    --------------------------------------------------------------------------- */
-.pl-q-row-meta {
-  color: #555;
+/* Like the question card on main: the asker quiet and grey, the question in
+   semibold; every line of the question at 13px. */
+.pl-q-row .pl-card-body {
+  font-size: 13px;
 }
-.pl-q-row-meta b {
-  color: #000;
+.pl-q-row-meta {
+  color: #8f8f88;
+}
+.ih .pl .pl-q-row-meta a.pl-name,
+.ih .pl .pl-q-row-meta a.pl-name:visited {
+  color: inherit;
+  font-weight: 400;
 }
 .pl-q-row-text {
   margin-top: 4px;
-  font-size: 15px;
-  color: #000;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: #2a2a2a;
 }
 .pl-q-options {
   margin-top: 10px;
@@ -1629,4 +1638,5 @@
 }
 .pl-q-options input[type="text"] {
   margin: 2px 0 0 22px;
+  font-size: 13px;
 }

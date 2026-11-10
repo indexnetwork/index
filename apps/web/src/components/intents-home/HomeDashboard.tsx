@@ -413,7 +413,7 @@ function QuestionItem({ question, onAnswer }: {
       <AskerFace question={question} size={44} />
       <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="pl-q-row-meta">
-          <b><AskerName question={question} fallback={asker.label} /></b>
+          <AskerName question={question} fallback={asker.label} />
         </div>
         <div className="pl-blurb pl-q-row-text">{question.question}</div>
         <div className="pl-q-options">
