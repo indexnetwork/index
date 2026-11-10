@@ -300,20 +300,6 @@
 .ih-head.ih-head-centered {
   align-items: center;
 }
-/* Home: the rotating line after the greeting, in the greeting's type. */
-.ih-rotating-line {
-  display: inline;
-  transition-property: opacity;
-  transition-timing-function: ease;
-}
-.ih-rotating-line[data-visible="false"] {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ih-rotating-line {
-    transition: none;
-  }
-}
 .ih-actions {
   display: flex;
   gap: 8px;
