@@ -100,10 +100,7 @@ export default function HomeDashboard() {
     <div className="ih-view pl">
       <div className="pl-col">
         <PageHead
-          title={user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."}
-          dot="var(--ih-live)"
-          status={<RotatingLine lines={HOME_STATUS_LINES} />}
-          inlineStatus
+          title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} <RotatingLine lines={HOME_STATUS_LINES} /></>}
         >
           <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
         </PageHead>
