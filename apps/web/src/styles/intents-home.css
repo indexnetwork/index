@@ -297,6 +297,33 @@
   flex: none;
   display: inline-block;
 }
+/* Home: the greeting and its status share one line. */
+.ih-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 14px;
+  flex-wrap: wrap;
+}
+.ih-title-row .ih-title {
+  flex: none;
+}
+.ih-status.ih-status-inline {
+  margin-top: 0;
+  min-width: 0;
+}
+.ih-rotating-line {
+  display: inline-block;
+  transition-property: opacity;
+  transition-timing-function: ease;
+}
+.ih-rotating-line[data-visible="false"] {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ih-rotating-line {
+    transition: none;
+  }
+}
 .ih-actions {
   display: flex;
   gap: 8px;

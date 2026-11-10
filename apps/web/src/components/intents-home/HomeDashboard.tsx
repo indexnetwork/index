@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 
 import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
+import RotatingLine from "@/components/intents-home/RotatingLine";
 import "@/styles/plain.css";
 import { RANK, intentLabel, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
@@ -74,6 +75,16 @@ function demoPeople(intentIds: string[]): Person[] {
   });
 }
 
+/** The line beside the greeting, shown one at a time while the agents work. */
+const HOME_STATUS_LINES = [
+  "good things are taking shape.",
+  "the world is rearranging around your intentions.",
+  "an opportunity is taking shape.",
+  "your next coincidence is in the making.",
+  "possibilities are finding their way to you.",
+  "your intentions are finding their counterparts.",
+] as const;
+
 /**
  * Home: come in, answer your agents, see who they found, leave.
  * A plain page on purpose: text, links and native controls.
@@ -89,10 +100,10 @@ export default function HomeDashboard() {
     <div className="ih-view pl">
       <div className="pl-col">
         <PageHead
-          eyebrow="HOME"
-          title={user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "home"}
+          title={user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."}
           dot="var(--ih-live)"
-          status="your agents are looking in the background"
+          status={<RotatingLine lines={HOME_STATUS_LINES} />}
+          inlineStatus
         >
           <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
         </PageHead>
