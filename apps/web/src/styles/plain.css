@@ -1667,18 +1667,24 @@
   font: 500 11px var(--ih-sans, "IBM Plex Sans", sans-serif);
   color: #777;
 }
-.pl-q[class*="pl-q-"] legend {
-  float: left;
-  width: 100%;
-  max-width: none;
-  padding: 0;
-  margin: 0 0 2px;
-  border: 0;
-  background: none;
+/* Questions put the asker's face on the left, like an opportunity row. */
+.pl-q-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.pl-q-layout .pl-q-text {
+  margin: 4px 0 10px;
+}
+.pl-q:not([class*="pl-q-"]) .pl-q-layout {
+  margin-top: 6px;
+}
+.pl-q-row .pl-q-row-meta,
+.pl-q .pl-q-row-meta {
   color: #555;
 }
-.pl-q[class*="pl-q-"] .pl-q-text {
-  clear: both;
+.pl-q .pl-q-row-meta b {
+  color: #000;
 }
 .pl-q[class*="pl-q-"] fieldset {
   box-shadow: none;
@@ -1823,7 +1829,6 @@
 
 /* 10. compact: small face, the answers and send on one line */
 .pl-cards > li.pl-card.pl-q-row-compact {
-  gap: 10px;
   padding-top: 10px;
   padding-bottom: 10px;
 }

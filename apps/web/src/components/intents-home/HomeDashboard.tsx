@@ -401,7 +401,7 @@ const QUESTION_ROW_OPTIONS = [
   { id: "row-chips", label: "opportunity row, answers as buttons", chips: true },
   { id: "row-fill", label: "opportunity row in the hover fill", chips: true },
   { id: "row-title", label: "question as the title, asker under it", chips: true },
-  { id: "row-compact", label: "compact row, small face, one line of answers", chips: true },
+  { id: "row-compact", label: "compact row, answers and send on one line", chips: true },
   { id: "row-warm", label: "opportunity row on a warm tint", chips: true },
 ] as const;
 
@@ -426,6 +426,14 @@ function useQuestionAnswer(question: AgentQuestion, onAnswer: (intentId: string,
   return { choice, setChoice, own, setOwn, sending, options, text, submit };
 }
 
+/** The asking agent's face, sized and linked like an opportunity row's avatar. */
+function AskerFace({ question, size }: { question: AgentQuestion; size: number }) {
+  const asker = questionAsker(question);
+  return asker.owner
+    ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={size} /></Link>
+    : <span className="pl-card-face"><MyAgentAvatar size={size} /></span>;
+}
+
 function QuestionRow({ question, intent, variant, chips, onAnswer }: {
   question: AgentQuestion;
   intent?: HomeIntent;
@@ -435,12 +443,8 @@ function QuestionRow({ question, intent, variant, chips, onAnswer }: {
 }) {
   const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
   const asker = questionAsker(question);
-  const compact = variant === "row-compact";
-  const size = compact ? 28 : 44;
   const name = `qr-${variant}-${question.id}`;
-  const face = asker.owner
-    ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={size} /></Link>
-    : <span className="pl-card-face"><MyAgentAvatar size={size} /></span>;
+  const face = <AskerFace question={question} size={44} />;
   const about = intent && <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link>;
   const who = <b><AskerName question={question} fallback={asker.label} /></b>;
   return (
@@ -491,56 +495,41 @@ function QuestionItem({ number, question, intent, variant, onAnswer }: {
   intent?: HomeIntent;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
 }) {
-  const { error: showError } = useNotifications();
-  const [choice, setChoice] = useState("");
-  const [own, setOwn] = useState("");
-  const [sending, setSending] = useState(false);
-  const options = question.options ?? [];
-  const text = (choice === "__own" || options.length === 0 ? own : choice).trim();
-  const name = `q-${question.id}`;
+  const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
+  const name = `q-${variant ?? "current"}-${question.id}`;
   const asker = questionAsker(question);
-
-  const submit = async () => {
-    if (!text || sending) return;
-    setSending(true);
-    try {
-      await onAnswer(question.intentId, question.id, text);
-    } catch {
-      showError("couldn't send your answer.");
-      setSending(false);
-    }
-  };
+  const about = intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>;
 
   return (
     <form className={variant ? `pl-q pl-q-${variant}` : "pl-q"} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <fieldset>
-        <legend>
-          <span className="pl-q-face">
-            {asker.owner
-              ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={18} /></Link>
-              : <MyAgentAvatar size={18} />}
-          </span>
-          #{number} · <AskerName question={question} fallback={asker.label} />
-          {intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>}
-        </legend>
-        <p className="pl-q-text">{question.question}</p>
-        <div className="pl-q-options">
-          {options.map((option) => (
-            <label key={option}>
-              <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
-            </label>
-          ))}
-          {options.length > 0 && (
-            <label>
-              <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
-            </label>
-          )}
-          {(options.length === 0 || choice === "__own") && (
-            <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
-          )}
-        </div>
-        <div className="pl-q-send">
-          <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
+        {/* The current card keeps its tag on the border; the options put the asker on the name line. */}
+        {!variant && <legend>#{number} · <AskerName question={question} fallback={asker.label} />{about}</legend>}
+        {/* Laid out like an opportunity row: the face on the left, top-aligned with the first line. */}
+        <div className="pl-q-layout">
+          <AskerFace question={question} size={44} />
+          <div className="pl-card-body">
+            {variant && <div className="pl-q-row-meta"><b><AskerName question={question} fallback={asker.label} /></b>{about}</div>}
+            <p className="pl-q-text">{question.question}</p>
+            <div className="pl-q-options">
+              {options.map((option) => (
+                <label key={option}>
+                  <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
+                </label>
+              ))}
+              {options.length > 0 && (
+                <label>
+                  <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
+                </label>
+              )}
+              {(options.length === 0 || choice === "__own") && (
+                <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
+              )}
+            </div>
+            <div className="pl-q-send">
+              <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
+            </div>
+          </div>
         </div>
       </fieldset>
     </form>
