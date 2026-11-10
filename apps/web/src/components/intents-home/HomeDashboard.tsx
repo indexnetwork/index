@@ -278,8 +278,8 @@ export default function HomeDashboard() {
                 <li key={person.key} {...cardProps(person, "pl-card")}>
                   {/* The person themselves here, not their agent: this is who you'd meet. */}
                   {person.userId
-                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={44} /></Link>
-                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={44} />}
+                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={36} /></Link>
+                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={36} />}
                   <div className="pl-card-body">
                   <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
@@ -316,8 +316,8 @@ export default function HomeDashboard() {
                 return (
                   <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
                     {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={44} /></Link>
-                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={44} />}
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
+                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={36} />}
                     <div className="pl-card-body">
                       <div className="pl-card-head">
                         <span>
@@ -410,7 +410,7 @@ function QuestionItem({ question, onAnswer }: {
   const name = `q-${question.id}`;
   return (
     <li className="pl-card pl-q-row">
-      <AskerFace question={question} size={44} />
+      <AskerFace question={question} size={36} />
       <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="pl-q-row-meta">
           <AskerName question={question} fallback={asker.label} />
