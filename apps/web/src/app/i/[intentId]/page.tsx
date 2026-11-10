@@ -21,7 +21,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
+import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, formatRadarAge, personWindowTitle, radarActivityAt, radarActivityMs, radarBucketForOpportunity, radarEmptyLine, radarStatusLabel, type RadarBucket } from "@/lib/radar-buckets";
 import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction, SummarySection } from "@/components/workbench/mac-blocks";
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { useCompact } from "@/hooks/useCompact";
@@ -133,7 +133,7 @@ function IntentDetail() {
   const onAccepted = useCallback((update: AcceptedOpportunityUpdate) => {
     setOpportunities((prev) => prev.map((item) =>
       item.opportunityId === update.opportunityId
-        ? { ...item, status: update.status, viewerCommitted: update.viewerCommitted ?? true }
+        ? { ...item, status: update.status, viewerCommitted: update.viewerCommitted ?? true, updatedAt: new Date().toISOString() }
         : item,
     ));
     setOpenPersonId(update.opportunityId);
@@ -379,12 +379,19 @@ function IntentDetail() {
     return counts;
   }, [opportunities, bucketOf]);
 
+  // Card ages ("3h") are relative, so re-render them once a minute.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const visibleOpportunities = useMemo(
     () => opportunities.filter((item) => {
       const bucket = bucketOf(item);
       if (!bucket) return false;
       return selectedBucket === "all" || bucket === selectedBucket;
-    }).sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || "")),
+    }).sort((a, b) => radarActivityMs(b) - radarActivityMs(a)),
     [opportunities, bucketOf, selectedBucket],
   );
   const chatPeers = useMemo(() => {
@@ -526,7 +533,7 @@ function IntentDetail() {
     </div>
   );
   const radarList = (
-    <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 16px 24px", display: "grid", gap: 0, alignContent: "start" }}>
+    <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
       {/* A failed fetch wins over the discovery loader, even inside the give-up window. */}
       {opportunitiesError && visibleOpportunities.length === 0 && !opportunitiesLoading ? (
         <EmptyState
@@ -552,16 +559,12 @@ function IntentDetail() {
         />
       ) : visibleOpportunities.map((item) => {
         const bucket = bucketOf(item);
+        if (!bucket) return null;
         const busy = !!opportunityActionLoading[item.opportunityId];
         const peer = item.peer;
         const name = item.name || peer?.name || "unknown";
         const blurb = item.headline || item.mainText || "";
-        // "chat open" chip only while this viewer has said yes and
-        // the other person has not. A mutual accept stays a plain
-        // accepted row, same as the Mac card.
-        const waitingOnThem = item.status === "pending" && (
-          opportunityStatusMap[item.opportunityId] === "accepted" || item.viewerCommitted === true
-        );
+        const activityAt = radarActivityAt(item);
         return (
           <MatchCard
             key={item.opportunityId}
@@ -574,8 +577,8 @@ function IntentDetail() {
             ready={bucket === "awaiting you"}
             negotiating={bucket === "negotiating"}
             expired={bucket === "closed"}
-            closedLabel={item.status === "rejected" ? "not a fit" : "missed"}
-            waitingOnThem={waitingOnThem}
+            statusLabel={radarStatusLabel(bucket, item.status)}
+            age={formatRadarAge(activityAt, now)}
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
             onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
             onOpenChat={() => navigate(`/u/${item.userId || peer?.userId}/chat`)}

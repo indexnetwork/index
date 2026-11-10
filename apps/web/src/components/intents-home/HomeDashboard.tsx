@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
-import { RANK, intentLabel, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
+import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { useAgentQuestions, type AgentQuestion } from "@/components/intents-home/useAgentQuestions";
@@ -74,6 +74,17 @@ function demoPeople(intentIds: string[]): Person[] {
   });
 }
 
+/** The line after the greeting; one is picked per page load. */
+const HOME_STATUS_LINES = [
+  "good things are taking shape.",
+  "the world is rearranging around your intentions.",
+  "an opportunity is taking shape.",
+  "your next coincidence is in the making.",
+  "possibilities are finding their way to you.",
+  "your intentions are finding their counterparts.",
+];
+const HOME_STATUS_LINE = HOME_STATUS_LINES[Math.floor(Math.random() * HOME_STATUS_LINES.length)];
+
 /**
  * Home: come in, answer your agents, see who they found, leave.
  * A plain page on purpose: text, links and native controls.
@@ -89,10 +100,8 @@ export default function HomeDashboard() {
     <div className="ih-view pl">
       <div className="pl-col">
         <PageHead
-          eyebrow="HOME"
-          title={user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "home"}
-          dot="var(--ih-live)"
-          status="your agents are looking in the background"
+          title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} {HOME_STATUS_LINE}</>}
+          centered
         >
           <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
         </PageHead>
@@ -129,7 +138,6 @@ export default function HomeDashboard() {
     setRefreshing((prev) => ({ ...prev, [intentId]: stagesOf(intentId) }));
     void loadRadar(intentId, "skeleton");
   };
-  const intentById = useMemo(() => new Map(intents.map((intent) => [intent.id, intent])), [intents]);
 
   // One line per person, across intents; their best stage decides where they sit.
   const byStage = useMemo(() => {
@@ -224,10 +232,6 @@ export default function HomeDashboard() {
     };
   };
 
-  const forIntents = (person: Person) => (
-    <>{" "}for <IntentLinks entries={person.entries} intentById={intentById} /></>
-  );
-
   if (intentsLoaded && intents.length === 0) {
     return withAgent(
       <div className="pl-page">
@@ -249,11 +253,11 @@ export default function HomeDashboard() {
         ) : questions.length === 0 ? (
           <p className="pl-dim">none right now.</p>
         ) : (
-          <div className="pl-questions">
-            {questions.map((question, index) => (
-              <QuestionItem key={question.id} number={index + 1} question={question} intent={intentById.get(question.intentId)} onAnswer={answerAndRefresh} />
+          <ul className="pl-cards pl-q-list">
+            {questions.map((question) => (
+              <QuestionItem key={question.id} question={question} onAnswer={answerAndRefresh} />
             ))}
-          </div>
+          </ul>
         )}
 
         <hr />
@@ -274,12 +278,11 @@ export default function HomeDashboard() {
                 <li key={person.key} {...cardProps(person, "pl-card")}>
                   {/* The person themselves here, not their agent: this is who you'd meet. */}
                   {person.userId
-                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={44} /></Link>
-                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={44} />}
+                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={36} /></Link>
+                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={36} />}
                   <div className="pl-card-body">
                   <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
-                  {forIntents(person)}
                   {blurb && <div className="pl-blurb">{blurb}</div>}
                   <div className="pl-actions">
                     {hasChat ? (
@@ -313,13 +316,12 @@ export default function HomeDashboard() {
                 return (
                   <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
                     {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={44} /></Link>
-                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={44} />}
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
+                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={36} />}
                     <div className="pl-card-body">
                       <div className="pl-card-head">
                         <span>
                           <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                          {forIntents(person)}
                         </span>
                         <span className={`pl-status ${talking ? "talks" : "chat"}`}>
                           {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
@@ -365,21 +367,14 @@ function AskerName({ question, fallback }: { question: AgentQuestion; fallback: 
   );
 }
 
-function QuestionItem({ number, question, intent, onAnswer }: {
-  number: number;
-  question: AgentQuestion;
-  intent?: HomeIntent;
-  onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
-}) {
+/** One answer in progress: the picked option or your own words, and sending it. */
+function useQuestionAnswer(question: AgentQuestion, onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>) {
   const { error: showError } = useNotifications();
   const [choice, setChoice] = useState("");
   const [own, setOwn] = useState("");
   const [sending, setSending] = useState(false);
   const options = question.options ?? [];
   const text = (choice === "__own" || options.length === 0 ? own : choice).trim();
-  const name = `q-${question.id}`;
-  const asker = questionAsker(question);
-
   const submit = async () => {
     if (!text || sending) return;
     setSending(true);
@@ -390,20 +385,37 @@ function QuestionItem({ number, question, intent, onAnswer }: {
       setSending(false);
     }
   };
+  return { choice, setChoice, own, setOwn, sending, options, text, submit };
+}
 
+/** The asking agent's face, sized and linked like an opportunity row's avatar. */
+function AskerFace({ question, size }: { question: AgentQuestion; size: number }) {
+  const asker = questionAsker(question);
+  return asker.owner
+    ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={size} /></Link>
+    : <span className="pl-card-face"><MyAgentAvatar size={size} /></span>;
+}
+
+/**
+ * One question from an agent, drawn like an opportunity row: the asker's face
+ * on the left, who's asking, the question, its answers as radios, and the
+ * card's small send button.
+ */
+function QuestionItem({ question, onAnswer }: {
+  question: AgentQuestion;
+  onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
+}) {
+  const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
+  const asker = questionAsker(question);
+  const name = `q-${question.id}`;
   return (
-    <form className="pl-q" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <fieldset>
-        <legend>
-          <span className="pl-q-face">
-            {asker.owner
-              ? <Link to={`/u/${asker.owner.id}`} className="pl-card-face" title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={18} /></Link>
-              : <MyAgentAvatar size={18} />}
-          </span>
-          #{number} · <AskerName question={question} fallback={asker.label} />
-          {intent && <> · <Link to={`/i/${intent.id}`} className="pl-q-about" title={intent.payload}>{intentLabel(intent)}</Link></>}
-        </legend>
-        <p className="pl-q-text">{question.question}</p>
+    <li className="pl-card pl-q-row">
+      <AskerFace question={question} size={36} />
+      <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <div className="pl-q-row-meta">
+          <AskerName question={question} fallback={asker.label} />
+        </div>
+        <div className="pl-blurb pl-q-row-text">{question.question}</div>
         <div className="pl-q-options">
           {options.map((option) => (
             <label key={option}>
@@ -419,46 +431,10 @@ function QuestionItem({ number, question, intent, onAnswer }: {
             <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
           )}
         </div>
-        <div className="pl-q-send">
+        <div className="pl-actions">
           <button type="submit" className="go" disabled={!text || sending}>{sending ? "sending…" : "send answer"}</button>
         </div>
-      </fieldset>
-    </form>
-  );
-}
-
-/** The intents someone matched on: the top two, then "+N" to show the rest. */
-function IntentLinks({ entries, intentById }: { entries: Entry[]; intentById: Map<string, HomeIntent> }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? entries : entries.slice(0, 2);
-  const rest = entries.length - shown.length;
-  return (
-    <>
-      {shown.map((entry, i) => (
-        <span key={entry.intentId}>
-          {i > 0 && ", "}
-          <Link to={`/i/${entry.intentId}`} title={intentById.get(entry.intentId)?.payload}>{intentLabel(intentById.get(entry.intentId))}</Link>
-        </span>
-      ))}
-      {rest > 0 && (
-        <>
-          {" "}
-          <button
-            type="button"
-            className="pl-more"
-            title={entries.slice(2).map((entry) => intentLabel(intentById.get(entry.intentId))).join("\n")}
-            onClick={() => setOpen(true)}
-          >
-            +{rest}
-          </button>
-        </>
-      )}
-      {open && entries.length > 2 && (
-        <>
-          {" "}
-          <button type="button" className="pl-more" onClick={() => setOpen(false)}>less</button>
-        </>
-      )}
-    </>
+      </form>
+    </li>
   );
 }

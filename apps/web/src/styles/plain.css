@@ -254,61 +254,6 @@
   width: 1%;
 }
 
-/* questions: one classic form box each, with an orange tag on the border */
-.pl-questions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.pl-q fieldset {
-  /* A fieldset is min-content wide by default, so a long label would stretch it. */
-  min-width: 0;
-  margin: 0;
-  border: 2px solid #000;
-  padding: 8px 14px 12px;
-  background: #fffbe6;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
-}
-.pl-q legend {
-  max-width: calc(100% - 16px);
-  box-sizing: border-box;
-  padding: 2px 8px;
-  font: 500 10.5px "JetBrains Mono", ui-monospace, monospace;
-  color: #000;
-  background: #fff;
-  border: 1px solid #000;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pl .pl-q legend a,
-.pl .pl-q legend a:visited {
-  color: #0000ee;
-}
-.pl .pl-q legend a:hover {
-  background: #ffff66;
-}
-.pl-q-text {
-  font-size: 15px;
-  margin: 6px 0 10px;
-}
-.pl-q-options {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.pl-q-options label {
-  cursor: pointer;
-}
-.pl-q-options input[type="text"] {
-  margin: 2px 0 0 22px;
-}
-.pl-q-send {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed #000;
-}
 .pl h2[id] {
   scroll-margin-top: 16px;
 }
@@ -319,11 +264,6 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-.pl-q-face {
-  display: inline-block;
-  vertical-align: -4px;
-  margin-right: 6px;
 }
 
 /* "+N" after the top two intents */
@@ -1289,16 +1229,6 @@
   border-top: 1px solid var(--pl-line);
 }
 
-/* questions keep their framed yellow card, minus the grey drop shadow */
-.pl-q fieldset {
-  box-shadow: none;
-}
-.ih .pl .pl-q-send button.go {
-  border: 1px solid #000;
-  border-radius: 0;
-  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500;
-}
-
 /* everything else that was a framed box */
 .pl-table,
 .pl-ni,
@@ -1587,4 +1517,127 @@
 .ih .pl button.pl-back.ih-head-back {
   display: block;
   margin: -8px 0 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   Home cards: rows with inner padding, so the hover and selected fill has
+   room around the avatar and text. A negative margin keeps the text on the
+   column's edge, and the separators are inset to the same edge.
+   --------------------------------------------------------------------------- */
+.pl-cards {
+  gap: 0;
+}
+.pl-cards > li.pl-card,
+.pl-cards > li.pl-card.live,
+.pl-cards > li.pl-card.talks,
+.pl-cards > li.pl-card.paused,
+.pl-cards > li.pl-card:first-child {
+  position: relative;
+  margin: 0 -12px;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 6px;
+  transition: background-color 0.12s ease;
+}
+.pl-cards > li.pl-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  border-top: 1px solid var(--pl-line);
+}
+.pl-cards > li.pl-card:last-child::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  border-top: 1px solid var(--pl-line);
+}
+/* Lines go between rows only: the section heading's rule already sits above
+   the first row, and the space before the next heading closes the last. */
+.pl-cards > li.pl-card:first-child::before,
+.pl-cards > li.pl-card:last-child::after {
+  content: none;
+}
+/* Sections breathe: more room above every heading after the first. */
+.pl-page > h2:not(:first-child) {
+  margin-top: 24px;
+}
+.pl-page > h2 {
+  margin-bottom: 8px;
+}
+/* A filled row hides the lines that would cut through its fill. */
+.pl-cards > li.pl-card.pl-card-open:hover::before,
+.pl-cards > li.pl-card.pl-card-open:hover + li.pl-card::before,
+.pl-cards > li.pl-card.pl-card-open:hover::after,
+.pl-cards > li.pl-card.pl-card-open.on::before,
+.pl-cards > li.pl-card.pl-card-open.on + li.pl-card::before,
+.pl-cards > li.pl-card.pl-card-open.on::after {
+  opacity: 0;
+}
+.pl-cards > li.pl-card.pl-card-open:hover {
+  background: #f7f7f5;
+}
+/* Selected: a quiet fill, no bar on the left. */
+.pl-cards > li.pl-card.pl-card-open.on {
+  background: #f0f0ed;
+  box-shadow: none;
+  padding-left: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-cards > li.pl-card {
+    transition: none;
+  }
+}
+
+/* Home card buttons: the size of main's opportunity card buttons (wb-btn small). */
+.ih .pl .pl-cards .pl-actions button:not(.pl-row):not(.pl-more) {
+  height: auto;
+  padding: 3px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   Home questions: drawn exactly like an opportunity row (the asker's agent
+   face on the left, a name line, the question as the blurb, the card's
+   small buttons), with the same lines between rows.
+   --------------------------------------------------------------------------- */
+/* Like the question card on main: the asker quiet and grey at 13px, the
+   question in semibold; the question and its answers at 14px. */
+.pl-q-row .pl-card-body {
+  font-size: 13px;
+}
+.pl-q-row-meta {
+  color: #8f8f88;
+}
+.ih .pl .pl-q-row-meta a.pl-name,
+.ih .pl .pl-q-row-meta a.pl-name:visited {
+  color: inherit;
+  font-weight: 400;
+}
+.pl-q-row-text {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: #2a2a2a;
+}
+.pl-q-options {
+  margin-top: 10px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.pl-q-options label {
+  cursor: pointer;
+}
+.pl-q-options input[type="text"] {
+  margin: 2px 0 0 22px;
+  font-size: 14px;
 }

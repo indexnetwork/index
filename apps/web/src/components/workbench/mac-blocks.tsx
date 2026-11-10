@@ -13,8 +13,8 @@ export function NotOnIndexTag() {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifySelf: "start", width: "fit-content", maxWidth: "100%",
-      fontFamily: "var(--mac-sans)", fontSize: 11, lineHeight: 1.4, whiteSpace: "normal",
-      color: "var(--ink-2)", background: "var(--wb-selected)", borderRadius: 2, padding: "1px 6px",
+      fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4, whiteSpace: "normal",
+      color: "var(--ink-2)", background: "#E8E6E1", padding: "2px 6px",
     }}>Not yet on Index</span>
   );
 }
@@ -29,8 +29,8 @@ export function MatchCard({
   ready,
   negotiating,
   expired,
-  closedLabel,
-  waitingOnThem,
+  statusLabel,
+  age,
   hasChat,
   onOpen,
   onOpenChat,
@@ -47,9 +47,10 @@ export function MatchCard({
   ready: boolean;
   negotiating: boolean;
   expired: boolean;
-  /** Chip on a closed card: "not a fit" or "missed". */
-  closedLabel?: string;
-  waitingOnThem?: boolean;
+  /** Stage word under the buttons: "awaiting you", "in progress", "accepted", "not a fit" or "missed". */
+  statusLabel: string;
+  /** How long ago the card last changed ("3h"), joined to the stage word. */
+  age?: string | null;
   hasChat: boolean;
   onOpen: () => void;
   onOpenChat: () => void;
@@ -62,82 +63,67 @@ export function MatchCard({
     e.stopPropagation();
     onProfile();
   };
+  const agentLogStyle = { display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" } as const;
+  const actions = accepted ? (
+    <button type="button" className="wb-btn primary small" onClick={onOpen}>
+      {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
+    </button>
+  ) : ready && hasChat ? (
+    <button type="button" className="wb-btn primary small" onClick={onOpenChat}>open chat ›</button>
+  ) : ready ? (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>
+      <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
+    </div>
+  ) : negotiating ? (
+    <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
+      <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
+      agent log ›
+    </button>
+  ) : expired ? (
+    <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
+      agent log ›
+    </button>
+  ) : null;
   return (
     <div
+      className="wb-main-card"
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       onClick={onProfile}
       style={{
         textAlign: "left",
         display: "grid",
         gridTemplateColumns: "auto minmax(0, 1fr) auto",
-        gap: 12,
-        padding: "12px 0", minWidth: 0,
-        background: hover ? "var(--wb-hover)" : "transparent", color: "var(--ink)",
-        borderBottom: "1px solid var(--wb-divider)",
+        gap: 14,
+        padding: "14px 14px", minWidth: 0,
+        background: "#fff", color: "#000",
+        border: "1px solid #000",
+        borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
+        boxShadow: hover ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
+        transform: hover ? "translate(-1px, -1px)" : "none",
         cursor: "pointer",
-        transition: "background .12s ease",
+        transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
-        <UserAvatar id={userId} name={name} avatar={photo} size={28} />
+        <UserAvatar id={userId} name={name} avatar={photo} size={36} />
       </span>
-      <div style={{ display: "grid", gap: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+      <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
           <span title="view profile" onClick={openProfile} style={{
-            fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, cursor: userId ? "pointer" : undefined,
+            fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
             minWidth: 0, whiteSpace: "normal",
           }}>{name}</span>
           {unverified && <NotOnIndexTag />}
         </div>
-        <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "#666" }}>{blurb}</div>
+        <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>
       </div>
       <div style={{ display: "grid", gap: 6, alignContent: "start", justifyItems: "end" }} onClick={(e) => e.stopPropagation()}>
-        {accepted ? (
-          <>
-            {waitingOnThem && <StatusLabel color="#6b8bc4">chat open</StatusLabel>}
-            <button type="button" className="wb-btn small" onClick={onOpen}>
-              {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
-            </button>
-          </>
-        ) : ready && hasChat ? (
-          <button type="button" className="wb-btn small" onClick={onOpenChat}>open chat ›</button>
-        ) : ready ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>
-            <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
-          </div>
-        ) : negotiating ? (
-          <>
-            <StatusLabel color="var(--wb-live)">in progress</StatusLabel>
-            <AgentLogLink onClick={onOpen} />
-          </>
-        ) : expired ? (
-          <>
-            <StatusLabel color="#ccc" muted>{closedLabel || "missed"}</StatusLabel>
-            <AgentLogLink onClick={onOpen} />
-          </>
-        ) : null}
+        {actions}
+        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", whiteSpace: "nowrap" }}>
+          {age ? `${statusLabel} · ${age}` : statusLabel}
+        </span>
       </div>
     </div>
-  );
-}
-
-/** A status word with its 6px dot, as on the intents screen. */
-function StatusLabel({ color, muted = false, children }: { color: string; muted?: boolean; children: ReactNode }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--mac-sans)", fontSize: 11, color: muted ? "#999" : "var(--ink-2)", whiteSpace: "nowrap" }}>
-      <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: color, flex: "0 0 auto" }} />
-      {children}
-    </span>
-  );
-}
-
-function AgentLogLink({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} style={{
-      background: "none", border: "none", padding: "4px 2px", cursor: "pointer",
-      fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase",
-      color: "var(--ink-3)", textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap",
-    }}>agent log ›</button>
   );
 }
 

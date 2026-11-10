@@ -222,6 +222,60 @@
   font-size: 11px;
 }
 
+/* Opportunity cards keep the main app's look inside the quiet redesign:
+   the old ink, fonts and raised square buttons, scoped to the card. */
+.wb-main-card {
+  --ink: #000000;
+  --ink-2: #5a5548;
+  --ink-3: #8a8578;
+  --ink-4: #b5af9f;
+  --ink-warn: #8a0000;
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", "Tahoma", "Geneva", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+}
+.wb-main-card .wb-btn,
+.wb-main-card .wb-btn:hover:not(:disabled) {
+  padding: 5px 18px;
+  font-family: var(--mac-mono);
+  font-size: 12px;
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.2);
+  font-weight: 500;
+}
+.wb-main-card .wb-btn:active:not(:disabled) {
+  background: #000;
+  color: #fff;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.wb-main-card .wb-btn.primary,
+.wb-main-card .wb-btn.primary:hover:not(:disabled) {
+  background: #ff8a00;
+  border-color: #000;
+  color: #000;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.wb-main-card .wb-btn.primary:active:not(:disabled) {
+  background: #000;
+  color: #ff8a00;
+}
+.wb-main-card .wb-btn:disabled {
+  opacity: 0.45;
+}
+.wb-main-card .wb-btn.small,
+.wb-main-card .wb-btn.small:hover:not(:disabled) {
+  padding: 3px 12px;
+  font-size: 11px;
+}
+
 /* Tabs read as the filter dropdown's items: quiet chips, selected grey. */
 .wb-segmented {
   display: inline-flex;

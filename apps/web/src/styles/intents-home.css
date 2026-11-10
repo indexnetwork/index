@@ -297,6 +297,9 @@
   flex: none;
   display: inline-block;
 }
+.ih-head.ih-head-centered {
+  align-items: center;
+}
 .ih-actions {
   display: flex;
   gap: 8px;
