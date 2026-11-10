@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
-import { RANK, intentLabel, personKey, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
+import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { useAgentQuestions, type AgentQuestion } from "@/components/intents-home/useAgentQuestions";
@@ -138,7 +138,6 @@ export default function HomeDashboard() {
     setRefreshing((prev) => ({ ...prev, [intentId]: stagesOf(intentId) }));
     void loadRadar(intentId, "skeleton");
   };
-  const intentById = useMemo(() => new Map(intents.map((intent) => [intent.id, intent])), [intents]);
 
   // One line per person, across intents; their best stage decides where they sit.
   const byStage = useMemo(() => {
