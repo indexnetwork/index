@@ -25,7 +25,8 @@ export function messageText(parts: unknown): string {
 }
 
 let model: Model | null = null;
-function personalModel(): Model {
+/** The model the personal agent speaks with. */
+export function personalModel(): Model {
   model ??= createModel({
     apiKey: process.env.OPENROUTER_API_KEY,
     headers: { 'HTTP-Referer': 'https://index.network/personal-agent', 'X-Title': 'Index Personal Agent' },
