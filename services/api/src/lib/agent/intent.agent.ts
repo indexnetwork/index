@@ -1,6 +1,6 @@
 /**
- * Index's own personal agent: the seat that works an intent whose owner has
- * bound no external negotiator.
+ * One intent's agent. It works the intent for an owner who bound no external
+ * negotiator, and reports to their personal agent; it never talks to them.
  *
  * A wake happens because something changed, and once each local morning.
  * A negotiator runs because a decision authorised it. The reasoning is
@@ -22,7 +22,7 @@ import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEvent
 import { HostedIndex } from './hosted.index';
 import { HostedSession } from './hosted.session';
 
-const logger = log.agent.from('HostedAgent');
+const logger = log.agent.from('IntentAgent');
 
 /** Redis holds this group's offset, so every wake is handled by exactly one replica. */
 const WAKE_GROUP = 'hosted-negotiator';
@@ -41,7 +41,7 @@ interface WakeFrame {
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
-export class HostedAgent {
+export class IntentAgent {
   private readonly registry = new AgentDatabaseAdapter();
   private readonly session: HostedSession;
   private readonly joined = new Set<string>();

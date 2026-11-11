@@ -518,7 +518,7 @@ export async function runMorning(client: Index, intent: Intent, runtime: Runtime
     : { found: 0, opened: [] };
   if (opened.length) {
     log(`  opened ${opened.length} who arrived since ${since}`);
-    const plan = "Good morning: reaching out to people who joined since the last morning.";
+    const plan = "Reaching out to people who joined since the last morning.";
     await publishActions(client, intent.id, [{ type: "progress", text: JSON.stringify({ plan, queries, discovered: found, reached: opened.length }) }], { counterparts: new Map(), log });
     for (const opportunityId of opened) onNegotiate?.(opportunityId);
   }
