@@ -5,7 +5,7 @@ export default defineConfig({
   baseUrl: 'https://docs.index.network',
   description: 'A private, intent-driven social discovery protocol.',
   iconUrl: '/favicon.svg',
-  ogImageUrl: 'https://docs.index.network/og.png?v=3',
+  ogImageUrl: 'https://docs.index.network/og.png?v=4',
   logoUrl: {
     light: '/logos/logo-black-full.svg',
     dark: '/logos/logo-white-full.svg',
