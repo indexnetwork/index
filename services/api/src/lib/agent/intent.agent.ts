@@ -14,6 +14,7 @@ import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning,
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter } from '../../adapters/agent-session.database.adapter';
+import { QuestionGroupsDatabaseAdapter } from '../../adapters/question-groups.database.adapter';
 import { createRedisClient, getRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
 import { log } from '../log';
@@ -28,7 +29,7 @@ const logger = log.agent.from('IntentAgent');
 const WAKE_GROUP = 'hosted-negotiator';
 /** Short enough that an owner's first-ever stream is picked up by the next scan. */
 const WAKE_BLOCK_MS = 2000;
-/** How long a question waits on its owner before the agent decides without it. */
+/** How long a question waits on its owner, from when they were shown it, before the agent decides without it. */
 const QUESTION_TTL_HOURS = 72;
 /** Shorter than the sweep interval, so one replica takes each sweep and a dead one does not hold the next. */
 const QUESTION_SWEEP_LOCK_SEC = 600;
@@ -99,21 +100,36 @@ export class IntentAgent {
     });
   }
 
-  /** Withdraw questions owners left unanswered past their time, and run the negotiations they held. */
+  /**
+   * Withdraw questions owners left unanswered past their time, and run the
+   * negotiations they held. A grouped question's time runs from when its group
+   * was shown; one never grouped (older, or grouping failed) from when it was asked.
+   */
   async expireQuestions(): Promise<void> {
     if (!this.running) return;
     if (await getRedisClient().set('hosted:question-sweep', '1', 'EX', QUESTION_SWEEP_LOCK_SEC, 'NX') !== 'OK') return;
+    const due = new Map<string, { userId: string; intentId: string; questionIds: Set<string> }>();
+    const overdue = [
+      ...await QuestionGroupsDatabaseAdapter.overdueQuestionIds(QUESTION_TTL_HOURS),
+      ...await AgentSessionDatabaseAdapter.listOverdueQuestions(QUESTION_TTL_HOURS),
+    ];
+    for (const { userId, intentId, questionId } of overdue) {
+      const key = `${userId}:${intentId}`;
+      const entry = due.get(key) ?? { userId, intentId, questionIds: new Set<string>() };
+      entry.questionIds.add(questionId);
+      due.set(key, entry);
+    }
     let taken = 0;
-    for (const { userId, intentId } of await AgentSessionDatabaseAdapter.listOverdueQuestions(QUESTION_TTL_HOURS)) {
+    for (const { userId, intentId, questionIds } of due.values()) {
       if (taken >= QUESTION_SWEEP_INTENTS) break;
       if (!await this.holdsSeat(userId)) continue;
       const intent = await this.activeIntent(userId, intentId);
       if (!intent) continue;
-      taken++;
       try {
         const index = new HostedIndex(userId);
-        const released = await expireUnanswered(index, intent, QUESTION_TTL_HOURS * 3_600_000);
+        const released = await expireUnanswered(index, intent, questionIds);
         if (!released.length) continue;
+        taken++;
         for (const opportunityId of (await owedWork(index, intent)).negotiate) {
           if (released.includes(opportunityId)) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
         }

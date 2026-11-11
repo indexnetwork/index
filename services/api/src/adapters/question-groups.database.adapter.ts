@@ -113,7 +113,7 @@ export class QuestionGroupsDatabaseAdapter {
     await db.update(questionGroups).set({ emailedAt: at }).where(inArray(questionGroups.id, groupIds));
   }
 
-  /** @returns Member questions of unanswered groups shown longer than the TTL. The caller expires those still open. */
+  /** @returns Open member questions of unanswered groups shown longer than the TTL. */
   static async overdueQuestionIds(ttlHours: number): Promise<{ userId: string; intentId: string; questionId: string }[]> {
     return db.select({ userId: questionGroups.userId, intentId: questionGroupMembers.intentId, questionId: questionGroupMembers.questionId })
       .from(questionGroupMembers)
@@ -122,6 +122,12 @@ export class QuestionGroupsDatabaseAdapter {
         eq(questionGroups.state, 'shown'),
         isNull(questionGroups.answerText),
         lt(questionGroups.shownAt, sql`now() - make_interval(hours => ${ttlHours}::int)`),
+        // Closed members drop out here, so a sweep never rereads them.
+        sql`not exists (
+          select 1 from ${messages} r
+          where r.metadata->'principalMessage'->>'questionId' = ${questionGroupMembers.questionId}
+            and r.metadata->'principalMessage'->>'kind' in ('answer', 'expire')
+        )`,
       ));
   }
 }

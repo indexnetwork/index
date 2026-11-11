@@ -773,18 +773,20 @@ export async function owedWork(client: Index, intent: Intent): Promise<{ wake: b
 }
 
 /**
- * Withdraw every question the principal left unanswered for longer than
- * `maxAgeMs`, and release the stalls it held. Withdrawing alone would leave
+ * Withdraw the questions the principal left unanswered too long, and
+ * release the stalls they held. Too long is either an age, or the exact
+ * questions the caller names: Index times a question from when the person
+ * was shown it, which only the caller knows. Withdrawing alone would leave
  * each stall owed and asked again, so each one is resolved and its brief says
  * the fact is not coming: the negotiator decides on what it has.
  *
  * @param client - Index for this owner.
  * @param intent - The intent.
- * @param maxAgeMs - How long a question may wait on the principal.
+ * @param overdue - How long a question may wait on the principal, or the questions already overdue.
  * @param now - The clock.
  * @returns The opportunities released.
  */
-export async function expireUnanswered(client: Index, intent: Intent, maxAgeMs: number, now = new Date()): Promise<string[]> {
+export async function expireUnanswered(client: Index, intent: Intent, overdue: number | ReadonlySet<string>, now = new Date()): Promise<string[]> {
   const [negotiations, inbox] = await Promise.all([
     client.listIntentNegotiations(intent.id),
     client.principalInbox(intent.id),
@@ -792,20 +794,22 @@ export async function expireUnanswered(client: Index, intent: Intent, maxAgeMs: 
   const conversation = readConversation(inbox.messages);
   const closed = new Set(conversation.flatMap((entry) =>
     (entry.kind === "answer" || entry.kind === "expire") && entry.questionId ? [entry.questionId] : []));
-  const overdue = new Set(inbox.messages.flatMap((message) => {
+  const due = new Set(inbox.messages.flatMap((message) => {
     const { kind, questionId } = principalOf(message) ?? {};
-    const old = now.getTime() - new Date(message.createdAt).getTime() > maxAgeMs;
+    const old = typeof overdue === "number"
+      ? now.getTime() - new Date(message.createdAt).getTime() > overdue
+      : !!questionId && overdue.has(questionId);
     return kind === "question" && questionId && !closed.has(questionId) && old ? [questionId] : [];
   }));
-  if (!overdue.size) return [];
+  if (!due.size) return [];
 
   const questions = questionsAsked(conversation);
   const carried = latestBriefs(conversation);
-  const actions: WakeAction[] = [...overdue].map((questionId) => ({ type: "expire", questionId }));
+  const actions: WakeAction[] = [...due].map((questionId) => ({ type: "expire", questionId }));
   const released: string[] = [];
   for (const negotiation of negotiations) {
     const { stall, brief } = standing(carried.get(negotiation.opportunityId), negotiation);
-    if (!stall?.questionId || stall.answered || !overdue.has(stall.questionId)) continue;
+    if (!stall?.questionId || stall.answered || !due.has(stall.questionId)) continue;
     const reason = `Your principal did not answer: ${questions.get(stall.questionId)} Do not wait on it; decide with what you know.`;
     actions.push(
       { type: "resolve", opportunityId: negotiation.opportunityId, stallId: stall.id, reason },
