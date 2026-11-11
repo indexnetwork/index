@@ -16,7 +16,7 @@ import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 
-type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
+type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "agents" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
 function railKey(pathname: string, search: string, me?: string): RailKey {
@@ -29,7 +29,8 @@ function railKey(pathname: string, search: string, me?: string): RailKey {
     return tab === "profile" ? "profile" : "settings";
   }
   if (pathname.startsWith("/networks")) return "networks";
-  if (pathname.startsWith("/agents") || pathname.startsWith("/negotiations")) return "settings";
+  if (pathname.startsWith("/agents")) return "agents";
+  if (pathname.startsWith("/negotiations")) return "settings";
   return "";
 }
 
@@ -77,6 +78,7 @@ function AppRail({ here }: { here: RailKey }) {
         <div className="ih-menu">
           {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
           {item("networks", "networks", "/networks")}
+          {item("agents", "agents", "/agents")}
           {item("settings", "settings", "/settings?tab=notifications")}
           <button type="button" className="ih-nav" onClick={() => void signOut()}><span className="ih-nav-label">log out</span></button>
           {user?.name && <div className="ih-me">signed in as {user.name}</div>}
@@ -113,29 +115,13 @@ function AgentWindow() {
 
 /** Beside an intent: that intent's agent, always open (it's half of the page). */
 function IntentAgentWindow({ intentId }: { intentId: string }) {
-  const { setLog } = useAgentWindow();
-  const { intents, entriesByIntent } = useIntentsData();
+  const { intents } = useIntentsData();
   const intent = intents.find((i) => i.id === intentId);
-  // A question names the match it's about; its name opens that match here.
-  const selectMatch = useCallback((opportunityId: string) => {
-    const entry = (entriesByIntent[intentId] ?? []).find((e) => e.item.opportunityId === opportunityId);
-    if (!entry) return;
-    const item = entry.item;
-    setLog({
-      opportunityId,
-      intentId,
-      name: item.name || item.peer?.name || "someone",
-      userId: item.userId || item.peer?.userId,
-      avatar: item.avatar ?? item.peer?.avatar,
-      notOnIndex: item.peer?.emailVerified === false,
-      entries: [entry],
-    });
-  }, [entriesByIntent, intentId, setLog]);
   if (!intent) return null;
   const paused = (intent.status || "").toLowerCase() === "paused";
   return (
     <section className="ih-agentwin" aria-label="this intent's agent">
-      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} onSelectMatch={selectMatch} />
+      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} />
     </section>
   );
 }

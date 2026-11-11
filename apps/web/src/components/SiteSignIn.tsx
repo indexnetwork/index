@@ -14,7 +14,8 @@ export function SiteSignInPage({ bar = "sign in", kicker, title, meta, children 
   children?: ReactNode;
 }) {
   return (
-    <AppsShell bar={bar} narrow>
+    // No window frame or caps bar: the title, then the form, standing on the page like the app's pages.
+    <AppsShell bar={bar} narrow framed={false}>
       <div className="signin">
         {(kicker || title || meta) && (
           <div className="signin-intro">

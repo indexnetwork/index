@@ -175,8 +175,13 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     const initial = String(network?.title || networkId || "#").trim().charAt(0).toUpperCase();
     return (
       <div className="ih-view pl">
+        <div className="pl-col">
         <div className="pl-page pl-netdetail">
-          <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ networks</button>
+          {/* Like the intent page: back and the page's button share the top line. */}
+          <div className="pl-intent-top">
+            <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ networks</button>
+            {network && !isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
+          </div>
           {loading ? (
             <p className="pl-dim">loading<span className="pl-blink">_</span></p>
           ) : notFound ? (
@@ -196,12 +201,11 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                   ? <img className="pl-net-mark img big" src={resolveNetworkImageSrc(network.imageUrl)} alt="" />
                   : <span className="pl-net-mark c0 big" aria-hidden>{initial}</span>}
                 <div className="pl-netdetail-who">
-                  <h1>{network.title}</h1>
-                  <div className="pl-dim">
-                    {[isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "you own it" : null].filter(Boolean).join(" · ")}
+                  <h1 className="ih-title">{network.title}</h1>
+                  <div className="pl-netdetail-meta">
+                    {[isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "owner" : "member"].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                {!isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
               </div>
               {tabs && (
                 <Tabs.List className="pl-tabs pl-netdetail-tabs">
@@ -225,6 +229,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               )}
             </Tabs.Root>
           ) : null}
+        </div>
         </div>
       </div>
     );

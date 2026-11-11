@@ -13,22 +13,13 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
  */
 export default function IntentsIndex() {
   const navigate = useNavigate();
-  const { intents, intentsLoaded, intentsError, fetchIntents, entriesByIntent, radar, radarFailed } = useIntentsData();
-  const paused = intents.filter((intent) => (intent.status || "").toLowerCase() === "paused").length;
-  const live = intents.length - paused;
+  const { intents, intentsLoaded, intentsError, fetchIntents, entriesByIntent } = useIntentsData();
 
   return (
     <div className="ih-view pl">
       <div className="pl-col">
-      {/* One centered line like Home's: what this page is, then how many are live. */}
-      <PageHead
-        title={<>your intents. {intentsLoaded && (intents.length === 0
-          ? "none yet."
-          : live === 0
-            ? "all paused for now."
-            : `${live} live${paused ? `, ${paused} paused` : ""}. your agent is looking for each one.`)}</>}
-        centered
-      >
+      {/* A title line like Home's, with the way to start another. */}
+      <PageHead title="intents" centered>
         <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
       </PageHead>
       <div className="pl-page">
@@ -45,11 +36,6 @@ export default function IntentsIndex() {
               const entries = entriesByIntent[intent.id] ?? [];
               const counts: Record<Stage, number> = { awaiting: 0, talks: 0, chat: 0, closed: 0 };
               for (const entry of entries) counts[entry.stage] += 1;
-              const loading = !radar[intent.id] && !radarFailed[intent.id];
-              const bits = [
-                counts.talks && `${counts.talks} in talks`,
-                counts.chat && `${counts.chat} chatting`,
-              ].filter(Boolean);
               const state = paused ? "paused" : counts.awaiting > 0 ? "waiting" : "live";
               const text = intent.payload?.trim() || intent.summary?.trim() || "";
               return (
@@ -57,19 +43,16 @@ export default function IntentsIndex() {
                   onClick={(event) => { if (!(event.target as HTMLElement).closest("a, button")) navigate(`/i/${intent.id}`); }}>
                   <div className="pl-card-body">
                     <div className="pl-card-head">
-                      <b className="pl-intent-title"><Link to={`/i/${intent.id}`}>{text || intentLabel(intent)}</Link></b>
-                      <span className={`pl-status ${state}`}>
-                        {paused ? "paused" : counts.awaiting > 0 ? "waiting on you" : "live"}
-                      </span>
+                      <b className="pl-intent-title"><Link to={`/i/${intent.id}`} className="pl-name">{text || intentLabel(intent)}</Link></b>
                       {!paused && counts.awaiting > 0 && (
                         <span className="ih-badge pl-intent-count" title={`${counts.awaiting} waiting on you`}>{counts.awaiting}</span>
                       )}
                     </div>
-                    <div className="pl-card-foot">
-                      <span className="pl-dim pl-small">
-                        {loading ? "loading…" : bits.length ? bits.join(", ") : counts.awaiting ? "new matches" : paused ? "not looking" : "agents in talks"}
-                        {intent.createdAt && ` · since ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
-                      </span>
+                    {/* Status as on production (a blinking orange square while my agents talk), then the date, on one line. */}
+                    <div className="pl-intent-state">
+                      {!paused && <span className="pl-live-sq" aria-hidden />}
+                      {paused ? "paused" : "agents in talks"}
+                      {intent.createdAt && <span className="pl-intent-since">· since {new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                     </div>
                   </div>
                 </li>

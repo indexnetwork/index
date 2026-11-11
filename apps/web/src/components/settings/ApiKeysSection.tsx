@@ -5,21 +5,17 @@ import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const th: CSSProperties = {
-  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--wb-hairline)",
-  fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400,
-  textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-2)",
+  textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
+  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, fontWeight: 400,
+  letterSpacing: "0.5px", color: "#8a8578",
 };
 const td: CSSProperties = {
-  padding: "7px 10px", borderBottom: "1px solid var(--wb-divider)",
-  fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", whiteSpace: "nowrap",
+  padding: "12px 12px 12px 0", borderBottom: "1px solid #e6e6e6",
+  fontFamily: "var(--mac-sans)", fontSize: 14, color: "#000", whiteSpace: "nowrap",
 };
 const note: CSSProperties = {
-  margin: "0 0 10px", maxWidth: 520,
-  fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)",
-};
-const heading: CSSProperties = {
-  margin: 0, fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400,
-  textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-2)",
+  margin: "0 0 10px", maxWidth: 560,
+  fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#5a5548",
 };
 
 function accessDay(value: string | null): string {
@@ -42,11 +38,7 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
       onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
       onBlur={() => setArmed(false)}
       disabled={busy}
-      style={{
-        fontFamily: "var(--mac-sans)", fontSize: 11, padding: "3px 10px",
-        border: "1px solid var(--wb-control)", borderRadius: 3, background: armed ? "var(--wb-selected)" : "#fff",
-        color: "var(--ink-warn)", cursor: busy ? "default" : "pointer",
-      }}
+      className={`wb-btn danger${armed ? " on" : ""}`}
     >{armed ? "sure?" : "revoke"}</button>
   );
 }
@@ -125,12 +117,12 @@ export default function ApiKeysSection() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-        <p style={heading}>api keys</p>
+        <h2 className="st-h" style={{ flex: 1, margin: 0 }}>api keys</h2>
         <button
           type="button"
           onClick={() => void handleGenerateKey()}
           disabled={generating}
-          className="wb-btn primary small"
+          className="wb-btn primary"
         >generate key</button>
       </div>
 
@@ -151,29 +143,28 @@ export default function ApiKeysSection() {
       ) : keys.length === 0 ? (
         <EmptyState
           align="start"
-          framed
           style={{ maxWidth: 520, margin: "0 0 10px" }}
           message="no api keys yet."
           action={{ label: generating ? "generating…" : "generate key", onClick: () => { if (!generating) void handleGenerateKey(); } }}
         />
       ) : (
-        <div style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
             <thead>
               <tr>
                 <th style={th}>key</th>
                 <th style={th}>created</th>
                 <th style={th}>last used</th>
-                <th style={{ ...th, textAlign: "right" }}>actions</th>
+                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
               </tr>
             </thead>
             <tbody>
               {keys.map((key) => (
                 <tr key={key.id}>
-                  <td style={{ ...td, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>{maskKey(key.start)}</td>
+                  <td style={{ ...td, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, color: "#5a5548" }}>{maskKey(key.start)}</td>
                   <td style={td}>{accessDay(key.createdAt)}</td>
                   <td style={td}>{accessDay(key.lastUsedAt)}</td>
-                  <td style={{ ...td, textAlign: "right" }}>
+                  <td style={{ ...td, textAlign: "right", paddingRight: 0 }}>
                     <RevokeButton busy={busy || generating} onConfirm={() => void revoke(key.id)} />
                   </td>
                 </tr>
@@ -184,10 +175,10 @@ export default function ApiKeysSection() {
       )}
 
       {mintedKey && (
-        <div style={{ marginTop: 10, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "var(--wb-hover)", padding: "10px 12px" }}>
+        <div style={{ marginTop: 10, borderRadius: 2, background: "#f7f7f5", padding: "12px 14px" }}>
           <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>copy this key now. it won&apos;t be shown again.</p>
           <code style={{ display: "block", fontFamily: "var(--wb-code)", fontSize: 12, wordBreak: "break-all", userSelect: "text" }}>{mintedKey}</code>
-          <button type="button" onClick={() => setMintedKey(null)} style={{ marginTop: 8, fontFamily: "var(--mac-sans)", fontSize: 12, border: "none", background: "none", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>dismiss</button>
+          <button type="button" onClick={() => setMintedKey(null)} className="pl-plain-btn st-link" style={{ marginTop: 8 }}>dismiss</button>
         </div>
       )}
     </div>

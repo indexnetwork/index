@@ -296,7 +296,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
                   <ul className="pl-cards">{sections.matches.map(renderCard)}</ul>
                 ) : (
                   <p className="pl-dim">
-                    {found > 0 ? "nobody waiting on you." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
+                    {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
                   </p>
                 )}
 

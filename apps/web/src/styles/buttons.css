@@ -7,7 +7,7 @@
    Not buttons in this sense: text links (back, skip, more), list rows,
    tabs, the photo picker, the opportunity chip in chat and the trace's "ran N queries" toggle.
    --------------------------------------------------------------------------- */
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send) {
   height: auto;
   min-height: 0;
@@ -23,7 +23,7 @@
   transform: none;
   cursor: pointer;
 }
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)):hover:not(:disabled),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)):hover:not(:disabled),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):hover:not(:disabled) {
   background: #fff6e8;
   color: #000;
@@ -41,7 +41,7 @@
   background: #ff9d2b;
 }
 /* pressed: the bevel flips and the box sinks */
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)):active:not(:disabled),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)):active:not(:disabled),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):active:not(:disabled) {
   background: #f0f0f0;
   color: #000;
@@ -95,4 +95,47 @@
   font-weight: 700;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
   transform: none;
+}
+
+/* Notification counts (sidebar, intents list) look like the orange button: same box, bevel and type. */
+.ih:not(#_) .ih-badge {
+  display: inline-block;
+  min-width: 0;
+  padding: 1px 6px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #ff8a00;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 700 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+
+/* Not a button in the app's sense: a whole row you click (a member, a search result). */
+.ih:not(#_) .pl button.pl-plain-btn,
+.ih:not(#_) .pl button.pl-plain-btn:hover:not(:disabled),
+.ih:not(#_) .pl button.pl-plain-btn:active:not(:disabled) {
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  justify-content: flex-start;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ih:not(#_) .pl button.pl-plain-btn:hover:not(:disabled) {
+  background: #f7f7f5;
+}
+/* a red action outside .pl (wb-btn danger), same as the archive button */
+.ih:not(#_) .wb-btn.danger {
+  background: #fff;
+  color: #8a0000;
+  border-color: #8a0000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih:not(#_) .wb-btn.danger:hover:not(:disabled) {
+  background: #fff3f3;
 }

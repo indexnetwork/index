@@ -374,7 +374,13 @@ export function useIntentAgentChat(intentId: string) {
 
   const retry = () => { setLoading(true); void refresh(); };
 
-  return { loading, loadFailed, retry, feed, questions, chosen, selections, setSelections, writing, setWriting, draft, setDraft, send, sendAnswers, sending, waiting, firstWaiting, timeById, inputRef };
+  /** One question answered on its own, as on Home; a failure throws so the card can say so. */
+  const answerOne = async (questionId: string, text: string) => {
+    mergeMessages(await conversations.sendAnswers(intentId, [{ questionId, text }]));
+    void refresh();
+  };
+
+  return { loading, loadFailed, retry, feed, questions, chosen, selections, setSelections, writing, setWriting, draft, setDraft, send, sendAnswers, answerOne, sending, waiting, firstWaiting, timeById, inputRef };
 }
 
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {

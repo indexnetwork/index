@@ -2470,7 +2470,7 @@
 }
 
 /* The intent page's agent chat draws my trace and notes as production does (DiscoveryTrace,
-   AgentFeedNote): production's fonts, on white. */
+   AgentFeedNote): production's fonts, on the same background as Home's agent chat. */
 .pl-intent-agent {
   --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
@@ -2478,7 +2478,6 @@
   --mac-mono: var(--amiga-mono);
 }
 .pl-intent-agent .pl-agent-log {
-  background: #fff;
   gap: 22px;
   padding: 20px 16px;
 }
@@ -2492,4 +2491,474 @@
   font-weight: 400;
   letter-spacing: 0;
   cursor: pointer;
+}
+/* new intent: the calibrating box without its frame or title bar */
+.pl-calibrating .mac-titlebar {
+  display: none;
+}
+/* the intent chat's questions, drawn like Home's: question in bold, radios under it */
+.pl-agent-open .pl-q-text {
+  font-weight: 600;
+}
+.pl-agent-open .pl-q-options {
+  margin-top: 8px;
+}
+.pl-agent-open > .pl-agent-bubble > .pl-agent-meta {
+  margin-bottom: 4px;
+}
+
+/* intents list: an intent's status under its title, as on production */
+.pl-intent-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 1.5px;
+  color: #5a5548;
+}
+.pl-live-sq {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  background: #ff8a00;
+  border: 1px solid #000;
+  animation: mac-blink 1.2s steps(2) infinite;
+}
+.pl-intent-since {
+  color: #8a8578;
+}
+/* intents list: the intent's text runs 10% narrower than the row */
+.pl-card-head > .pl-intent-title {
+  flex: 0 1 90%;
+  max-width: 90%;
+}
+.pl-card-head:has(> .pl-intent-title) > .pl-intent-count {
+  margin-left: auto;
+}
+
+/* Networks page, on the app's rules: text tabs, and each network a row like Home's cards. */
+.pl-netlist .pl-tabbar, .pl-settings .pl-tabbar {
+  margin: 0 0 6px;
+}
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs {
+  display: inline-flex;
+  gap: 20px;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button,
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:hover:not(:disabled),
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:active:not(:disabled) {
+  margin: 0;
+  padding: 0 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  color: #8a8578;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:hover:not(:disabled) {
+  color: #000;
+}
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button.on,
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:is(.on, [data-state="active"]):hover:not(:disabled),
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:is(.on, [data-state="active"]):active:not(:disabled) {
+  color: #000;
+  border-bottom-color: #000;
+}
+.pl-netlist .pl-nets.big {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.pl-netlist .pl-nets.big > li + li {
+  border-top: 1px solid var(--pl-line);
+}
+.pl .pl-netlist .pl-nets.big .pl-net,
+.pl .pl-netlist .pl-nets.big a.pl-net {
+  gap: 14px;
+  margin: 0 -12px;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: #000;
+}
+.pl .pl-netlist .pl-nets.big a.pl-net:hover {
+  background: #f7f7f5;
+}
+.pl-netlist .pl-nets.big .pl-net-mark {
+  border: 0;
+  border-radius: 2px;
+}
+.pl-netlist .pl-nets.big .pl-net-name {
+  font: 600 15px/1.35 "IBM Plex Sans", sans-serif;
+}
+.pl-netlist .pl-nets.big .pl-net-n {
+  margin-top: 2px;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  color: #8a8578;
+}
+
+/* a single network: head like the intent page's, intents as plain rows split by hairlines */
+.pl-netdetail .pl-netdetail-head {
+  margin-top: 4px;
+}
+.pl-netdetail .pl-net-mark.big {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+  border: 0;
+  border-radius: 2px;
+}
+.pl .pl-netdetail .pl-netdetail-who h1.ih-title {
+  margin: 0;
+}
+.pl-netdetail-meta {
+  margin-top: 2px;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  color: #8a8578;
+}
+.pl-netdetail .pl-netdetail-tabs {
+  margin-top: 20px;
+}
+.pl-rows.pl-netdetail-intents {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.pl-rows.pl-netdetail-intents > li + li {
+  border-top: 1px solid var(--pl-line);
+}
+.pl-netdetail-intents .pl-netdetail-intent {
+  margin: 0 -12px;
+  border-radius: 4px;
+}
+.pl-netdetail-intents .pl-netdetail-intent:hover {
+  background: #f7f7f5;
+}
+.ih .pl .pl-netdetail-intents button.pl-row,
+.ih .pl .pl-netdetail-intents button.pl-row:hover {
+  padding: 12px;
+  background: transparent;
+  font: 400 14px/1.45 "IBM Plex Sans", sans-serif;
+}
+.pl-netdetail-intents .pl-row-title {
+  white-space: normal;
+}
+.pl-netdetail-intents .pl-net-n {
+  flex: none;
+  color: #8a8578;
+}
+.ih .pl .pl-netdetail-intents button.pl-netdetail-remove {
+  margin: 0 12px 0 0;
+}
+
+/* A network's settings and access tabs keep production's look: its ink and fonts,
+   and its section labels (bold mono, black rule). */
+.pl-netdetail-panel {
+  --ink: #000000;
+  --ink-2: #5a5548;
+  --ink-3: #8a8578;
+  --ink-4: #b5af9f;
+  --ink-warn: #8a0000;
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+}
+.pl-netdetail-panel .wb-rule {
+  margin: 12px 0 8px;
+  font: 700 10px var(--mac-mono);
+  letter-spacing: 2px;
+  color: #000;
+}
+.pl-netdetail-panel .wb-rule > span:last-child {
+  height: 1px;
+  background: var(--pl-line, #e6e6e6);
+}
+/* production's choice and switch boxes keep their content on the left (the app's button rule centers it) */
+.ih:not(#_) .pl .pl-netdetail-panel button:is([aria-pressed], [role="switch"]) {
+  justify-content: flex-start;
+  font: inherit;
+  letter-spacing: normal;
+  transform: none;
+}
+/* tabs (networks, a network): a black line under the whole row, the active tab's underline sits on it */
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs {
+  display: flex;
+  width: 100%;
+  border-bottom: 1px solid #000;
+}
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button {
+  margin-bottom: -1px;
+}
+.pl-netlist .pl-tabbar, .pl-settings .pl-tabbar {
+  display: block;
+}
+
+/* Account settings, on the app's rules: section heads like Home's, hairline fields
+   (no boxes or bevels), notification choices as rows split by hairlines. */
+.pl-settings .st-body {
+  margin-top: 22px;
+}
+.st-stack {
+  display: grid;
+  gap: 22px;
+}
+.st-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 18px;
+}
+.st-grid.st-grid-tight {
+  gap: 10px 14px;
+}
+.st-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #000;
+}
+.st-h::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e6e6e6;
+}
+.pl .st-h {
+  margin: 0 0 12px;
+}
+.st-label {
+  display: block;
+  margin-bottom: 6px;
+  font: 500 12px "IBM Plex Sans", sans-serif;
+  color: #5a5548;
+}
+.st-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.st-note {
+  margin: 0 0 10px;
+  max-width: 560px;
+  font: 400 13px/1.5 "IBM Plex Sans", sans-serif;
+  color: #5a5548;
+}
+.st-note code {
+  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+}
+.st-error {
+  margin: 0;
+  font: 400 12px "IBM Plex Sans", sans-serif;
+  color: #8a0000;
+}
+.st-well {
+  display: block;
+  border: 1px solid #e6e6e6;
+  border-radius: 2px;
+  background: #fff;
+  padding: 8px 10px;
+}
+.st-well:focus-within {
+  border-color: #000;
+}
+.st-well.off {
+  background: #f7f7f5;
+}
+.st-well :is(input, textarea, select),
+.ih:not(#_) .pl .st-well :is(input, textarea, select),
+.ih:not(#_) .pl .st-well :is(input, textarea, select):focus {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  font: 400 14px/1.5 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.st-well textarea {
+  resize: vertical;
+}
+.st-well.off input {
+  color: #8a8578;
+}
+.st-well :is(input, textarea)::placeholder {
+  color: #8a8a8a;
+}
+.st-well.st-prefixed {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  overflow: hidden;
+}
+.st-prefixed > .st-prefix {
+  flex: none;
+  padding: 8px 8px 8px 10px;
+  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+  background: #f7f7f5;
+  border-right: 1px solid #e6e6e6;
+  white-space: nowrap;
+}
+.ih:not(#_) .pl .st-well.st-prefixed > input,
+.st-well.st-prefixed > input {
+  flex: 1;
+  padding: 8px 10px;
+}
+/* text actions: underlined, small, no box */
+.ih:not(#_) .pl button.st-link,
+button.st-link {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 12px "IBM Plex Sans", sans-serif;
+  color: #8a8578;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ih:not(#_) .pl button.st-link:hover:not(:disabled) {
+  background: none;
+  color: #000;
+}
+.ih:not(#_) .pl button.st-link.st-remove {
+  flex: none;
+  padding: 0 10px;
+  color: #8a0000;
+}
+/* notification choices: a row per choice, hairlines between, the box on the right */
+.st-rows,
+.pl .st-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pl .st-rows > li {
+  margin: 0;
+}
+.st-rows > li + li {
+  border-top: 1px solid #e6e6e6;
+}
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 -12px;
+  padding: 14px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.st-row:hover {
+  background: #f7f7f5;
+}
+.st-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.st-row-text > b {
+  display: block;
+  font: 600 15px/1.35 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.st-row-text > span {
+  display: block;
+  margin-top: 3px;
+  font: 400 13px/1.45 "IBM Plex Sans", sans-serif;
+  color: #5a5548;
+}
+.st-row > input[type="checkbox"],
+.st-options input {
+  accent-color: #ff8a00;
+}
+.st-row > input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.st-options {
+  margin-top: 4px;
+}
+/* deleting the account: a red text toggle, then the confirm, no box (as for a network) */
+.st-danger {
+  padding-top: 14px;
+  border-top: 1px solid #e6e6e6;
+}
+.ih:not(#_) .pl button.st-danger-toggle,
+button.st-danger-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 12px "IBM Plex Sans", sans-serif;
+  color: #8a0000;
+  cursor: pointer;
+}
+.ih:not(#_) .pl button.st-danger-toggle:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+.st-danger-toggle > span {
+  font-size: 10px;
+  line-height: 1;
+}
+.st-danger-box {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  max-width: 560px;
+}
+.st-danger-box > p {
+  margin: 0;
+  font: 400 13px/1.5 "IBM Plex Sans", sans-serif;
+  color: #8a0000;
+}
+.st-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid #e6e6e6;
+}
+.st-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-options input[type="radio"] {
+  margin: 0;
+}
+
+/* agents page: rosters are rows split by hairlines, no boxes */
+.ag-roster {
+  border-top: 1px solid #e6e6e6;
+}
+.ih:not(#_) .pl .pl-agents button.pl-plain-btn[aria-label="copy agent id"]:hover:not(:disabled) {
+  background: none;
+  color: #000;
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import PageHead from "@/components/intents-home/PageHead";
 import { useNavigate } from 'react-router';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window } from '@/components/workbench/Workbench';
@@ -217,13 +218,17 @@ export default function NetworksPage() {
     const requestStatus = (r: NetworkRequest) => (r.status === 'needs_changes' ? 'needs changes' : 'in review');
     return (
       <div className="ih-view pl">
+        <div className="pl-col">
+        {/* A title line like Home's and the intents page, with the way to start another. */}
+        <PageHead title="networks" centered>
+          <button type="button" className="go" title={canReview ? 'start a new network' : 'request a new network'} onClick={openCreate}>+ new network</button>
+        </PageHead>
         <div className="pl-page pl-netlist">
           <div className="pl-tabbar">
             <div className="pl-tabs" role="tablist">
               <button type="button" role="tab" aria-selected={activeTab === 'mine'} className={activeTab === 'mine' ? 'on' : undefined} onClick={() => setActiveTab('mine')}>my networks ({allNetworks.length})</button>
               <button type="button" role="tab" aria-selected={activeTab === 'discover'} className={activeTab === 'discover' ? 'on' : undefined} onClick={openDiscover}>discover</button>
             </div>
-            <button type="button" className="go" title={canReview ? 'start a new network' : 'request a new network'} onClick={openCreate}>+ new network</button>
           </div>
 
           {activeTab === 'mine' && (
@@ -360,6 +365,7 @@ export default function NetworksPage() {
               )}
             </>
           )}
+        </div>
         </div>
         {modals}
       </div>

@@ -188,7 +188,7 @@ export default function SettingsTab({
         <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
         {imageError && <span style={{ fontFamily: "var(--mac-sans)", fontSize: 11, color: "var(--ink-warn)" }}>{imageError}</span>}
         {displayImageUrl && (
-          <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); setRemoveImageRequested(true); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={busy} style={{ border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>Remove image</button>
+          <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); setRemoveImageRequested(true); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={busy} className="pl-plain-btn" style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)", textDecoration: "underline", textUnderlineOffset: 3 }}>remove image</button>
         )}
       </div>
 
@@ -203,20 +203,20 @@ export default function SettingsTab({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" disabled={!hasSettingsChanged || busy} onClick={resetSettings} className="wb-btn">Cancel</button>
-        <button type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? "Saving…" : "Save"}</button>
+        <button type="button" disabled={!hasSettingsChanged || busy} onClick={resetSettings} className="wb-btn">cancel</button>
+        <button type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? "saving…" : "save"}</button>
       </div>
 
       <div style={{ borderTop: "1px solid var(--wb-hairline)", paddingTop: 14 }}>
-        <button type="button" onClick={() => setShowDelete((open) => !open)} aria-expanded={showDelete} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>
+        <button type="button" onClick={() => setShowDelete((open) => !open)} aria-expanded={showDelete} className="pl-plain-btn" style={{ padding: 0, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>
           <span aria-hidden style={{ fontSize: 10, lineHeight: 1 }}>{showDelete ? "▲" : "▼"}</span>
-          Danger Zone
+          delete this network
         </button>
         {showDelete && (
-          <div style={{ marginTop: 10, padding: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>Delete this network. Type the name to confirm.</p>
-            <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} style={{ padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }} />
-            <button type="button" disabled={deleteConfirmationText !== network.title || busy} onClick={() => void handleDeleteNetwork()} className="wb-btn" style={{ justifySelf: "end", color: "var(--ink-warn)" }}>Delete</button>
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>this deletes the network for everyone. type its name to confirm.</p>
+            <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} style={{ padding: "8px 10px", border: "1px solid #e6e6e6", borderRadius: 2, outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13 }} />
+            <button type="button" disabled={deleteConfirmationText !== network.title || busy} onClick={() => void handleDeleteNetwork()} className="wb-btn danger" style={{ justifySelf: "end" }}>delete</button>
           </div>
         )}
       </div>
@@ -226,7 +226,7 @@ export default function SettingsTab({
 
 const fieldLabel: React.CSSProperties = { marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" };
 const fieldInput: React.CSSProperties = { width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13 };
-const well: React.CSSProperties = { border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", padding: "7px 10px" };
+const well: React.CSSProperties = { border: "1px solid #e6e6e6", borderRadius: 2, background: "#fff", padding: "7px 10px" };
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (

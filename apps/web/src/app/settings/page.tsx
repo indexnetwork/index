@@ -5,7 +5,10 @@ import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
-import { ConfirmWindow, RuleLabel, Segmented, Stage, Window } from "@/components/workbench/Workbench";
+import { Stage, Window } from "@/components/workbench/Workbench";
+import PageHead from "@/components/intents-home/PageHead";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import "@/styles/plain.css";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
@@ -46,6 +49,8 @@ export default function ProfilePage() {
 export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
+  // Signed in on desktop the page sits in the app frame; first run keeps its window.
+  const plain = useInAppFrame() && !firstRun;
   const back = useBack("/");
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
@@ -84,7 +89,6 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   const [isDirty, setIsDirty] = useState(false);
 
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
@@ -200,15 +204,204 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   }
 
 
+  const NOTIFY: Array<{ key: "opportunity" | "accepted" | "messages" | "morningBrief"; title: string; body: string }> = [
+    { key: "opportunity", title: "an opportunity surfaces", body: "your agent found someone who meets your intents and wants you to review." },
+    { key: "accepted", title: "an intro is accepted", body: "both of you said yes, and the chat opens on both sides." },
+    { key: "messages", title: "a message arrives", body: "a connection wrote to you; emailed if unread after a minute." },
+    { key: "morningBrief", title: "daily brief", body: "your agent looks again at 08:00, and emails you only when it needs you." },
+  ];
+
+  const body = (
+    <>
+      {activeTab === "profile" && (
+        <div className="st-stack">
+          <PhotoPicker
+            name={name || user?.name || ""}
+            preview={avatarPreview}
+            userId={user?.id}
+            userName={user?.name}
+            avatar={user?.avatar}
+            onPick={() => fileInputRef.current?.click()}
+          />
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+          {avatarError && <p className="st-error">{avatarError}</p>}
+
+          <div className="st-grid" style={{ gridTemplateColumns: compact ? "minmax(0, 1fr)" : undefined }}>
+            <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
+            <MacField label="email" value={user?.email || ""} disabled />
+            <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
+          </div>
+
+          <div>
+            <div className="st-label st-label-row">
+              <span>introduction</span>
+              {firstRun && !lookupFoundNothing(firstRun.lookup) && (
+                <button type="button" onClick={writeOwnIntro} className="pl-plain-btn st-link">not you? write your own</button>
+              )}
+            </div>
+            <div className="st-well">
+              <textarea id="intro" value={intro} rows={4} onChange={(e) => { setIntro(e.target.value); mark(); }} />
+            </div>
+          </div>
+
+          <div>
+            <h2 className="st-h">socials</h2>
+            <div className="st-grid st-grid-tight" style={{ gridTemplateColumns: compact ? "minmax(0, 1fr)" : undefined }}>
+              {[
+                { prefix: "x.com/", label: "twitter", value: getSocial("twitter") },
+                { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial("linkedin") },
+                { prefix: "github.com/", label: "github", value: getSocial("github") },
+                { prefix: "t.me/", label: "telegram", value: getSocial("telegram") },
+              ].map(({ prefix, label, value }) => (
+                <label key={label} className="st-well st-prefixed">
+                  <span className="st-prefix">{prefix}</span>
+                  <input
+                    value={value}
+                    placeholder="username"
+                    onChange={(e) => setSocial(label, e.target.value)}
+                    onBlur={(e) => {
+                      const resolved = parseSocial({ label, value: e.target.value });
+                      const platform = label === "twitter" ? "x" : label;
+                      setSocial(label, resolved.platform === platform ? resolved.handle : e.target.value.trim());
+                    }}
+                  />
+                </label>
+              ))}
+              {customSocials.map((social, index) => (
+                <label key={index} className="st-well st-prefixed">
+                  <input
+                    value={social.value}
+                    placeholder="https://"
+                    onChange={(e) => {
+                      setSocials((prev) => prev.map((s) => s === social ? { label: "custom", value: e.target.value } : s));
+                      mark();
+                    }}
+                  />
+                  <button type="button" className="pl-plain-btn st-link st-remove" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }}>remove</button>
+                </label>
+              ))}
+              {customSocials.length < 3 && (
+                <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} className="wb-btn" style={{ justifySelf: "start", alignSelf: "center" }}>+ add website</button>
+              )}
+            </div>
+          </div>
+
+          {/* Deleting the account: settings only, not first-run setup. Same as deleting a network. */}
+          {!firstRun && (
+            <div className="st-danger">
+              <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} aria-expanded={isDangerZoneExpanded} className="pl-plain-btn st-danger-toggle">
+                <span aria-hidden>{isDangerZoneExpanded ? "▲" : "▼"}</span>
+                delete my account
+              </button>
+              {isDangerZoneExpanded && (
+                <div className="st-danger-box">
+                  <p>index stops right away and every intent closes. connections you&apos;ve already made stay with the other person. type your email to confirm.</p>
+                  <div className="st-well">
+                    <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} />
+                  </div>
+                  <button type="button" disabled={deleteConfirmationText !== user?.email || isDeletingAccount} onClick={() => void handleDeleteAccount()} className="wb-btn danger" style={{ justifySelf: "end" }}>
+                    {isDeletingAccount ? "deleting…" : "delete"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "access" && (
+        <div className="st-stack">
+          <ApiKeysSection />
+          <DevicesSection />
+        </div>
+      )}
+
+      {activeTab === "advanced" && <AdvancedPane signOut={signOut} />}
+
+      {activeTab === "notifications" && (
+        <div className="st-stack">
+          <p className="st-note">index works in the background. choose what&apos;s worth interrupting you for.</p>
+          <div>
+            <label htmlFor="timezone" className="st-label">timezone</label>
+            <div className="st-well">
+              <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }}>
+                {Intl.supportedValuesOf("timeZone").map((tz) => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <h2 className="st-h">tell me when</h2>
+            <ul className="st-rows">
+              {NOTIFY.map(({ key, title, body: text }) => (
+                <li key={key}>
+                  <label className="st-row">
+                    <span className="st-row-text">
+                      <b>{title}</b>
+                      <span>{text}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={notificationPreferences[key] !== false}
+                      onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, [key]: e.target.checked })); mark(); }}
+                    />
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // Only the profile and notifications panes have anything to save.
+  const savable = activeTab === "profile" || activeTab === "notifications";
+  const saveLabel = saving ? "saving…" : firstRun ? "looks good →" : "save changes";
+
+  // Signed in on desktop: the plain page, like Home, Intents and Networks.
+  if (plain) {
+    return (
+      <div className="ih-view pl">
+        <div className="pl-col">
+          <PageHead title="settings" centered />
+          <div className="pl-page pl-settings">
+            <div className="pl-tabbar">
+              <div className="pl-tabs" role="tablist">
+                {SETTINGS_TABS.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === activeTab}
+                    className={tab === activeTab ? "on" : undefined}
+                    onClick={() => navigate(tab === "profile" ? "/settings" : `/settings?tab=${tab}`)}
+                  >{tab}</button>
+                ))}
+              </div>
+            </div>
+            <div className="st-body">{body}</div>
+            {savable && (
+              <div className="st-actions">
+                <button type="button" onClick={() => resetForm(user)} disabled={saving || !isDirty} className="wb-btn">cancel</button>
+                <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || !isDirty} className="wb-btn primary">{saveLabel}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-      <>
-        <Stage width={860} height="min(660px, calc(100vh - 112px))">
-        <Window
-          title={firstRun ? "getting started" : "settings"}
-          // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
-          onClose={firstRun ? () => void signOut() : compact ? back : () => navigate("/")}
-          style={{ height: "100%" }}
-        >
+    <Stage width={860} height="min(660px, calc(100vh - 112px))">
+      <Window
+        title={firstRun ? "getting started" : "settings"}
+        // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
+        onClose={firstRun ? () => void signOut() : compact ? back : () => navigate("/")}
+        style={{ height: "100%" }}
+      >
         {firstRun && (
           <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "1px solid var(--wb-hairline)", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", flex: "0 0 auto" }}>
             {lookupFoundNothing(firstRun.lookup)
@@ -222,166 +415,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
               <SettingsTabs />
             </div>
           )}
-
-          {activeTab === "profile" && (
-          <div className="space-y-10">
-
-            {/* Identity header */}
-            <PhotoPicker
-              name={name || user?.name || ""}
-              preview={avatarPreview}
-              userId={user?.id}
-              userName={user?.name}
-              avatar={user?.avatar}
-              onPick={() => fileInputRef.current?.click()}
-            />
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-            {avatarError && <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>{avatarError}</p>}
-
-            <div className="space-y-4 pt-2">
-
-              <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
-                <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
-                <MacField label="email" value={user?.email || ""} disabled />
-                <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
-              </div>
-
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
-                  <span>introduction</span>
-                  {firstRun && !lookupFoundNothing(firstRun.lookup) && (
-                    <button type="button" onClick={writeOwnIntro} style={{ padding: 0, border: "none", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 400, color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}>
-                      not you? write your own
-                    </button>
-                  )}
-                </div>
-                <div style={{ border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", padding: "8px 10px" }}>
-                  <textarea id="intro" value={intro} rows={4} onChange={(e) => { setIntro(e.target.value); mark(); }} style={{ width: "100%", border: "none", outline: "none", resize: "vertical", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Socials */}
-            <div style={{ marginTop: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 12px", fontFamily: "var(--mac-sans)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 400, color: "var(--ink-2)" }}>
-                <span>socials</span>
-                <span style={{ flex: 1, height: 1, background: "var(--wb-hairline)" }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "9px 14px" }}>
-                {[
-                  { prefix: "x.com/", label: "twitter", value: getSocial("twitter") },
-                  { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial("linkedin") },
-                  { prefix: "github.com/", label: "github", value: getSocial("github") },
-                  { prefix: "t.me/", label: "telegram", value: getSocial("telegram") },
-                ].map(({ prefix, label, value }) => (
-                  <label key={label} style={{ display: "flex", alignItems: "center", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", minWidth: 0, overflow: "hidden" }}>
-                    <span style={{ padding: "8px 8px", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)", background: "var(--wb-hover)", borderRight: "1px solid var(--wb-control)", whiteSpace: "nowrap" }}>{prefix}</span>
-                    <input
-                      value={value}
-                      placeholder="username"
-                      onChange={(e) => setSocial(label, e.target.value)}
-                      onBlur={(e) => {
-                        const resolved = parseSocial({ label, value: e.target.value });
-                        const platform = label === "twitter" ? "x" : label;
-                        setSocial(label, resolved.platform === platform ? resolved.handle : e.target.value.trim());
-                      }}
-                      style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13, background: "transparent" }}
-                    />
-                  </label>
-                ))}
-                {customSocials.map((social, index) => (
-                  <label key={index} style={{ display: "flex", alignItems: "center", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", minWidth: 0, overflow: "hidden" }}>
-                    <input
-                      value={social.value}
-                      placeholder="https://"
-                      onChange={(e) => {
-                        setSocials((prev) => prev.map((s) => s === social ? { label: "custom", value: e.target.value } : s));
-                        mark();
-                      }}
-                      style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13, background: "transparent" }}
-                    />
-                    <button type="button" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }} style={{ border: "none", borderLeft: "1px solid var(--wb-control)", background: "#fff", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", padding: "8px 10px", cursor: "pointer" }}>remove</button>
-                  </label>
-                ))}
-                {customSocials.length < 3 && (
-                  <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} className="wb-btn" style={{ justifySelf: "start" }}>+ add website</button>
-                )}
-              </div>
-            </div>
-
-            {/* Danger Zone: settings only, not first-run setup */}
-            {!firstRun && <div style={{ marginTop: 26 }}>
-              <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 400, letterSpacing: "0.1em", color: "var(--ink-warn)", textTransform: "uppercase" }}>
-                <span style={{ display: "inline-block", transform: isDangerZoneExpanded ? "rotate(90deg)" : "none" }}>›</span>
-                danger zone
-              </button>
-              {isDangerZoneExpanded && (
-                <div style={{ marginTop: 10, padding: "11px 12px", border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div>
-                    <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink-warn)" }}>delete account</div>
-                    <div style={{ marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>index stops immediately and every intent closes. connections you&apos;ve already made stay with the other person.</div>
-                  </div>
-                  <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} className="wb-btn" style={{ color: "var(--ink-warn)" }}>delete</button>
-                </div>
-              )}
-            </div>}
-
-          </div>
-          )}
-
-          {activeTab === "access" && (
-              <div style={{ display: "grid", gap: 22 }}>
-                <ApiKeysSection />
-                <DevicesSection />
-              </div>
-          )}
-
-          {activeTab === "advanced" && <AdvancedPane signOut={signOut} />}
-
-          {activeTab === "notifications" && (
-              <div className="space-y-10">
-                <div className="space-y-4">
-                  <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)", marginBottom: 14 }}>
-                    index works in the background. choose what&apos;s worth interrupting you for.
-                  </p>
-                  <label htmlFor="timezone" style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>timezone</label>
-                  <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }} style={{ width: "100%", background: "#fff", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
-                    {Intl.supportedValuesOf("timeZone").map((tz) => (
-                      <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-                    ))}
-                  </select>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
-                    <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>an opportunity surfaces</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent found someone who meets your intents and wants you to review.</span>
-                    </span>
-                    <input type="checkbox" checked={notificationPreferences.opportunity !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, opportunity: e.target.checked })); mark(); }} />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
-                    <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>an intro is accepted</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>both of you said yes, and the chat opens on both sides.</span>
-                    </span>
-                    <input type="checkbox" checked={notificationPreferences.accepted !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, accepted: e.target.checked })); mark(); }} />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
-                    <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>a message arrives</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>a connection wrote to you; emailed if unread after a minute.</span>
-                    </span>
-                    <input type="checkbox" checked={notificationPreferences.messages !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, messages: e.target.checked })); mark(); }} />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: "10px 12px", background: "#fff" }}>
-                    <span>
-                      <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>daily brief</span>
-                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent looks again at 08:00, and emails you only when it needs you.</span>
-                    </span>
-                    <input type="checkbox" checked={notificationPreferences.morningBrief !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, morningBrief: e.target.checked })); mark(); }} />
-                  </label>
-                </div>
-              </div>
-          )}
-
+          {body}
         </div>
         <div style={{
           borderTop: "1px solid var(--wb-hairline)", padding: "11px 24px",
@@ -394,32 +428,14 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
             <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn" style={{ marginRight: "auto" }}>reset</button>
           )}
           {firstRun ? (
-            <button type="button" onClick={() => void signOut()} disabled={saving} style={{
-              fontFamily: "var(--mac-sans)", fontSize: 12, padding: "7px 10px",
-              border: "none", background: "transparent", color: "var(--ink-3)",
-              textDecoration: "underline", cursor: "pointer",
-            }}>sign out</button>
+            <button type="button" onClick={() => void signOut()} disabled={saving} className="pl-plain-btn st-link">sign out</button>
           ) : (
             <button type="button" onClick={() => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
           )}
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} className="wb-btn primary">{saving ? "saving…" : firstRun ? "looks good →" : "save changes"}</button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} className="wb-btn primary">{saveLabel}</button>
         </div>
-        </Window>
-        </Stage>
-      {showDeleteConfirmation && (
-        <ConfirmWindow
-          title="delete account"
-          body="this cannot be undone. type your email to confirm."
-          confirmLabel="delete"
-          busy={isDeletingAccount}
-          disabled={deleteConfirmationText !== user?.email}
-          onCancel={() => { if (!isDeletingAccount) setShowDeleteConfirmation(false); }}
-          onConfirm={() => void handleDeleteAccount()}
-        >
-          <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} style={{ width: "100%", padding: "8px 10px" }} />
-        </ConfirmWindow>
-      )}
-      </>
+      </Window>
+    </Stage>
   );
 }
 
@@ -488,36 +504,43 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
   };
 
   return (
-    <div>
-      <RuleLabel>protocol server</RuleLabel>
-      <p style={{ margin: "12px 0", maxWidth: 520, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
-        requests go to <span style={{ fontFamily: "var(--wb-code)", fontSize: 12 }}>{active}</span>.
-        switching signs you out. a session belongs to the server it was made on.
-      </p>
-      <Segmented
-        value={choice}
-        onChange={(value) => {
-          setChoice(value);
-          const next = PROTOCOL_PRESETS.find((item) => item.value === value);
-          if (next) void apply(next.url);
-        }}
-        options={[...PROTOCOL_PRESETS.map((item) => ({ value: item.value, label: item.label })), { value: "custom", label: "custom" }]}
-      />
-      {choice === "custom" && (
-        <div style={{ marginTop: 12, maxWidth: 360 }}>
-          <div style={{ marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>origin</div>
-          <div style={{ border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", padding: "7px 10px" }}>
-            <input
-              value={custom}
-              placeholder="https://protocol.example.com"
-              onChange={(event) => setCustom(event.target.value)}
-              onBlur={() => void apply(custom)}
-              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void apply(custom); } }}
-              style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13 }}
-            />
-          </div>
+    <div className="st-stack">
+      <div>
+        <h2 className="st-h">protocol server</h2>
+        <p className="st-note">
+          requests go to <code>{active}</code>. switching signs you out. a session belongs to the server it was made on.
+        </p>
+        <div className="pl-q-options st-options" role="radiogroup">
+          {[...PROTOCOL_PRESETS.map((item) => ({ value: item.value, label: item.label })), { value: "custom", label: "custom" }].map((option) => (
+            <label key={option.value}>
+              <input
+                type="radio"
+                name="protocol-server"
+                checked={choice === option.value}
+                onChange={() => {
+                  setChoice(option.value);
+                  const next = PROTOCOL_PRESETS.find((item) => item.value === option.value);
+                  if (next) void apply(next.url);
+                }}
+              /> {option.label}
+            </label>
+          ))}
         </div>
-      )}
+        {choice === "custom" && (
+          <div style={{ marginTop: 12, maxWidth: 360 }}>
+            <div className="st-label">origin</div>
+            <div className="st-well">
+              <input
+                value={custom}
+                placeholder="https://protocol.example.com"
+                onChange={(event) => setCustom(event.target.value)}
+                onBlur={() => void apply(custom)}
+                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void apply(custom); } }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -527,21 +550,11 @@ function MacField({ label, value, onChange, disabled, required }: {
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ marginBottom: 5, fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
-        {label}{required && <span style={{ color: "var(--ink-3)", marginLeft: 4 }}>*</span>}
+      <div className="st-label">
+        {label}{required && <span style={{ color: "#8a8578", marginLeft: 4 }}>*</span>}
       </div>
-      <div style={{
-        border: "1px solid var(--wb-control)",
-        borderRadius: 3,
-        background: disabled ? "var(--wb-hover)" : "#fff",
-        padding: "7px 10px",
-      }}>
-        <input
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange?.(e.target.value)}
-          style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, color: disabled ? "var(--ink-3)" : "var(--ink)" }}
-        />
+      <div className={disabled ? "st-well off" : "st-well"}>
+        <input value={value} disabled={disabled} onChange={(e) => onChange?.(e.target.value)} />
       </div>
     </div>
   );

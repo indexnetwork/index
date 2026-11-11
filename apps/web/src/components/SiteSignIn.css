@@ -59,10 +59,13 @@
 }
 .signin-status .site-btn { margin-top: 4px; }
 
-/* Inside the shell's board the card drops its own frame and fills it. */
-.apps-board .signin-card { border: 0; border-radius: 0; background: transparent; max-width: none; }
-.apps-board .signin-card__bar { display: none; }
-.apps-board .signin-card__body { padding: 0; }
+/* The card has no frame or caps bar: its content stands on the page under the title. */
+.apps-board .signin-card,
+.signin .signin-card { border: 0; border-radius: 0; background: transparent; max-width: none; }
+.apps-board .signin-card__bar,
+.signin .signin-card__bar { display: none; }
+.apps-board .signin-card__body,
+.signin .signin-card__body { padding: 0; }
 
 /* ---------- card ---------- */
 .signin-card {
@@ -220,3 +223,38 @@
 .signin-error { margin: 0; font-size: 12px; line-height: 1.5; color: #b3261e; }
 .signin-card__body > .site-p { margin: 0; }
 .signin-card__body--stack { display: flex; flex-direction: column; gap: 12px; }
+
+/* ---------- the app's look ----------
+   Title like an app page's, buttons like the app's (black outline, bevel, mono;
+   the main one orange), fields with the light hairline. */
+.signin-title { font: 600 22px/1.3 var(--sans); }
+.signin .auth .av-oauth,
+.signin .site-btn--secondary {
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+.signin .auth .av-oauth:hover,
+.signin .site-btn--secondary:hover { background: #fff6e8; border-color: #000; color: #000; }
+.signin .auth .av-submit,
+.signin .site-btn:not(.site-btn--secondary) {
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #ff8a00;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 700 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+.signin .auth .av-submit:hover,
+.signin .site-btn:not(.site-btn--secondary):hover { background: #ff9d2b; border-color: #000; color: #000; }
+.signin .auth .av-oauth:active,
+.signin .auth .av-submit:active,
+.signin .site-btn:active { transform: translate(1px, 1px); box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff; }
+.signin .auth .av-input { border: 1px solid #b5b5b5; border-radius: 2px; color: #000; }
+.signin .auth .av-input:focus { border-color: #000; }
+.signin .auth .av-input::placeholder { color: #8a8a8a; }
