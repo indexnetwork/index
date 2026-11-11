@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import IntentActivity from "@/components/intents-home/IntentActivity";
 import NewIntentSteps from "@/components/intents-home/NewIntentSteps";
 import { intentLabel } from "@/components/intents-home/stages";
-import { useHomeAgentChat } from "@/components/intents-home/useHomeAgentChat";
+import { usePersonalAgentChat } from "@/components/intents-home/usePersonalAgentChat";
 import { useNewIntentFlow } from "@/components/intents-home/useNewIntentFlow";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
@@ -42,8 +42,8 @@ function AgentLink({ href = "", children, ...rest }: AnchorHTMLAttributes<HTMLAn
  * pause or archive intents, check matches, or update your profile. It acts
  * with the Index tools; `onChanged` refreshes the page after it changes something.
  */
-export default function HomeAgentPanel({ onChanged, onClose }: { onChanged: (tools: string[]) => void; onClose?: () => void }) {
-  const { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry } = useHomeAgentChat(onChanged);
+export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: (tools: string[]) => void; onClose?: () => void }) {
+  const { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry } = usePersonalAgentChat(onChanged);
   const [draft, setDraft] = useState("");
   const { intents } = useIntentsData();
   // Live activity shows under the most recent intents started here, not every one ever.

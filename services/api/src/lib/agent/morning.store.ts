@@ -104,9 +104,8 @@ export interface MorningOwed {
   talked: number;
   /** Agreed by both agents and still waiting on the owner. `fresh` arrived since `since`. */
   waiting: { opportunityId: string; userId: string; name: string; context: string | null; fresh: boolean }[];
-  /** The agent's latest summary per intent since `since`. */
+  /** Each intent agent's latest summary since `since`: its report to the personal agent. */
   notes: { text: string; intentId: string }[];
-  questions: { text: string; intentId: string }[];
 }
 
 /** What the owner's agent has to tell them since `since`. */
@@ -144,22 +143,7 @@ export async function owedForEmail(userId: string, since: Date): Promise<Morning
       AND m.metadata->'principalMessage'->>'summary' = 'true'
     ORDER BY m.metadata->>'intentId', m.created_at DESC
   `) as unknown as MorningOwed['notes'];
-  const questions = await db.execute(sql`
-    SELECT asked.parts->0->>'text' AS text, asked.metadata->>'intentId' AS "intentId"
-    FROM ${schema.messages} asked
-    INNER JOIN ${schema.conversations} dm ON dm.id = asked.conversation_id
-    WHERE dm.dm_pair = ${dmPair}
-      AND asked.created_at > ${after}
-      AND asked.metadata->'principalMessage'->>'kind' = 'question'
-      AND NOT EXISTS (
-        SELECT 1 FROM ${schema.messages} retired
-        WHERE retired.conversation_id = asked.conversation_id
-          AND retired.metadata->'principalMessage'->>'kind' IN ('answer', 'expire')
-          AND retired.metadata->'principalMessage'->>'questionId' = asked.metadata->'principalMessage'->>'questionId'
-      )
-    ORDER BY asked.created_at
-  `) as unknown as MorningOwed['questions'];
-  return { talked, waiting: [...waiting], notes: [...notes], questions: [...questions] };
+  return { talked, waiting: [...waiting], notes: [...notes] };
 }
 
 /** @returns Intents that belong to a network. */

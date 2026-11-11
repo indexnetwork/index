@@ -1,19 +1,37 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { createDecide, type Decide } from '@indexnetwork/agent';
+
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent, toPrincipalMessage, type PrincipalMessage, type PrincipalQuestion } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
+import { QuestionGroupsDatabaseAdapter } from '../adapters/question-groups.database.adapter';
 import { background } from '../lib/background';
 import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
+import { prepareAnswers } from '../lib/personal-agent/answers';
+import { fanOutAnswer } from '../lib/personal-agent/fan-out';
+import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
+import { shownCards, visibleQuestionIds, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
 export type { PrincipalMessage } from '../adapters/agent-session.database.adapter';
 
 const logger = log.service.from('ConversationService');
+
+let decision: Decide | null = null;
+/** The decision model the personal agent groups questions with, or none without an OpenRouter key. */
+function groupingDecide(): Decide | undefined {
+  if (!process.env.OPENROUTER_API_KEY) return undefined;
+  decision ??= createDecide({
+    apiKey: process.env.OPENROUTER_API_KEY,
+    headers: { 'HTTP-Referer': 'https://index.network/personal-agent', 'X-Title': 'Index Personal Agent' },
+  });
+  return decision;
+}
 
 /** An owner-facing H2A input failure; no agent work is acknowledged by this error. */
 export class AgentConversationError extends Error {
@@ -316,6 +334,9 @@ export class ConversationService {
    *
    * @param userId - Authenticated owner.
    * @param intentIds - Intents the caller already resolved as owned.
+   * Questions in a group the personal agent is still holding are left out: an
+   * outside agent asks only what Home shows.
+   *
    * @returns Each intent's visible messages and its questions still waiting, in the given order.
    */
   async intentConversations(userId: string, intentIds: readonly string[]) {
@@ -323,11 +344,25 @@ export class ConversationService {
     const [visible, all] = await Promise.all([this.db.getMessages(dm.id, { userId }), this.db.getMessages(dm.id)]);
     const of = <T extends { metadata: unknown }>(rows: T[], intentId: string) =>
       rows.filter((row) => (row.metadata as { intentId?: string } | null)?.intentId === intentId);
-    return intentIds.map((intentId) => ({
+    const read = intentIds.map((intentId) => ({
       intentId,
       messages: of(visible, intentId),
       questions: unanswered(of(all, intentId).map(toPrincipalMessage)),
     }));
+    const shown = await this.shownQuestionIds(userId, read.flatMap((entry) => entry.questions.map((question) => question.id)));
+    return shown ? read.map((entry) => ({ ...entry, questions: entry.questions.filter((question) => shown.has(question.id)) })) : read;
+  }
+
+  /** @returns The questions Home shows now, or null when groups cannot be read (then nothing is held back). */
+  private async shownQuestionIds(userId: string, questionIds: string[]): Promise<Set<string> | null> {
+    if (!questionIds.length) return new Set();
+    try {
+      const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
+      return visibleQuestionIds(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), questionIds);
+    } catch (error) {
+      logger.warn('Reading question groups failed; showing every question', { userId, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
   }
 
   /**
@@ -344,7 +379,7 @@ export class ConversationService {
    * @returns The persisted message.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
+  async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }, options: { fanOut?: boolean } = {}) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
@@ -356,6 +391,7 @@ export class ConversationService {
       type: 'principal.input', id: message.id, title: '', body: '',
       data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
     });
+    if (answered && options.fanOut !== false) await this.answerGroup(input.userId, answered.id, input.text);
     return message;
   }
 
@@ -374,15 +410,13 @@ export class ConversationService {
    * @returns The persisted messages, in the order given.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }) {
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, options: { fanOut?: boolean; onlyWaiting?: boolean } = {}) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
-    const queue = unanswered(messages);
-    const prepared = input.answers.map((answer) => ({
-      text: answer.text,
-      question: queue.find((question) => question.id === answer.questionId) ?? null,
-    }));
+    // An automatic answer whose question closed meanwhile is dropped, never kept as a message.
+    const prepared = prepareAnswers(unanswered(messages), input.answers, { onlyWaiting: options.onlyWaiting === true });
+    if (!prepared.length) return [];
     const persisted = await AgentSessionDatabaseAdapter.writeOwnerAnswers({
       userId: input.userId, intentId: input.intentId, conversationId, answers: prepared,
     });
@@ -395,7 +429,75 @@ export class ConversationService {
         data: { intentId: input.intentId, questionId: answer.question?.id ?? null, text: answer.text },
       });
     }
+    if (options.fanOut !== false) {
+      for (const answer of prepared) {
+        if (answer.question) await this.answerGroup(input.userId, answer.question.id, answer.text);
+      }
+    }
     return persisted;
+  }
+
+  /**
+   * Carry an answer to the rest of its question group, then show any group
+   * waiting for the slot it freed. An answer is already saved when this runs,
+   * so a failure here is logged, never thrown.
+   */
+  private async answerGroup(userId: string, questionId: string, text: string): Promise<void> {
+    try {
+      let active: Set<string> | null = null;
+      await fanOutAnswer(userId, questionId, text, {
+        listOpenQuestions: (owner) => QuestionGroupsDatabaseAdapter.listOpenQuestions(owner),
+        listGroups: (owner, open) => QuestionGroupsDatabaseAdapter.listGroups(owner, open),
+        recordAnswer: (groupId, answer, at) => QuestionGroupsDatabaseAdapter.recordAnswer(groupId, answer, at),
+        isIntentActive: async (intentId) => {
+          active ??= new Set((await this.intents.getActiveIntents(userId)).map((intent) => intent.id));
+          return active.has(intentId);
+        },
+        answerOne: (question, answer) => this.answerAsOwner(userId, question, answer),
+      });
+    } catch (error) {
+      logger.warn('Question group answer failed', { userId, questionId, error: error instanceof Error ? error.message : String(error) });
+    }
+    await this.groupNewQuestions(userId, { decide: false });
+  }
+
+  /**
+   * Let the personal agent group the owner's new questions and show what fits.
+   * Grouping never fails the write that triggered it.
+   *
+   * @param options - `decide` asks the decision model whether questions share a fact; without it, no model is called.
+   * @returns The groups newly shown, or null when grouping failed.
+   */
+  async groupNewQuestions(userId: string, options: { decide: boolean; decideFor?: ReadonlySet<string> }): Promise<ShownGroup[] | null> {
+    try {
+      return await groupQuestions(userId, {
+        store: QuestionGroupsDatabaseAdapter,
+        answer: (question, text) => this.answerAsOwner(userId, question, text),
+        ...(options.decide ? { decide: groupingDecide(), ...(options.decideFor ? { decideFor: options.decideFor } : {}) } : {}),
+      });
+    } catch (error) {
+      logger.warn('Question grouping failed', { userId, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }
+
+  /**
+   * The question cards Home shows. A question nothing has grouped yet gets a
+   * group of its own first, with no model call, so Home never waits on one.
+   */
+  async questionCards(userId: string): Promise<GroupCard[]> {
+    await this.groupNewQuestions(userId, { decide: false });
+    const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
+    return shownCards(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), open);
+  }
+
+  /**
+   * Answer one question with words the owner already gave, without fanning
+   * out again. Used when a question joins a group they already answered.
+   */
+  async answerAsOwner(userId: string, question: OpenQuestion, text: string): Promise<void> {
+    const dm = await this.db.getOrCreateAgentDm(userId);
+    await this.answerQuestions({ userId, intentId: question.intentId, conversationId: dm.id, answers: [{ questionId: question.questionId, text }] }, { fanOut: false, onlyWaiting: true });
   }
 
   /**
@@ -413,14 +515,32 @@ export class ConversationService {
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;
     await AgentSessionDatabaseAdapter.publishAgentEntries({ ...input, entries });
+    if (!entries.some((entry) => entry.kind === 'question' || entry.kind === 'expire')) return;
     const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
-    if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
-      await publishPendingQuestionEvent(input.userId, input.intentId, {
-        id: displayed.questionId, question: displayed.text, options: displayed.options,
-        scope: displayed.scope ?? 'intent', matches: displayed.matches,
-      });
-    }
+    const raised = new Set(entries.flatMap((entry) => (entry.kind === 'question' ? [entry.questionId ?? entry.id] : [])));
+    // Grouping may ask the decision model, so it never holds up the intent
+    // agent's write. Only the questions just raised go to the model.
+    background('question-groups', async () => {
+      const shown = await this.groupNewQuestions(input.userId, { decide: true, decideFor: raised });
+      if (shown) {
+        // Only a group newly on Home tells the person. A question that joined
+        // a group, or waits for a slot, does not.
+        for (const { lead } of shown) {
+          await publishPendingQuestionEvent(input.userId, lead.intentId, {
+            id: lead.questionId, question: lead.text, options: lead.options, scope: lead.scope, matches: lead.matches,
+          });
+        }
+        return;
+      }
+      if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
+        await publishPendingQuestionEvent(input.userId, input.intentId, {
+          id: displayed.questionId, question: displayed.text, options: displayed.options,
+          scope: displayed.scope ?? 'intent', matches: displayed.matches,
+        });
+      }
+    });
   }
+
 
   /**
    * Follows a user's event stream on a dedicated Redis client — messages and

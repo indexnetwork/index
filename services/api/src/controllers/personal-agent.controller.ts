@@ -1,16 +1,13 @@
 import { SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { HISTORY_TURNS, messageText, runHomeAgent } from '../lib/home-agent/home-agent';
+import { HISTORY_TURNS, messageText, runPersonalAgent } from '../lib/personal-agent/personal-agent';
+import { PERSONAL_PAST_SCOPE, PERSONAL_SCOPE } from '../lib/personal-agent/personal-agent.instructions';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AGENT_DM_ID, ConversationService } from '../services/conversation.service';
 import { intentService } from '../services/intent.service';
 
-const logger = log.controller.from('home-agent');
+const logger = log.controller.from('personal-agent');
 
-/** Tag on every home chat message: it lives in the agent DM but belongs to no intent. */
-const HOME_SCOPE = 'home';
-/** Where a finished home chat goes on "new chat": kept, but no longer read back. */
-const HOME_PAST_SCOPE = 'home-past';
 const MAX_TEXT = 4000;
 const PAGE = 60;
 /** Words of an intent kept in the agent's "started …" line. */
@@ -23,26 +20,26 @@ function intentLabel(intent: { summary?: string | null; payload?: string | null 
 }
 
 /**
- * The home screen's agent chat: one conversation where the owner's agent
+ * The personal agent's chat: one conversation where the owner's agent
  * creates and manages intents, reviews matches and updates the profile with
  * the Index MCP tools. Messages are stored in the owner's agent DM tagged
- * `scope: 'home'`, which never wakes the hosted intent agent.
+ * `scope: 'home'` (PERSONAL_SCOPE), which never wakes an intent agent.
  */
-@Controller('/home-agent')
-export class HomeAgentController {
+@Controller('/personal-agent')
+export class PersonalAgentController {
   /** Owners with a turn running; a second send waits for the first. */
   private readonly busy = new Set<string>();
 
   constructor(private readonly conversationService: ConversationService) {}
 
-  /** The home conversation so far, oldest first. */
+  /** The chat so far, oldest first. */
   @Get('/messages')
   @UseGuards(SessionOnlyGuard)
   async getMessages(_req: Request, user: AuthenticatedUser) {
     try {
       const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
-      const messages = await this.conversationService.getMessages(resolved.id, { userId: user.id, scope: HOME_SCOPE, limit: PAGE });
+      const messages = await this.conversationService.getMessages(resolved.id, { userId: user.id, scope: PERSONAL_SCOPE, limit: PAGE });
       return Response.json({ messages, busy: this.busy.has(user.id) });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -51,7 +48,24 @@ export class HomeAgentController {
     }
   }
 
-  /** Start a new home chat: the current one is set aside and the agent starts fresh. */
+  /**
+   * The questions Home shows: one card per question group your agent has on
+   * screen. A question nothing has grouped yet gets a group of its own here,
+   * with no model call, so Home never waits on one.
+   */
+  @Get('/questions')
+  @UseGuards(SessionOnlyGuard)
+  async getQuestions(_req: Request, user: AuthenticatedUser) {
+    try {
+      return Response.json({ groups: await this.conversationService.questionCards(user.id) });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('getQuestions failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /** Start a new chat: the current one is set aside and the agent starts fresh. */
   @Post('/new')
   @UseGuards(SessionOnlyGuard)
   async newChat(_req: Request, user: AuthenticatedUser) {
@@ -59,7 +73,7 @@ export class HomeAgentController {
     try {
       const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
-      const moved = await this.conversationService.rescopeMessages(resolved.id, user.id, HOME_SCOPE, HOME_PAST_SCOPE);
+      const moved = await this.conversationService.rescopeMessages(resolved.id, user.id, PERSONAL_SCOPE, PERSONAL_PAST_SCOPE);
       return Response.json({ ok: true, moved });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -70,7 +84,7 @@ export class HomeAgentController {
 
   /**
    * Record an intent the owner just created with the new intent flow inside
-   * the home chat, so the chat (and the agent, on later turns) remembers it.
+   * the chat, so the chat (and the agent, on later turns) remembers it.
    * The agent's line is written here from the stored intent, never from the client.
    *
    * @returns The stored owner line (when `asked` was sent) and the agent's line.
@@ -94,11 +108,11 @@ export class HomeAgentController {
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
 
       const message = asked
-        ? await this.conversationService.sendMessage(resolved.id, user.id, 'user', [{ kind: 'text', text: `start a new intent: ${asked}` }], { metadata: { scope: HOME_SCOPE } })
+        ? await this.conversationService.sendMessage(resolved.id, user.id, 'user', [{ kind: 'text', text: `start a new intent: ${asked}` }], { metadata: { scope: PERSONAL_SCOPE } })
         : null;
       const text = `started [${intentLabel(intent)}](https://index.network/i/${intentId}). i'll start looking for people now.`;
       const reply = await this.conversationService.sendAgentMessage(resolved.id, [{ kind: 'text', text }], {
-        metadata: { scope: HOME_SCOPE, changed: ['create_intent'], intentCreated: intentId },
+        metadata: { scope: PERSONAL_SCOPE, changed: ['create_intent'], intentCreated: intentId },
       });
       return Response.json({ message, reply }, { status: 201 });
     } catch (err: unknown) {
@@ -133,12 +147,12 @@ export class HomeAgentController {
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
       const conversationId = resolved.id;
 
-      const history = await this.conversationService.getMessages(conversationId, { userId: user.id, scope: HOME_SCOPE, limit: HISTORY_TURNS });
-      const message = await this.conversationService.sendMessage(conversationId, user.id, 'user', [{ kind: 'text', text }], { metadata: { scope: HOME_SCOPE } });
+      const history = await this.conversationService.getMessages(conversationId, { userId: user.id, scope: PERSONAL_SCOPE, limit: HISTORY_TURNS });
+      const message = await this.conversationService.sendMessage(conversationId, user.id, 'user', [{ kind: 'text', text }], { metadata: { scope: PERSONAL_SCOPE } });
 
       let reply;
       try {
-        reply = await runHomeAgent({
+        reply = await runPersonalAgent({
           userId: user.id,
           userName: user.name,
           turns: [
@@ -147,12 +161,12 @@ export class HomeAgentController {
           ],
         });
       } catch (err: unknown) {
-        logger.error('home agent turn failed', { userId: user.id, error: err instanceof Error ? err.message : String(err) });
+        logger.error('personal agent turn failed', { userId: user.id, error: err instanceof Error ? err.message : String(err) });
         return Response.json({ message, error: "I couldn't finish that. Try again in a moment." }, { status: 502 });
       }
 
       const answer = await this.conversationService.sendAgentMessage(conversationId, [{ kind: 'text', text: reply.text }], {
-        metadata: { scope: HOME_SCOPE, ...(reply.changed.length ? { changed: reply.changed } : {}) },
+        metadata: { scope: PERSONAL_SCOPE, ...(reply.changed.length ? { changed: reply.changed } : {}) },
       });
       return Response.json({ message, reply: answer, changed: reply.changed }, { status: 201 });
     } catch (err: unknown) {

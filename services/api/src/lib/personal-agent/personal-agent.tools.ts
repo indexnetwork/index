@@ -17,7 +17,7 @@ interface RecordedTool {
 /**
  * Collect the Index MCP tools for one owner without running an MCP server.
  * `registerMcpTools` only calls `registerTool`, so a recorder stands in for
- * the server and the home agent gets exactly the MCP surface: same checks,
+ * the server and the personal agent gets exactly the MCP surface: same checks,
  * same results, nothing reimplemented.
  *
  * @param principal - The owner every tool acts for.
@@ -60,23 +60,23 @@ function resultText(result: CallToolResult): string {
   return result.isError ? `ERROR: ${text}` : text;
 }
 
-export interface HomeAgentTools {
+export interface PersonalAgentTools {
   tools: ToolSet;
   /** Names of tools that changed something, in call order. */
   changed: string[];
 }
 
 /**
- * The Index MCP tools as AI SDK tools for one owner's home agent.
+ * The Index MCP tools as AI SDK tools for one owner's personal agent.
  *
  * Tools whose description starts "Agent tool" are for scheduled agent work
  * (the MCP instructions say never to call them on a person's request), so the
- * home agent never sees them.
+ * personal agent never sees them.
  *
  * @param userId - The signed-in owner.
  * @returns The tool set, and a log of the calls that changed something.
  */
-export function homeAgentTools(userId: string): HomeAgentTools {
+export function personalAgentTools(userId: string): PersonalAgentTools {
   const principal: McpPrincipal = { userId, authKind: 'session' };
   const changed: string[] = [];
   const tools: ToolSet = {};

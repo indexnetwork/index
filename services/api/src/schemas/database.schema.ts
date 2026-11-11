@@ -649,4 +649,40 @@ export type NewNegotiation = typeof negotiations.$inferInsert;
 export type NegotiationTurn = typeof negotiationTurns.$inferSelect;
 export type NewNegotiationTurn = typeof negotiationTurns.$inferInsert;
 
+/**
+ * Open questions from different intent agents that ask the person for the
+ * same fact. The personal agent shows one card per group and fans one answer
+ * out to every member question.
+ */
+export const questionGroups = pgTable('question_groups', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** `held` waits for a slot; `shown` is on Home and its clock runs. */
+  state: text('state').notNull().default('held'),
+  leadQuestionId: text('lead_question_id').notNull(),
+  /** The lead question's words, so an answered group is still known by its question. */
+  leadText: text('lead_text'),
+  answerText: text('answer_text'),
+  answeredAt: timestamp('answered_at'),
+  shownAt: timestamp('shown_at'),
+  emailedAt: timestamp('emailed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userStateIdx: index('question_groups_user_state_idx').on(table.userId, table.state),
+}));
+
+/** One agent question in a group. A question belongs to at most one group. */
+export const questionGroupMembers = pgTable('question_group_members', {
+  questionId: text('question_id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => questionGroups.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull(),
+  scope: text('scope').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  groupIdx: index('question_group_members_group_idx').on(table.groupId),
+}));
+
+export type QuestionGroup = typeof questionGroups.$inferSelect;
+export type QuestionGroupMember = typeof questionGroupMembers.$inferSelect;
+
 export * from './conversation.schema';
