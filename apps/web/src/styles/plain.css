@@ -1465,6 +1465,15 @@
 .pl-q-row-for {
   font-size: 12px;
 }
+/* Opened from a /q/<id> link: the same quiet fill as a selected row. */
+.pl-cards > li.pl-card.pl-q-row.on {
+  background: #f0f0ed;
+}
+.pl-cards > li.pl-card.pl-q-row.on::before,
+.pl-cards > li.pl-card.pl-q-row.on + li.pl-card::before,
+.pl-cards > li.pl-card.pl-q-row.on::after {
+  opacity: 0;
+}
 .pl-q-row-text {
   margin-top: 4px;
   font-size: 14px;
