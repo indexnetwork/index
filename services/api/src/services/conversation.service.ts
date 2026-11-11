@@ -14,7 +14,7 @@ import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
 import { fanOutAnswer } from '../lib/personal-agent/fan-out';
 import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
-import { shownCards, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
+import { shownCards, visibleQuestionIds, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
 export type { PrincipalMessage } from '../adapters/agent-session.database.adapter';
@@ -333,6 +333,9 @@ export class ConversationService {
    *
    * @param userId - Authenticated owner.
    * @param intentIds - Intents the caller already resolved as owned.
+   * Questions in a group the personal agent is still holding are left out: an
+   * outside agent asks only what Home shows.
+   *
    * @returns Each intent's visible messages and its questions still waiting, in the given order.
    */
   async intentConversations(userId: string, intentIds: readonly string[]) {
@@ -340,11 +343,25 @@ export class ConversationService {
     const [visible, all] = await Promise.all([this.db.getMessages(dm.id, { userId }), this.db.getMessages(dm.id)]);
     const of = <T extends { metadata: unknown }>(rows: T[], intentId: string) =>
       rows.filter((row) => (row.metadata as { intentId?: string } | null)?.intentId === intentId);
-    return intentIds.map((intentId) => ({
+    const read = intentIds.map((intentId) => ({
       intentId,
       messages: of(visible, intentId),
       questions: unanswered(of(all, intentId).map(toPrincipalMessage)),
     }));
+    const shown = await this.shownQuestionIds(userId, read.flatMap((entry) => entry.questions.map((question) => question.id)));
+    return shown ? read.map((entry) => ({ ...entry, questions: entry.questions.filter((question) => shown.has(question.id)) })) : read;
+  }
+
+  /** @returns The questions Home shows now, or null when groups cannot be read (then nothing is held back). */
+  private async shownQuestionIds(userId: string, questionIds: string[]): Promise<Set<string> | null> {
+    if (!questionIds.length) return new Set();
+    try {
+      const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
+      return visibleQuestionIds(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), questionIds);
+    } catch (error) {
+      logger.warn('Reading question groups failed; showing every question', { userId, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
   }
 
   /**
