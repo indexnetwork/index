@@ -12,6 +12,7 @@ import { QuestionGroupsDatabaseAdapter } from '../adapters/question-groups.datab
 import { background } from '../lib/background';
 import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
+import { fanOutAnswer } from '../lib/personal-agent/fan-out';
 import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
 import type { OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
@@ -360,7 +361,7 @@ export class ConversationService {
    * @returns The persisted message.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
+  async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }, options: { fanOut?: boolean } = {}) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
@@ -372,6 +373,7 @@ export class ConversationService {
       type: 'principal.input', id: message.id, title: '', body: '',
       data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
     });
+    if (answered && options.fanOut !== false) await this.answerGroup(input.userId, answered.id, input.text);
     return message;
   }
 
@@ -390,7 +392,7 @@ export class ConversationService {
    * @returns The persisted messages, in the order given.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, _options: { fanOut?: boolean } = {}) {
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, options: { fanOut?: boolean } = {}) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
@@ -411,7 +413,36 @@ export class ConversationService {
         data: { intentId: input.intentId, questionId: answer.question?.id ?? null, text: answer.text },
       });
     }
+    if (options.fanOut !== false) {
+      for (const answer of prepared) {
+        if (answer.question) await this.answerGroup(input.userId, answer.question.id, answer.text);
+      }
+    }
     return persisted;
+  }
+
+  /**
+   * Carry an answer to the rest of its question group, then show any group
+   * waiting for the slot it freed. An answer is already saved when this runs,
+   * so a failure here is logged, never thrown.
+   */
+  private async answerGroup(userId: string, questionId: string, text: string): Promise<void> {
+    try {
+      let active: Set<string> | null = null;
+      await fanOutAnswer(userId, questionId, text, {
+        listOpenQuestions: (owner) => QuestionGroupsDatabaseAdapter.listOpenQuestions(owner),
+        listGroups: (owner, open) => QuestionGroupsDatabaseAdapter.listGroups(owner, open),
+        recordAnswer: (groupId, answer, at) => QuestionGroupsDatabaseAdapter.recordAnswer(groupId, answer, at),
+        isIntentActive: async (intentId) => {
+          active ??= new Set((await this.intents.getActiveIntents(userId)).map((intent) => intent.id));
+          return active.has(intentId);
+        },
+        answerOne: (question, answer) => this.answerAsOwner(userId, question, answer),
+      });
+    } catch (error) {
+      logger.warn('Question group answer failed', { userId, questionId, error: error instanceof Error ? error.message : String(error) });
+    }
+    await this.groupNewQuestions(userId, { decide: false });
   }
 
   /**
