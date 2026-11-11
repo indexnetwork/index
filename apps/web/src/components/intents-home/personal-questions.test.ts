@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { focusedGroup, intentsToRefresh, withoutAnswered, type PersonalQuestion } from "./personal-questions";
+import { focusedGroup, intentsToRefresh, showsDashboard, withoutAnswered, type PersonalQuestion } from "./personal-questions";
 
 const card = (groupId: string, questionIds: string[], intentIds: string[]): PersonalQuestion => ({
   groupId, id: questionIds[0], intentId: intentIds[0], question: `${groupId}?`, scope: "intent", matches: [], questionIds, intentIds,
@@ -29,5 +29,13 @@ describe("focusedGroup", () => {
   it("is null for an unknown or missing id", () => {
     expect(focusedGroup(cards, "nope")).toBeNull();
     expect(focusedGroup(cards, null)).toBeNull();
+  });
+});
+
+describe("showsDashboard", () => {
+  it("#9 opens the questions on a phone when a /q link brought you", () => {
+    expect(showsDashboard(true, "q1")).toBe(true);
+    expect(showsDashboard(true, null)).toBe(false);
+    expect(showsDashboard(false, null)).toBe(true);
   });
 });

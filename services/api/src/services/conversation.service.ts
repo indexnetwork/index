@@ -12,6 +12,7 @@ import { QuestionGroupsDatabaseAdapter } from '../adapters/question-groups.datab
 import { background } from '../lib/background';
 import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
+import { prepareAnswers } from '../lib/personal-agent/answers';
 import { fanOutAnswer } from '../lib/personal-agent/fan-out';
 import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
 import { shownCards, visibleQuestionIds, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
@@ -409,15 +410,13 @@ export class ConversationService {
    * @returns The persisted messages, in the order given.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, options: { fanOut?: boolean } = {}) {
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, options: { fanOut?: boolean; onlyWaiting?: boolean } = {}) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
-    const queue = unanswered(messages);
-    const prepared = input.answers.map((answer) => ({
-      text: answer.text,
-      question: queue.find((question) => question.id === answer.questionId) ?? null,
-    }));
+    // An automatic answer whose question closed meanwhile is dropped, never kept as a message.
+    const prepared = prepareAnswers(unanswered(messages), input.answers, { onlyWaiting: options.onlyWaiting === true });
+    if (!prepared.length) return [];
     const persisted = await AgentSessionDatabaseAdapter.writeOwnerAnswers({
       userId: input.userId, intentId: input.intentId, conversationId, answers: prepared,
     });
@@ -469,12 +468,12 @@ export class ConversationService {
    * @param options - `decide` asks the decision model whether questions share a fact; without it, no model is called.
    * @returns The groups newly shown, or null when grouping failed.
    */
-  async groupNewQuestions(userId: string, options: { decide: boolean }): Promise<ShownGroup[] | null> {
+  async groupNewQuestions(userId: string, options: { decide: boolean; decideFor?: ReadonlySet<string> }): Promise<ShownGroup[] | null> {
     try {
       return await groupQuestions(userId, {
         store: QuestionGroupsDatabaseAdapter,
         answer: (question, text) => this.answerAsOwner(userId, question, text),
-        ...(options.decide ? { decide: groupingDecide() } : {}),
+        ...(options.decide ? { decide: groupingDecide(), ...(options.decideFor ? { decideFor: options.decideFor } : {}) } : {}),
       });
     } catch (error) {
       logger.warn('Question grouping failed', { userId, error: error instanceof Error ? error.message : String(error) });
@@ -498,7 +497,7 @@ export class ConversationService {
    */
   async answerAsOwner(userId: string, question: OpenQuestion, text: string): Promise<void> {
     const dm = await this.db.getOrCreateAgentDm(userId);
-    await this.answerQuestions({ userId, intentId: question.intentId, conversationId: dm.id, answers: [{ questionId: question.questionId, text }] }, { fanOut: false });
+    await this.answerQuestions({ userId, intentId: question.intentId, conversationId: dm.id, answers: [{ questionId: question.questionId, text }] }, { fanOut: false, onlyWaiting: true });
   }
 
   /**
@@ -516,8 +515,13 @@ export class ConversationService {
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;
     await AgentSessionDatabaseAdapter.publishAgentEntries({ ...input, entries });
-    if (entries.some((entry) => entry.kind === 'question' || entry.kind === 'expire')) {
-      const shown = await this.groupNewQuestions(input.userId, { decide: true });
+    if (!entries.some((entry) => entry.kind === 'question' || entry.kind === 'expire')) return;
+    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
+    const raised = new Set(entries.flatMap((entry) => (entry.kind === 'question' ? [entry.questionId ?? entry.id] : [])));
+    // Grouping may ask the decision model, so it never holds up the intent
+    // agent's write. Only the questions just raised go to the model.
+    background('question-groups', async () => {
+      const shown = await this.groupNewQuestions(input.userId, { decide: true, decideFor: raised });
       if (shown) {
         // Only a group newly on Home tells the person. A question that joined
         // a group, or waits for a slot, does not.
@@ -528,15 +532,15 @@ export class ConversationService {
         }
         return;
       }
-    }
-    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
-    if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
-      await publishPendingQuestionEvent(input.userId, input.intentId, {
-        id: displayed.questionId, question: displayed.text, options: displayed.options,
-        scope: displayed.scope ?? 'intent', matches: displayed.matches,
-      });
-    }
+      if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
+        await publishPendingQuestionEvent(input.userId, input.intentId, {
+          id: displayed.questionId, question: displayed.text, options: displayed.options,
+          scope: displayed.scope ?? 'intent', matches: displayed.matches,
+        });
+      }
+    });
   }
+
 
   /**
    * Follows a user's event stream on a dedicated Redis client — messages and

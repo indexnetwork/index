@@ -11,6 +11,7 @@ CREATE TABLE "question_groups" (
 	"user_id" text NOT NULL,
 	"state" text DEFAULT 'held' NOT NULL,
 	"lead_question_id" text NOT NULL,
+	"lead_text" text,
 	"answer_text" text,
 	"answered_at" timestamp,
 	"shown_at" timestamp,

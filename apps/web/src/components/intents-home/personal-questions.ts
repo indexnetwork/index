@@ -27,3 +27,11 @@ export function focusedGroup(cards: { groupId: string; questionIds: string[] }[]
   if (!q) return null;
   return cards.find((card) => card.questionIds.includes(q))?.groupId ?? null;
 }
+
+/**
+ * Phones get the shelf on Home, which has no questions. A `/q/<id>` link
+ * still has to land on its question, so it opens the dashboard there too.
+ */
+export function showsDashboard(compact: boolean, q: string | null): boolean {
+  return !compact || Boolean(q);
+}

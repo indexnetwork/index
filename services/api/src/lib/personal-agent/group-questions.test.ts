@@ -90,3 +90,33 @@ describe('groupQuestions', () => {
     expect(shown).toEqual([]);
   });
 });
+
+describe('review fixes', () => {
+  it('#2 offers an answered group to the model by its question, never its answer', async () => {
+    const answered: GroupState = { id: 'old', state: 'shown', leadQuestionId: 'q0', leadText: 'Where would you relocate?', answerText: 'Berlin', createdAt: at(0), shownAt: at(0), emailedAt: null, members: [{ questionId: 'q0', intentId: 'a', scope: 'intent', open: false }] };
+    const { store } = memoryStore([question('q2', 'b', 2)], [answered]);
+    let labels: string[] = [];
+    await groupQuestions('u', { store, answer: async () => undefined, decide: async ({ options }) => { labels = Object.values(options); return { choice: 'none' }; } });
+    expect(labels).toContain('Where would you relocate?');
+    expect(labels).not.toContain('Berlin');
+  });
+
+  it('#4 answers a member still open in an answered group', async () => {
+    const answered: GroupState = { id: 'g', state: 'shown', leadQuestionId: 'q1', leadText: 'remote?', answerText: 'yes', createdAt: at(0), shownAt: at(0), emailedAt: null, members: [
+      { questionId: 'q1', intentId: 'a', scope: 'intent', open: false },
+      { questionId: 'q2', intentId: 'b', scope: 'intent', open: true },
+    ] };
+    const { store } = memoryStore([question('q2', 'b', 2)], [answered]);
+    const answers: [string, string][] = [];
+    await groupQuestions('u', { store, answer: async (q, text) => { answers.push([q.questionId, text]); } });
+    expect(answers).toEqual([['q2', 'yes']]);
+  });
+
+  it('#8 asks the model only about the questions it is told to', async () => {
+    const { store, groups } = memoryStore([question('q1', 'a', 1), question('q2', 'b', 2)]);
+    let calls = 0;
+    await groupQuestions('u', { store, answer: noAnswer, decide: async () => { calls++; return { choice: 'g1' }; }, decideFor: new Set(['nothing-new']) });
+    expect(calls).toBe(0);
+    expect(groups).toHaveLength(2);
+  });
+});

@@ -4,7 +4,7 @@ import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { openQuestions, type GroupState, type OpenQuestion, type QuestionScope } from '../lib/personal-agent/question-groups';
-import { messages, questionGroupMembers, questionGroups } from '../schemas/database.schema';
+import { intents, messages, questionGroupMembers, questionGroups } from '../schemas/database.schema';
 
 import { toPrincipalMessage } from './agent-session.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -14,9 +14,11 @@ const GROUP_HORIZON_DAYS = 60;
 
 /** Where the personal agent keeps its question groups. Thin queries; the rules live in `question-groups.ts`. */
 export class QuestionGroupsDatabaseAdapter {
-  /** @returns Every question still waiting on the owner, across all intents, oldest first. */
+  /** @returns Every question still waiting on the owner, across their active intents, oldest first. */
   static async listOpenQuestions(userId: string): Promise<OpenQuestion[]> {
     const dm = await new ConversationDatabaseAdapter().getOrCreateAgentDm(userId);
+    const active = await db.select({ id: intents.id }).from(intents)
+      .where(and(eq(intents.userId, userId), eq(intents.status, 'active'), isNull(intents.archivedAt)));
     const rows = await db.select().from(messages)
       .where(and(
         eq(messages.conversationId, dm.id),
@@ -26,7 +28,7 @@ export class QuestionGroupsDatabaseAdapter {
     return openQuestions(rows.map((row) => ({
       intentId: (row.metadata as { intentId?: string } | null)?.intentId ?? '',
       message: toPrincipalMessage(row),
-    })));
+    })), new Set(active.map((intent) => intent.id)));
   }
 
   /**
@@ -49,6 +51,7 @@ export class QuestionGroupsDatabaseAdapter {
       id: group.id,
       state: group.state === 'shown' ? 'shown' : 'held',
       leadQuestionId: group.leadQuestionId,
+      leadText: group.leadText,
       answerText: group.answerText,
       createdAt: group.createdAt,
       shownAt: group.shownAt,
@@ -74,7 +77,7 @@ export class QuestionGroupsDatabaseAdapter {
   static async createGroup(userId: string, question: OpenQuestion): Promise<string> {
     const id = randomUUID();
     await db.transaction(async (tx) => {
-      await tx.insert(questionGroups).values({ id, userId, leadQuestionId: question.questionId });
+      await tx.insert(questionGroups).values({ id, userId, leadQuestionId: question.questionId, leadText: question.text });
       await tx.insert(questionGroupMembers).values({ questionId: question.questionId, groupId: id, intentId: question.intentId, scope: question.scope });
     });
     return id;

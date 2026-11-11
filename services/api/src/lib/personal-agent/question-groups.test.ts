@@ -132,3 +132,26 @@ describe('visibleQuestionIds', () => {
     expect([...visible].sort()).toEqual(['loose', 's']);
   });
 });
+
+describe('review fixes', () => {
+  it('#1 reads only questions on intents still active', () => {
+    const entries = [
+      { intentId: 'live', message: { id: 'm1', createdAt: at(1).toISOString(), kind: 'question' as const, questionId: 'q1', text: 'a?', matches: [] } },
+      { intentId: 'archived', message: { id: 'm2', createdAt: at(2).toISOString(), kind: 'question' as const, questionId: 'q2', text: 'b?', matches: [] } },
+    ];
+    expect(openQuestions(entries, new Set(['live'])).map((q) => q.questionId)).toEqual(['q1']);
+  });
+
+  it('#6 lets an outside agent ask a shown group once, through its card', () => {
+    const shared = group('g', { leadQuestionId: 'a1', members: [
+      { questionId: 'a1', intentId: 'a', scope: 'intent', open: true },
+      { questionId: 'b1', intentId: 'b', scope: 'intent', open: true },
+    ] });
+    expect([...visibleQuestionIds([shared], ['a1', 'b1'])]).toEqual(['a1']);
+    const leadClosed = group('g', { leadQuestionId: 'a1', members: [
+      { questionId: 'a1', intentId: 'a', scope: 'intent', open: false },
+      { questionId: 'b1', intentId: 'b', scope: 'intent', open: true },
+    ] });
+    expect([...visibleQuestionIds([leadClosed], ['b1'])]).toEqual(['b1']);
+  });
+});

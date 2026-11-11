@@ -18,6 +18,8 @@ export interface GroupingDeps {
   answer: (question: OpenQuestion, text: string) => Promise<void>;
   /** Without it, every new question gets a group of its own: no model call. */
   decide?: Decide;
+  /** When set, only these questions are put to the model; the rest get groups of their own. */
+  decideFor?: ReadonlySet<string>;
   now?: () => Date;
 }
 
@@ -35,7 +37,8 @@ const SAME_FACT = 'Does the new question ask the person for the same fact as one
  */
 async function sameFact(decide: Decide, question: OpenQuestion, candidates: GroupState[], leads: Map<string, OpenQuestion>): Promise<GroupState | null> {
   const options: Record<string, string> = { none: 'A different fact' };
-  for (const group of candidates) options[group.id] = leads.get(group.leadQuestionId)?.text ?? group.answerText ?? 'an earlier question';
+  // Always by its question: an answer alone ("Berlin", "yes") would match the wrong fact.
+  for (const group of candidates) options[group.id] = group.leadText ?? leads.get(group.leadQuestionId)?.text ?? 'an earlier question';
   try {
     const { choice } = await decide({ state: { question: question.text, options: question.options ?? [] }, question: SAME_FACT, options });
     return candidates.find((group) => group.id === choice) ?? null;
@@ -46,8 +49,9 @@ async function sameFact(decide: Decide, question: OpenQuestion, candidates: Grou
 
 /**
  * Put every open question that has no group yet into one, oldest first. A
- * question that joins an answered group is answered at once with that answer.
- * Then held groups are shown while there is room.
+ * question that joins an answered group is answered at once with that answer,
+ * and so is any member an earlier fan-out missed (its intent was paused, or
+ * a write failed). Then held groups are shown while there is room.
  *
  * @returns The groups this pass put on Home.
  */
@@ -63,7 +67,8 @@ export async function groupQuestions(userId: string, deps: GroupingDeps): Promis
   for (const question of open) {
     if (grouped.has(question.questionId)) continue;
     const candidates = joinableGroups(question, groups);
-    const chosen = deps.decide && candidates.length ? await sameFact(deps.decide, question, candidates, byId) : null;
+    const asks = deps.decide && candidates.length && (!deps.decideFor || deps.decideFor.has(question.questionId));
+    const chosen = asks ? await sameFact(deps.decide!, question, candidates, byId) : null;
     if (chosen) {
       await store.addMember(chosen.id, question);
       const member = { questionId: question.questionId, intentId: question.intentId, scope: question.scope, open: true };
@@ -76,10 +81,20 @@ export async function groupQuestions(userId: string, deps: GroupingDeps): Promis
     }
     const id = await store.createGroup(userId, question);
     groups.push({
-      id, state: 'held', leadQuestionId: question.questionId, answerText: null,
+      id, state: 'held', leadQuestionId: question.questionId, leadText: question.text, answerText: null,
       createdAt: question.createdAt, shownAt: null, emailedAt: null,
       members: [{ questionId: question.questionId, intentId: question.intentId, scope: question.scope, open: true }],
     });
+  }
+
+  for (const group of groups) {
+    if (group.answerText === null) continue;
+    for (const member of group.members) {
+      const question = member.open ? byId.get(member.questionId) : undefined;
+      if (!question) continue;
+      await deps.answer(question, group.answerText);
+      member.open = false;
+    }
   }
 
   const ids = groupsToShow(groups);

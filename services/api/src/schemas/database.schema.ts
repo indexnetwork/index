@@ -660,6 +660,8 @@ export const questionGroups = pgTable('question_groups', {
   /** `held` waits for a slot; `shown` is on Home and its clock runs. */
   state: text('state').notNull().default('held'),
   leadQuestionId: text('lead_question_id').notNull(),
+  /** The lead question's words, so an answered group is still known by its question. */
+  leadText: text('lead_text'),
   answerText: text('answer_text'),
   answeredAt: timestamp('answered_at'),
   shownAt: timestamp('shown_at'),

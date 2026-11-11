@@ -39,6 +39,9 @@ export interface OpeningInput {
 
 const MORNING_TASK = `Write the first lines of this morning's message to them: at most two sentences about what their intent agents did since yesterday. Do not greet them: the message already starts with "Good morning, <their first name>." Do not name the people waiting on them or repeat the questions; both are listed below your lines. If nothing happened worth saying, say so in one sentence.`;
 
+/** A morning waits on its opening this long, then uses the plain one. */
+export const OPENING_TIMEOUT_MS = 30_000;
+
 const SENTENCE = /[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g;
 
 /** @returns The text cut to its first two sentences, or null when there is none. */
@@ -64,7 +67,7 @@ export function greeting(name: string): string {
  * @returns Its lines, unclipped, or null when it wrote nothing.
  * @throws When the model call fails; the caller falls back.
  */
-export async function writeOpening(input: OpeningInput, model: Model): Promise<string | null> {
+export async function writeOpening(input: OpeningInput, model: Model, timeoutMs = OPENING_TIMEOUT_MS): Promise<string | null> {
   const reports = input.reports.length
     ? input.reports.map((report) => `${report.intent}: ${report.text}`).join('\n')
     : 'No intent agent reported anything.';
@@ -81,6 +84,8 @@ export async function writeOpening(input: OpeningInput, model: Model): Promise<s
     ].join('\n'),
     maxOutputTokens: 300,
     maxRetries: 1,
+    // Mornings go out one owner after another: a hung call must not hold the rest.
+    abortSignal: AbortSignal.timeout(timeoutMs),
   });
   return result.text.trim() || null;
 }

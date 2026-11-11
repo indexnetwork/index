@@ -1,5 +1,5 @@
 {
-  "id": "67500461-aed5-498b-b201-cefdba1b1c57",
+  "id": "176e25d7-5053-4f41-8e08-82bcefa25c0b",
   "prevId": "9b783c6f-a4e4-4ff8-a2c7-8c2bee21ea7d",
   "version": "7",
   "dialect": "postgresql",
@@ -2607,6 +2607,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "lead_text": {
+          "name": "lead_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "answer_text": {
           "name": "answer_text",

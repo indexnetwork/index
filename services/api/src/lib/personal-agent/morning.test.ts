@@ -2,7 +2,9 @@ import { describe, expect, it } from 'bun:test';
 
 import { morningBriefTemplate } from '../email/templates/morning-brief.template';
 
-import { clipOpening, fallbackOpening, morningChatText, type Morning } from './morning';
+import { MockLanguageModelV4 } from 'ai/test';
+
+import { clipOpening, fallbackOpening, morningChatText, writeOpening, type Morning } from './morning';
 
 // The template signs its accept, pass and unsubscribe links.
 process.env.BETTER_AUTH_SECRET ??= 'morning-test-secret';
@@ -54,5 +56,19 @@ describe('morningBriefTemplate', () => {
   });
   it('sends nothing with no new person and no question', () => {
     expect(morningBriefTemplate({ ...base, waiting: [{ ...person, fresh: false }] })).toBeNull();
+  });
+});
+
+describe('writeOpening', () => {
+  it('#7 gives up on a model that never answers, so the plain opening is used', async () => {
+    const hung = new MockLanguageModelV4({
+      doGenerate: ({ abortSignal }) => new Promise((_resolve, reject) => {
+        abortSignal?.addEventListener('abort', () => reject(abortSignal.reason));
+      }),
+    });
+    const started = Date.now();
+    const input = { name: 'Seref', reports: [], talked: 0, waitingNames: [], groupCount: 1 };
+    await expect(writeOpening(input, hung, 50)).rejects.toBeDefined();
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
