@@ -3,7 +3,6 @@ import ReactMarkdown from "react-markdown";
 import { Link } from "react-router";
 import remarkGfm from "remark-gfm";
 
-import IntentActivity from "@/components/intents-home/IntentActivity";
 import NewIntentSteps from "@/components/intents-home/NewIntentSteps";
 import { intentLabel } from "@/components/intents-home/stages";
 import { usePersonalAgentChat } from "@/components/intents-home/usePersonalAgentChat";
@@ -46,8 +45,6 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
   const { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry } = usePersonalAgentChat(onChanged);
   const [draft, setDraft] = useState("");
   const { intents } = useIntentsData();
-  // Live activity shows under the most recent intents started here, not every one ever.
-  const liveIntents = new Set(messages.filter((m) => m.intentCreated).slice(-3).map((m) => m.intentCreated));
   // The server writes the agent's "started …" line into the chat once the intent exists.
   const flow = useNewIntentFlow(({ id, asked }) => {
     void recordIntent(id, asked);
@@ -126,7 +123,6 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
                       : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>;
                   })() : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>}
                 </div>
-                {message.intentCreated && liveIntents.has(message.intentCreated) && <IntentActivity intentId={message.intentCreated} />}
                 {message.changed?.length ? <div className="pl-agent-done">✓ {message.changed.map((name) => name.replace(/_/g, " ")).join(", ")}</div> : null}
               </div>
             </div>
@@ -140,11 +136,6 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
           )
         ))}
         {flow.active && <NewIntentSteps flow={flow} />}
-        {!flow.active && messages.length > 0 && !sending && (
-          <div className="pl-agent-suggest pl-agent-again">
-            <button type="button" className="go" onClick={startFlow}>+ start a new intent</button>
-          </div>
-        )}
         {sending && (
           <div className="pl-agent-line">
             <MyAgentAvatar size={22} />

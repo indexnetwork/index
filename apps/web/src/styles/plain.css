@@ -527,77 +527,9 @@
 .pl-ni-actions {
   margin-top: 10px;
 }
-.pl-agent-again {
-  margin-top: 0;
-}
 .pl-agent-compose textarea:disabled {
   background: #f0eee8;
   color: #8a8578;
-}
-
-/* "what i'm doing": an intent's live progress under the agent's "started …" line */
-.pl-act {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid #000;
-  border-left: 4px solid #ffcc00;
-  background: #fffdf3;
-  white-space: normal;
-}
-.pl-act-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: 1.5px;
-}
-.pl-act-dot {
-  width: 7px;
-  height: 7px;
-  border: 1px solid #000;
-  background: #33aa33;
-}
-.pl-act-dot.on {
-  background: #ffcc00;
-  animation: pl-blink 1s steps(1) infinite;
-}
-.pl .pl-act-lines,
-.pl .pl-act-sub {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.pl .pl-act-lines > li {
-  margin: 0;
-  padding: 1px 0;
-  font: 400 11.5px/1.5 "JetBrains Mono", ui-monospace, monospace;
-  color: #555;
-}
-.pl .pl-act-lines > li::before {
-  content: "· ";
-  color: #999;
-}
-.pl .pl-act-lines > li.strong {
-  color: #000;
-  font-weight: 600;
-}
-.pl .pl-act-sub > li {
-  margin: 2px 0 0 12px;
-  padding-left: 8px;
-  border-left: 1px solid #bbb;
-  color: #777;
-}
-.pl-act-status {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--pl-line, #e6e6e6);
-  font: 600 11.5px "JetBrains Mono", ui-monospace, monospace;
-}
-.pl-act-open {
-  display: inline-block;
-  margin-top: 6px;
-  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* a person's name links to their profile: plain black text, underlined only on hover */
@@ -1074,7 +1006,6 @@
 /* everything else that was a framed box */
 .pl-table,
 .pl-ni,
-.pl-act,
 .pl-rows,
 .pl-prof-log,
 .pl .pl-nets a.pl-net,
