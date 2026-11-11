@@ -11,7 +11,7 @@ import { AgentWindowProvider } from "@/components/intents-home/agentWindow";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import MatchWindow from "@/components/intents-home/MatchWindow";
 import { InAppFrameContext } from "@/components/intents-home/appFrameContext";
-import HomeAgentPanel from "@/components/intents-home/HomeAgentPanel";
+import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
@@ -106,7 +106,7 @@ function AgentWindow() {
   }
   return (
     <section className="ih-agentwin" aria-label="your agent">
-      <HomeAgentPanel onChanged={onChanged} onClose={() => setOpen(false)} />
+      <PersonalAgentPanel onChanged={onChanged} onClose={() => setOpen(false)} />
     </section>
   );
 }
