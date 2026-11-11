@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { ensureSiteFonts } from "@/app/site/SiteLayout";
+import { ensureSiteFonts, SiteNav } from "@/app/site/SiteLayout";
 import CopyPromptButton from "@/app/site/CopyPromptButton";
 import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import "@/app/site/site.css";
@@ -11,8 +11,10 @@ import "./download.css";
  * Single-viewport shell for the install pages: a vertically centred `main` that scrolls on its own when the window is short.
  * `overlay` covers the chrome of a route that renders it in place.
  */
-export function AppsShell({ overlay, bar = "index", narrow = false, framed = true, children }: {
+export function AppsShell({ overlay, bar = "index", narrow = false, framed = true, brand = false, children }: {
   overlay?: boolean;
+  /** Show the Index Network logo top left, where the landing page has it. */
+  brand?: boolean;
   bar?: string;
   narrow?: boolean;
   /** When false, children are separate windows on the desktop, not one pane. */
@@ -24,7 +26,8 @@ export function AppsShell({ overlay, bar = "index", narrow = false, framed = tru
   }, []);
 
   return (
-    <div className={overlay ? "site apps apps--overlay" : "site apps"}>
+    <div className={`site apps${overlay ? " apps--overlay" : ""}${brand ? " apps--branded" : ""}`}>
+      {brand && <div className="site-col apps-nav"><SiteNav logoOnly /></div>}
       <div className={narrow ? "apps-col apps-col--narrow" : "apps-col"}>
         <main className="apps-main">
           {framed ? (
@@ -138,7 +141,7 @@ function HermesInstall() {
   );
 }
 
-function HermesCard({ title = "Hermes plugin", body = "Already use Hermes? Add Index to the agent you have." }: { title?: string; body?: string }) {
+function HermesCard({ title = "Hermes plugin", body = "Already use Hermes? Add Index to the agent you have.", cta = "Install plugin →" }: { title?: string; body?: string; cta?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <AppCard
@@ -155,7 +158,7 @@ function HermesCard({ title = "Hermes plugin", body = "Already use Hermes? Add I
               aria-expanded={false}
               onClick={() => setOpen(true)}
             >
-              Install plugin →
+              {cta}
             </button>
           )}
         </div>
@@ -174,6 +177,7 @@ export function IndexChips({
   hermesBody = "Already use Hermes? Add Index to the agent you have.",
   agentTitle = "Your agent",
   agentBody = "Paste a prompt into Claude, Cursor, or any agent that takes MCP servers.",
+  columns = false,
 }: {
   appHref?: string;
   prompt?: string;
@@ -183,9 +187,11 @@ export function IndexChips({
   hermesBody?: string;
   agentTitle?: string;
   agentBody?: string;
+  /** Three columns split by hairlines, no boxes, the app's buttons (the /download page). */
+  columns?: boolean;
 }) {
   return (
-    <div className="apps-cards">
+    <div className={columns ? "apps-cards apps-cards--cols" : "apps-cards"}>
       <AppCard
         icon={<WebIcon />}
         label="APP"
@@ -193,11 +199,11 @@ export function IndexChips({
         body={appBody}
         action={
           <div className="apps-card-actions">
-            <Link className="site-btn site-btn--block" to={appHref}>Open app →</Link>
+            <Link className={columns ? "site-btn" : "site-btn site-btn--block"} to={appHref}>{columns ? "open app →" : "Open app →"}</Link>
           </div>
         }
       />
-      <HermesCard title={hermesTitle} body={hermesBody} />
+      <HermesCard title={hermesTitle} body={hermesBody} cta={columns ? "install plugin" : undefined} />
       <AppCard
         icon={<AgentIcon />}
         label="MCP"
@@ -205,7 +211,7 @@ export function IndexChips({
         body={agentBody}
         action={
           <div className="apps-card-actions">
-            <CopyPromptButton className="site-btn site-btn--secondary site-btn--block" label="Copy prompt →" text={prompt} />
+            <CopyPromptButton className={columns ? "site-btn site-btn--secondary" : "site-btn site-btn--secondary site-btn--block"} label={columns ? "copy prompt" : "Copy prompt →"} text={prompt} />
           </div>
         }
       />
@@ -215,9 +221,24 @@ export function IndexChips({
 
 /** `/download` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
 export default function Download({ overlay }: { overlay?: boolean }) {
+  const chips = (
+    <IndexChips
+      columns
+      appTitle="index app"
+      appBody="open index and start an intent."
+      hermesTitle="hermes plugin"
+      hermesBody="already use hermes? add index to the agent you have."
+      agentTitle="your agent"
+      agentBody="paste a prompt into claude, cursor, or any agent that takes mcp servers."
+    />
+  );
+
   return (
-    <AppsShell overlay={overlay} framed={false}>
-      <IndexChips />
+    <AppsShell overlay={overlay} framed={false} brand>
+      <div className="apps-get">
+        <h1 className="apps-get__title">get index</h1>
+        {chips}
+      </div>
     </AppsShell>
   );
 }

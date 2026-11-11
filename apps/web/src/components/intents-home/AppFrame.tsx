@@ -1,9 +1,10 @@
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/buttons.css";
 import { useAuthContext } from "@/contexts/AuthContext";
+import UserAvatar from "@/components/UserAvatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
@@ -11,12 +12,13 @@ import { AgentWindowProvider } from "@/components/intents-home/agentWindow";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import MatchWindow from "@/components/intents-home/MatchWindow";
 import { InAppFrameContext } from "@/components/intents-home/appFrameContext";
+import ConnectAgent from "@/components/intents-home/ConnectAgent";
 import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 
-type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "agents" | "settings" | "";
+type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
 function railKey(pathname: string, search: string, me?: string): RailKey {
@@ -29,7 +31,7 @@ function railKey(pathname: string, search: string, me?: string): RailKey {
     return tab === "profile" ? "profile" : "settings";
   }
   if (pathname.startsWith("/networks")) return "networks";
-  if (pathname.startsWith("/agents")) return "agents";
+  if (pathname.startsWith("/agents")) return "settings";
   if (pathname.startsWith("/negotiations")) return "settings";
   return "";
 }
@@ -37,7 +39,7 @@ function railKey(pathname: string, search: string, me?: string): RailKey {
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
 function AppRail({ here }: { here: RailKey }) {
   const navigate = useNavigate();
-  const { user, signOut } = useAuthContext();
+  const { user } = useAuthContext();
   const { conversations } = useConversation();
   const { entriesByIntent } = useIntentsData();
   const sections = useHomeSections();
@@ -75,16 +77,67 @@ function AppRail({ here }: { here: RailKey }) {
         {item("intents", "intents", "/intents", waiting)}
         {item("chat", "conversations", "/chat", unread)}
 
-        <div className="ih-menu">
-          {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
-          {item("networks", "networks", "/networks")}
-          {item("agents", "agents", "/agents")}
-          {item("settings", "settings", "/settings?tab=notifications")}
-          <button type="button" className="ih-nav" onClick={() => void signOut()}><span className="ih-nav-label">log out</span></button>
-          {user?.name && <div className="ih-me">signed in as {user.name}</div>}
+        <div className="ih-foot">
+          <ConnectAgent />
+          <div className="ih-menu">
+            {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
+            {item("networks", "networks", "/networks")}
+            {item("settings", "settings", "/settings?tab=notifications")}
+            <AccountMenu />
+          </div>
         </div>
       </div>
     </nav>
+  );
+}
+
+/** You, at the foot of the sidebar: your photo and name; a click opens log out above it (as on x.com). */
+function AccountMenu() {
+  const { user, signOut } = useAuthContext();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+
+  return (
+    <div className="ih-account" ref={ref}>
+      {open && (
+        <div className="ih-account-menu" role="menu">
+          <button type="button" role="menuitem" className="ih-account-out" onClick={() => { setOpen(false); void signOut(); }}>
+            log out
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        className={`ih-account-btn${open ? " open" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={28} />
+        <span className="ih-account-who">
+          <span className="ih-account-name">{user?.name || "you"}</span>
+          {user?.email && <span className="ih-account-sub">{user.email}</span>}
+        </span>
+        <span className="ih-account-more" aria-hidden>···</span>
+      </button>
+    </div>
   );
 }
 

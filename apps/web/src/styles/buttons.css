@@ -139,3 +139,55 @@
 .ih:not(#_) .wb-btn.danger:hover:not(:disabled) {
   background: #fff3f3;
 }
+
+/* Toggle groups (Segmented: stream / grouped, all / won / lost): separate app buttons, the picked one sunk. No outer box. */
+.ih:not(#_) .wb-segmented {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.ih:not(#_) .wb-segmented button {
+  height: auto;
+  min-height: 0;
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  cursor: pointer;
+}
+.ih:not(#_) .wb-segmented button:hover:not(:disabled) {
+  background: #fff6e8;
+}
+.ih:not(#_) .wb-segmented button[aria-pressed="true"],
+.ih:not(#_) .wb-segmented button:active:not(:disabled) {
+  background: #ececec;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+}
+
+/* A window's "close" / "put away" / "back" (not the dialogs' close box): the app button, not a text link. */
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home) {
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+}
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home):hover {
+  background: #fff6e8;
+}
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home):active {
+  background: #f0f0f0;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}

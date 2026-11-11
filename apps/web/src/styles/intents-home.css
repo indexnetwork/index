@@ -1059,3 +1059,366 @@ button.ih-titlebar-close:active::after {
   font: 600 13px "IBM Plex Sans", "Helvetica Neue", sans-serif;
   letter-spacing: 0.2px;
 }
+
+/* You, at the foot of the sidebar: photo, name and email; a click opens log out above it. */
+.ih-account {
+  position: relative;
+  margin-top: 8px;
+}
+.ih .ih-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.ih .ih-account-btn:hover,
+.ih .ih-account-btn.open {
+  background: #f4f4f4;
+}
+.ih .ih-account-btn.on {
+  background: #ececec;
+}
+.ih-account-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ih-account-name,
+.ih-account-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ih-account-name {
+  font: 600 12.5px/1.3 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih-account-sub {
+  font: 400 10px/1.3 "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+}
+.ih-account-more {
+  flex: none;
+  font: 700 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+  letter-spacing: -1px;
+}
+.ih-account-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: 3px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+.ih .ih-account-menu button {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+  cursor: pointer;
+}
+.ih .ih-account-menu button:hover {
+  background: #f7f7f5;
+}
+.ih .ih-account-menu button.on {
+  font-weight: 700;
+}
+.ih .ih-account-menu .ih-account-out {
+  color: #8a0000;
+}
+
+/* Sidebar foot: "connect your agent" sits just above the menu. */
+.ih-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+.ih-foot .ih-menu {
+  margin-top: 0;
+}
+
+/* The connect dialog */
+.ca-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.32);
+}
+.ca-panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 3px;
+  outline: none;
+}
+.ca-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e6e6e6;
+}
+.ca-head h2 {
+  flex: 1;
+  margin: 0;
+  font: 600 15px "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih .ca-back,
+.ih .ca-x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font: 400 20px/1 "IBM Plex Sans", sans-serif;
+  color: #000;
+  text-align: center;
+  cursor: pointer;
+}
+.ih .ca-back:hover,
+.ih .ca-x:hover {
+  background: #ececec;
+}
+.ih .ca-back:focus-visible,
+.ih .ca-x:focus-visible {
+  outline: 2px solid #ff8a00;
+  outline-offset: 1px;
+}
+.ca-lede {
+  margin: 14px 16px 6px;
+  font: 400 13px/1.45 "IBM Plex Sans", sans-serif;
+  color: #5a5548;
+}
+.ca-choices {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 10px;
+}
+.ih .ca-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 8px;
+  border: 0;
+  border-bottom: 1px solid #efefef;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.ca-choices li:last-child .ca-choice {
+  border-bottom: 0;
+}
+.ih .ca-choice:hover {
+  background: #f7f7f5;
+}
+.ca-choice-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.ca-choice-name {
+  font: 600 14px "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ca-choice-blurb {
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+}
+.ca-choice-go {
+  font-size: 16px;
+  color: #8a8578;
+}
+.ca-steps {
+  list-style: none;
+  margin: 0;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+.ca-step {
+  display: flex;
+  gap: 12px;
+}
+.ca-step-n {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #000;
+  border-radius: 50%;
+  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
+}
+.ca-step-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  justify-items: start;
+}
+.ca-step-title {
+  padding-top: 2px;
+  font: 500 13px/1.4 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ca-note,
+.ca-or {
+  margin: 0;
+  font: 400 12px/1.45 "IBM Plex Sans", sans-serif;
+  color: #8a8578;
+}
+.ca-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.ca-copy code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 7px 9px;
+  background: #f7f7f5;
+  border-radius: 2px;
+  font: 400 11px/1.5 "JetBrains Mono", ui-monospace, monospace;
+  color: #000;
+  white-space: nowrap;
+}
+.ca-copy .wb-btn {
+  flex: none;
+}
+.ca-done {
+  padding: 22px 16px 18px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.ca-done p {
+  margin: 0;
+  font: 400 13px/1.45 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ca-done-mark {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #1f9d55;
+  color: #fff;
+  font: 700 16px/1 "IBM Plex Sans", sans-serif;
+}
+.ca-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* "connect your agent": one line above the menu, while no agent is connected. */
+.ih .ca-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid #000;
+  border-radius: 3px;
+  background: #fff6e8;
+  box-shadow: 2px 2px 0 #000;
+  text-align: left;
+  cursor: pointer;
+}
+.ih .ca-strip:hover {
+  background: #ffe9c7;
+}
+.ih .ca-strip:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #000;
+}
+.ca-strip-label {
+  flex: 1;
+  min-width: 0;
+  font: 600 12.5px "IBM Plex Sans", sans-serif;
+  color: #000;
+  white-space: nowrap;
+}
+.ca-strip-go {
+  flex: none;
+  font: 700 16px/1 "IBM Plex Sans", sans-serif;
+  color: #ff8a00;
+}
+.ca-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e6e6e6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ca-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  background: #f7f7f5;
+  border-bottom: 1px solid #e6e6e6;
+  font: 500 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  color: #8a8578;
+}
+.ca-prompt-text {
+  margin: 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 10px 12px;
+  font: 400 12px/1.55 "IBM Plex Sans", sans-serif;
+  color: #3a3730;
+  white-space: pre-wrap;
+}

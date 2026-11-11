@@ -2328,23 +2328,28 @@
   align-self: flex-end;
   margin: 0 8px 8px;
 }
+/* The new intent page's starters: hairline rows you click, not boxes. */
 .pl-open-options {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: stretch;
+  gap: 0;
   margin-top: 12px;
+  border-bottom: 1px solid var(--pl-line);
 }
 .ih:not(#_) .pl .pl-open-options button {
-  padding: 8px 14px;
-  border: 1px solid var(--pl-line);
-  border-radius: 2px;
-  background: #fff;
+  width: 100%;
+  padding: 10px 4px;
+  border: 0;
+  border-top: 1px solid var(--pl-line);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
   font: 400 14px/1.4 "IBM Plex Sans", sans-serif;
   letter-spacing: 0;
   color: #000;
   text-align: left;
+  display: block;
 }
 .ih:not(#_) .pl .pl-open-options button:hover:not(:disabled) {
   background: #f7f7f5;
@@ -2891,5 +2896,14 @@ button.st-danger-toggle {
 }
 .ih:not(#_) .pl .pl-agents button.pl-plain-btn[aria-label="copy agent id"]:hover:not(:disabled) {
   background: none;
+  color: #000;
+}
+
+/* Home: a person you just passed on, left in place as one quiet line. */
+.pl-cards > li.pl-card.pl-card-passed {
+  align-items: center;
+  color: #555;
+}
+.pl-cards > li.pl-card.pl-card-passed b {
   color: #000;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 
 import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
@@ -11,7 +11,6 @@ import { AddYourAgent } from "@/components/AddYourAgent";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { log } from "@/lib/logger";
 import { useCompact } from "@/hooks/useCompact";
-import PageHead from "@/components/intents-home/PageHead";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 
@@ -166,7 +165,8 @@ function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: strin
   );
 }
 
-export default function AgentsPage() {
+/** `embedded`: drawn inside Settings' "agents" tab, without its own head or window. */
+export default function AgentsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
   const plain = useInAppFrame();
@@ -422,17 +422,10 @@ export default function AgentsPage() {
     </>
   );
 
-  // Signed in on desktop: the plain page, like Home, Networks and Settings.
-  if (plain) {
-    return (
-      <div className="ih-view pl">
-        <div className="pl-col">
-          <PageHead title="agents" centered />
-          <div className="pl-page pl-agents">{content}</div>
-        </div>
-      </div>
-    );
-  }
+  if (embedded) return <div className="pl-agents">{content}</div>;
+
+  // Signed in on desktop, agents live in Settings as their own tab.
+  if (plain) return <Navigate to="/settings?tab=agents" replace />;
 
   return (
     <Stage width={860} height="min(880px, calc(100vh - 96px))">

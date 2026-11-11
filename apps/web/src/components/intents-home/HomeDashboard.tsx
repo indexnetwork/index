@@ -195,7 +195,22 @@ export default function HomeDashboard() {
     [showDemo, byStage.awaiting, intents, demoDone],
   );
 
+  // People you passed on stay in their spot as a one-line note until the page reloads, like LinkedIn's "invitation ignored".
+  const [passed, setPassed] = useState<Map<string, { person: Person; at: number }>>(() => new Map());
+  const waitingRows = useMemo(() => {
+    const rows = awaiting.filter((person) => !passed.has(person.key)).map((person) => ({ person, passed: false }));
+    [...passed.values()]
+      .sort((a, b) => a.at - b.at)
+      .forEach(({ person, at }) => rows.splice(Math.min(at, rows.length), 0, { person, passed: true }));
+    return rows;
+  }, [awaiting, passed]);
+  const waitingCount = waitingRows.filter((row) => !row.passed).length;
+
   const act = (person: Person, action: "accepted" | "rejected") => {
+    if (action === "rejected") {
+      const at = waitingRows.findIndex((row) => row.person.key === person.key);
+      setPassed((prev) => new Map(prev).set(person.key, { person, at: at < 0 ? 0 : at }));
+    }
     // A sample match only leaves the list; nothing is sent.
     if (person.key.startsWith("demo-")) {
       setDemoDone((prev) => new Set(prev).add(person.key));
@@ -215,7 +230,7 @@ export default function HomeDashboard() {
   const moving = [...byStage.talks, ...byStage.chat];
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
-        { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : awaiting.length },
+        { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
         ...(moving.length || refreshingIds.length ? [{ id: "progress", label: "in progress", count: moving.length, loading: refreshingIds.length > 0 }] : []),
   ]);
 
@@ -274,14 +289,22 @@ export default function HomeDashboard() {
 
         <hr />
 
-        <h2 id="waiting">waiting on you {!loadingPeople && `(${awaiting.length})`}</h2>
-        {loadingPeople && !awaiting.length ? (
+        <h2 id="waiting">waiting on you {!loadingPeople && `(${waitingCount})`}</h2>
+        {loadingPeople && !waitingRows.length ? (
           <p className="pl-dim">loading…</p>
-        ) : awaiting.length === 0 ? (
+        ) : waitingRows.length === 0 ? (
           <p className="pl-dim">nobody yet. your agents are still looking.</p>
         ) : (
           <ul className="pl-cards">
-            {awaiting.map((person) => {
+            {waitingRows.map(({ person, passed: wasPassed }) => {
+              if (wasPassed) {
+                return (
+                  <li key={person.key} className="pl-card pl-card-passed">
+                    <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
+                    <div className="pl-card-body">you passed on <b>{person.name}</b>.</div>
+                  </li>
+                );
+              }
               const lead = person.entries[0];
               const blurb = lead.item.headline || lead.item.mainText || "";
               const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);

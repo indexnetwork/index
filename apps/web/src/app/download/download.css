@@ -149,3 +149,99 @@
   .apps-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .apps-col { padding: 20px 16px 40px; }
 }
+
+/* ---------- /download: the app's look ----------
+   A page title like an app page's, then three columns split by hairlines:
+   no boxes, a small mono label, and the app's buttons (black outline, bevel,
+   mono; the main one orange). */
+.apps-get { display: flex; flex-direction: column; gap: 22px; }
+/* The page's one head, drawn like Home's section heads: spaced mono caps and a hairline to the edge. */
+.apps-get__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font: 700 10px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #000;
+}
+.apps-get__title::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid #e6e6e6;
+}
+.apps-cards--cols { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+.apps-cards--cols .apps-card {
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #e6e6e6;
+  border-radius: 0;
+  padding: 4px 24px 8px;
+}
+.apps-cards--cols .apps-card:first-child { border-left: 0; padding-left: 0; }
+.apps-cards--cols .apps-card:last-child { padding-right: 0; }
+.apps-cards--cols .apps-card-bar {
+  height: auto;
+  padding: 0 0 10px;
+  border: 0;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  color: #8a8578;
+}
+.apps-cards--cols .apps-card-body { padding: 0; gap: 14px; }
+.apps-cards--cols .apps-card-title { font: 600 15px/1.35 "IBM Plex Sans", sans-serif; color: #000; }
+.apps-cards--cols .apps-card-text .site-p { margin: 0; font: 400 13px/1.5 "IBM Plex Sans", sans-serif; color: #5a5548; }
+.apps-cards--cols .apps-card-actions { align-items: flex-start; }
+.site .apps-cards--cols .site-btn {
+  height: auto;
+  min-height: 0;
+  padding: 4px 14px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #ff8a00;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 700 12px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+}
+.site .apps-cards--cols .site-btn:hover { background: #ff9d2b; border-color: #000; color: #000; }
+.site .apps-cards--cols .site-btn.site-btn--secondary {
+  background: #fff;
+  font-weight: 500;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.site .apps-cards--cols .site-btn.site-btn--secondary:hover { background: #fff6e8; }
+.site .apps-cards--cols .site-btn:active { transform: translate(1px, 1px); box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff; }
+/* the plugin column, opened: the command on a light grey well, no side rule */
+.apps-cards--cols .apps-hermes__cmd { border-left: 0; border-radius: 2px; background: #f7f7f5; }
+.apps-cards--cols .apps-hermes__title { font: 600 13px/1.2 "IBM Plex Sans", sans-serif; }
+
+@media (max-width: 640px) {
+  .apps-cards--cols { grid-template-columns: minmax(0, 1fr); }
+  .apps-cards--cols .apps-card,
+  .apps-cards--cols .apps-card:first-child {
+    padding: 16px 0;
+    border-left: 0;
+    border-top: 1px solid #e6e6e6;
+  }
+  .apps-cards--cols .apps-card:first-child { border-top: 0; padding-top: 0; }
+}
+.site .apps-cards--cols .site-btn,
+.site .apps-cards--cols .site-btn--block { width: auto; align-self: flex-start; }
+.apps-cards--cols .apps-card-actions { margin-top: 0; }
+.apps-cards--cols .apps-hermes__title,
+.apps-cards--cols .apps-hermes__copy,
+.apps-cards--cols .site-arrow-link,
+.site .apps-cards--cols .apps-hermes .site-btn { text-transform: lowercase; }
+.apps-cards--cols .apps-card-text { flex: none; }
+.apps-cards--cols .apps-card-body { flex: none; }
+
+
+/* The landing page's navbar, logo only, in the same column and spot. */
+.apps-nav { width: 100%; flex: none; }
+/* Under the landing navbar: the same column as the logo, starting right below it, not centred in the window. */
+.site.apps--branded .apps-col { max-width: 836px; padding: 56px 24px 56px; }
+.apps--branded .apps-main { justify-content: flex-start; }

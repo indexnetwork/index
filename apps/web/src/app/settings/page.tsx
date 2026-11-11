@@ -12,13 +12,14 @@ import "@/styles/plain.css";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
+import AgentsPage from "@/app/agents/page";
 import { parseSocial } from "@/lib/socials";
 import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visibleProtocolOrigin } from "@/lib/protocol-origin";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { assembleFirstRunProfile, lookupFoundNothing, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 
-const SETTINGS_TABS = ["profile", "notifications", "access", "advanced"] as const;
+const SETTINGS_TABS = ["profile", "agents", "notifications", "access", "advanced"] as const;
 
 const PROTOCOL_PRESETS = [
   { value: "main", label: "main", url: "https://protocol.index.network", web: "https://index.network" },
@@ -308,6 +309,8 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
           )}
         </div>
       )}
+
+      {activeTab === "agents" && <AgentsPage embedded />}
 
       {activeTab === "access" && (
         <div className="st-stack">
