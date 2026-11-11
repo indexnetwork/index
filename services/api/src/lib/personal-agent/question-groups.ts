@@ -3,6 +3,7 @@
  * the open questions, from different intents, that ask the person for the same
  * fact. Everything here is plain data in, plain data out.
  */
+import type { PrincipalMessage } from '../../adapters/agent-session.database.adapter';
 
 /** How many groups are on Home at once. The rest wait their turn, oldest first. */
 export const MAX_SHOWN_GROUPS = 5;
@@ -66,4 +67,33 @@ export function groupsToShow(groups: GroupState[]): string[] {
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .slice(0, free)
     .map((group) => group.id);
+}
+
+/**
+ * Every question still waiting on the person, across all their intents. A
+ * question leaves when an answer or an expiry names it, the same rule each
+ * intent's queue follows.
+ *
+ * @param entries - The agent DM's entries with the intent each belongs to, oldest first.
+ * @returns The open questions, oldest first.
+ */
+export function openQuestions(entries: { intentId: string; message: PrincipalMessage }[]): OpenQuestion[] {
+  const open = new Map<string, OpenQuestion>();
+  for (const { intentId, message } of entries) {
+    if (!intentId) continue;
+    if (message.kind === 'question') {
+      const questionId = message.questionId ?? message.id;
+      open.set(questionId, {
+        questionId,
+        intentId,
+        scope: message.scope === 'match' ? 'match' : 'intent',
+        text: message.text,
+        ...(message.options ? { options: message.options } : {}),
+        createdAt: new Date(message.createdAt),
+      });
+    } else if ((message.kind === 'answer' || message.kind === 'expire') && message.questionId) {
+      open.delete(message.questionId);
+    }
+  }
+  return [...open.values()];
 }

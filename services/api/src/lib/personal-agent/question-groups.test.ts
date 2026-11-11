@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { groupsToShow, isOpen, joinableGroups, MAX_SHOWN_GROUPS, type GroupState, type OpenQuestion } from './question-groups';
+import { groupsToShow, isOpen, joinableGroups, MAX_SHOWN_GROUPS, openQuestions, type GroupState, type OpenQuestion } from './question-groups';
 
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 11, 8, minute));
 
@@ -69,5 +69,31 @@ describe('groupsToShow', () => {
   it('never shows a held group with nothing left open', () => {
     const empty = group('empty', { state: 'held', shownAt: null, members: [{ questionId: 'e', intentId: 'intent-a', scope: 'intent', open: false }] });
     expect(groupsToShow([empty])).toEqual([]);
+  });
+});
+
+describe('openQuestions', () => {
+  const entry = (intentId: string, kind: 'question' | 'answer' | 'expire' | 'message', questionId: string, minute: number) => ({
+    intentId,
+    message: { id: `${kind}-${questionId}-${minute}`, createdAt: at(minute).toISOString(), kind, questionId, text: `${kind} ${questionId}`, matches: [], scope: kind === 'question' ? ('intent' as const) : undefined, options: kind === 'question' ? ['yes', 'no'] : undefined },
+  });
+
+  it('keeps questions nobody answered or withdrew, per intent, oldest first', () => {
+    const open = openQuestions([
+      entry('a', 'question', 'q1', 1),
+      entry('b', 'question', 'q2', 2),
+      entry('a', 'answer', 'q1', 3),
+      entry('a', 'question', 'q3', 4),
+      entry('b', 'expire', 'q2', 5),
+      entry('b', 'question', 'q4', 6),
+      entry('b', 'message', 'q4', 7),
+    ]);
+    expect(open.map((q) => [q.questionId, q.intentId, q.scope])).toEqual([['q3', 'a', 'intent'], ['q4', 'b', 'intent']]);
+    expect(open[0].options).toEqual(['yes', 'no']);
+  });
+
+  it('reads a stored match scope and skips entries with no intent', () => {
+    const match = { intentId: 'a', message: { ...entry('a', 'question', 'm', 1).message, scope: 'match' as const } };
+    expect(openQuestions([match, { ...entry('a', 'question', 'x', 2), intentId: '' }]).map((q) => [q.questionId, q.scope])).toEqual([['m', 'match']]);
   });
 });
