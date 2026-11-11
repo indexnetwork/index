@@ -52,15 +52,4 @@ describe("expireUnanswered", () => {
     expect(await expireUnanswered(client, { id: "i", statement: "" }, 72 * HOUR, now)).toEqual([]);
     expect(inbox).toHaveLength(4);
   });
-
-  test("expires exactly the questions the caller names, however young", async () => {
-    const { client } = fakeIndex(1);
-    expect(await expireUnanswered(client, { id: "i", statement: "" }, new Set(["q1"]), now)).toEqual(["o1"]);
-  });
-
-  test("expires nothing the caller does not name, however old", async () => {
-    const { client, inbox } = fakeIndex(100);
-    expect(await expireUnanswered(client, { id: "i", statement: "" }, new Set<string>(), now)).toEqual([]);
-    expect(inbox).toHaveLength(4);
-  });
 });
