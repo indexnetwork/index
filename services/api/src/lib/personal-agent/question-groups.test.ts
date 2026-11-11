@@ -5,7 +5,7 @@ import { groupsToShow, isOpen, joinableGroups, MAX_SHOWN_GROUPS, openQuestions, 
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 11, 8, minute));
 
 const question = (overrides: Partial<OpenQuestion> = {}): OpenQuestion => ({
-  questionId: 'q-new', intentId: 'intent-b', scope: 'intent', text: 'Are you open to remote?', createdAt: at(30), ...overrides,
+  questionId: 'q-new', intentId: 'intent-b', scope: 'intent', text: 'Are you open to remote?', matches: [], createdAt: at(30), ...overrides,
 });
 
 const group = (id: string, overrides: Partial<GroupState> = {}): GroupState => ({

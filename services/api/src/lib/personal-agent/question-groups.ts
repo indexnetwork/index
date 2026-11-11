@@ -3,7 +3,7 @@
  * the open questions, from different intents, that ask the person for the same
  * fact. Everything here is plain data in, plain data out.
  */
-import type { PrincipalMessage } from '../../adapters/agent-session.database.adapter';
+import type { MatchReference, PrincipalMessage } from '../../adapters/agent-session.database.adapter';
 
 /** How many groups are on Home at once. The rest wait their turn, oldest first. */
 export const MAX_SHOWN_GROUPS = 5;
@@ -17,6 +17,8 @@ export interface OpenQuestion {
   scope: QuestionScope;
   text: string;
   options?: string[];
+  /** The opportunities an opportunity-scoped question is about. */
+  matches: readonly MatchReference[];
   createdAt: Date;
 }
 
@@ -89,6 +91,7 @@ export function openQuestions(entries: { intentId: string; message: PrincipalMes
         scope: message.scope === 'match' ? 'match' : 'intent',
         text: message.text,
         ...(message.options ? { options: message.options } : {}),
+        matches: message.matches,
         createdAt: new Date(message.createdAt),
       });
     } else if ((message.kind === 'answer' || message.kind === 'expire') && message.questionId) {
