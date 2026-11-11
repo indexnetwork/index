@@ -14,7 +14,7 @@ import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
 import { fanOutAnswer } from '../lib/personal-agent/fan-out';
 import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
-import type { OpenQuestion } from '../lib/personal-agent/question-groups';
+import { shownCards, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
 export type { PrincipalMessage } from '../adapters/agent-session.database.adapter';
@@ -463,6 +463,16 @@ export class ConversationService {
       logger.warn('Question grouping failed', { userId, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
+  }
+
+  /**
+   * The question cards Home shows. A question nothing has grouped yet gets a
+   * group of its own first, with no model call, so Home never waits on one.
+   */
+  async questionCards(userId: string): Promise<GroupCard[]> {
+    await this.groupNewQuestions(userId, { decide: false });
+    const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
+    return shownCards(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), open);
   }
 
   /**

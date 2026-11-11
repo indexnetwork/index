@@ -100,3 +100,59 @@ export function openQuestions(entries: { intentId: string; message: PrincipalMes
   }
   return [...open.values()];
 }
+
+/** One group as Home draws it: the question to answer, and every intent and question it stands for. */
+export interface GroupCard {
+  groupId: string;
+  /** The question the card speaks through, and answers go to. */
+  id: string;
+  intentId: string;
+  question: string;
+  options?: string[];
+  scope: QuestionScope;
+  matches: readonly MatchReference[];
+  intentIds: string[];
+  questionIds: string[];
+}
+
+/**
+ * The cards Home shows: one per shown, open group, oldest shown first. A card
+ * speaks through the group's lead, or its first open member once the lead is
+ * closed, and lists only the members still waiting.
+ */
+export function shownCards(groups: GroupState[], open: OpenQuestion[]): GroupCard[] {
+  const byId = new Map(open.map((question) => [question.questionId, question]));
+  return groups
+    .filter((group) => group.state === 'shown' && isOpen(group))
+    .sort((a, b) => (a.shownAt?.getTime() ?? 0) - (b.shownAt?.getTime() ?? 0))
+    .flatMap((group) => {
+      const waiting = group.members.filter((member) => member.open && byId.has(member.questionId));
+      const voice = byId.get(waiting.some((member) => member.questionId === group.leadQuestionId) ? group.leadQuestionId : waiting[0]?.questionId ?? '');
+      if (!voice) return [];
+      return [{
+        groupId: group.id,
+        id: voice.questionId,
+        intentId: voice.intentId,
+        question: voice.text,
+        ...(voice.options ? { options: voice.options } : {}),
+        scope: voice.scope,
+        matches: voice.matches,
+        intentIds: [...new Set(waiting.map((member) => member.intentId))],
+        questionIds: waiting.map((member) => member.questionId),
+      }];
+    });
+}
+
+/**
+ * The questions an outside agent may put to the person now. A question in a
+ * held group waits for Home; one in no group yet is shown, as Home would show it.
+ *
+ * @param questionIds - The questions to filter.
+ */
+export function visibleQuestionIds(groups: GroupState[], questionIds: readonly string[]): Set<string> {
+  const groupOf = new Map(groups.flatMap((group) => group.members.map((member) => [member.questionId, group] as const)));
+  return new Set(questionIds.filter((questionId) => {
+    const group = groupOf.get(questionId);
+    return !group || (group.state === 'shown' && isOpen(group));
+  }));
+}

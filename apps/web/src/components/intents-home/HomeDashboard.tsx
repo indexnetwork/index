@@ -4,10 +4,11 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
-import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
+import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
-import { useAgentQuestions, type AgentQuestion } from "@/components/intents-home/useAgentQuestions";
+import { intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
+import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import { questionAsker } from "@/components/IntentNegotiatorChat";
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar, TheirAgentAvatar } from "@/components/workbench/agent-avatar";
@@ -113,11 +114,11 @@ export default function HomeDashboard() {
     </div>
   );
 
-  const liveIds = useMemo(
-    () => intents.filter((intent) => (intent.status || "active").toLowerCase() !== "paused").map((intent) => intent.id),
-    [intents],
-  );
-  const { questions, loaded: questionsLoaded, answer } = useAgentQuestions(liveIds);
+  const { questions, all: allQuestions, loaded: questionsLoaded, answer } = usePersonalQuestions();
+  /** "for: …" under a card that stands for more than one intent. */
+  const forLine = (question: AgentQuestion) => question.intentIds.length > 1
+    ? `for: ${question.intentIds.map((id) => intentLabel(intents.find((intent) => intent.id === id))).filter(Boolean).join(", ")}`
+    : undefined;
 
   // After an answer my agent goes back to work on that intent, so "in progress"
   // shows as loading until its people change (or a while passes), rereading
@@ -137,9 +138,11 @@ export default function HomeDashboard() {
     return () => { clearInterval(poll); clearTimeout(stop); };
   }, [refreshKey, loadRadar]);
   const answerAndRefresh = async (intentId: string, questionId: string, text: string) => {
+    // One answer reaches every intent in the question's group; each goes back to work.
+    const touched = intentsToRefresh(allQuestions, questionId, intentId);
     await answer(intentId, questionId, text);
-    setRefreshing((prev) => ({ ...prev, [intentId]: stagesOf(intentId) }));
-    void loadRadar(intentId, "skeleton");
+    setRefreshing((prev) => ({ ...prev, ...Object.fromEntries(touched.map((id) => [id, stagesOf(id)])) }));
+    for (const id of touched) void loadRadar(id, "skeleton");
   };
 
   // One line per person, across intents; their best stage decides where they sit.
@@ -258,7 +261,7 @@ export default function HomeDashboard() {
         ) : (
           <ul className="pl-cards pl-q-list">
             {questions.map((question) => (
-              <QuestionItem key={question.id} question={question} onAnswer={answerAndRefresh} />
+              <QuestionItem key={question.groupId} question={question} forIntents={forLine(question)} onAnswer={answerAndRefresh} />
             ))}
           </ul>
         )}
@@ -404,8 +407,9 @@ function AskerFace({ question, size }: { question: AgentQuestion; size: number }
  * on the left, who's asking, the question, its answers as radios, and the
  * card's small send button.
  */
-function QuestionItem({ question, onAnswer }: {
+function QuestionItem({ question, forIntents, onAnswer }: {
   question: AgentQuestion;
+  forIntents?: string;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
 }) {
   const { choice, setChoice, own, setOwn, sending, options, text, submit } = useQuestionAnswer(question, onAnswer);
@@ -427,6 +431,7 @@ function QuestionItem({ question, onAnswer }: {
       <form className="pl-card-body" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="pl-q-row-meta">
           <AskerName question={question} fallback={asker.label} />
+          {forIntents && <div className="pl-q-row-for">{forIntents}</div>}
         </div>
         <div className="pl-blurb pl-q-row-text">{question.question}</div>
         <div className="pl-q-options">

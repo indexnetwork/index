@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { groupsToShow, isOpen, joinableGroups, MAX_SHOWN_GROUPS, openQuestions, type GroupState, type OpenQuestion } from './question-groups';
+import { groupsToShow, isOpen, joinableGroups, MAX_SHOWN_GROUPS, openQuestions, shownCards, visibleQuestionIds, type GroupState, type OpenQuestion } from './question-groups';
 
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 11, 8, minute));
 
@@ -95,5 +95,40 @@ describe('openQuestions', () => {
   it('reads a stored match scope and skips entries with no intent', () => {
     const match = { intentId: 'a', message: { ...entry('a', 'question', 'm', 1).message, scope: 'match' as const } };
     expect(openQuestions([match, { ...entry('a', 'question', 'x', 2), intentId: '' }]).map((q) => [q.questionId, q.scope])).toEqual([['m', 'match']]);
+  });
+});
+
+describe('shownCards', () => {
+  const open = [
+    question({ questionId: 'a1', intentId: 'a', text: 'remote?', options: ['yes', 'no'] }),
+    question({ questionId: 'b1', intentId: 'b', text: 'remote ok?' }),
+    question({ questionId: 'c1', intentId: 'c', text: 'held one' }),
+  ];
+  const members = (...ids: [string, string, boolean][]) => ids.map(([questionId, intentId, isOpenNow]) => ({ questionId, intentId, scope: 'intent' as const, open: isOpenNow }));
+
+  it('draws one card per shown open group, oldest shown first, from its lead', () => {
+    const cards = shownCards([
+      group('late', { leadQuestionId: 'c1', shownAt: at(9), members: members(['c1', 'c', true]) }),
+      group('early', { leadQuestionId: 'a1', shownAt: at(1), members: members(['a1', 'a', true], ['b1', 'b', true]) }),
+      group('held', { state: 'held', shownAt: null, leadQuestionId: 'c1', members: members(['c1', 'c', true]) }),
+    ], open);
+    expect(cards.map((card) => card.groupId)).toEqual(['early', 'late']);
+    expect(cards[0]).toMatchObject({ id: 'a1', intentId: 'a', question: 'remote?', options: ['yes', 'no'], intentIds: ['a', 'b'], questionIds: ['a1', 'b1'] });
+  });
+
+  it('speaks through the first open member when the lead is closed', () => {
+    const [card] = shownCards([group('g', { leadQuestionId: 'a0', members: members(['a0', 'a', false], ['b1', 'b', true]) })], open);
+    expect(card).toMatchObject({ id: 'b1', intentId: 'b', questionIds: ['b1'], intentIds: ['b'] });
+  });
+});
+
+describe('visibleQuestionIds', () => {
+  it('hides members of held groups and keeps shown ones and questions in no group', () => {
+    const groups = [
+      group('shown', { members: [{ questionId: 's', intentId: 'a', scope: 'intent', open: true }] }),
+      group('held', { state: 'held', members: [{ questionId: 'h', intentId: 'b', scope: 'intent', open: true }] }),
+    ];
+    const visible = visibleQuestionIds(groups, ['s', 'h', 'loose']);
+    expect([...visible].sort()).toEqual(['loose', 's']);
   });
 });

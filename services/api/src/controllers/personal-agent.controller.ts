@@ -48,6 +48,23 @@ export class PersonalAgentController {
     }
   }
 
+  /**
+   * The questions Home shows: one card per question group your agent has on
+   * screen. A question nothing has grouped yet gets a group of its own here,
+   * with no model call, so Home never waits on one.
+   */
+  @Get('/questions')
+  @UseGuards(SessionOnlyGuard)
+  async getQuestions(_req: Request, user: AuthenticatedUser) {
+    try {
+      return Response.json({ groups: await this.conversationService.questionCards(user.id) });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('getQuestions failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
   /** Start a new chat: the current one is set aside and the agent starts fresh. */
   @Post('/new')
   @UseGuards(SessionOnlyGuard)
