@@ -435,13 +435,16 @@ function QuestionItem({ question, onAnswer }: {
               <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
             </label>
           ))}
-          {options.length > 0 && (
-            <label>
-              <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} /> something else
+          {options.length > 0 ? (
+            // "something else" is the field itself, as in the new intent questions: picked as you type.
+            <label className="pl-ni-else">
+              <input type="radio" name={name} checked={choice === "__own"} onChange={() => setChoice("__own")} aria-label="something else" />
+              <input type="text" value={own} placeholder="something else" aria-label="your answer"
+                onFocus={() => setChoice("__own")}
+                onChange={(event) => { setOwn(event.target.value); setChoice("__own"); }} />
             </label>
-          )}
-          {(options.length === 0 || choice === "__own") && (
-            <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" autoFocus={options.length > 0} />
+          ) : (
+            <input type="text" value={own} onChange={(event) => setOwn(event.target.value)} placeholder="type your answer" aria-label="your answer" />
           )}
         </div>
         <div className="pl-actions">

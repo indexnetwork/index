@@ -2126,6 +2126,13 @@
   flex: none;
   white-space: nowrap;
 }
+/* How many matches wait on you for this intent, at the row's end like the sidebar badge. */
+.pl-card-head > .pl-intent-count {
+  flex: none;
+  align-self: flex-start;
+  background: #ff8a00;
+  font: 500 11px/1.35 "JetBrains Mono", monospace;
+}
 
 /* ---------------------------------------------------------------------------
    An intent's page: Home's head, sections and cards, with that intent's
@@ -2235,3 +2242,241 @@
   line-height: 1.45;
 }
 
+
+/* New intent page (/i/new): the flow as a chat in the page column, the agent's read in the right window. */
+.pl-new {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.pl-new-page {
+  overflow-y: auto;
+}
+.pl-new-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 40px;
+}
+.pl-new-chat > .pl-agent-suggest {
+  margin-top: 0;
+}
+.pl-new-steps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pl-new-bar {
+  display: flex;
+  gap: 4px;
+  width: 160px;
+}
+.pl-new-bar > span {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: #e6e6e6;
+}
+.pl-new-bar > span.done { background: #000; }
+.pl-new-bar > span.now { background: #ff8a00; }
+.pl-new-note {
+  margin-top: 6px;
+}
+.pl-new .pl-new-compose {
+  margin-left: 30px;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+.pl-actions.pl-ni-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* New intent options keep production's chips (OptionChip): light outline, mono, grey when picked. */
+.ih:not(#_) .pl.pl-new-page .pl-agent-suggest button {
+  padding: 4px 10px;
+  border: 1px solid #d6d6d6;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: none;
+  color: #555;
+  font: 400 12px/1.4 "JetBrains Mono", ui-monospace, monospace;
+  text-align: left;
+  transform: none;
+}
+.ih:not(#_) .pl.pl-new-page .pl-agent-suggest button:hover:not(:disabled) {
+  background: #f7f7f5;
+  color: #000;
+}
+.ih:not(#_) .pl.pl-new-page .pl-agent-suggest button:active:not(:disabled),
+.ih:not(#_) .pl.pl-new-page .pl-agent-suggest button.on,
+.ih:not(#_) .pl.pl-new-page .pl-agent-suggest button[aria-pressed="true"] {
+  background: #f0f0ed;
+  border-color: #ccc;
+  box-shadow: none;
+  color: #000;
+  transform: none;
+}
+.ih:not(#_) .pl.pl-new-page .pl-ni-own {
+  border: 1px solid #d6d6d6;
+  border-radius: 3px;
+  box-shadow: none;
+  font: 400 12px/1.4 "JetBrains Mono", ui-monospace, monospace;
+}
+/* Answer options inside a chat bubble (new intent questions), as on Home's questions. */
+.pl-agent-bubble .pl-q-options {
+  margin-top: 6px;
+  white-space: normal;
+}
+/* follow-up questions: room between one question and the next */
+.pl-ni-fields {
+  gap: 22px;
+}
+.pl-ni-label {
+  margin-bottom: 2px;
+}
+
+/* New intent, first question: open on the page rather than in a bubble. */
+.pl-open {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.pl-open-body {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+}
+.pl-open-who {
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #8a8578;
+}
+.pl-open-q {
+  margin: 6px 0 14px;
+  font: 600 16px/1.4 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.pl-open-box {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pl-line);
+  border-radius: 2px;
+  background: #fff;
+}
+.pl-open-box:focus-within {
+  border-color: #bbb;
+}
+.pl-open-box textarea {
+  border: 0;
+  outline: none;
+  resize: vertical;
+  padding: 10px 14px 4px;
+  font: 400 14px/1.5 "IBM Plex Sans", sans-serif;
+  background: transparent;
+}
+.ih:not(#_) .pl .pl-open-box button.go {
+  align-self: flex-end;
+  margin: 0 8px 8px;
+}
+.pl-open-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ih:not(#_) .pl .pl-open-options button {
+  padding: 8px 14px;
+  border: 1px solid var(--pl-line);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: none;
+  font: 400 14px/1.4 "IBM Plex Sans", sans-serif;
+  letter-spacing: 0;
+  color: #000;
+  text-align: left;
+}
+.ih:not(#_) .pl .pl-open-options button:hover:not(:disabled) {
+  background: #f7f7f5;
+}
+.ih:not(#_) .pl .pl-open-options button:active:not(:disabled) {
+  background: #f0f0ed;
+  box-shadow: none;
+  transform: none;
+}
+.pl-open-done {
+  margin-top: 14px;
+}
+/* the agent's lines on the new intent page: open, no box (as production) */
+.pl-agent-line.pl-agent-open {
+  gap: 14px;
+}
+.pl-agent-open > .pl-agent-bubble {
+  max-width: 520px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.pl-agent-open > .pl-agent-bubble > .pl-open-who {
+  margin-bottom: 4px;
+}
+/* a question with no options: just the answer box, not indented under radios */
+.pl-q-options > input[type="text"]:only-child {
+  margin-left: 0;
+}
+/* questions (Home and new intent): "something else" is a line on the last option */
+.pl-q-options .pl-ni-else {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ih .pl .pl-q-options .pl-ni-else input[type="text"] {
+  margin: 0;
+  width: 240px;
+  padding: 0 2px 1px;
+  border: 0;
+  border-bottom: 1px solid #bbb;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font: 400 14px "IBM Plex Sans", sans-serif;
+  outline: none;
+}
+.ih .pl .pl-q-options .pl-ni-else input[type="text"]:focus {
+  background: transparent;
+  border-bottom-color: #000;
+}
+
+/* The intent page's agent chat draws my trace and notes as production does (DiscoveryTrace,
+   AgentFeedNote): production's fonts, on white. */
+.pl-intent-agent {
+  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-sans: var(--amiga-sans);
+  --mac-mono: var(--amiga-mono);
+}
+.pl-intent-agent .pl-agent-log {
+  background: #fff;
+  gap: 22px;
+  padding: 20px 16px;
+}
+.ih:not(#_) .pl button.wb-trace-toggle,
+.ih:not(#_) .pl button.wb-trace-toggle:hover:not(:disabled),
+.ih:not(#_) .pl button.wb-trace-toggle:active:not(:disabled) {
+  border: 0;
+  box-shadow: none;
+  background: none;
+  transform: none;
+  font-weight: 400;
+  letter-spacing: 0;
+  cursor: pointer;
+}

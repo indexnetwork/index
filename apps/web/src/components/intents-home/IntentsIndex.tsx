@@ -59,8 +59,11 @@ export default function IntentsIndex() {
                     <div className="pl-card-head">
                       <b className="pl-intent-title"><Link to={`/i/${intent.id}`}>{text || intentLabel(intent)}</Link></b>
                       <span className={`pl-status ${state}`}>
-                        {paused ? "paused" : counts.awaiting > 0 ? `${counts.awaiting} waiting on you` : "live"}
+                        {paused ? "paused" : counts.awaiting > 0 ? "waiting on you" : "live"}
                       </span>
+                      {!paused && counts.awaiting > 0 && (
+                        <span className="ih-badge pl-intent-count" title={`${counts.awaiting} waiting on you`}>{counts.awaiting}</span>
+                      )}
                     </div>
                     <div className="pl-card-foot">
                       <span className="pl-dim pl-small">

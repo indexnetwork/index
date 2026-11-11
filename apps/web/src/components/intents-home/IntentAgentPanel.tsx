@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { questionAsker, useIntentAgentChat, type QuestionCard } from "@/components/IntentNegotiatorChat";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
-import { discoverySummary } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, DiscoveryTrace } from "@/components/workbench/mac-blocks";
 import { formatChatClock } from "@/lib/utils";
 
 /** One line of the chat, drawn like Home's agent window: my avatar and a bubble, yours on the right. */
@@ -62,22 +62,8 @@ export default function IntentAgentPanel({ intentId, paused, onSelectMatch }: {
         ) : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
           if (piece.kind === "discovery") {
-            const summary = typeof piece.discovered === "number" ? `${discoverySummary(piece.discovered, piece.reached)}.` : piece.progress;
-            return (
-              <Line key={piece.id} who="your agent" at={at}>
-                <div className="pl-trace">
-                  {piece.loading.map((line) => <div key={line} className="pl-dim">{line.endsWith(".") ? line : `${line}.`}</div>)}
-                  {piece.plan && <div>{piece.plan}</div>}
-                  {piece.queries.length > 0 && (
-                    <>
-                      <div className="pl-dim">ran {piece.queries.length} {piece.queries.length === 1 ? "query" : "queries"}</div>
-                      {piece.queries.map((query) => <div key={query} className="pl-trace-q">{query}</div>)}
-                    </>
-                  )}
-                  {summary && <div>{summary}</div>}
-                </div>
-              </Line>
-            );
+            // How I went looking, drawn as on production: steps, the queries I ran, who I found.
+            return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
           }
           if (piece.kind === "user") {
             return (
@@ -140,7 +126,7 @@ export default function IntentAgentPanel({ intentId, paused, onSelectMatch }: {
               </div>
             );
           }
-          return <Line key={piece.id} who="your agent" at={at}><Markdown text={piece.text} /></Line>;
+          return <AgentFeedNote key={piece.id} at={at}><Markdown text={piece.text} /></AgentFeedNote>;
         })}
         {waiting && (
           <div className="pl-agent-line">

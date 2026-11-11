@@ -5,9 +5,9 @@
    included; .primary, .go, .ih-accept and send are the orange ones). ":not(#_)" only lifts these rules over the
    older per-page ones; it matches every element.
    Not buttons in this sense: text links (back, skip, more), list rows,
-   tabs, the photo picker and the opportunity chip in chat.
+   tabs, the photo picker, the opportunity chip in chat and the trace's "ran N queries" toggle.
    --------------------------------------------------------------------------- */
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *)),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send) {
   height: auto;
   min-height: 0;
@@ -23,7 +23,7 @@
   transform: none;
   cursor: pointer;
 }
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *)):hover:not(:disabled),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)):hover:not(:disabled),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):hover:not(:disabled) {
   background: #fff6e8;
   color: #000;
@@ -41,7 +41,7 @@
   background: #ff9d2b;
 }
 /* pressed: the bevel flips and the box sinks */
-.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *)):active:not(:disabled),
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle)):active:not(:disabled),
 .ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):active:not(:disabled) {
   background: #f0f0f0;
   color: #000;
@@ -75,4 +75,24 @@
   width: 24px;
   height: 24px;
   padding: 0;
+}
+
+
+/* destructive (archive), as on production: dark red outline; filled only while it asks to confirm */
+.ih:not(#_) .pl button.danger {
+  background: #fff;
+  color: #8a0000;
+  border-color: #8a0000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih:not(#_) .pl button.danger:hover:not(:disabled) {
+  background: #fff3f3;
+}
+.ih:not(#_) .pl button.danger.on,
+.ih:not(#_) .pl button.danger:active:not(:disabled) {
+  background: #8a0000;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  transform: none;
 }

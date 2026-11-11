@@ -265,8 +265,8 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
             <button type="button" className="pl-back ih-head-back" onClick={() => navigate("/intents")}>◂ intents</button>
             {current && (
               <div className="ih-actions">
-                <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "resume" : "pause"}</button>
-                <button type="button" disabled={archiving} onClick={() => void clickArchive()}>
+                <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
+                <button type="button" className={`danger${archiveArmed || archiving ? " on" : ""}`} disabled={archiving} onClick={() => void clickArchive()}>
                   {archiving ? "archiving…" : archiveArmed ? "archive, sure?" : "archive"}
                 </button>
               </div>

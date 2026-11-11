@@ -393,7 +393,7 @@ export function DiscoveryLoader() {
 
 function AgentLabel({ at }: { at?: string }) {
   return (
-    <div style={{ marginBottom: 4, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+    <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>
       your agent
       {at && <time className="wb-stamp" dateTime={at} style={{ textTransform: "none" }}> · {formatChatClock(at)}</time>}
     </div>
@@ -402,11 +402,11 @@ function AgentLabel({ at }: { at?: string }) {
 
 export function AgentFeedNote({ children, at }: { children: ReactNode; at?: string }) {
   return (
-    <div className="wb-stamped" style={{ display: "flex", gap: 10 }}>
-      <MyAgentAvatar size={20} style={{ marginTop: 1 }} />
+    <div className="wb-stamped" style={{ display: "flex", gap: 12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <AgentLabel at={at} />
-        <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{children}</div>
+        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{children}</div>
       </div>
     </div>
   );
@@ -448,30 +448,33 @@ export function DiscoveryTrace({
   const summary = typeof discovered === "number" ? discoverySummary(discovered, reached) : progress;
   const lines = loading.length && !loading.some((line) => line.startsWith("Warming up")) ? ["Warming up.", ...loading] : loading;
   return (
-    <section style={{ display: "flex", gap: 10 }}>
-      <MyAgentAvatar size={20} style={{ marginTop: 1 }} />
+    <section style={{ display: "flex", gap: 12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <AgentLabel />
         {lines.map((line) => (
-          <p key={line} style={{ margin: "0 0 6px", fontFamily: "var(--wb-code)", fontSize: 12, lineHeight: 1.6, color: "var(--ink-2)" }}>
+          <p key={line} style={{ margin: "0 0 8px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#5A5548" }}>
             {line.endsWith(".") ? line : `${line}.`}
           </p>
         ))}
-        {plan ? <p style={{ margin: "0 0 8px", fontFamily: "var(--wb-code)", fontSize: 12, lineHeight: 1.6, color: "var(--ink)" }}>{plan}</p> : null}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {plan ? <p style={{ margin: "0 0 10px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{plan}</p> : null}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {queries.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <button type="button" aria-expanded={queriesOpen} onClick={() => setQueriesOpen((value) => !value)} style={{
-                background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer",
-                fontSize: 12, lineHeight: 1.6, fontFamily: "var(--wb-code)", color: "var(--ink-2)",
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button type="button" className="wb-trace-toggle" aria-expanded={queriesOpen} onClick={() => setQueriesOpen((value) => !value)} style={{
+                display: "grid", gridTemplateColumns: "18px 1fr", gap: 10, alignItems: "center",
+                background: "none", border: "none", padding: 0, textAlign: "left",
+                fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)", color: "#5A5548",
               }}>
-                Ran {queries.length} {queries.length === 1 ? "query" : "queries"}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10.5" cy="10.5" r="6.5" /><line x1="15.5" y1="15.5" x2="21" y2="21" /></svg>
+                <span>Ran {queries.length} {queries.length === 1 ? "query" : "queries"}</span>
               </button>
               {queriesOpen && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ marginLeft: 8, padding: "2px 0 2px 19px", borderLeft: "1px solid #B5AF9F", display: "flex", flexDirection: "column", gap: 9 }}>
                   {queries.map((query) => (
-                    <div key={query} style={{ paddingLeft: 12, borderLeft: "1px solid #ccc", color: "#666", fontSize: 12, lineHeight: 1.6, fontFamily: "var(--wb-code)" }}>
-                      Looking for {query}
+                    <div key={query} style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 9, alignItems: "baseline", color: "#5A5548", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
+                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#8A8578" }}>{query}</span></span>
                     </div>
                   ))}
                 </div>
@@ -479,8 +482,9 @@ export function DiscoveryTrace({
             </div>
           )}
           {summary && (
-            <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6, fontFamily: "var(--wb-code)", color: "var(--ink)" }}>
-              {summary}
+            <div style={{ display: "grid", gridTemplateColumns: "18px 1fr", gap: 10, alignItems: "center", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)", color: "#5A5548" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></svg>
+              <span>{summary}</span>
             </div>
           )}
         </div>
