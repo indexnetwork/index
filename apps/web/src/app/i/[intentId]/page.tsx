@@ -61,7 +61,7 @@ function IntentWeb() {
     const next = window.location.pathname + window.location.search;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
-  return <IntentsHome selectedId={intentId} />;
+  return <IntentsHome key={intentId} selectedId={intentId ?? ""} />;
 }
 
 function IntentDetail() {

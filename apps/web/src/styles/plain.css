@@ -2126,3 +2126,112 @@
   flex: none;
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+   An intent's page: Home's head, sections and cards, with that intent's
+   agent in the window on the right (drawn like Home's agent window).
+   --------------------------------------------------------------------------- */
+/* how the agent went looking, inside its first bubble */
+.pl-trace {
+  display: grid;
+  gap: 3px;
+  white-space: normal;
+}
+.pl-trace-q {
+  padding-left: 10px;
+  border-left: 1px solid var(--pl-line, #e6e6e6);
+  color: #555;
+  font: 400 11.5px "JetBrains Mono", ui-monospace, monospace;
+}
+.pl-trace-step {
+  margin: 0 0 0 30px;
+}
+.pl-queued {
+  margin: 4px 0 0;
+  text-align: right;
+}
+.pl-answered {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* a question's options sit inside its bubble */
+.pl-agent-bubble .pl-agent-suggest {
+  margin: 8px 0 2px;
+  white-space: normal;
+}
+.ih .pl .pl-agent-suggest input.pl-own-answer {
+  flex: 1 1 180px;
+  min-width: 150px;
+  padding: 3px 8px;
+  font: 400 12px "IBM Plex Sans", sans-serif;
+  outline: none;
+}
+/* the asker's name in a question: a text link that opens the match */
+.ih .pl .pl-agent-meta button.pl-skip.pl-asker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  color: #0000ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.pl-agent-head > .pl-status {
+  flex: none;
+  margin-right: 4px;
+}
+/* answers picked, waiting to be sent */
+.pl-answers {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid #e6e6e6;
+  background: #fff;
+}
+/* an invite for someone not on index yet, under their card */
+.pl-invite {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pl-invite p {
+  margin: 0;
+}
+.pl-invite textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--pl-edge, #cfcfcf);
+  border-radius: 2px;
+  background: #fff;
+  font: 400 13px/1.55 "IBM Plex Sans", sans-serif;
+  outline: none;
+}
+
+/* An intent's head: back and buttons on top, then the intent across the full width. */
+.pl .ih-head.pl-intent-head {
+  display: block;
+}
+.pl-intent-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ih .pl .pl-intent-head button.pl-back.ih-head-back {
+  margin: 0;
+}
+.pl .pl-intent-head h1.ih-title {
+  max-width: none;
+  font-size: 16.5px;
+  line-height: 1.45;
+}
+

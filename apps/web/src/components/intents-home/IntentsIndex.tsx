@@ -8,8 +8,8 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
 
 /**
  * Every intent as a row, with the same lines and hover as Home's cards: the
- * intent in full, how it's going, and a way in. A click on
- * the row opens the intent.
+ * intent in full, how it's going. A click anywhere on the row
+ * opens the intent.
  */
 export default function IntentsIndex() {
   const navigate = useNavigate();
@@ -63,9 +63,8 @@ export default function IntentsIndex() {
                       </span>
                     </div>
                     <div className="pl-card-foot">
-                      <button type="button" className="go" onClick={() => navigate(`/i/${intent.id}`)}>open</button>
                       <span className="pl-dim pl-small">
-                        {loading ? "loading…" : bits.length ? bits.join(", ") : counts.awaiting ? "new matches" : paused ? "not looking" : "still looking"}
+                        {loading ? "loading…" : bits.length ? bits.join(", ") : counts.awaiting ? "new matches" : paused ? "not looking" : "agents in talks"}
                         {intent.createdAt && ` · since ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                       </span>
                     </div>

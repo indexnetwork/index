@@ -12,6 +12,7 @@ import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import MatchWindow from "@/components/intents-home/MatchWindow";
 import { InAppFrameContext } from "@/components/intents-home/appFrameContext";
 import HomeAgentPanel from "@/components/intents-home/HomeAgentPanel";
+import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 
@@ -70,7 +71,7 @@ function AppRail({ here }: { here: RailKey }) {
               </li>
             ))}
         </ul>
-        {item("intents", "intents", "/intents")}
+        {item("intents", "intents", "/intents", waiting)}
         {item("chat", "conversations", "/chat", unread)}
 
         <div className="ih-menu">
@@ -110,9 +111,44 @@ function AgentWindow() {
   );
 }
 
-/** Beside Home: an open match takes the agent window's place until it's closed. */
-function RightWindow() {
+/** Beside an intent: that intent's agent, always open (it's half of the page). */
+function IntentAgentWindow({ intentId }: { intentId: string }) {
+  const { setLog } = useAgentWindow();
+  const { intents, entriesByIntent } = useIntentsData();
+  const intent = intents.find((i) => i.id === intentId);
+  // A question names the match it's about; its name opens that match here.
+  const selectMatch = useCallback((opportunityId: string) => {
+    const entry = (entriesByIntent[intentId] ?? []).find((e) => e.item.opportunityId === opportunityId);
+    if (!entry) return;
+    const item = entry.item;
+    setLog({
+      opportunityId,
+      intentId,
+      name: item.name || item.peer?.name || "someone",
+      userId: item.userId || item.peer?.userId,
+      avatar: item.avatar ?? item.peer?.avatar,
+      notOnIndex: item.peer?.emailVerified === false,
+      entries: [entry],
+    });
+  }, [entriesByIntent, intentId, setLog]);
+  if (!intent) return null;
+  const paused = (intent.status || "").toLowerCase() === "paused";
+  return (
+    <section className="ih-agentwin" aria-label="this intent's agent">
+      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} onSelectMatch={selectMatch} />
+    </section>
+  );
+}
+
+/**
+ * Beside Home or an intent: an open match takes the agent window's place
+ * until it's closed. On an intent page the agent there is that intent's.
+ */
+function RightWindow({ intentId }: { intentId?: string }) {
+  const { pathname } = useLocation();
   const { log, setLog, open, setOpen } = useAgentWindow();
+  // A match belongs to the page it was opened from.
+  useEffect(() => { setLog(null); }, [pathname, setLog]);
   // Esc closes what's open on the right: an opened match first, then the agent chat.
   // A half-typed message in the chat keeps it open, so Esc never throws a draft away.
   useEffect(() => {
@@ -121,12 +157,13 @@ function RightWindow() {
       if (log) { setLog(null); return; }
       const target = event.target as HTMLElement | null;
       const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT") && (target as HTMLTextAreaElement).value.trim() !== "";
-      if (open && !typing) setOpen(false);
+      if (open && !typing && !intentId) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [log, setLog, open, setOpen]);
-  return log ? <MatchWindow /> : <AgentWindow />;
+  }, [log, setLog, open, setOpen, intentId]);
+  if (log) return <MatchWindow />;
+  return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
 }
 
 /** The signed-in desktop shell on the blue desktop: the sidebar window, the page window, and on Home the agent's window. */
@@ -134,6 +171,9 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const { user } = useAuthContext();
   const here = railKey(pathname, search, user?.id);
+  // An intent's page (not the new-intent flow) has its agent on the right.
+  const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
+  const withRight = pathname === "/" || (!!intentId && intentId !== "new");
   return (
     <HomeSectionsProvider>
       <AgentWindowProvider>
@@ -142,7 +182,7 @@ export default function AppFrame({ children }: { children: ReactNode }) {
           <main className="ih-main">
             <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
           </main>
-          {pathname === "/" && <RightWindow />}
+          {withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
         </div>
       </AgentWindowProvider>
     </HomeSectionsProvider>
