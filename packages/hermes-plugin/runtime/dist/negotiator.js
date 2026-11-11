@@ -36867,7 +36867,7 @@ async function briefIfMissing(input2, decision, operation = "brief") {
   await run({
     model: input2.model,
     operation,
-    identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
+    identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
     maxSteps: 2,
     ...input2.now ? { now: input2.now } : {},
@@ -37065,7 +37065,7 @@ async function summarize(input2) {
   await run({
     model: input2.model,
     operation: "summary",
-    identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
+    identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
     instructions: SUMMARY_PROMPT,
     prompt: `These are the conversations.
@@ -37097,7 +37097,7 @@ var WAKE_PROMPT = [
 ].join(`
 
 `);
-var MORNING = "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+var MORNING = "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. Your note is a report your principal's personal agent reads, not a greeting. Write it only when this morning decided something: the plan you pass to reach_counterparties, or a decision, or why a question matters. Do not recap who you discovered. Otherwise stop.";
 var STALL_PASSES = 3;
 var TURNS_READ = 2;
 function view(opportunities) {
@@ -37444,7 +37444,7 @@ async function wake(input2) {
     } catch {}
     return texts;
   };
-  const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
+  const identity = { id: user.id, name: user.name ? `${user.name}'s agent` : user.id };
   await run({
     model: input2.model,
     operation: input2.reason === "morning" ? "wake.morning" : "wake",
