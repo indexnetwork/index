@@ -2469,6 +2469,13 @@
   flex: 0 1 90%;
   max-width: 90%;
 }
+/* intents list: the intent reads like the intent page's title, never underlined */
+.ih .pl .pl-card-head > .pl-intent-title,
+.ih .pl .pl-card-head > .pl-intent-title a.pl-name,
+.ih .pl .pl-card-head > .pl-intent-title a.pl-name:hover {
+  font: 475 16.5px/1.4 var(--ih-sans);
+  text-decoration: none;
+}
 .pl-card-head:has(> .pl-intent-title) > .pl-intent-count {
   margin-left: auto;
 }

@@ -289,7 +289,6 @@ export default function NetworksPage() {
                 </>
               )}
 
-              <h2>my networks</h2>
               {networksLoading ? (
                 <p className="pl-dim">loading<span className="pl-blink">_</span></p>
               ) : networksError && allNetworks.length === 0 ? (
@@ -331,7 +330,6 @@ export default function NetworksPage() {
 
           {activeTab === 'discover' && (
             <>
-              <h2>public networks</h2>
               {loadingPublic && publicNetworks.length === 0 ? (
                 <p className="pl-dim">loading<span className="pl-blink">_</span></p>
               ) : publicError && publicNetworks.length === 0 ? (
