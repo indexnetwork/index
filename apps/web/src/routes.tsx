@@ -48,6 +48,11 @@ if (typeof window !== "undefined" && window.location.pathname.includes("//")) {
 
 export const router = createBrowserRouter([
   {
+    path: "/connect",
+    lazy: lazyRoute("/connect", () => import("@/app/connect/page")),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     element: <RootLayout />,
     errorElement: <RouteErrorBoundary />,
     children: [

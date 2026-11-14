@@ -1,0 +1,32 @@
+.connect-page {
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: 48px 24px;
+}
+
+.connect-content { width: 100%; max-width: 400px; text-align: center; }
+.connect-logo { display: block; width: 144px; height: auto; margin: 0 auto 56px; }
+.connect-content h1 { margin: 0 0 16px; font-family: var(--serif); font-size: clamp(36px, 8vw, 44px); font-weight: 400; line-height: 1.15; letter-spacing: -1.5px; }
+.connect-content > p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.connect-links { display: grid; gap: 12px; margin: 36px 0 48px; }
+.connect-page .connect-link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  min-height: 64px;
+  width: 100%;
+  padding: 18px 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--green);
+  font: 500 16px/1.4 var(--sans);
+  text-align: left;
+  text-decoration: none;
+}
+.connect-page a.connect-link:hover { background: #eceeec; color: var(--green); }
+.connect-link:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+.connect-link svg { flex-shrink: 0; }
+.connect-footer { color: var(--muted); font: 12px var(--mono); }
