@@ -1,6 +1,7 @@
 import { useLocation, useSearchParams, useNavigate } from "react-router";
 
 const TABS = [
+  { key: "agents", label: "agents", to: "/settings?tab=agents" },
   { key: "notifications", label: "notifications", to: "/settings" },
   { key: "access", label: "access", to: "/settings?tab=access" },
   { key: "advanced", label: "advanced", to: "/settings?tab=advanced" },
@@ -13,7 +14,7 @@ export default function SettingsTabs() {
   const [searchParams] = useSearchParams();
   if (pathname.startsWith("/agents")) return null;
   const tab = searchParams.get("tab");
-  const active = tab === "access" || tab === "advanced" ? tab : "notifications";
+  const active = tab === "agents" || tab === "access" || tab === "advanced" ? tab : "notifications";
 
   return (
     <div className="wb-segmented lg" role="tablist">

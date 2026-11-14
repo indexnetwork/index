@@ -451,3 +451,51 @@ button {
   .radar-sweep::before { animation: none; }
   .warmup-pulse { animation: none; }
 }
+
+/* Loading splash (AuthContext): the workbench blue desktop with a white,
+   segmented progress bar that fills and empties on a loop. */
+.index-splash {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background-color: #0055aa;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  background-size: 4px 4px;
+  color: #fff;
+}
+.index-splash-bar {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border: 2px solid #fff;
+}
+.index-splash-bar span {
+  width: 10px;
+  height: 14px;
+  background: #fff;
+  opacity: 0;
+  animation: index-splash-fill 1.8s steps(1) infinite;
+}
+@keyframes index-splash-fill {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  90% { opacity: 0; }
+}
+.index-splash-label {
+  font: 500 12px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 1px;
+}
+.index-splash-blink {
+  animation: index-splash-blink 1s steps(1) infinite;
+}
+@keyframes index-splash-blink {
+  50% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .index-splash-bar span { animation: none; opacity: 1; }
+  .index-splash-blink { animation: none; }
+}

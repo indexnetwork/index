@@ -2,8 +2,6 @@ import { useSyncExternalStore } from "react";
 
 /** Phones and narrow tablets: one full-screen window, bottom tab bar. Keep in sync with workbench.css. */
 export const COMPACT_QUERY = "(max-width: 720px)";
-/** Below this the intent page drops to two panes. */
-export const MEDIUM_QUERY = "(max-width: 1100px)";
 
 export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(

@@ -4,7 +4,7 @@
  * `index.network/<handle>`. Keep this in step with the routes.
  */
 const ROUTED_SEGMENTS = new Set([
-  "9db20a5fbe", "about", "agents", "blog", "chat", "cli-auth", "download", "found-in-translation",
+  "connect", "intents", "q", "9db20a5fbe", "about", "agents", "blog", "chat", "cli-auth", "download", "found-in-translation",
   "hermes", "i", "l", "login", "mcp", "negotiations", "networks", "o", "onboarding", "opportunities",
   "pages", "profile", "protocol", "s", "settings", "setup", "u", "waitlist",
 ]);

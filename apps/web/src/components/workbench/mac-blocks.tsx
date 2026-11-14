@@ -87,6 +87,7 @@ export function MatchCard({
   ) : null;
   return (
     <div
+      className="wb-main-card"
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       onClick={onProfile}
       style={{
@@ -130,10 +131,10 @@ export function SummarySection({ label, children }: { label: string; children: R
   return (
     <div style={{ display: "grid", gap: 5 }}>
       <div style={{
-        fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700,
-        color: "#000", letterSpacing: -0.1,
+        fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 500,
+        color: "var(--ink-2)", letterSpacing: "0.1em", textTransform: "uppercase",
       }}>{label}</div>
-      <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>{children}</div>
+      <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink)" }}>{children}</div>
     </div>
   );
 }
@@ -147,18 +148,17 @@ export function OptionChip({ label, selected = false, write = false, onClick }: 
       aria-pressed={write ? undefined : selected}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        display: "inline-flex", alignItems: "center", minHeight: 36,
-        padding: "8px 14px", cursor: "pointer", textAlign: "left",
+        display: "inline-flex", alignItems: "center",
+        padding: "4px 10px", cursor: "pointer", textAlign: "left",
+        borderRadius: 3, fontFamily: "var(--wb-code)", fontSize: 12,
         ...(write ? {
-          background: "transparent",
-          border: "1px solid #000",
-          color: hover ? "#111" : "#8a8577",
-          fontFamily: "var(--mac-mono)", fontSize: 12,
+          background: hover ? "var(--wb-hover-2)" : "#fff",
+          border: "1px solid var(--wb-control)",
+          color: hover ? "var(--ink)" : "var(--ink-3)",
         } : {
-          background: selected ? "#111" : "#fff",
-          border: "1px solid #000",
-          color: selected ? "#fff" : "#111",
-          fontFamily: "var(--mac-sans)", fontSize: 13.5,
+          background: selected ? "var(--wb-selected)" : hover ? "var(--wb-hover-2)" : "#fff",
+          border: `1px solid ${selected ? "#ccc" : "var(--wb-control)"}`,
+          color: selected ? "var(--ink)" : "var(--ink-2)",
         }),
       }}>{label}</button>
   );
@@ -178,9 +178,9 @@ export function WriteOwn({ open, value, onOpen, onChange, onClose }: {
       placeholder="write your own"
       aria-label="Write your own answer"
       style={{
-        flex: "1 1 220px", minWidth: 180, minHeight: 36,
-        border: "1px solid #000", padding: "8px 14px",
-        fontFamily: "var(--mac-mono)", fontSize: 12, color: "#111", outline: "none",
+        flex: "1 1 200px", minWidth: 160,
+        padding: "4px 10px",
+        fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink)", outline: "none",
       }}
     />
   );
@@ -216,9 +216,9 @@ function negoClock(iso: string | null | undefined) {
 }
 
 const NEGO_RESULT_GLYPH = {
-  won: { g: "✓", color: "#000" },
-  lost: { g: "✕", color: "var(--ink-warn)" },
-  open: { g: "●", color: "#FF8A00" },
+  won: { g: "✓", color: "var(--wb-live)" },
+  lost: { g: "✕", color: "var(--ink-3)" },
+  open: { g: "●", color: "var(--amiga-accent)" },
 };
 
 export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
@@ -226,33 +226,33 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
 }) {
   return (
     <div style={{ display: "grid", gap: 2 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
         <time dateTime={turn.createdAt} title={turn.createdAt ? new Date(turn.createdAt).toLocaleString() : undefined} style={{ color: "var(--ink-3)", flex: "0 0 auto", width: "12ch" }}>{negoClock(turn.createdAt)}</time>
         {withTag && (
           <button type="button" onClick={() => onTag?.(th)} style={{
-            flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10,
-            border: "1px solid #000", background: "#fff", color: "#000",
+            flex: "0 0 auto", fontFamily: "var(--mac-sans)", fontSize: 11,
+            border: "1px solid var(--wb-control)", borderRadius: 2, background: "#fff", color: "var(--ink-2)",
             padding: "0 5px", cursor: "pointer", width: 76, textAlign: "left",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{negoFirstName(th)}</button>
         )}
         {!you && th.counterparty?.userId ? (
-          <Link to={`/u/${th.counterparty.userId}`} title="view profile" style={{ fontWeight: 700, flex: "0 0 auto", color: "#000", textDecoration: "underline" }}>{negoFirstName(th)}.agent</Link>
+          <Link to={`/u/${th.counterparty.userId}`} title="view profile" style={{ flex: "0 0 auto", color: "var(--ink-3)", textDecoration: "underline", textUnderlineOffset: 3 }}>{negoFirstName(th)}.agent</Link>
         ) : (
-          <span style={{ fontWeight: 700, flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
+          <span style={{ flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
         )}
         <span style={{ flex: "0 0 auto" }}>{you ? "→" : "←"}</span>
         <span style={{
-          flex: "0 0 auto", textTransform: "uppercase", letterSpacing: 1,
-          background: you ? "#000" : "#fff", color: you ? "#fff" : "#000",
-          border: "1px solid #000", padding: "0 6px", fontSize: 10,
+          flex: "0 0 auto", textTransform: "uppercase", letterSpacing: "0.1em",
+          background: "var(--wb-selected)", color: "var(--ink-2)",
+          borderRadius: 2, padding: "0 6px", fontSize: 11, fontFamily: "var(--mac-sans)",
         }}>{turn.action || "unknown"}</span>
       </div>
       {turn.message && (
         <div style={{
           marginLeft: withTag ? "calc(12ch + 92px)" : "calc(12ch + 8px)",
-          fontFamily: "var(--mac-mono)", fontSize: 11, lineHeight: 1.45,
-          color: "var(--ink-2)", maxWidth: 560,
+          fontFamily: "var(--wb-code)", fontSize: 12, lineHeight: 1.6,
+          color: "var(--ink)", maxWidth: 560,
         }}>"{turn.message}"</div>
       )}
     </div>
@@ -265,13 +265,12 @@ export function NegoClosedLine({ th, withTag }: { th: NegotiationSummary; withTa
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
-      fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.5,
-      color: r === "won" ? "#000" : "var(--ink-2)",
+      fontFamily: "var(--wb-code)", fontSize: 11,
+      color: r === "won" ? "var(--ink)" : "var(--ink-3)",
     }}>
-      <span style={{ color: "var(--ink-4)" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
-      <span style={{ flex: "0 0 auto" }}>───</span>
-      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}</span>
-      <span style={{ flex: 1, borderTop: "1px dashed var(--ink-4)" }} />
+      <span style={{ color: "#aaa" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
+      <span>{withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}</span>
+      <span style={{ flex: 1, borderTop: "1px solid var(--wb-divider)" }} />
     </div>
   );
 }
@@ -280,12 +279,11 @@ export function NegoOpenLine({ th, withTag }: { th: NegotiationSummary; withTag:
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
-      fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.5, color: "#FF8A00",
+      fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-2)",
     }}>
-      <span style={{ color: "var(--ink-4)" }}>{negoClock(th.updatedAt)}</span>
-      <span style={{ flex: "0 0 auto" }}>───</span>
-      <span style={{ fontWeight: 700 }}>{withTag ? `${negoFirstName(th)} · ` : ""}open ● {th.turnCount || 0}t</span>
-      <span style={{ flex: 1, borderTop: "1px dashed var(--ink-4)" }} />
+      <span style={{ color: "#aaa" }}>{negoClock(th.updatedAt)}</span>
+      <span>{withTag ? `${negoFirstName(th)} · ` : ""}open <span style={{ color: "var(--wb-live)" }}>●</span> {th.turnCount || 0}t</span>
+      <span style={{ flex: 1, borderTop: "1px solid var(--wb-divider)" }} />
     </div>
   );
 }
@@ -298,14 +296,14 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
       display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8,
       alignItems: "center", width: "100%", textAlign: "left",
       padding: "7px 10px", cursor: "pointer",
-      border: "1px solid #000",
-      background: active ? "#000" : "#fff",
-      color: active ? "#FF8A00" : "#000",
-      fontFamily: "var(--mac-mono)", fontSize: 11,
+      border: "none", borderRadius: 3,
+      background: active ? "var(--wb-selected)" : "transparent",
+      color: "var(--ink)",
+      fontFamily: "var(--mac-sans)", fontSize: 13,
     }}>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{negoFirstName(th)}</span>
-      <span style={{ color: active ? "#FF8A00" : "var(--ink-3)", fontSize: 10, whiteSpace: "nowrap" }}>{th.turnCount || 0}t</span>
-      <span style={{ color: active ? "#FF8A00" : color, fontWeight: 700 }}>{g}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: active ? 500 : 400 }}>{negoFirstName(th)}</span>
+      <span style={{ color: "var(--ink-3)", fontSize: 11, whiteSpace: "nowrap" }}>{th.turnCount || 0}t</span>
+      <span style={{ color }}>{g}</span>
     </button>
   );
 }
@@ -317,22 +315,21 @@ export function IntentAction({ label, active = false, onClick, danger = false }:
 }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
-  const edge = danger ? "var(--ink-warn)" : "#000";
+  const edge = danger ? "var(--ink-warn)" : "var(--wb-control)";
   return (
     <button type="button" onClick={onClick}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        fontFamily: "var(--mac-mono)", fontSize: 11,
-        padding: "2px 10px", whiteSpace: "nowrap",
+        fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 500,
+        padding: "4px 10px", whiteSpace: "nowrap", borderRadius: 3,
         border: `1px solid ${edge}`,
         background: danger
-          ? (active ? "var(--ink-warn)" : hover ? "#FFF3F3" : "#fff")
-          : (on ? "#000" : "#fff"),
+          ? (active ? "var(--ink-warn)" : hover ? "#fbf1f0" : "#fff")
+          : (active ? "var(--wb-selected)" : on ? "var(--wb-hover-2)" : "#fff"),
         color: danger
           ? (active ? "#fff" : "var(--ink-warn)")
-          : (on ? "#fff" : "#000"),
-        fontWeight: danger && active ? 700 : 400,
-        boxShadow: "1px 1px 0 rgba(0,0,0,0.2)",
+          : (on ? "var(--ink)" : "var(--ink-2)"),
+        boxShadow: "none",
       }}>{label}</button>
   );
 }
@@ -347,7 +344,7 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
     <div style={{
       display: "grid", height: "100%",
       gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))`,
-      fontFamily: "var(--mac-mono)",
+      fontFamily: "var(--mac-sans)",
     }}>
       {stages.map((stage, i) => {
         const last = i === stages.length - 1;
@@ -363,18 +360,18 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
               position: "relative", minWidth: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
               padding: "0 5px",
-              background: "transparent", color: "#111",
+              background: "transparent", color: "var(--ink)",
               opacity: dim ? 0.45 : 1,
               cursor: "pointer",
               border: "none", borderRadius: 0,
-              fontFamily: "var(--mac-mono)",
+              fontFamily: "var(--mac-sans)",
             }}>
-            <span style={{ fontSize: 18, fontWeight: 500, lineHeight: 1, color: stage.accent && stage.count > 0 ? "#F26B1D" : "#111" }}>{stage.count}</span>
+            <span style={{ fontSize: 16, fontWeight: 500, lineHeight: 1, color: stage.accent && stage.count > 0 ? "var(--amiga-accent)" : "var(--ink)" }}>{stage.count}</span>
             <span style={{
-              display: "block", width: "100%", overflow: "hidden", textAlign: "center",
-              fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", lineHeight: 1,
+              display: "block", width: "100%", overflow: "hidden", textAlign: "center", color: "var(--ink-2)",
+              fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap", lineHeight: 1,
             }}>{stage.display ?? stage.label}</span>
-            {!last && <span aria-hidden style={{ position: "absolute", right: 0, top: 12, bottom: 12, width: 1.5, background: "#111" }} />}
+            {!last && <span aria-hidden style={{ position: "absolute", right: 0, top: 12, bottom: 12, width: 1, background: "var(--wb-hairline)" }} />}
           </button>
         );
       })}
@@ -387,7 +384,7 @@ export function DiscoveryLoader() {
   return (
     <div style={{ padding: "16px 30px 30px", display: "flex", flexDirection: "column", alignItems: "center" }}>
       <img src="/loading-eye.gif" alt="searching" style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
-      <div style={{ fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, letterSpacing: "0.04em", color: "#111", margin: 0 }}>
+      <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 400, color: "var(--ink-2)", margin: 0 }}>
         hold on, looking for your people
       </div>
     </div>
@@ -464,7 +461,7 @@ export function DiscoveryTrace({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {queries.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button type="button" aria-expanded={queriesOpen} onClick={() => setQueriesOpen((value) => !value)} style={{
+              <button type="button" className="wb-trace-toggle" aria-expanded={queriesOpen} onClick={() => setQueriesOpen((value) => !value)} style={{
                 display: "grid", gridTemplateColumns: "18px 1fr", gap: 10, alignItems: "center",
                 background: "none", border: "none", padding: 0, textAlign: "left",
                 fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)", color: "#5A5548",

@@ -48,6 +48,11 @@ if (typeof window !== "undefined" && window.location.pathname.includes("//")) {
 
 export const router = createBrowserRouter([
   {
+    path: "/connect",
+    lazy: lazyRoute("/connect", () => import("@/app/connect/page")),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     element: <RootLayout />,
     errorElement: <RouteErrorBoundary />,
     children: [
@@ -125,6 +130,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
       },
       {
+        path: "/intents",
+        lazy: lazyRoute("/intents", () => import("@/app/intents/page")),
+      },
+      {
         path: "/i/new",
         lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
       },
@@ -139,6 +148,10 @@ export const router = createBrowserRouter([
       {
         path: "/setup",
         lazy: lazyRoute("/setup", () => import("@/app/download/page")),
+      },
+      {
+        path: "/q/:id",
+        lazy: lazyRoute("/q/:id", () => import("@/app/q/[id]/page")),
       },
       {
         path: "/download",

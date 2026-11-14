@@ -30,10 +30,10 @@ function AgentOverview({
 
   return (
     <div className="space-y-6">
-      <div style={{ border: "1px solid #000", padding: 16, background: "#fff" }}>
-        <p style={{ margin: "0 0 8px", fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>agent</p>
+      <div style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: 16, background: "#fff" }}>
+        <p style={{ margin: "0 0 8px", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)" }}>agent</p>
         <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14 }}>{agent.name}</p>
-        <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-mono)", fontSize: 11 }}>{agent.type} · {agent.status}</p>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-3)" }}>{agent.type} · {agent.status}</p>
       </div>
     </div>
   );
@@ -110,8 +110,8 @@ export default function AgentDetailPage() {
       <Stage width={860} height="min(720px, calc(100vh - 112px))">
         <Window title="agents" onClose={() => navigate("/agents")} style={{ height: "100%" }}>
           <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
-            <h1 style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 18, fontWeight: 700 }}>{agent.name}</h1>
-            <p style={{ margin: "6px 0 16px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+            <h1 style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{agent.name}</h1>
+            <p style={{ margin: "6px 0 16px", fontSize: 12, color: "var(--ink-3)" }}>
               {agent.type === "system" ? "hosted by index" : agent.status}
             </p>
             <AgentOverview agent={agent} userId={user?.id ?? ""} />

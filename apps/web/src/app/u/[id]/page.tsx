@@ -11,6 +11,8 @@ import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import type { ReactNode } from "react";
 import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import NegotiationConversation from "@/components/NegotiationConversation";
@@ -26,7 +28,7 @@ import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
 
 const logger = log.page.from("u/[id]");
 
-const sectionLabel = { fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 } as const;
+const sectionLabel = { fontFamily: "var(--amiga-sans)", fontSize: 11, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)", marginBottom: 8 } as const;
 
 /** /u/:id, the old profile address. It still opens, and moves to /:username when there is one. */
 export default function UserProfilePage() {
@@ -213,8 +215,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
     return (
-      <Stage width={480}>
-        <Window title="profile" onClose={back}>
+      <ProfileFrame width={480} onClose={back}>
           <div style={{ padding: "36px 24px" }}>
             {authLoading || isLoading ? (
               <EmptyState tone="loading" />
@@ -228,8 +229,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
               <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: back }} />
             )}
           </div>
-        </Window>
-      </Stage>
+      </ProfileFrame>
     );
   }
 
@@ -238,9 +238,9 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   // vanishing, and anything that resolves to no address is left out entirely.
   const socialLinks = resolveSocials(profileData.socials);
 
+
   return (
-      <Stage width={720} height="min(720px, calc(100vh - 112px))">
-      <Window title="profile" onClose={back} style={{ height: "100%" }}>
+      <ProfileFrame width={720} height="min(720px, calc(100vh - 112px))" onClose={back}>
       <div className="mac-scroll profile-content">
 
           {/* Avatar, Name, Location, Socials */}
@@ -254,7 +254,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
                 <Link to="/profile/edit" style={{ display: "inline-block", marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>set a username</Link>
               )}
               {profileData.emailVerified === false && <NotOnIndexTag />}
-              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
+              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--amiga-sans)", fontSize: 12, color: "#666" }}>{profileData.location}</div>}
             </div>
             {isOtherUser && (
               <button type="button" className="wb-btn primary small profile-message" onClick={() => navigate(`/u/${profileData.id}/chat`)}>send message</button>
@@ -282,7 +282,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
               <h3 style={sectionLabel}>elsewhere</h3>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {socialLinks.map((s) => (
-                  <a className="profile-social" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
                     {SOCIAL_ICONS[s.platform]}
                     <span>{s.handle}</span>
                   </a>
@@ -294,10 +294,10 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           {isOtherUser && (
             <div>
               <h3 style={sectionLabel}>networks</h3>
-              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>no shared networks.</div>}
+              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>no shared networks.</div>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
                     {network.title} · {network._count.members}
                   </Link>
                 ))}
@@ -342,18 +342,18 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
                   const open = openOpportunityId === o.opportunityId;
                   const toggle = () => setOpenOpportunityId(open ? null : o.opportunityId);
                   return (
-                    <div key={o.opportunityId} style={{ border: "1px solid #000", background: "#fff" }}>
+                    <div key={o.opportunityId} style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", overflow: "hidden" }}>
                       <div role="button" tabIndex={0} onClick={toggle}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
-                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "#F2F0EC" : "#fff" }}>
+                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "var(--wb-selected)" : "#fff" }}>
                         <div style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{o.headline || o.mainText}</div>
-                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, whiteSpace: "nowrap" }}>
+                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
                           {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
                         </span>
-                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{open ? "▾" : "›"}</span>
+                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>{open ? "▾" : "›"}</span>
                       </div>
                       {open && (
-                        <div style={{ borderTop: "1px solid #000" }}>
+                        <div style={{ borderTop: "1px solid var(--wb-hairline)" }}>
                           <NegotiationConversation opportunityId={o.opportunityId} expanded onToggle={toggle} />
                         </div>
                       )}
@@ -392,9 +392,29 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           )}
 
       </div>
-      </Window>
-      </Stage>
+      </ProfileFrame>
   );
 }
 
 export const Component = UserProfilePage;
+
+/**
+ * Where the profile sits. Signed in on desktop, the app's main window already
+ * says "profile", so it fills that window like Home and Intents. Elsewhere
+ * (phones, signed out) it keeps its own window on the desktop.
+ */
+function ProfileFrame({ width, height, onClose, children }: { width: number; height?: string; onClose: () => void; children: ReactNode }) {
+  const inFrame = useInAppFrame();
+  if (inFrame) {
+    return (
+      <div className="ih-view pl">
+        <div className="pl-wrap"><div className="pl-page">{children}</div></div>
+      </div>
+    );
+  }
+  return (
+    <Stage width={width} height={height}>
+      <Window title="profile" onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
+    </Stage>
+  );
+}

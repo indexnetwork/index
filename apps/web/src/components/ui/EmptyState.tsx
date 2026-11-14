@@ -12,7 +12,7 @@ export interface EmptyStateProps {
   message?: ReactNode;
   /** One CTA, or several rendered side by side. */
   action?: EmptyStateAction | EmptyStateAction[];
-  /** Draws the 1px dashed box used by empty panes. */
+  /** Draws the 1px hairline box used by empty panes. */
   framed?: boolean;
   /** Left-aligns instead of centring (for inline list slots). */
   align?: "center" | "start";
@@ -22,7 +22,7 @@ export interface EmptyStateProps {
 
 /**
  * The one empty / loading / error block for the authenticated web app.
- * Mono 12px in `--ink-2`, optional dashed frame, actions use the workbench button.
+ * Sans 13px in `--ink-3`, optional hairline frame, actions use the workbench button.
  */
 export function EmptyState({
   tone = "empty",
@@ -49,11 +49,12 @@ export function EmptyState({
         textAlign: centred ? "center" : "left",
         gap: 10,
         padding: framed ? "18px 14px" : "10px 6px",
-        border: framed ? "1px dashed var(--ink-3)" : undefined,
-        fontFamily: "var(--mac-mono)",
-        fontSize: 12,
+        border: framed ? "1px solid var(--wb-hairline, #e3e3e0)" : undefined,
+        borderRadius: framed ? 3 : undefined,
+        fontFamily: "var(--mac-sans)",
+        fontSize: 13,
         lineHeight: 1.5,
-        color: "var(--ink-2)",
+        color: "var(--ink-3, #777)",
         ...style,
       }}
     >

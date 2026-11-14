@@ -15,7 +15,7 @@ function Status({ title, message, ok, action }: {
       <div className="signin-status">
         {ok && (
           <div className="signin-check" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#041729" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
           </div>

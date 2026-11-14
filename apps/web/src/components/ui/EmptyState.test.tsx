@@ -40,7 +40,7 @@ describe("EmptyState", () => {
 describe("empty-state copy", () => {
   it("uses the canonical radar lines", () => {
     expect(radarEmptyLine("awaiting you")).toBe("nothing waiting on you right now.");
-    expect(radarEmptyLine("accepted")).toBe("no one accepted yet.");
+    expect(radarEmptyLine("accepted")).toBe("no chats open yet.");
     expect(radarEmptyLine("closed")).toBe("nothing closed.");
   });
 

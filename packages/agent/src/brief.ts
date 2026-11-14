@@ -118,7 +118,7 @@ export async function briefIfMissing(input: BriefInput, decision: Decision, oper
   await run({
     model: input.model,
     operation,
-    identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
+    identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
     // A second step lets the model rewrite a brief recordBrief rejected.
     maxSteps: 2,

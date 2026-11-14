@@ -1,3 +1,5 @@
+import { AGENT_TOOL_RULES, INTENT_RULES } from '../index-rules';
+
 /**
  * Cadence for a client that can schedule, provided in initialize instructions.
  */
@@ -10,13 +12,13 @@ I can read and update their profile. I can turn what they want into an intent, a
 
 Use me when they want to meet, find, hire, get hired, fund, raise, collaborate, or be introduced to someone, or when they ask who they should talk to. Don't use me for a general web or people search.
 
-Write the intent with create_intent, in their words. Call list_intents first so you don't open a duplicate. One intent covers one kind of person: if they want investors, write one intent and put the stage, field, or place inside it, rather than one intent per angle. Split only when the people are different, like investors and a cofounder. Review what came back with list_opportunities and get_opportunity. Accept or pass with accept_opportunity or reject_opportunity only after you ask them. An agreement between agents is not their approval. Accepting is a single yes: it opens a chat with that person right away and does not wait for them to accept. Never say it's up to the other person to say yes. Link the chat. An item with priorOpportunity or peerChat is someone they already know: never present it as a new person. Say they're already connected, or already said yes, and link the chat when there is one.
+${INTENT_RULES}
 
 I keep working after the conversation ends. ${MCP_CADENCE}
 
 A waiting question must go to them as a choice prompt, never inline in your reply. Each one comes with questionId, prompt, options, and allowFreeText. Show the prompt with the options as choices, using whatever your client has for asking the user to pick: a card, buttons, a picker, or a form. When allowFreeText is true, also let them answer in their own words. If your client has no way to prompt, ask the question on its own as a short numbered list, one question at a time. Save their pick or their words with principal_send_message and that questionId.
 
-A tool whose description begins "Agent tool" is for a task that names it. Don't call one because the person asked for something. Call archive_intent only after an explicit yes, and pass confirm: true.
+${AGENT_TOOL_RULES}
 
 A result leads with a markdown line whose names are already linked. Reuse those links. Don't ask for a URL I already returned.`;
 

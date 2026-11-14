@@ -7,21 +7,17 @@ import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const th: CSSProperties = {
-  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
-  fontFamily: "var(--mac-mono)", fontSize: 9, fontWeight: 700,
-  textTransform: "uppercase", letterSpacing: 0.5, color: "var(--ink-2)",
+  textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
+  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, fontWeight: 400,
+  letterSpacing: "0.5px", color: "#8a8578",
 };
 const td: CSSProperties = {
-  padding: "7px 10px", borderBottom: "1px solid rgba(0,0,0,0.12)",
-  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", whiteSpace: "nowrap",
+  padding: "12px 12px 12px 0", borderBottom: "1px solid #e6e6e6",
+  fontFamily: "var(--mac-sans)", fontSize: 14, color: "#000", whiteSpace: "nowrap",
 };
 const note: CSSProperties = {
-  margin: "0 0 10px", maxWidth: 520,
-  fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)",
-};
-const heading: CSSProperties = {
-  margin: 0, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700,
-  textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-2)",
+  margin: "0 0 10px", maxWidth: 560,
+  fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#5a5548",
 };
 
 interface DeviceSession {
@@ -57,12 +53,7 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
       onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
       onBlur={() => setArmed(false)}
       disabled={busy}
-      style={{
-        fontFamily: "var(--mac-mono)", fontSize: 11, padding: "3px 10px",
-        border: "1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
-        color: armed ? "#fff" : "var(--ink-warn)",
-        boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
-      }}
+      className={`wb-btn danger${armed ? " on" : ""}`}
     >{armed ? "sure?" : "revoke"}</button>
   );
 }
@@ -138,7 +129,7 @@ export default function DevicesSection() {
 
   return (
     <div>
-      <p style={{ ...heading, marginBottom: 8 }}>devices</p>
+      <h2 className="st-h">devices</h2>
       <p style={note}>
         where you are signed in. the mac app, cli and personal agents each hold their own session, so signing one out here leaves the others alone.
       </p>
@@ -156,14 +147,14 @@ export default function DevicesSection() {
       ) : sessions.length === 0 ? (
         <p style={note}>no active devices.</p>
       ) : (
-        <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
             <thead>
               <tr>
                 <th style={th}>device</th>
                 <th style={th}>signed in</th>
                 <th style={th}>expires</th>
-                <th style={{ ...th, textAlign: "right" }}>actions</th>
+                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
               </tr>
             </thead>
             <tbody>
@@ -172,12 +163,12 @@ export default function DevicesSection() {
                   <td style={td}>
                     {describeDevice(session.userAgent)}
                     {session.token === currentToken && (
-                      <span style={{ marginLeft: 6, fontSize: 10, color: "var(--ink-2)" }}>this browser</span>
+                      <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578" }}>this browser</span>
                     )}
                   </td>
                   <td style={td}>{accessDay(session.createdAt)}</td>
                   <td style={td}>{accessDay(session.expiresAt)}</td>
-                  <td style={{ ...td, textAlign: "right" }}>
+                  <td style={{ ...td, textAlign: "right", paddingRight: 0 }}>
                     <RevokeButton busy={busy} onConfirm={() => void revoke(session)} />
                   </td>
                 </tr>

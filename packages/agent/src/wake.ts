@@ -34,8 +34,8 @@ const WAKE_PROMPT = [
 ].join("\n\n");
 
 /** The line a morning wake adds. */
-const MORNING =
-  "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+export const MORNING =
+  "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. Your note is a report your principal's personal agent reads, not a greeting. Write it only when this morning decided something: the plan you pass to reach_counterparties, or a decision, or why a question matters. Do not recap who you discovered. Otherwise stop.";
 
 /** How many focused passes a wake makes over the stalls it still owes. */
 const STALL_PASSES = 3;
@@ -535,7 +535,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     return texts;
   };
 
-  const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
+  const identity = { id: user.id, name: user.name ? `${user.name}'s agent` : user.id };
   await run({
     model: input.model,
     operation: input.reason === "morning" ? "wake.morning" : "wake",

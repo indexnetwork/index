@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 
 import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
@@ -11,27 +11,25 @@ import { AddYourAgent } from "@/components/AddYourAgent";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { log } from "@/lib/logger";
 import { useCompact } from "@/hooks/useCompact";
+import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import "@/styles/plain.css";
 
 const logger = log.page.from("agents");
 
 function NegotiatorBadge() {
   return (
-    <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, letterSpacing: 0.4, background: "#FF8A00", color: "#000", padding: "2px 6px", border: "1px solid #000" }}>SPEAKS FOR YOU</span>
+    <span className="ih-badge" style={{ flex: "0 0 auto" }}>speaks for you</span>
   );
 }
 
 function NegotiatorMark() {
-  return <span title="speaks for you" style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, lineHeight: 1, color: "#000" }}>*</span>;
+  return <span title="speaks for you" style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, color: "#ff8a00", fontWeight: 700 }}>*</span>;
 }
 
-function LineButton({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
+function LineButton({ children, onClick, disabled, primary }: { children: ReactNode; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+  // Grey outline .wb-btn; `primary` is the orange one for the screen's single main action.
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{
-      fontFamily: "var(--mac-mono)", fontSize: 12, padding: "5px 12px",
-      border: "1px solid #000",
-      background: disabled ? "#F2F0EC" : "#fff",
-      color: disabled ? "var(--ink-2)" : "#000",
-      boxShadow: disabled ? "none" : "1px 1px 0 rgba(0,0,0,0.2)",
+    <button type="button" onClick={onClick} disabled={disabled} className={primary ? "wb-btn primary" : "wb-btn"} style={{
       cursor: disabled ? "default" : "pointer",
     }}>{children}</button>
   );
@@ -45,14 +43,7 @@ function RemoveButton({ onRemove, disabled }: { onRemove: () => void; disabled?:
       disabled={disabled}
       onClick={() => { if (armed) onRemove(); else setArmed(true); }}
       onBlur={() => setArmed(false)}
-      style={{
-        boxSizing: "border-box", height: 18, padding: "0 8px",
-        fontFamily: "var(--mac-mono)", fontSize: 11, lineHeight: 1,
-        border: "1px solid #000",
-        background: armed ? "var(--ink-warn)" : "#fff",
-        color: armed ? "#fff" : "#000",
-        cursor: disabled ? "default" : "pointer",
-      }}>{armed ? "confirm" : "remove"}</button>
+      className={`wb-btn danger${armed ? " on" : ""}`}>{armed ? "confirm" : "remove"}</button>
   );
 }
 
@@ -63,16 +54,9 @@ function activeDay(value: string): string {
     : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function BandHead({ label, first, action }: { label: string; first?: boolean; action?: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: first ? "0 0 8px" : "26px 0 8px", fontFamily: "var(--mac-mono)", fontSize: 13, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, color: "#000" }}>
-      <span>{label}</span>
-      <div style={{ flex: 1, height: 2, background: "linear-gradient(#000, #000) top/100% 1px no-repeat, linear-gradient(#fff, #fff) bottom/100% 1px no-repeat" }} />
-      {action && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{action}</span>}
-    </div>
-  );
+function BandHead({ label, first }: { label: string; first?: boolean }) {
+  return <h2 className="st-h" style={{ marginTop: first ? 0 : 30 }}>{label}</h2>;
 }
-
 function CopyId({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -80,6 +64,7 @@ function CopyId({ id }: { id: string }) {
       type="button"
       title={copied ? "copied" : id}
       aria-label="copy agent id"
+      className="pl-plain-btn"
       onClick={(e) => {
         e.stopPropagation();
         const write = navigator.clipboard?.writeText(id);
@@ -89,7 +74,7 @@ function CopyId({ id }: { id: string }) {
           setTimeout(() => setCopied(false), 1200);
         }).catch(() => {});
       }}
-      style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-4)", letterSpacing: 0.2, whiteSpace: "nowrap" }}>
+      style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578", whiteSpace: "nowrap" }}>
       {copied ? "copied" : `${id.slice(0, 8)}…`}
     </button>
   );
@@ -116,42 +101,42 @@ function RosterRow({
   const stacked = compact && columns;
   const row: React.CSSProperties = {
     display: columns ? "grid" : "flex",
-    gridTemplateColumns: stacked ? "minmax(0,1fr) auto 18px" : columns ? "minmax(0,1fr) 168px 84px 140px 18px" : undefined,
+    gridTemplateColumns: stacked ? "minmax(0,1fr) auto 18px" : columns ? "minmax(0,1fr) 290px 84px 90px 18px" : undefined,
     alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
-    padding: "10px 12px", textAlign: "left",
-    border: "none", borderBottom: last && !expanded ? "none" : "1px solid #000",
-    background: (opens && (hover || expanded)) ? "#F2EFE6" : "#fff",
+    padding: "14px 12px", textAlign: "left", borderRadius: 0,
+    border: "none", borderBottom: last && !expanded ? "none" : "1px solid #e6e6e6",
+    background: (opens && (hover || expanded)) ? "#f7f7f5" : "transparent",
     cursor: opens ? "pointer" : "default",
     font: "inherit", color: "inherit",
   };
   const nameDetail = (
     <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
       <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        <span style={{ minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
         {badge}
       </span>
-      <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+      <span style={{ minWidth: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
     </span>
   );
   const body = stacked ? (
     <>
       {nameDetail}
-      <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{aside}</span>
-      <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#000" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+      <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
+      <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
     </>
   ) : (
     <>
       <span style={{ flex: columns ? undefined : "1 1 34%", minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        <span style={{ minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
         {badge}
       </span>
-      <span style={{ flex: columns ? undefined : "1 1 40%", minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+      <span style={{ flex: columns ? undefined : "1 1 40%", minWidth: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
       {columns && <span style={{ minWidth: 0 }}>{id ? <CopyId id={id} /> : null}</span>}
       {aside != null && aside !== "" && (
-        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: columns ? 0 : 108, display: "flex", justifyContent: "flex-end", alignItems: "center", overflow: "hidden", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{aside}</span>
+        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: columns ? 0 : 108, display: "flex", justifyContent: "flex-end", alignItems: "center", overflow: "hidden", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
       )}
       {(onToggle || columns) && (
-        <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#000" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+        <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
       )}
     </>
   );
@@ -165,24 +150,26 @@ function RosterRow({
     );
   }
   if (!onClick) return <div style={row}>{body}</div>;
-  return <button type="button" onClick={onClick} {...hoverProps} style={row}>{body}</button>;
+  return <button type="button" className="pl-plain-btn" onClick={onClick} {...hoverProps} style={row}>{body}</button>;
 }
 
 function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: string; blurb: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} role="switch" aria-checked={on} style={{ display: "flex", gap: 11, alignItems: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px", cursor: "pointer", border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
-      <span style={{ flex: "0 0 auto", width: 16, height: 16, marginTop: 1, border: "1px solid #000", background: on ? "#FF8A00" : "#EDEAE1", boxShadow: on ? "inset 1px 1px 0 #8A4500, inset -1px -1px 0 #FFD7A0" : "inset 1px 1px 0 #FFF, inset -1px -1px 0 var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: "#000" }}>{on ? "✓" : ""}</span>
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600, color: "#000" }}>{title}</span>
-        <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>{blurb}</span>
+    <label className="st-row" style={{ margin: 0 }}>
+      <span className="st-row-text">
+        <b style={{ fontSize: 14 }}>{title}</b>
+        <span>{blurb}</span>
       </span>
-    </button>
+      <input type="checkbox" checked={on} onChange={onClick} />
+    </label>
   );
 }
 
-export default function AgentsPage() {
+/** `embedded`: drawn inside Settings' "agents" tab, without its own head or window. */
+export default function AgentsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
+  const plain = useInAppFrame();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const agentsService = useAgents();
   const { success, error } = useNotifications();
@@ -198,7 +185,6 @@ export default function AgentsPage() {
   const [newAgentName, setNewAgentName] = useState('');
   const [selecting, setSelecting] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [nameFocus, setNameFocus] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -319,17 +305,14 @@ export default function AgentsPage() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+      <p style={{ padding: 24, fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
     );
   }
 
   const kind = selectedNegotiator ? "registered manually" : "hosted by index";
 
-  return (
+  const content = (
     <>
-      <Stage width={860} height="min(880px, calc(100vh - 96px))">
-      <Window title="agents" onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
-      <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: compact ? '14px 16px 22px' : '18px 24px 22px' }}>
           {loading ? (
             <EmptyState tone="loading" style={{ padding: 28 }} />
           ) : loadFailed ? (
@@ -342,15 +325,15 @@ export default function AgentsPage() {
           ) : (
             <>
               <BandHead label="which agent speaks for you" first />
-              <p style={{ margin: "0 0 12px", fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
+              <p className="st-note" style={{ marginBottom: 12 }}>
                 one agent speaks for you in the network. index takes over if it&apos;s offline.
               </p>
-              <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderBottom: picking ? "1px solid #000" : "none" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px", borderBottom: picking ? "1px solid #e6e6e6" : "none" }}>
                   <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontFamily: "var(--mac-mono)", fontSize: 16, fontWeight: 700 }}>{selectedNegotiator?.name || "Index"}</div>
-                    <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{kind}</div>
+                    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 16, fontWeight: 600, color: "#000" }}>{selectedNegotiator?.name || "Index"}</div>
+                    <div style={{ marginTop: 2, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578" }}>{kind}</div>
                   </div>
                   <LineButton disabled={selecting} onClick={() => setPicking((open) => !open)}>{picking ? "cancel" : "change"}</LineButton>
                 </div>
@@ -365,10 +348,10 @@ export default function AgentsPage() {
               </div>
 
               <BandHead label="connected agents" />
-              <p style={{ margin: "0 0 12px", fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
+              <p className="st-note" style={{ marginBottom: 12 }}>
                 everything that can act for you, from any device.
               </p>
-              <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
+              <div className="ag-roster">
                 <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0 && connections.length === 0} />
                 {personalAgents.map((agent, i) => {
                   const open = expanded === agent.id;
@@ -386,10 +369,10 @@ export default function AgentsPage() {
                         aside={<RemoveButton disabled={selecting} onRemove={() => void handleDeleteAgent(agent)} />}
                       />
                       {open && (
-                        <div style={{ background: "#F2F0EC", borderBottom: last ? "none" : "1px solid #000", padding: "11px 12px 12px" }}>
+                        <div style={{ background: "#f7f7f5", borderBottom: last ? "none" : "1px solid #e6e6e6", padding: "0 12px 4px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
                             <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
-                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>id <CopyId id={agent.id} /></div>}
+                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>id <CopyId id={agent.id} /></div>}
                           </div>
                         </div>
                       )}
@@ -407,28 +390,27 @@ export default function AgentsPage() {
                   />
                 ))}
               </div>
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 30 }}>
                 <AddYourAgent
                   linkToPage={false}
                   onRegister={() => setRegisterOpen(true)}
                   registerForm={registerOpen ? (
-                    <div style={{ display: "grid", gap: 10, padding: "10px 12px", border: "1px solid #000", background: "#fff" }}>
-                      <label style={{ display: "block" }}>
-                        <span style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600, color: "#000" }}>name<span style={{ color: "#FF8A00", marginLeft: 4 }}>*</span></span>
+                    <div style={{ display: "grid", gap: 10, padding: "14px 0", borderTop: "1px solid #e6e6e6" }}>
+                      <label style={{ display: "block", maxWidth: 420 }}>
+                        <span className="st-label">name your agent<span style={{ color: "#8a8578", marginLeft: 4 }}>*</span></span>
+                        <span className="st-well">
                         <input
                           autoFocus
                           value={newAgentName}
                           disabled={creating}
                           placeholder="agent name"
                           onChange={(e) => setNewAgentName(e.target.value)}
-                          onFocus={() => setNameFocus(true)}
-                          onBlur={() => setNameFocus(false)}
                           onKeyDown={(e) => { if (e.key === "Enter") void handleCreateAgent(); }}
-                          style={{ display: "block", width: "100%", boxSizing: "border-box", border: "1px solid #000", background: creating ? "#EDEAE1" : "#fff", boxShadow: nameFocus ? "inset 2px 2px 0 #000" : "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px", fontFamily: "var(--mac-mono)", fontSize: 13, outline: "none" }}
                         />
+                        </span>
                       </label>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <LineButton disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
+                        <LineButton primary disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
                         <LineButton disabled={creating} onClick={() => { setRegisterOpen(false); setNewAgentName(""); }}>cancel</LineButton>
                       </div>
                     </div>
@@ -437,10 +419,22 @@ export default function AgentsPage() {
               </div>
             </>
           )}
+    </>
+  );
+
+  if (embedded) return <div className="pl-agents">{content}</div>;
+
+  // Signed in on desktop, agents live in Settings as their own tab.
+  if (plain) return <Navigate to="/settings?tab=agents" replace />;
+
+  return (
+    <Stage width={860} height="min(880px, calc(100vh - 96px))">
+      <Window title="agents" onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
+        <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: compact ? '14px 16px 22px' : '18px 24px 22px' }}>
+          {content}
         </div>
       </Window>
-      </Stage>
-    </>
+    </Stage>
   );
 }
 

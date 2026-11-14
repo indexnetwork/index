@@ -32,7 +32,7 @@ export default function OpportunityDivider({ opportunities, defaultExpanded = fa
   const date = first.acceptedAt ? formatChatDayLabel(first.acceptedAt) : '';
 
   return (
-    <div className="my-4">
+    <div className="my-4 opp-divider">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}

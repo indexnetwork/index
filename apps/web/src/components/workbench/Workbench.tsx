@@ -33,26 +33,18 @@ function bindEscape() {
 export function Stage({
   children,
   width = 980,
-  height,
 }: {
   children: ReactNode;
   width?: number | string;
+  /** Kept for callers; the page column always fills the height now. */
   height?: string;
 }) {
   const compact = useCompact();
-  // Compact: the window is the screen, so the desktop sizing drops away.
-  if (compact) {
-    return (
-      <div className="wb-stage">
-        <div style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          {children}
-        </div>
-      </div>
-    );
-  }
+  // Desktop: one page column beside the rail, capped at `width`.
+  // Compact: the window is the screen.
   return (
     <div className="wb-stage">
-      <div style={{ width, maxWidth: "100%", height, minWidth: 0, maxHeight: "calc(100vh - 112px)" }}>
+      <div className="wb-column" style={compact ? undefined : { maxWidth: width }}>
         {children}
       </div>
     </div>
@@ -97,7 +89,8 @@ export function Window({
     <div className="amiga-window" style={{ height: "100%", ...style }}>
       <div className="mac-titlebar">
         {/* Compact: the close box reads as back, and tab roots (no onClose) drop it. */}
-        {home ? <HomeBox onClose={onClose} /> : compact && !onClose ? null : <span
+        {/* Nothing to close (a tab root, a side panel) means no close box. */}
+        {home ? <HomeBox onClose={onClose} /> : !onClose ? null : <span
           className={compact ? "mac-close mac-back" : dismiss ? "mac-close mac-dismiss" : "mac-close"}
           role="button"
           tabIndex={0}
@@ -234,8 +227,8 @@ export function ConfirmWindow({
   children?: ReactNode;
 }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}>
-      <div className="amiga-window" style={{ width: 420, maxWidth: "100%" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(20,20,20,0.18)", padding: 24 }}>
+      <div className="amiga-window" style={{ width: 420, maxWidth: "100%", flex: "none", border: "1px solid var(--wb-hairline)", borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
         <div className="mac-titlebar">
           <span className="mac-title"><span className="t">{title}</span></span>
         </div>

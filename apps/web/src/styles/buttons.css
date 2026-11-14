@@ -1,0 +1,193 @@
+/* ---------------------------------------------------------------------------
+   One button, everywhere in the app: Home's card button. A small raised
+   box (white, or orange for the main action), mono 11px, the same size on
+   every page, window and form (.wb-btn and the intent page's ih-* buttons
+   included; .primary, .go, .ih-accept and send are the orange ones). ":not(#_)" only lifts these rules over the
+   older per-page ones; it matches every element.
+   Not buttons in this sense: text links (back, skip, more), list rows,
+   tabs, the photo picker, the opportunity chip in chat and the trace's "ran N queries" toggle.
+   --------------------------------------------------------------------------- */
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)),
+.ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send) {
+  height: auto;
+  min-height: 0;
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  transform: none;
+  cursor: pointer;
+}
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)):hover:not(:disabled),
+.ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):hover:not(:disabled) {
+  background: #fff6e8;
+  color: #000;
+}
+/* the main action: orange */
+.ih:not(#_) .pl button.go,
+.ih:not(#_) :is(.wb-btn.primary, .ih-accept, .ih-send) {
+  background: #ff8a00;
+  color: #000;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ih:not(#_) .pl button.go:hover:not(:disabled),
+.ih:not(#_) :is(.wb-btn.primary, .ih-accept, .ih-send):hover:not(:disabled) {
+  background: #ff9d2b;
+}
+/* pressed: the bevel flips and the box sinks */
+.ih:not(#_) .pl button:not(:where(.pl-row, .pl-back, .pl-more, .pl-edit-photo, .pl-skip, .profile-opp-row, .pl-tabs > *, .opp-divider > *, .wb-trace-toggle, .pl-plain-btn)):active:not(:disabled),
+.ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):active:not(:disabled) {
+  background: #f0f0f0;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.ih:not(#_) .pl button.go:active:not(:disabled),
+.ih:not(#_) :is(.wb-btn.primary, .ih-accept, .ih-send):active:not(:disabled) {
+  background: #f08000;
+  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+}
+/* a picked toggle stays sunk */
+.ih:not(#_) .pl button.on:not(.pl-row),
+.ih:not(#_) .pl button[aria-pressed="true"]:not(.pl-row),
+.ih:not(#_) :is(.wb-btn, .ih-filter, .ih-option)[aria-pressed="true"],
+.ih:not(#_) .ih-filter[aria-expanded="true"] {
+  background: #ececec;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+}
+.ih:not(#_) .pl button:disabled,
+.ih:not(#_) :is(.wb-btn, .ih-ghost, .ih-pass, .ih-filter, .ih-option, .ih-accept, .ih-send):disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* icon-only buttons (×, copy link): a square of the same height */
+.ih:not(#_) .pl button.pl-win-close,
+.ih:not(#_) .wb-btn.profile-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+
+/* destructive (archive), as on production: dark red outline; filled only while it asks to confirm */
+.ih:not(#_) .pl button.danger {
+  background: #fff;
+  color: #8a0000;
+  border-color: #8a0000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih:not(#_) .pl button.danger:hover:not(:disabled) {
+  background: #fff3f3;
+}
+.ih:not(#_) .pl button.danger.on,
+.ih:not(#_) .pl button.danger:active:not(:disabled) {
+  background: #8a0000;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  transform: none;
+}
+
+/* Notification counts (sidebar, intents list) look like the orange button: same box, bevel and type. */
+.ih:not(#_) .ih-badge {
+  display: inline-block;
+  min-width: 0;
+  padding: 1px 6px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #ff8a00;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 700 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+
+/* Not a button in the app's sense: a whole row you click (a member, a search result). */
+.ih:not(#_) .pl button.pl-plain-btn,
+.ih:not(#_) .pl button.pl-plain-btn:hover:not(:disabled),
+.ih:not(#_) .pl button.pl-plain-btn:active:not(:disabled) {
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  justify-content: flex-start;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ih:not(#_) .pl button.pl-plain-btn:hover:not(:disabled) {
+  background: #f7f7f5;
+}
+/* a red action outside .pl (wb-btn danger), same as the archive button */
+.ih:not(#_) .wb-btn.danger {
+  background: #fff;
+  color: #8a0000;
+  border-color: #8a0000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+.ih:not(#_) .wb-btn.danger:hover:not(:disabled) {
+  background: #fff3f3;
+}
+
+/* Toggle groups (Segmented: stream / grouped, all / won / lost): separate app buttons, the picked one sunk. No outer box. */
+.ih:not(#_) .wb-segmented {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.ih:not(#_) .wb-segmented button {
+  height: auto;
+  min-height: 0;
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  cursor: pointer;
+}
+.ih:not(#_) .wb-segmented button:hover:not(:disabled) {
+  background: #fff6e8;
+}
+.ih:not(#_) .wb-segmented button[aria-pressed="true"],
+.ih:not(#_) .wb-segmented button:active:not(:disabled) {
+  background: #ececec;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+}
+
+/* A window's "close" / "put away" / "back" (not the dialogs' close box): the app button, not a text link. */
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home) {
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+}
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home):hover {
+  background: #fff6e8;
+}
+.ih:not(#_) .amiga-window:not([role="dialog"]) .mac-titlebar .mac-close:not(.mac-home):active {
+  background: #f0f0f0;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}

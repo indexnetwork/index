@@ -141,6 +141,13 @@
       "when": 1794024587758,
       "tag": "0019_add_users_shadowbanned_at",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794369438283,
+      "tag": "0020_question_groups",
+      "breakpoints": true
     }
   ]
 }

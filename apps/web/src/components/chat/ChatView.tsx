@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { formatChatClock, formatChatDayLabel } from '@/lib/utils';
+import { formatChatClock, formatChatDayLabel, formatChatTime } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { useOpportunities } from '@/contexts/APIContext';
@@ -12,6 +12,7 @@ import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
 import OpportunityDivider from './OpportunityDivider';
 import { log } from '@/lib/logger';
+import { useInAppFrame } from '@/components/intents-home/appFrameContext';
 
 const logger = log.ui.from('ChatView');
 
@@ -78,6 +79,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
   const [acceptedOpportunitiesLoading, setAcceptedOpportunitiesLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inFrame = useInAppFrame();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrolledConversationRef = useRef<string | null>(null);
@@ -284,6 +286,90 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const openerHeadline = opener?.headline?.trim() ?? "";
   const openerBody = opener?.detail?.trim() || openerHeadline;
   const showOpenerHeadline = Boolean(openerHeadline && openerBody && normText(openerHeadline) !== normText(openerBody));
+
+  // Signed in on desktop: drawn like the agent chat beside Home (plain.css .pl-agent-*).
+  if (inFrame && !embedded) {
+    const linkOut = { a: ({ href, children }: { href?: string; children?: React.ReactNode }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> };
+    return (
+      <div className="pl pl-agent pl-dm">
+        <div className="pl-dm-head">
+          <Link to={`/u/${userId}`} className="pl-dm-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={28} /></Link>
+          <div className="pl-dm-who">
+            <Link to={`/u/${userId}`} className="pl-dm-name">{userName}</Link>
+            {(conversationSummary?.createdAt || latestVia) && (
+              <div className="pl-dm-sub">
+                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
+                {conversationSummary?.createdAt && latestVia ? " · " : ""}
+                {latestVia ? <Link to={`/i/${latestVia.intentId}`}>{latestVia.title}</Link> : null}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="pl-agent-log">
+          {history?.hasPreviousSession && conversationId && history.loadingPrevious && <p className="pl-dim pl-small">loading…</p>}
+          {openerBody && (
+            <div className="pl-dm-opener">
+              {showOpenerHeadline && <b>{openerHeadline}</b>}
+              <span>{openerBody}</span>
+            </div>
+          )}
+          {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
+            <p className="pl-dim pl-small">loading…</p>
+          ) : messages.length === 0 && via.length > 0 && !openerBody ? (
+            <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
+          ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
+            <p className="pl-dim pl-small">no messages yet. say hello.</p>
+          ) : null}
+
+          {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
+            if (item.type === 'opportunity') {
+              return <OpportunityDivider key={`opp-${item.opportunities[0].opportunityId}`} opportunities={item.opportunities} defaultExpanded={messages.length === 0} />;
+            }
+            const message = item.message;
+            const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
+            const isOwn = message.senderId === user?.id;
+            const content = (message.parts as { text?: string }[] | undefined)?.find((p) => p.text)?.text ?? '';
+            if (!content.trim()) return null;
+            const day = message.createdAt ? formatChatDayLabel(message.createdAt) : "";
+            const prevDay = previousMessage?.createdAt ? formatChatDayLabel(previousMessage.createdAt) : "";
+            // The day marker above already says the date, so each message shows its time only.
+            const clock = message.createdAt ? formatChatTime(message.createdAt) : "";
+            return (
+              <div key={message.id} className="pl-dm-item">
+                {day && day !== prevDay && <div className="pl-dm-day"><span>{day}</span></div>}
+                {/* The time sits outside the bubble, on the side away from the edge. */}
+                <div className={isOwn ? "pl-agent-line mine" : "pl-agent-line"}>
+                  {isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
+                  <div className={isOwn ? "pl-agent-bubble mine" : "pl-agent-bubble"}>
+                    <div className="pl-agent-meta">{isOwn ? "you" : userName.split(" ")[0]}</div>
+                    <div className="pl-agent-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={linkOut}>{content}</ReactMarkdown></div>
+                  </div>
+                  {!isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <form className="pl-agent-compose" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+          <textarea
+            ref={inputRef}
+            rows={2}
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder={`write to ${userName.split(" ")[0]}…`}
+            disabled={sending}
+            autoFocus
+            aria-label={`Message ${userName}`}
+          />
+          <button type="submit" className="go" disabled={!messageText.trim() || sending}>send</button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <>

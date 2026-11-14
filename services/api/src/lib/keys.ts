@@ -15,7 +15,7 @@ const RESERVED_KEYS = new Set([
   'api', 'auth', 'login', 'logout', 'signup', 'register',
   'profile', 'index',
   // Top-level web routes (apps/web/src/routes.tsx) and public folders.
-  'about', 'agents', 'blog', 'chat', 'cli-auth', 'download', 'found-in-translation',
+  'connect', 'intents', 'about', 'agents', 'blog', 'chat', 'cli-auth', 'download', 'found-in-translation',
   'hermes', 'mcp', 'negotiations', 'networks', 'onboarding', 'opportunities', 'pages',
   'protocol', 'setup', 'waitlist', 'site', 'landing', 'logos', 'media', 'fonts',
   'dataroom', 'dataroom-demo', 'dataroom-overview', 'overview', 'roadmap', 'edge-city-metrics',

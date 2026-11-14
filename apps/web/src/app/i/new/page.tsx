@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
+import "@/styles/intents-home.css";
+import "@/styles/plain.css";
+import PageHead from "@/components/intents-home/PageHead";
+import { AgentSays, Recovery, YouSaid } from "@/components/intents-home/NewIntentSteps";
+import { OpenAgentLines } from "@/components/intents-home/openAgentLines";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { RecoveryForm } from "@/app/i/new/RecoveryForm";
-import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
+import { CALIBRATING_LINES } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
-import { Btn, Window } from "@/components/workbench/Workbench";
-import { intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
-import { APIError } from "@/lib/api";
+import { Window } from "@/components/workbench/Workbench";
+import { createFailureReason, intentService, type IntentSuggestion, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
@@ -125,81 +128,83 @@ export default function NewIntentPage() {
   const steps = onboarding ? ["picks", "opening"] : ["opening"];
   const stepIdx = steps.includes(stage) ? steps.indexOf(stage) + 1 : steps.length + 1;
   const stepCount = steps.length + 1;
+  const settingUp = creating || (thinking && recoveryUsed);
+
+  if (settingUp) return <div className="pl-new"><Calibrating /></div>;
 
   return (
-    <div className="workbench mac-desktop wb-viewport">
-      {creating || (thinking && recoveryUsed) ? (
-        <Calibrating />
-      ) : (
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: compact ? "stretch" : "center", padding: compact ? 0 : "56px 40px", overflow: "auto" }}>
-          <div style={compact ? { display: "flex", flexDirection: "column", minHeight: 0 } : {
-            width: 980, maxWidth: "100%",
-            display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 18,
-            height: "min(720px, calc(100dvh - 128px))",
-          }}>
-            <Window title="calibrating" onClose={() => navigate("/")} style={compact ? { flex: 1, border: "none", boxShadow: "none" } : undefined}>
-              <div style={{ padding: compact ? "14px 16px 10px" : "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                  <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>← back</button>
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}>
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", letterSpacing: "0.05em", flex: "0 0 auto" }}>step {stepIdx} of {stepCount}</span>
-                  <div style={{ flex: 1, display: "flex", gap: 3 }}>
-                    {Array.from({ length: stepCount }, (_, i) => (
-                      <div key={i} style={{
-                        flex: 1, height: 8, border: "1px solid #000",
-                        background: i < stepIdx - 1 ? "#000" : i === stepIdx - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
-                      }} />
-                    ))}
-                  </div>
-                </div>
-                <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: compact ? -16 : -28, paddingRight: compact ? 16 : 28, paddingBottom: 18 }}>
-                  {turns.map((turn) => (
-                    <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} at={turn.at} />
-                  ))}
-                  {thinking ? (
-                    <div className="fade-up"><AgentLine><WorkingDots /></AgentLine></div>
-                  ) : stage === "retry" ? (
-                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine>couldn&apos;t reach your agent.</AgentLine>
-                      <div style={{ marginLeft: 36 }}><Btn primary onClick={() => void runPrepare(payload)}>try again</Btn></div>
-                    </div>
-                  ) : stage === "summary" ? (
-                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine>Here&apos;s your intent.</AgentLine>
-                      <IntentSummary
-                        description={payload}
-                        note={preparationReceipt ? "" : feedback}
-                        canCreate={Boolean(preparationReceipt)}
-                        onChange={setPayload}
-                        onCreate={() => void create()}
-                        onRecheck={() => void runPrepare(payload)}
-                      />
-                    </div>
-                  ) : stage === "recovery" ? (
-                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers, 2)} />
-                  ) : stage === "picks" ? (
-                    <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
+    // Drawn like the intent page: the flow as a chat in the page column, and what the agent
+    // is picking up in production's warming up panel on the right.
+    <div className="pl-new">
+      <div className="ih-view pl pl-new-page">
+        <div className="pl-col">
+          <PageHead
+            back={{ label: "intents", onClick: () => navigate("/intents") }}
+            title="new intent"
+            status={<span className="pl-new-steps">step {stepIdx} of {stepCount}
+              <span className="pl-new-bar" aria-hidden>
+                {Array.from({ length: stepCount }, (_, i) => <span key={i} className={i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "now" : undefined} />)}
+              </span>
+            </span>}
+          >
+            <button type="button" onClick={() => navigate("/")}>close</button>
+          </PageHead>
+          <OpenAgentLines.Provider value>
+          <div className="pl-page pl-new-chat">
+            {turns.map((turn) => (
+              <div key={turn.id} className="pl-ni-turn">
+                <AgentSays>{turn.prompt}</AgentSays>
+                <YouSaid>{turn.answer}</YouSaid>
+              </div>
+            ))}
+            {thinking ? (
+              <AgentSays><span className="pl-dim">reading that<span className="pl-blink">_</span></span></AgentSays>
+            ) : stage === "retry" ? (
+              <AgentSays>
+                couldn&apos;t reach your agent.
+                <div className="pl-ni-actions"><button type="button" className="go" onClick={() => void runPrepare(payload)}>try again</button></div>
+              </AgentSays>
+            ) : stage === "summary" ? (
+              <AgentSays>
+                {preparationReceipt ? "here's your intent. change anything you like, then create it." : feedback || "here's your intent."}
+                <textarea
+                  className="pl-ni-text"
+                  aria-label="Intent description"
+                  value={payload}
+                  rows={5}
+                  maxLength={65_536}
+                  onChange={(event) => setPayload(event.target.value)}
+                />
+                <div className="pl-ni-actions">
+                  {preparationReceipt ? (
+                    <button type="button" className="go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>create this intent</button>
                   ) : (
-                    <Opening
-                      prompt={openingPrompt}
-                      note={picksNote}
-                      examples={examples.length ? examples : OPENING_OPTIONS}
-                      onSubmit={submitOpening}
-                      onDone={createdIds.length ? () => navigate("/") : undefined}
-                    />
+                    <button type="button" className="go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check intent</button>
                   )}
                 </div>
-              </div>
-            </Window>
-            {/* The live preview is a side panel; a phone has no side. */}
-            {!compact && (
-              <Window title="warming up">
-                <FieldPreview turns={turns} refining={stepIdx === stepCount} />
-              </Window>
+              </AgentSays>
+            ) : stage === "recovery" ? (
+              <Recovery fields={recoveryFields} feedback={feedback} onSubmit={(answers) => void runPrepare(payload, answers, 2)} />
+            ) : stage === "picks" ? (
+              <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
+            ) : (
+              <Opening
+                prompt={openingPrompt}
+                note={picksNote}
+                examples={examples.length ? examples : OPENING_OPTIONS}
+                onSubmit={submitOpening}
+                onDone={createdIds.length ? () => navigate("/") : undefined}
+              />
             )}
           </div>
+          </OpenAgentLines.Provider>
         </div>
+      </div>
+      {/* The live preview is a side panel, as on production; a phone has no side. */}
+      {!compact && (
+        <Window title="warming up" style={{ flex: "none", width: "clamp(420px, 34vw, 600px)", borderTop: "none", borderRight: "none", borderBottom: "none", borderLeft: "1px solid #e6e6e6" }}>
+          <FieldPreview turns={turns} refining={stepIdx === stepCount} />
+        </Window>
       )}
     </div>
   );
@@ -215,30 +220,38 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
 }) {
   const [draft, setDraft] = useState("");
   return (
-    <div className="fade-up" style={{ display: "grid", gap: 10 }}>
-      <AgentLine>{prompt}</AgentLine>
-      <div style={{ marginLeft: 42, display: "grid", gap: 10 }}>
-        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", color: "var(--ink-2)" }}>{note}</div>}
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}>
+    // The first question, open on the page: who's asking, the question in bold, a box to
+    // write in with send inside it, then the starters stacked as plain boxes.
+    <div className="pl-open">
+      <MyAgentAvatar size={36} />
+      <div className="pl-open-body">
+        <div className="pl-open-who">your agent</div>
+        <div className="pl-open-q">{prompt}</div>
+        {note && <div className="pl-dim pl-small pl-new-note">{note}</div>}
+        <form className="pl-open-box" onSubmit={(event) => { event.preventDefault(); onSubmit(draft); }}>
           <textarea
             autoFocus
             value={draft}
             maxLength={65_536}
             rows={3}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                onSubmit(draft);
+              }
+            }}
             placeholder={OPENING_PLACEHOLDER}
-            style={{ background: "transparent", border: "none", outline: "none", color: "#111", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.45, resize: "vertical", padding: "11px 14px 4px" }}
+            aria-label="What you're looking for"
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
-            <Btn primary small type="submit" disabled={!draft.trim()}>send →</Btn>
-          </div>
+          <button type="submit" className="go" disabled={!draft.trim()}>send →</button>
         </form>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div className="pl-open-options">
           {examples.map((option) => (
-            <OptionChip key={option} label={option} onClick={() => onSubmit(option)} />
+            <button key={option} type="button" onClick={() => onSubmit(option)}>{option}</button>
           ))}
         </div>
-        {onDone && <div style={{ marginTop: 6 }}><Btn onClick={onDone}>that&apos;s all for now →</Btn></div>}
+        {onDone && <div className="pl-open-done"><button type="button" onClick={onDone}>that&apos;s all for now</button></div>}
       </div>
     </div>
   );
@@ -252,30 +265,26 @@ function Picks({ suggestions, onCreate, onSkip }: {
 }) {
   const [picked, setPicked] = useState<number[]>([]);
   if (suggestions === "loading") {
-    return (
-      <div className="fade-up">
-        <AgentLine muted>reading what i found about you… <WorkingDots /></AgentLine>
-      </div>
-    );
+    return <AgentSays><span className="pl-dim">reading what i found about you<span className="pl-blink">_</span></span></AgentSays>;
   }
   const toggle = (i: number) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
   return (
-    <div className="fade-up" style={{ display: "grid", gap: 10 }}>
-      <AgentLine>{PICKS_PROMPT}</AgentLine>
-      <div style={{ marginLeft: 42, display: "grid", gap: 8, justifyItems: "start" }}>
+    <AgentSays>
+      {PICKS_PROMPT}
+      <div className="pl-q-options">
         {suggestions.map((s, i) => (
-          <SuggestionChip key={s.text} suggestion={s} selected={picked.includes(i)} onClick={() => toggle(i)} />
+          <label key={s.text}>
+            <input type="checkbox" checked={picked.includes(i)} onChange={() => toggle(i)} /> {s.text}
+          </label>
         ))}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
-          <Btn primary disabled={!picked.length} onClick={() => onCreate(picked.sort().map((i) => suggestions[i]))}>
-            {picked.length > 1 ? `create these ${picked.length}` : "create this"} →
-          </Btn>
-          <button type="button" onClick={onSkip} style={{ fontFamily: "var(--mac-mono)", fontSize: 11, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}>
-            none of these, i&apos;ll write my own
-          </button>
-        </div>
       </div>
-    </div>
+      <div className="pl-ni-actions pl-actions">
+        <button type="button" className="go" disabled={!picked.length} onClick={() => onCreate(picked.sort().map((i) => suggestions[i]))}>
+          {picked.length > 1 ? `create these ${picked.length}` : "create this"}
+        </button>
+        <button type="button" className="pl-skip" onClick={onSkip}>none of these, i&apos;ll write my own</button>
+      </div>
+    </AgentSays>
   );
 }
 
@@ -296,96 +305,6 @@ function useSuggestions(enabled: boolean): { suggestions: IntentSuggestion[] | "
   return result;
 }
 
-function SuggestionChip({ suggestion, selected, onClick }: {
-  suggestion: IntentSuggestion;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={selected}
-      style={{
-        display: "inline-flex", alignItems: "baseline", gap: 10, minHeight: 36, maxWidth: 620,
-        padding: "8px 14px", cursor: "pointer", textAlign: "left",
-        background: selected ? "#111" : "#fff", color: selected ? "#fff" : "#111", border: "1px solid #000",
-      }}>
-      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 12 }}>{selected ? "[x]" : "[ ]"}</span>
-      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5 }}>{suggestion.text}</span>
-    </button>
-  );
-}
-
-function AgentLine({ children, muted = false }: {
-  children: React.ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
-        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function WorkingDots() {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-      {[0, 1, 2].map((i) => (
-        <span key={i} style={{ width: 8, height: 8, background: "#000", animation: "mac-blink 1.05s steps(2) infinite", animationDelay: `${i * 0.35}s` }} />
-      ))}
-    </span>
-  );
-}
-
-function PastTurn({ prompt, answer, at }: {
-  prompt: string;
-  answer: string;
-  at: string;
-}) {
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <AgentLine muted>{prompt}</AgentLine>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div title={new Date(at).toLocaleString()} style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-line" }}>{answer}</div>
-      </div>
-    </div>
-  );
-}
-
-function IntentSummary({ description, note, canCreate, onChange, onCreate, onRecheck }: {
-  description: string;
-  note: string;
-  canCreate: boolean;
-  onChange: (value: string) => void;
-  onCreate: () => void;
-  onRecheck: () => void;
-}) {
-  return (
-    <div style={{ marginLeft: 36, maxWidth: 560, display: "grid", gap: 14 }}>
-      <div style={{ borderLeft: "2px solid #000", paddingLeft: 14, display: "grid", gap: 8 }}>
-        <textarea
-          aria-label="Intent description"
-          value={description}
-          onChange={(event) => onChange(event.target.value)}
-          maxLength={65_536}
-          rows={6}
-          style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 16, fontWeight: 500, lineHeight: 1.4, color: "#000", background: "#fff", resize: "vertical" }}
-        />
-        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", lineHeight: 1.5, color: "var(--ink-2)" }}>{note}</div>}
-      </div>
-      <div>
-        {canCreate ? (
-          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this intent</Btn>
-        ) : (
-          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check intent</Btn>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean }) {
   const latest = turns.at(-1);
   const lines = [
@@ -395,12 +314,12 @@ function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean })
   ].filter((line): line is string => Boolean(line));
 
   return (
-    <div style={{ padding: "20px 26px 18px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0 }}>
-      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
+    <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0, background: "var(--wb-hover)" }}>
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
         {lines.map((line, i) => (
           <div key={line} className="fade-up" style={{ animationDelay: `${i * 60}ms`, display: "flex", gap: 8, alignItems: "baseline" }}>
-            <span style={{ color: "#FF8A00", fontWeight: 700 }}>·</span>
-            <span style={{ fontWeight: i === lines.length - 1 ? 700 : 400 }}>{line}</span>
+            <span style={{ color: "var(--ink-3)" }}>·</span>
+            <span style={{ color: i === lines.length - 1 ? "var(--ink)" : undefined }}>{line}</span>
           </div>
         ))}
         {turns.length > 0 && <FieldGlyph />}
@@ -416,15 +335,15 @@ function truncate(value: string, n: number) {
 function FieldGlyph() {
   return (
     <div style={{ position: "relative", height: 150, marginTop: 12 }}>
-      <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, marginLeft: -5, marginTop: -5, background: "#000" }} />
+      <div style={{ position: "absolute", left: "50%", top: "50%", width: 8, height: 8, marginLeft: -4, marginTop: -4, background: "var(--wb-live)" }} />
       {[36, 56, 78].map((r, i) => (
         <div key={r} style={{
           position: "absolute", left: "50%", top: "50%",
           width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r,
-          border: "1px dashed #000", borderRadius: 999,
+          border: "1px dashed #ccc", borderRadius: 999,
           animation: `mac-orbit ${22 + i * 8}s linear infinite`,
         }}>
-          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 6, height: 6, background: "#000" }} />
+          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 5, height: 5, borderRadius: "50%", background: "var(--ink-3)" }} />
         </div>
       ))}
     </div>
@@ -433,13 +352,10 @@ function FieldGlyph() {
 
 function Calibrating() {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto" }}>
+    // No frame, title or name: just the striped bar and the lines.
+    <div className="pl-calibrating" style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
+      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto", flex: "none", border: "none" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
-            <span className="wb-live" style={{ width: 9, height: 9 }} />
-            <span style={{ fontFamily: "var(--mac-mono)", letterSpacing: 3, fontSize: 13, textTransform: "uppercase" }}>index</span>
-          </div>
           <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
             <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
           </div>
@@ -460,10 +376,3 @@ function Calibrating() {
 }
 
 export const Component = NewIntentPage;
-
-/** A server reason worth showing ("Intent limit reached."), or "try again." for transport noise. */
-function createFailureReason(error: unknown): string {
-  const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
-  if (!raw || /^HTTP \d/.test(raw)) return "try again.";
-  return /[.!?]$/.test(raw) ? raw : `${raw}.`;
-}

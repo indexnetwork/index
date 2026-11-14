@@ -1,26 +1,21 @@
-/* Invite landing (`/l/:code`), ready state. Type is the site's, but the
-   windows are the app's: a 2px black frame and a striped title bar, on the
-   dotted blue desktop. The browser sign-in reuses SiteSignIn.css. */
+/* Invite landing (`/l/:code`), ready state. The app's quiet look from
+   app/site/flow.css: white page, two hairline panels with caps
+   header bars. The browser sign-in reuses SiteSignIn.css. */
 
 .site.invite-wb {
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  /* Bottom room so the pinned link never covers the end of a card. */
-  padding: 56px 24px 72px;
-  /* The app's desktop (workbench.css .mac-desktop): blue field, fine white dots. */
-  background-color: #0055aa;
-  background-image: radial-gradient(rgba(255, 255, 255, .22) 1px, transparent 1px);
-  background-size: 4px 4px;
+  gap: 24px;
+  padding: 24px 32px 72px;
   /* clip, not hidden: hidden makes this the sticky join card scroll container and pushes it down by the padding. */
   overflow-x: clip;
 }
 
-.invite-live { width: 7px; height: 7px; border-radius: 50%; background: #3FBF7F; }
+.invite-live { width: 8px; height: 8px; flex: none; background: var(--green); }
 
-/* ---------- the two cards ---------- */
+/* ---------- the two panels ---------- */
 .invite-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -35,156 +30,120 @@
   display: flex;
   flex-direction: column;
   background: #fff;
-  border: 2px solid #000;
+  border: 1px solid var(--divider);
+  border-radius: 3px;
 }
-/* Title bar, the workbench's .mac-titlebar: horizontal rules, title chip on the left. */
+/* Header bar, the people column's: 11px caps label over a hairline. */
 .invite-bar {
-  height: 24px;
+  height: 40px;
   flex: 0 0 auto;
-  border-bottom: 2px solid #000;
-  background: #fff;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--divider);
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 10px;
   user-select: none;
 }
 .invite-bar__title {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: center;
   overflow: hidden;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  line-height: 1;
-  color: #000;
-  background-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px);
-  background-position: 0 4px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 400 11px var(--sans);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--body);
 }
 .invite-bar__mark {
-  width: 24px;
+  width: 8px;
+  height: 8px;
   flex: none;
-  border-right: 2px solid #000;
-  position: relative;
-}
-.invite-bar__mark::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  transform: translate(-50%, -50%);
-  border: 2px solid #000;
-}
-.invite-bar__mark::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  transform: translate(-50%, -50%);
-  background: #000;
-}
-.invite-bar__title > span {
-  background: #fff;
-  padding: 0 12px 0 8px;
-  margin-left: 4px;
-  height: 100%;
-  display: flex;
-  align-items: center;
+  background: var(--flow-accent);
 }
 .invite-body { flex: 1; display: flex; flex-direction: column; }
 
 .invite-label {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: .12em;
+  font: 500 11px var(--sans);
+  letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--body);
 }
-.invite-hero .invite-label { color: var(--green); }
-/* ---------- invite card ---------- */
-.invite-hero { display: flex; flex-direction: column; gap: 16px; padding: 44px 40px 36px; }
+
+/* ---------- invitation ---------- */
+.invite-hero { display: flex; flex-direction: column; gap: 10px; padding: 28px 24px 24px; }
 .invite-title {
   margin: 0;
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: clamp(36px, 4.4vw, 54px);
-  line-height: 1.08;
-  letter-spacing: -.015em;
+  font: 500 22px/1.3 var(--sans);
   color: var(--ink);
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
-.invite-lede { margin: 0; max-width: 54ch; font-size: 16px; line-height: 1.6; font-weight: 300; color: var(--body); }
+.invite-lede { margin: 0; max-width: 54ch; font-size: 13px; line-height: 1.6; color: var(--body); }
 
 .invite-stats {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
-  column-gap: 28px;
-  padding: 0 40px;
+  column-gap: 32px;
+  padding: 0 24px;
+  border-top: 1px solid var(--divider);
 }
-.invite-stat { display: flex; flex-direction: column; gap: 4px; padding: 20px 0; }
+.invite-stat { display: flex; flex-direction: column; gap: 2px; padding: 16px 0; }
 .invite-stat dd {
   order: -1;
   margin: 0;
-  font-family: var(--serif);
-  font-size: 30px;
-  line-height: 1.1;
+  font: 500 18px/1.2 var(--sans);
   color: var(--ink);
   font-variant-numeric: tabular-nums lining-nums;
 }
 .invite-stat dt {
-  font-family: var(--mono);
-  font-size: 10.5px;
+  font: 400 11px var(--sans);
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.invite-looking { display: flex; flex-direction: column; gap: 16px; padding: 36px 40px 40px; }
+.invite-looking {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 24px 24px;
+  border-top: 1px solid var(--divider);
+}
 .invite-summary {
   margin: 0;
-  max-width: 60ch;
-  font-family: var(--serif);
-  font-size: 19px;
-  line-height: 1.55;
+  max-width: 64ch;
+  font-size: 13px;
+  line-height: 1.7;
   color: var(--ink);
   text-wrap: pretty;
 }
-.invite-copy { margin: 0; max-width: 56ch; font-size: 15px; line-height: 1.7; font-weight: 300; color: var(--body); }
+.invite-copy { margin: 0; max-width: 56ch; font-size: 13px; line-height: 1.6; color: var(--body); }
 
-/* ---------- join card: which agent goes in ---------- */
-.invite-body--join { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 28px 28px 20px; }
+/* ---------- join panel: which agent goes in ---------- */
+.invite-body--join { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
 .invite-bring {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   min-height: 0;
 }
 .invite-ask {
   margin: 0;
-  font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -.015em;
-  line-height: 1.2;
-  color: #000;
+  font: 500 16px/1.4 var(--sans);
+  color: var(--ink);
 }
-.invite-agents { display: flex; flex-direction: column; gap: 10px; }
+.invite-agents { display: flex; flex-direction: column; gap: 8px; }
 .invite-agent-slot { display: flex; flex-direction: column; gap: 10px; }
 .invite-hermes {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 4px 2px 6px 4px;
+  padding: 4px 0 6px 12px;
+  border-left: 2px solid var(--flow-control);
 }
 .invite-hermes__way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .invite-hermes__title {
@@ -192,21 +151,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Public Sans", system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #000;
+  font: 500 13px/1.2 var(--sans);
+  color: var(--ink);
 }
 .invite-hermes__term {
   width: 16px;
   height: 16px;
   display: grid;
   place-items: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 8px;
-  font-weight: 600;
-  background: #F4F1EA;
+  border-radius: 2px;
+  font: 600 8px var(--mono);
+  background: var(--flow-selected);
 }
 .invite-hermes__cmd {
   display: flex;
@@ -214,14 +169,12 @@
   gap: 10px;
   width: 100%;
   padding: 8px 10px;
-  background: #F4F1EA;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #000;
+  background: var(--flow-hover);
+  font: 400 11.5px/1.5 var(--mono);
+  color: var(--ink);
 }
 .invite-hermes__cmd code { flex: 1; min-width: 0; font: inherit; overflow-wrap: anywhere; }
-.invite-hermes__prompt { color: #8A9199; }
+.invite-hermes__prompt { color: var(--muted); }
 .invite-hermes__copy {
   flex: none;
   display: grid;
@@ -229,133 +182,89 @@
   padding: 0;
   border: 0;
   background: none;
-  color: #6b6560;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
+  color: var(--muted);
+  font: 500 11px var(--sans);
   cursor: pointer;
 }
+.invite-hermes__copy:hover { color: var(--ink); }
 .invite-hermes__copy svg { width: 14px; height: 14px; }
 .invite-agent {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  min-height: 50px;
-  padding: 10px 16px;
-  border: 1px solid #000;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--flow-control);
+  border-radius: 3px;
   background: #fff;
-  color: #000;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  text-align: center;
+  color: var(--ink);
+  font-family: var(--sans);
+  text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
 }
-.invite-agent:hover { background: #F4F1EA; }
-.invite-agent--primary { background: #000; color: #fff; }
-.invite-agent--primary:hover { background: #1F2A5C; }
-.invite-agent:focus-visible { outline: 2px solid #1F2A5C; outline-offset: 2px; }
-.invite-agent svg { width: 15px; height: 15px; display: block; flex: none; }
+.invite-agent:hover { background: var(--flow-hover-2); }
+.invite-agent--primary { background: var(--flow-accent); border-color: var(--flow-accent); }
+.invite-agent--primary:hover { background: var(--flow-accent-hover); border-color: var(--flow-accent-hover); }
+.invite-agent:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.invite-agent svg { width: 14px; height: 14px; display: block; flex: none; }
 .invite-agent__logo { width: 16px; height: 16px; display: block; flex: none; object-fit: contain; }
 .invite-agent__label {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: -.005em;
-  line-height: 1.3;
+  font: 500 13px/1.3 var(--sans);
 }
 .invite-agent__name {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
 }
 .invite-agent__hint {
   display: block;
   margin-top: 2px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
-  color: #7a756d;
+  color: var(--muted);
 }
-.invite-agent--primary .invite-agent__hint { color: #b8b3aa; }
+.invite-agent--primary .invite-agent__hint { color: var(--ink); opacity: .72; }
 
 /* The browser path and join outcomes reuse the sign-in card and form; here
    the card sheds its own frame and fills the column. */
 .invite-signin.signin { align-items: stretch; gap: 12px; }
-.invite-signin .signin-card { max-width: none; border: 0; background: transparent; }
+.invite-signin .signin-card { max-width: none; border: 0; border-radius: 0; background: transparent; }
 .invite-signin .signin-card__bar { display: none; }
 .invite-signin .signin-card__body { padding: 0; }
-.invite-signin .signin-status { max-width: none; align-items: flex-start; text-align: left; }
-.invite-signin .signin-meta { justify-content: flex-start; }
 
 /* ---------- narrow: one column ---------- */
 @media (max-width: 900px) {
   .invite-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 520px) {
-  .site.invite-wb { padding: 28px 16px; gap: 12px; }
+  .site.invite-wb { padding: 20px 16px 40px; gap: 16px; }
   .invite-hero, .invite-looking, .invite-body--join { padding-left: 16px; padding-right: 16px; }
   .invite-stats { column-gap: 20px; padding-left: 16px; padding-right: 16px; }
-  .invite-stat dd { font-size: 24px; }
 }
-
-/* ---------- monospace treatment ----------
-   Every face on the board becomes the app's JetBrains Mono (loaded by
-   workbench.css), including the reused sign-in form, which reads the same
-   tokens. Sizes come down a step because mono sets wide. */
-.site.invite-wb {
-  --serif: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --sans: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-family: var(--mono);
-}
-.invite-wb .invite-title {
-  font-weight: 700;
-  font-size: clamp(28px, 3.6vw, 44px);
-  line-height: 1.12;
-  letter-spacing: -.04em;
-}
-.invite-wb .invite-lede,
-.invite-wb .invite-copy,
-.invite-wb .site-p { font-weight: 400; letter-spacing: -.01em; }
-.invite-wb .invite-lede { font-size: 14px; line-height: 1.7; }
-.invite-wb .invite-summary { font-size: 15px; line-height: 1.75; letter-spacing: -.01em; }
-.invite-wb .invite-copy { font-size: 13px; }
-.invite-wb .invite-stat dd { font-size: 26px; font-weight: 500; letter-spacing: -.03em; }
-
-.invite-wb .site-btn,
-.invite-wb .auth .av-oauth,
-.invite-wb .auth .av-submit,
-.invite-wb .auth .av-input {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13px;
-  letter-spacing: -.01em;
-}
-.invite-wb .auth .av-oauth,
-.invite-wb .auth .av-input { border-color: #000; }
 
 .invite-stack { min-width: 0; }
-/* The join card stays in view while the invitation scrolls past. */
+/* The join panel stays in view while the invitation scrolls past. */
 @media (min-width: 901px) {
-  .invite-grid > .invite-window { position: sticky; top: 56px; align-self: stretch; }
+  .invite-grid > .invite-window { position: sticky; top: 24px; align-self: stretch; }
 }
 
 /* A figure that just changed on refresh. */
 .invite-num { border-radius: 2px; transition: background 600ms ease; }
-.invite-num--changed { background: rgba(63, 191, 127, .28); }
+.invite-num--changed { background: rgba(59, 122, 87, .18); }
 @media (prefers-reduced-motion: reduce) { .invite-num { transition: none; } }
 
-/* Bottom line of the invitation card: when the network last moved. */
+/* Bottom line of the invitation panel: when the network last moved. */
 .invite-updated {
   margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 40px;
-  border-top: 1px solid #000;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
+  padding: 12px 24px;
+  border-top: 1px solid var(--divider);
+  font: 400 12px var(--sans);
+  color: var(--body);
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 520px) { .invite-updated { padding: 12px 16px; } }
