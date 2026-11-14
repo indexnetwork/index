@@ -21,7 +21,8 @@ import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/int
 type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
-function railKey(pathname: string, search: string, me?: string): RailKey {
+function railKey(pathname: string, search: string, me?: string, username?: string | null): RailKey {
+  if (pathname === "/profile" || pathname.startsWith("/profile/") || (username && (pathname === `/${username}` || pathname === `/${username}/`))) return "profile";
   if (me && (pathname === `/u/${me}` || pathname === `/u/${me}/`)) return "profile";
   if (pathname === "/") return "home";
   if (pathname === "/intents" || pathname.startsWith("/i/")) return "intents";
@@ -209,7 +210,7 @@ function RightWindow({ intentId }: { intentId?: string }) {
 export default function AppFrame({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const { user } = useAuthContext();
-  const here = railKey(pathname, search, user?.id);
+  const here = railKey(pathname, search, user?.id, user?.username);
   // An intent's page (not the new-intent flow) has its agent on the right.
   const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
   const withRight = pathname === "/" || (!!intentId && intentId !== "new");
