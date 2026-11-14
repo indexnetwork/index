@@ -1173,7 +1173,7 @@ button.ih-titlebar-close:active::after {
 }
 .ca-panel {
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
   max-height: calc(100vh - 32px);
   overflow: auto;
   background: #fff;
@@ -1188,14 +1188,13 @@ button.ih-titlebar-close:active::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 20px 24px 0;
   background: #fff;
-  border-bottom: 1px solid #e6e6e6;
 }
 .ca-head h2 {
   flex: 1;
   margin: 0;
-  font: 600 15px "IBM Plex Sans", sans-serif;
+  font: 600 22px "IBM Plex Sans", sans-serif;
   color: #000;
 }
 .ih .ca-back,
@@ -1225,33 +1224,54 @@ button.ih-titlebar-close:active::after {
   outline-offset: 1px;
 }
 .ca-lede {
-  margin: 14px 16px 6px;
+  margin: 8px 24px 24px;
   font: 400 13px/1.45 "IBM Plex Sans", sans-serif;
   color: #5a5548;
 }
 .ca-choices {
   list-style: none;
   margin: 0;
-  padding: 4px 8px 10px;
+  padding: 0 24px 8px;
 }
 .ih .ca-choice {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  width: calc(100% + 16px);
+  margin: 4px -8px;
   padding: 12px 8px;
   border: 0;
-  border-bottom: 1px solid #efefef;
-  border-radius: 0;
+  border-radius: 3px;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
-.ca-choices li:last-child .ca-choice {
-  border-bottom: 0;
+.ca-choices > li {
+  border-top: 1px solid #e6e3dd;
 }
-.ih .ca-choice:hover {
-  background: #f7f7f5;
+.ca-choice[aria-expanded="false"] .ca-choice-name {
+  color: #666157;
+  font-weight: 400;
+}
+.ca-choice[aria-expanded="true"] .ca-choice-go {
+  color: #000;
+  font-weight: 600;
+}
+@media (hover: hover) {
+  .ih .ca-choice:hover {
+    background: #f4f3f0;
+  }
+  .ih .ca-choice:hover .ca-choice-name,
+  .ih .ca-choice:hover .ca-choice-go {
+    color: #000;
+  }
+}
+.ih .ca-choice[aria-expanded]:active {
+  background: #eae8e3;
+}
+.ih .ca-choice:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 1px;
 }
 .ca-choice-text {
   flex: 1;
@@ -1264,47 +1284,28 @@ button.ih-titlebar-close:active::after {
   color: #000;
 }
 .ca-choice-blurb {
-  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
-  color: #8a8578;
+  font: 400 12px/1.45 "IBM Plex Sans", sans-serif;
+  color: #777267;
 }
 .ca-choice-go {
   font-size: 16px;
   color: #8a8578;
 }
-.ca-steps {
-  list-style: none;
-  margin: 0;
-  padding: 16px;
+.ca-instructions {
   display: grid;
-  gap: 16px;
-}
-.ca-step {
-  display: flex;
   gap: 12px;
-}
-.ca-step-n {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #000;
-  border-radius: 50%;
-  font: 700 11px "JetBrains Mono", ui-monospace, monospace;
-}
-.ca-step-body {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
   justify-items: start;
+  padding: 0 0 20px;
 }
-.ca-step-title {
-  padding-top: 2px;
-  font: 500 13px/1.4 "IBM Plex Sans", sans-serif;
-  color: #000;
+.ca-copy-block {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  width: 100%;
+  min-width: 0;
+}
+.ca-copy-block [role="status"]:empty {
+  display: none;
 }
 .ca-note,
 .ca-or {
@@ -1394,31 +1395,15 @@ button.ih-titlebar-close:active::after {
   font: 700 16px/1 "IBM Plex Sans", sans-serif;
   color: #ff8a00;
 }
-.ca-prompt {
+.ca-prompt-text {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #e6e6e6;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.ca-prompt-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 6px 6px 10px;
-  background: #f7f7f5;
-  border-bottom: 1px solid #e6e6e6;
-  font: 500 10px "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: 0.5px;
-  color: #8a8578;
-}
-.ca-prompt-text {
   margin: 0;
-  max-height: 150px;
-  overflow: auto;
-  padding: 10px 12px;
-  font: 400 12px/1.55 "IBM Plex Sans", sans-serif;
+  padding: 16px;
+  background: #f6f5f2;
+  border: 1px solid #e1ded6;
+  font: 400 12px/1.65 "JetBrains Mono", ui-monospace, monospace;
   color: #3a3730;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

@@ -1,22 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { useAgents } from "@/contexts/APIContext";
-import { agentPrompt, MCP_SERVER_URL } from "@/lib/agent-prompt";
+import { MCP_SERVER_URL } from "@/lib/agent-prompt";
 import type { Agent, AgentConnection } from "@/services/agents";
 
-type Choice = "hermes" | "claude-code" | "claude" | "cursor" | "other";
-
-const CURSOR_INSTALL_URL = `cursor://anysphere.cursor-deeplink/mcp/install?name=index&config=${btoa(JSON.stringify({ url: MCP_SERVER_URL }))}`;
-const CLAUDE_CODE_COMMAND = `claude mcp add --transport http index ${MCP_SERVER_URL}`;
+type Choice = "hermes" | "other";
 
 const CHOICES: { key: Choice; name: string; blurb: string }[] = [
-  { key: "hermes", name: "hermes", blurb: "the plugin lets it negotiate for you" },
-  { key: "claude-code", name: "claude code", blurb: "one command in your terminal" },
-  { key: "claude", name: "claude", blurb: "desktop or claude.ai, as a connector" },
-  { key: "cursor", name: "cursor", blurb: "one click install" },
-  { key: "other", name: "any other agent", blurb: "any mcp client, by pasting a prompt" },
+  { key: "other", name: "MCP", blurb: "Connect with a prompt" },
+  { key: "hermes", name: "Hermes plugin", blurb: "Install directly into Hermes" },
 ];
 
 /** Reads everything that can act for you: registered agents plus live mcp connections. */
@@ -35,115 +29,60 @@ function idsOf(list: { agents: Agent[]; connections: AgentConnection[] }) {
   return new Set([...list.agents.map((a) => `a:${a.id}`), ...list.connections.map((c) => `c:${c.clientId}`)]);
 }
 
-/** A command (one line, copy beside it) or a prompt (a box with its own header and copy). */
-function CopyLine({ text, label = "copy", prompt = false }: { text: string; label?: string; prompt?: boolean }) {
+/** One copyable prompt or install command, with its action underneath. */
+function CopyLine({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const button = (
     <button
       type="button"
-      className="wb-btn small"
-      onClick={() => {
-        navigator.clipboard?.writeText(text).catch(() => {});
+      className="wb-btn primary small"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          setFailed(true);
+          return;
+        }
+        setFailed(false);
         setCopied(true);
         clearTimeout(timer.current);
         timer.current = setTimeout(() => setCopied(false), 1500);
       }}
     >{copied ? "copied" : label}</button>
   );
-  if (prompt) {
-    return (
-      <div className="ca-prompt">
-        <div className="ca-prompt-head">
-          <span>prompt</span>
-          {button}
-        </div>
-        <p className="ca-prompt-text mac-scroll">{text}</p>
-      </div>
-    );
-  }
   return (
-    <div className="ca-copy">
-      <code className="mac-scroll">{text}</code>
+    <div className="ca-copy-block">
+      <p className="ca-prompt-text">{text}</p>
       {button}
+      <span className="ca-note" role="status">{failed ? "Couldn't copy. Select the text above to copy it." : copied ? "Copied to clipboard." : ""}</span>
     </div>
-  );
-}
-
-function Step({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
-  return (
-    <li className="ca-step">
-      <span className="ca-step-n">{n}</span>
-      <div className="ca-step-body">
-        <div className="ca-step-title">{title}</div>
-        {children}
-      </div>
-    </li>
   );
 }
 
 /** How to plug in each kind of agent. */
 function Instructions({ choice }: { choice: Choice }) {
-  const prompt = agentPrompt();
+  const prompt = `Connect me to Index using its MCP server at ${MCP_SERVER_URL} and help me sign in. Then suggest three things I might want or offer based on what you know about me, and ask which to create as intents. Ask me before accepting or passing on introductions.`;
   switch (choice) {
     case "hermes":
       return (
-        <ol className="ca-steps">
-          <Step n={1} title="install the index plugin">
-            <a className="wb-btn small" href={HERMES_INSTALL_URL}>open in hermes</a>
-            <p className="ca-or">or from a terminal</p>
-            <CopyLine text={HERMES_INSTALL_COMMAND} />
-          </Step>
-          <Step n={2} title="sign in when hermes asks">
-            <p className="ca-note">it opens index in your browser so you can approve it.</p>
-          </Step>
-        </ol>
-      );
-    case "claude-code":
-      return (
-        <ol className="ca-steps">
-          <Step n={1} title="add index as an mcp server">
-            <CopyLine text={CLAUDE_CODE_COMMAND} />
-          </Step>
-          <Step n={2} title="run /mcp in claude code and sign in" />
-          <Step n={3} title="say hi with this prompt">
-            <CopyLine text={prompt} prompt />
-          </Step>
-        </ol>
-      );
-    case "claude":
-      return (
-        <ol className="ca-steps">
-          <Step n={1} title="open settings › connectors › add custom connector" />
-          <Step n={2} title="paste this url, then connect and sign in">
-            <CopyLine text={MCP_SERVER_URL} />
-          </Step>
-          <Step n={3} title="start a chat with this prompt">
-            <CopyLine text={prompt} prompt />
-          </Step>
-        </ol>
-      );
-    case "cursor":
-      return (
-        <ol className="ca-steps">
-          <Step n={1} title="install index in cursor">
-            <a className="wb-btn small" href={CURSOR_INSTALL_URL}>add to cursor</a>
-          </Step>
-          <Step n={2} title="sign in when cursor asks" />
-          <Step n={3} title="ask the agent with this prompt">
-            <CopyLine text={prompt} prompt />
-          </Step>
-        </ol>
+        <div className="ca-instructions">
+          <p className="ca-note">Connect Hermes with the Index plugin.</p>
+          <a className="wb-btn small" href={HERMES_INSTALL_URL}>open in hermes</a>
+          <p className="ca-note">or install from your terminal</p>
+          <CopyLine text={HERMES_INSTALL_COMMAND} label="copy install command" />
+          <p className="ca-note">Sign in when Hermes asks.</p>
+        </div>
       );
     case "other":
       return (
-        <ol className="ca-steps">
-          <Step n={1} title="paste this into your agent">
-            <CopyLine text={prompt} prompt />
-          </Step>
-          <Step n={2} title="sign in when it asks" />
-        </ol>
+        <div className="ca-instructions">
+          <p className="ca-note">For Claude, Cursor, and any MCP-compatible agent.</p>
+          <CopyLine text={prompt} label="copy prompt" />
+          <p className="ca-note">Paste into your agent. Sign in when asked.</p>
+        </div>
       );
   }
 }
@@ -154,7 +93,7 @@ function ConnectDialog({ onClose, load }: {
   load: () => Promise<{ agents: Agent[]; connections: AgentConnection[] }>;
 }) {
   const navigate = useNavigate();
-  const [choice, setChoice] = useState<Choice | null>(null);
+  const [choice, setChoice] = useState<Choice>("other");
   const [arrived, setArrived] = useState<string | null>(null);
   const before = useRef<Set<string> | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -166,7 +105,7 @@ function ConnectDialog({ onClose, load }: {
 
   // While the steps are open, look for the new agent every few seconds.
   useEffect(() => {
-    if (!choice || arrived) return;
+    if (arrived) return;
     const timer = setInterval(() => {
       void load().then((list) => {
         const seen = before.current;
@@ -188,16 +127,11 @@ function ConnectDialog({ onClose, load }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const picked = CHOICES.find((c) => c.key === choice);
-
   return (
     <div className="ca-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="ca-panel" role="dialog" aria-modal="true" aria-labelledby="ca-title" tabIndex={-1} ref={panel}>
         <header className="ca-head">
-          {choice && !arrived && (
-            <button type="button" className="ca-back" aria-label="back" onClick={() => setChoice(null)}>‹</button>
-          )}
-          <h2 id="ca-title">{arrived ? "connected" : picked ? `connect ${picked.name}` : "connect your agent"}</h2>
+          <h2 id="ca-title">{arrived ? "connected" : "connect your agent"}</h2>
           <button type="button" className="ca-x" aria-label="close" onClick={onClose}>×</button>
         </header>
 
@@ -211,21 +145,29 @@ function ConnectDialog({ onClose, load }: {
               <button type="button" className="wb-btn" onClick={onClose}>done</button>
             </div>
           </div>
-        ) : choice ? (
-          <Instructions choice={choice} />
         ) : (
           <>
-            <p className="ca-lede">bring the agent you already use. it acts for you here, and index steps in when it&apos;s offline.</p>
+            <p className="ca-lede">Bring the agent you already use to Index.</p>
             <ul className="ca-choices">
               {CHOICES.map((c) => (
                 <li key={c.key}>
-                  <button type="button" className="ca-choice" onClick={() => setChoice(c.key)}>
+                  <button
+                    type="button"
+                    className="ca-choice"
+                    id={`ca-choice-${c.key}`}
+                    aria-expanded={choice === c.key}
+                    aria-controls={`ca-content-${c.key}`}
+                    onClick={() => setChoice(c.key)}
+                  >
                     <span className="ca-choice-text">
                       <span className="ca-choice-name">{c.name}</span>
-                      <span className="ca-choice-blurb">{c.blurb}</span>
+                      {choice !== c.key && <span className="ca-choice-blurb">{c.blurb}</span>}
                     </span>
-                    <span className="ca-choice-go" aria-hidden>›</span>
+                    <span className="ca-choice-go" aria-hidden>{choice === c.key ? "−" : "+"}</span>
                   </button>
+                  <div id={`ca-content-${c.key}`} role="region" aria-labelledby={`ca-choice-${c.key}`} hidden={choice !== c.key}>
+                    {choice === c.key && <Instructions choice={c.key} />}
+                  </div>
                 </li>
               ))}
             </ul>
