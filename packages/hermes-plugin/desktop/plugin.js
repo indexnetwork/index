@@ -749,10 +749,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const knownState = useState(false);
     const known = knownState[0];
     const setKnown = knownState[1];
-    const signInState = useState({ waiting: false, link: null, error: null });
+    const signInState = useState({ waiting: false, confirming: false, link: null, error: null });
     const signIn = signInState[0];
     const setSignIn = signInState[1];
     const signInPoll = useRef(null);
+    const confirmPoll = useRef(null);
     const dialogRef = useRef(null);
     const returnRef = useRef(null);
 
@@ -777,6 +778,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       return function () {
         window.clearInterval(timer);
         if (signInPoll.current) window.clearInterval(signInPoll.current);
+        if (confirmPoll.current) window.clearInterval(confirmPoll.current);
       };
     }, []);
 
@@ -784,31 +786,50 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       if (signInPoll.current) { window.clearInterval(signInPoll.current); signInPoll.current = null; }
     }
 
+    function stopConfirmPoll() {
+      if (confirmPoll.current) { window.clearInterval(confirmPoll.current); confirmPoll.current = null; }
+    }
+
+    // The login has landed but the gateway still has to test the new session, so
+    // keep the button busy and look every second instead of every five.
+    function confirmSignIn() {
+      stopConfirmPoll();
+      const startedAt = Date.now();
+      confirmPoll.current = window.setInterval(function () {
+        if (Date.now() - startedAt < 20000) { refresh(); return; }
+        stopConfirmPoll();
+        setSignIn({
+          waiting: false, confirming: false, link: null,
+          error: "Signed in, but the negotiator has not confirmed it yet. It checks again every 15 minutes, or restart Hermes.",
+        });
+      }, 1000);
+    }
+
     function pollSignIn() {
       fetchPluginJSON(API + "/auth/login/status").then(function (payload) {
         const status = payload && payload.status;
         if (status === "success") {
           stopSignInPoll();
-          setSignIn({ waiting: false, link: null, error: null });
+          setSignIn({ waiting: false, confirming: true, link: null, error: null });
+          confirmSignIn();
           // The gateway holds its own Index client; have it test the new session now.
           fetchPluginJSON(API + "/negotiator/recheck", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({}),
           }).then(refresh).catch(function () { refresh(); });
-          window.setTimeout(refresh, 3000);
         } else if (status === "failed") {
           stopSignInPoll();
-          setSignIn({ waiting: false, link: null, error: (payload && payload.error) || "Sign-in failed. Try again." });
+          setSignIn({ waiting: false, confirming: false, link: null, error: (payload && payload.error) || "Sign-in failed. Try again." });
         } else if (status === "idle") {
           stopSignInPoll();
-          setSignIn({ waiting: false, link: null, error: null });
+          setSignIn({ waiting: false, confirming: false, link: null, error: null });
         }
       }).catch(function () { /* keep polling; transient host hiccup */ });
     }
 
     function startSignIn() {
-      setSignIn({ waiting: true, link: null, error: null });
+      setSignIn({ waiting: true, confirming: false, link: null, error: null });
       fetchPluginJSON(API + "/auth/login/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -817,11 +838,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         if (!payload || payload.success === false) {
           throw new Error((payload && payload.error) || "Could not start sign-in.");
         }
-        setSignIn({ waiting: true, link: !payload.opened && payload.authUrl ? payload.authUrl : null, error: null });
+        setSignIn({ waiting: true, confirming: false, link: !payload.opened && payload.authUrl ? payload.authUrl : null, error: null });
         stopSignInPoll();
         signInPoll.current = window.setInterval(pollSignIn, 1500);
       }).catch(function (err) {
-        setSignIn({ waiting: false, link: null, error: err && err.message ? err.message : String(err) });
+        setSignIn({ waiting: false, confirming: false, link: null, error: err && err.message ? err.message : String(err) });
       });
     }
 
@@ -950,6 +971,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }
 
     const needsSignIn = shownStatus === "signed out";
+    useEffect(function () {
+      if (needsSignIn || !signIn.confirming) return;
+      stopConfirmPoll();
+      setSignIn({ waiting: false, confirming: false, link: null, error: null });
+    }, [needsSignIn, signIn.confirming]);
     const banner = needsSignIn
       ? React.createElement("div", { className: "index-agent-header__banner", role: "alert", key: "signed-out-banner" },
         React.createElement("span", { className: "index-agent-header__banner-copy" },
@@ -958,9 +984,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         React.createElement(Button, {
           type: "button",
           className: "index-agent-header__banner-btn",
-          disabled: signIn.waiting,
+          disabled: signIn.waiting || signIn.confirming,
           onClick: startSignIn,
-        }, signIn.waiting ? "waiting for browser\u2026" : "Sign in to Index"),
+        }, signIn.confirming ? "signed in, checking\u2026" : signIn.waiting ? "waiting for browser\u2026" : "Sign in to Index"),
         signIn.link
           ? React.createElement("span", { className: "index-agent-header__banner-note" },
             "No browser opened here. ",
