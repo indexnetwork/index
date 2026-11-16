@@ -14,7 +14,7 @@ const NOT_FOUND_CACHE_CONTROL = "no-store";
 // Reserved root routes from src/routes.tsx; don't delay app navigation with a
 // public-profile lookup. Marketing routes are also covered by the meta map.
 const APP_ROOT_PATHS = new Set([
-  "/about", "/waitlist", "/9db20a5fbe", "/blog", "/chat", "/negotiations",
+  "/about", "/waitlist", "/9db20a5fbe", "/communities", "/blog", "/chat", "/negotiations",
   "/onboarding", "/agents", "/networks", "/settings", "/profile", "/cli-auth", "/login",
 ]);
 // Apple app-site-association (universal links). Served directly — Apple
