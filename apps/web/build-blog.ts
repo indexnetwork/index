@@ -9,7 +9,7 @@ import { ORIGIN } from "./meta.config";
 import type { LegalSection } from "./src/app/pages/LegalPage";
 import * as privacyPolicy from "./src/app/pages/privacy-policy/page";
 import * as termsOfUse from "./src/app/pages/terms-of-use/page";
-import { parseFrontmatter, transformAssetPaths } from "./src/lib/blog";
+import { getAuthors, parseAuthors, parseFrontmatter, transformAssetPaths } from "./src/lib/blog";
 
 const CONTENT_DIR = join(import.meta.dir, "content/blog");
 const PUBLIC_DIR = join(import.meta.dir, "public");
@@ -31,6 +31,7 @@ interface PostEntry {
   slug: string;
   title: string;
   date: string;
+  authors?: string;
   description?: string;
   image?: string;
 }
@@ -103,6 +104,8 @@ a:hover { color: var(--blue); }
 .meta, .row-date { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); }
 .back { align-self: flex-start; font-size: 12px; margin-bottom: 40px; }
 .frame .meta { margin-bottom: 14px; }
+.frame .meta a { color: inherit; text-decoration: none; }
+.frame .meta a:hover { color: var(--blue); }
 .post-title { margin-bottom: 40px; }
 .post-body { font-size: 16px; line-height: 1.75; font-weight: 300; color: var(--body); }
 .post-body p { margin: 0 0 22px; }
@@ -183,11 +186,19 @@ function renderDocument(options: {
   path: string;
   image: string;
   type: string;
+  authors?: string[];
   body: string;
 }): string {
   const title = escapeHtml(options.title);
   const description = escapeHtml(options.description);
   const url = `${ORIGIN}${options.path}`;
+  const authors = options.authors ?? [];
+  const authorMeta = authors.length
+    ? `\n    <meta name="author" content="${escapeHtml(authors.join(", "))}" />`
+    : "";
+  const articleAuthors = authors
+    .map((name) => `\n    <meta property="article:author" content="${escapeHtml(name)}" />`)
+    .join("");
 
   return `<!doctype html>
 <html lang="en">
@@ -195,10 +206,10 @@ function renderDocument(options: {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
-    <meta name="description" content="${description}" />
+    <meta name="description" content="${description}" />${authorMeta}
     <link rel="canonical" href="${url}" />
     <link rel="icon" type="image/png" href="/favicon-white.png" />
-    <meta property="og:type" content="${options.type}" />
+    <meta property="og:type" content="${options.type}" />${articleAuthors}
     <meta property="og:url" content="${url}" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
@@ -240,6 +251,17 @@ function listEntries(posts: PostEntry[]): Array<{ href: string; date: string; ti
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
+/** " · SEREF YARAR & SEREN SANDIKCI", names linked to their profiles; empty when a post names no authors. */
+function renderAuthors(authors?: string): string {
+  return getAuthors(authors)
+    .map(({ name, href }, i) => {
+      const label = escapeHtml(name.toUpperCase());
+      const linked = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
+      return `${i === 0 ? " &middot; " : " &amp; "}${linked}`;
+    })
+    .join("");
+}
+
 function renderPostPage(post: PostEntry, markdown: string): string {
   const body = renderToStaticMarkup(
     createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, markdown),
@@ -251,9 +273,10 @@ function renderPostPage(post: PostEntry, markdown: string): string {
     path: `/blog/${post.slug}`,
     image: post.image ? `${ORIGIN}${post.image}` : DEFAULT_IMAGE,
     type: "article",
+    authors: parseAuthors(post.authors),
     body: `<main class="frame">
       <a class="back" href="/blog">&larr; All posts</a>
-      <div class="meta">${escapeHtml(formatListDate(post.date))}</div>
+      <div class="meta">${escapeHtml(formatListDate(post.date))}${renderAuthors(post.authors)}</div>
       <h1 class="post-title">${escapeHtml(post.title)}</h1>
       <div class="post-body">${body}</div>
     </main>`,
@@ -354,6 +377,7 @@ for (const slug of slugs) {
     slug,
     title: data.title || slug,
     date: data.date || "",
+    authors: data.authors,
     description: data.description,
     image: data.image ? `/blog/${slug}/${data.image}` : undefined,
   };

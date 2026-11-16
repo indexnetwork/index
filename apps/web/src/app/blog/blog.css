@@ -8,6 +8,8 @@
 
 .site .post-back { margin-bottom: 40px; }
 .post-frame > .site-meta { margin-bottom: 14px; }
+.site .post-frame > .site-meta a { color: inherit; text-decoration: none; }
+.site .post-frame > .site-meta a:hover { color: var(--blue); }
 .post-title.site-h1 { margin-bottom: 40px; }
 
 .post-body {

@@ -1,4 +1,4 @@
-import { isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,7 +6,7 @@ import { visit } from "unist-util-visit";
 import type { Root } from "hast";
 import SiteLayout from "@/app/site/SiteLayout";
 import { formatEntryDate } from "@/app/site/blog-entries";
-import { type BlogPost, getPostBySlug } from "@/lib/blog";
+import { type BlogPost, getAuthors, getPostBySlug } from "@/lib/blog";
 import "../blog.css";
 
 function getAudioType(src: string): string {
@@ -187,7 +187,21 @@ function BlogPostPage() {
           <div className="post-status">post not found.</div>
         ) : (
           <>
-            <div className="site-meta">{formatEntryDate(state.post.date)}</div>
+            <div className="site-meta">
+              {formatEntryDate(state.post.date)}
+              {getAuthors(state.post.authors).map((author, i) => (
+                <Fragment key={author.name}>
+                  {i === 0 ? " · " : " & "}
+                  {author.href ? (
+                    <a href={author.href} target="_blank" rel="noopener noreferrer">
+                      {author.name.toUpperCase()}
+                    </a>
+                  ) : (
+                    author.name.toUpperCase()
+                  )}
+                </Fragment>
+              ))}
+            </div>
             <h1 className="site-h1 post-title">{state.post.title}</h1>
             <div className="post-body">
               <ReactMarkdown

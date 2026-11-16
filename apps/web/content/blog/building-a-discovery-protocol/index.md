@@ -1,6 +1,7 @@
 ---
 title: Building a Discovery Protocol
 date: 2025-07-29
+authors: "Seref Yarar"
 description: Hear from Seref Yarar, Index Network Co-Founder in conversation with Chad Fowler, BlueYard Capital GP & CTO
 image: chad-seref.png
 ---

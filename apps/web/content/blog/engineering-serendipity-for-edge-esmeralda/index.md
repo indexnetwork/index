@@ -1,6 +1,7 @@
 ---
 title: "Engineering serendipity for Edge Esmeralda"
 date: "2026-05-08"
+authors: "Seref Yarar"
 description: "Bringing personal agents to a popup village to help 500 residents find each other."
 image: "index-edge.jpg"
 ---

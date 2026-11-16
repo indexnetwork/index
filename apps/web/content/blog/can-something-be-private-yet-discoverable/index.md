@@ -1,6 +1,7 @@
 ---
 title: "Can something be private yet discoverable?"
 date: "2025-09-17"
+authors: "Seref Yarar"
 description: "Index shifts discovery from performance to presence, where builders and thinkers don't need to broadcast themselves to be found—just express what they're looking for."
 image: "eye.gif"
 ---

@@ -2,6 +2,7 @@
 
 title: "The Magic Factory"
 date: "2026-2-10"
+authors: "Seren Sandikci"
 description: "What it looks like when opportunity becomes programmable. "
 image: "magic-factory.gif"
 

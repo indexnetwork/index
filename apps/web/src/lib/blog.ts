@@ -2,15 +2,39 @@ export interface BlogPost {
   slug: string;
   title: string;
   date: string;
+  /** Comma-separated author names, as written in frontmatter. */
+  authors?: string;
   description?: string;
   meta_description?: string;
   image?: string;
   content?: string;
 }
 
+/** "Seref Yarar, Seren Sandikci" -> ["Seref Yarar", "Seren Sandikci"] */
+export function parseAuthors(authors?: string): string[] {
+  return (authors || '').split(',').map((name) => name.trim()).filter(Boolean);
+}
+
+/** Profile links for the people who write here, keyed by the name used in frontmatter. */
+const AUTHOR_LINKS: Record<string, string> = {
+  'Seref Yarar': 'https://x.com/serefyarar',
+  'Seren Sandikci': 'https://x.com/serensandikci',
+};
+
+export interface BlogAuthor {
+  name: string;
+  href?: string;
+}
+
+/** A post's authors in byline order, each with a profile link when we know one. */
+export function getAuthors(authors?: string): BlogAuthor[] {
+  return parseAuthors(authors).map((name) => ({ name, href: AUTHOR_LINKS[name] }));
+}
+
 interface Frontmatter {
   title?: string;
   date?: string;
+  authors?: string;
   description?: string;
   meta_description?: string;
   image?: string;
@@ -119,6 +143,7 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
       slug,
       title: data.title || 'Untitled',
       date: data.date || new Date().toISOString().split('T')[0],
+      authors: data.authors,
       description: data.description,
       meta_description: data.meta_description,
       content: transformedContent,

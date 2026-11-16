@@ -1,6 +1,7 @@
 ---
 title: Field Notes from the Agent Village
 date: "2026-06-30"
+authors: "Seref Yarar"
 description: "Preliminary findings from the first large-scale multi-agent coordination experiment with human participants at Edge Esmeralda."
 image: "cover.jpg"
 ---
