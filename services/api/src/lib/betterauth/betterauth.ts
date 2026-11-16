@@ -3,6 +3,7 @@ import { APIError, createAuthMiddleware, getOAuthState } from "better-auth/api";
 import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
+import { bonfires } from "./bonfires.plugin";
 import { edgeCity } from "./edge-city.plugin";
 import { mcpConsentSecurity } from "./mcp-consent.plugin";
 
@@ -49,8 +50,10 @@ export interface AuthDeps {
   secondaryStorage?: AuthSecondaryStorage;
   /** Runs after every successful Edge City sign-in (e.g. network auto-join). */
   onEdgeCitySignIn?: (userId: string) => Promise<void>;
+  /** Runs after every successful Bonfires sign-in (e.g. network auto-join). */
+  onBonfiresSignIn?: (userId: string) => Promise<void>;
   /**
-   * Runs after an Index session is created (web, Mac, Hermes). Not Edge City.
+   * Runs after an Index session is created (web, Mac, Hermes). Not Edge City or Bonfires.
    * `callbackURL` is the app URL the sign-in flow returns to, when the flow
    * carries one — it tells the handler which page the user signed in from.
    */
@@ -84,7 +87,7 @@ function readCallbackURL(source: unknown): string | undefined {
  * REVIEWER_EMAIL — everyone else uses magic link or social OAuth.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn, onIndexSignIn } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn, onBonfiresSignIn, onIndexSignIn } = deps;
 
   return betterAuth({
     baseURL: API_URL,
@@ -120,7 +123,7 @@ export function createAuth(deps: AuthDeps) {
       session: {
         create: {
           after: async (session, context) => {
-            if (!onIndexSignIn || context?.path === "/sign-in/edge-city") return;
+            if (!onIndexSignIn || context?.path === "/sign-in/edge-city" || context?.path === "/sign-in/bonfires") return;
             await onIndexSignIn(session.userId, await resolveSignInCallbackURL(context));
           },
         },
@@ -220,6 +223,16 @@ export function createAuth(deps: AuthDeps) {
               apiBase: process.env.EDGEOS_API_BASE || "https://api.edgeos.world/api/v1",
               tenantId: process.env.EDGEOS_TENANT_ID,
               onSignIn: onEdgeCitySignIn,
+            }),
+          ]
+        : []),
+      ...(process.env.BONFIRES_ISSUER
+        ? [
+            bonfires({
+              issuer: process.env.BONFIRES_ISSUER,
+              jwksUrl: process.env.BONFIRES_JWKS_URL,
+              audience: API_URL,
+              onSignIn: onBonfiresSignIn,
             }),
           ]
         : []),
