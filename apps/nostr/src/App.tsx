@@ -11,6 +11,8 @@ import { DemoPartner } from './lib/partner.js';
 
 const DEFAULT_RELAY = (import.meta.env.VITE_RELAY_URL as string | undefined) ?? 'wss://nostr-production.up.railway.app';
 const DOCS_URL = (import.meta.env.VITE_DOCS_URL as string | undefined) ?? 'https://docs-production-81b7b3df.up.railway.app/nostr';
+/** Git ref for source links: `dev` once merged; previews of an unmerged branch set their own. */
+const SOURCE_REF = (import.meta.env.VITE_SOURCE_REF as string | undefined) ?? 'dev';
 const TABS = ['intents', 'networks', 'negotiations', 'opportunities', 'messages', 'wire'] as const;
 type Tab = typeof TABS[number];
 
@@ -100,7 +102,7 @@ export function App() {
         <span>{state.relayName || 'Index relay'}</span>
         <a className="hover:text-neutral-900" href={url.replace(/^ws/, 'http')} target="_blank" rel="noreferrer">Relay page</a>
         <a className="hover:text-neutral-900" href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
-        <a className="inline-flex items-center gap-1 hover:text-neutral-900" href="https://github.com/indexnetwork/index/blob/dev/packages/nostr/nips/NIP-IX.md" target="_blank" rel="noreferrer"><Github size={12} /> NIP-IX</a>
+        <a className="inline-flex items-center gap-1 hover:text-neutral-900" href={`https://github.com/indexnetwork/index/blob/${SOURCE_REF}/packages/nostr/nips/NIP-IX.md`} target="_blank" rel="noreferrer"><Github size={12} /> NIP-IX</a>
       </footer>
 
       <div className="fixed bottom-4 left-1/2 z-20 w-full max-w-md -translate-x-1/2 space-y-2 px-4">

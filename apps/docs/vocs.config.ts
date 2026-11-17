@@ -2,7 +2,8 @@ import { defineConfig } from 'vocs/config'
 
 export default defineConfig({
   title: 'Index Network',
-  baseUrl: 'https://docs.index.network',
+  // Vocs makes internal links absolute against this, so previews must set their own.
+  baseUrl: process.env.DOCS_BASE_URL ?? 'https://docs.index.network',
   description: 'A private, intent-driven social discovery protocol.',
   iconUrl: '/favicon.svg',
   ogImageUrl: 'https://docs.index.network/og.png?v=4',
