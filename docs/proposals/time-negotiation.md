@@ -1,10 +1,10 @@
 # Privacy-preserving agent-to-agent time negotiation
 
-This document proposes a privacy-preserving way for agents to negotiate a meeting time after an Index opportunity has been accepted. It is a design discussion, not a decision. The proposed direction is marked as such, with tradeoffs left open for discussion.
+This is a work-in-progress design discussion, not a decision. It proposes a privacy-preserving way for agents to negotiate a meeting time after an Index opportunity has been accepted. The proposed direction is marked as such, with tradeoffs left open for discussion.
 
-Supporting diagrams: [FigJam board](https://www.figma.com/board/P1bSbFjfO7b0EYIHfbllO5).
+This document follows the same five-part structure as the supporting [FigJam board](https://www.figma.com/board/L6q83cu7qJjJSnON0hST5t): context, core workflows, data model, systems diagram, and API.
 
-## The problem
+## 1. Context
 
 Index already covers intents, discovery, agent-to-agent negotiation of fit, and a double opt-in opportunity. When both humans accept, the protocol has answered *whether* these two people should talk. What happens next, today, is logistics in a chat — usually a booking link.
 
@@ -18,199 +18,187 @@ The protocol prompt is consistent with that. From `packages/protocol/src/protoco
 
 The gap is therefore narrow and well-bounded: after both people have committed to an opportunity, how do they reach an agreed time without turning Index into a calendar product, without dumping calendars into the intent graph, and without forcing everyone onto one booking tool?
 
-## Framing: calendars are products, not primitives
+The [Primitive Map](https://indexnetwork.github.io/primitives/) (source: [indexnetwork/primitives](https://github.com/indexnetwork/primitives)) is a useful vocabulary here. It treats calendars, like CRMs and messaging apps, as products shaped by historical software boundaries, not as fundamental coordination primitives. There is no Availability primitive on the map, and this proposal does not invent one. Time negotiation composes existing primitives:
 
-The [Primitive Map](https://indexnetwork.github.io/primitives/) (source: [indexnetwork/primitives](https://github.com/indexnetwork/primitives)) is a useful vocabulary here. It treats calendars, like CRMs and messaging apps, as products shaped by historical software boundaries, not as fundamental coordination primitives. There is no "Availability" primitive on the map, and this proposal does not invent one.
-
-In the map's own terms, the work looks like this:
-
-- An **Opportunity** is already there: matched mutual intents under contextual integrity, with **Consent** when both humans commit.
-- Time negotiation is a **Negotiation** that happens *after* that opportunity, under **Appropriateness** (privacy norms for what can be shared).
-- It produces a **Decision** (the human confirms a slot), an **Agreement** (the confirmed when), and **Commitments** on each side to show up.
-- **Preference** and **Priority** rank windows and constraints (duration, timezone, remote vs in person).
-- **Conversation** is the exchange.
-- When an agent acts, that is **Delegation** plus **Agent**, on behalf of a verified **Identity**.
-- **Workflow** is just the composed sequence, not a new primitive.
+- An **Opportunity** is already there: matched mutual intents, with **Consent** when both humans commit.
+- **Workflow 1** (connect availability) uses **Delegation** and **Consent**. The calendar itself is a source of facts, not a primitive.
+- **Workflow 2** (optional preferences) uses **Preference**, plus limits on Delegation.
+- **Workflow 3** (confirm a time) produces an **Agreement** and each side's **Commitment**.
+- **Workflow 4** and **Workflow 5** are **Negotiation** of time, under Delegation. Workflow 4 keeps Index furthest from the calendar.
 
 Index should remain the intent graph and the opportunity graph. Scheduling is a later Negotiation that leads to an Agreement, not a reason to start storing calendars.
 
-## The key decision: in the existing model, or a separate layer?
-
-The first architectural question is whether time negotiation should live inside Index's existing data model, or in a separate layer that an accepted opportunity hands off to.
-
-The relevant tables today live in `services/api/src/schemas/database.schema.ts`, with conversations in `services/api/src/schemas/conversation.schema.ts`:
-
-- `opportunities` — status: `negotiating`, `pending`, `accepted`, `rejected`, `expired`
-- `opportunity_events` — including `opened`, `agreed`, `declined`, `expired`, and `committed` (one commit per human)
-- `negotiations` and `negotiation_turns` — bilateral propose / counter / accept / decline, with a text `message`
-- `intents`, `agents`, `agent_sessions`
-- `conversations` / `messages` once people are connected
-
-There are no calendar or availability tables, which is consistent with the comments in `negotiate.ts` and `protocol.prompt.ts`.
-
-### Option A — Extend the existing model
-
-After both humans have committed, add a scheduling phase on the opportunity, or start a second negotiation that reuses `negotiation_turns` (propose / counter / accept / decline) with slot payloads in the turn message. This would likely add a negotiation kind or phase, structured slot fields, and some pointer to a calendar or provider, all on the same host database.
-
-This reuses the turn log, the hosted negotiator, and the opportunity inbox. The cost is coupling. Calendar-like data would sit next to intents and embeddings in the same Postgres, which pulls Index toward becoming a calendar product. It is harder to federate — self-hosted networks, TEEs, other hosts — without also hosting calendar state. A bilateral fit-negotiation log is an awkward place to grow group scheduling later. Privacy is also harder, because candidate times live in the same store as intent payloads.
-
-### Option B — A separate scheduling layer or protocol
-
-An accepted opportunity hands off to a scheduling session, keyed by opportunity id. Index stays the intent and opportunity graph. The scheduling layer has its own tables or service: the session, slot proposals and responses (or provider-hosted state), and a record of the agreed slot. Provider adapters sit at the edge.
-
-The *pattern* can still be propose / counter / accept / decline. Those turns just do not have to be rows in `negotiation_turns`. Index records the handoff (for example an `opportunity_events` type, or a session pointer) and the confirmed Agreement.
-
-This is looser coupling, a better fit for not becoming a calendar product, and easier to federate: a self-hosted Index can invoke local providers. Privacy is easier if Index never sees raw calendars. Group scheduling can evolve in this layer later without stretching the opportunity model. The cost is a new session and a handoff contract, and the UX has to be designed across Index and providers.
-
-```mermaid
-flowchart TB
-  Title["Does availability negotiation live in the existing data model, or in a separate layer?"]
-  A["Option A: extend opportunities, negotiations, and negotiation_turns"]
-  B["Option B: accepted opportunity hands off to a scheduling session"]
-  Title --> A
-  Title --> B
-  Rec["Proposed direction: Option B. Keep the turn pattern. Do not store calendar data on intents or negotiation_turns."]
-  A --> Rec
-  B --> Rec
-```
-
-## Three approaches
-
-The in-model vs separate-layer decision is Option A vs Option B. Approach C below is a runtime that should sit on Option B, not a third place to store calendar data.
-
-| | **A. Index-native negotiator, in the existing model** | **B. Separate scheduling layer with provider adapters** | **C. Personal agents negotiate peer-to-peer; Index only relays** |
-|---|---|---|---|
-| Where state lives | `opportunities`, `negotiations`, `negotiation_turns` | A scheduling session keyed off the accepted opportunity | Agents and providers; Index keeps a session id and the confirmed Agreement |
-| Who negotiates times | Index's hosted negotiator | A thin negotiator, or the person's agent, through adapters | The person's agent (Hermes, Grok Bot, Dot, and so on) |
-| Calendars | Easy to accidentally pull into Index | Stay with Calendly, Cal.com, Google Calendar, ICS/CalDAV, or a personal agent | Stay with the person and their tools |
-| Privacy | Weaker: slots sit next to intent data | Stronger: overlap can be computed at the edge | Strongest, if agents don't dump calendars into Index |
-| "Not a calendar product" | Weak fit | Good fit | Best fit |
-| People without an agent | Easier: Index can run it | Adapter or authenticated MCP / provider flow | Needs a fallback (that's B's thin negotiator) |
-| Federation / self-hosting | Harder; calendar state follows the host | Easier; providers stay local | Easier; Index relays |
-| Group scheduling later | Stretches a bilateral turn log | Can grow in this layer | Possible, but only if both sides have capable agents |
-
-### Personal agent vs Index-native negotiator
-
-A personal agent already has context on that person, often already has calendar access, and keeps Index out of the calendar business. The downsides are real: not everyone has Hermes, Grok Bot, or Dot; those agents don't share a runtime; the UX can get inconsistent unless Index still shows the common-slot confirmation; and people still need to be notified.
-
-An Index-native negotiator gives one inbox, one consistent UX, and a path for people who only use Index. The downside is that Index starts holding availability state, personal agents become second-class, and federation and privacy get harder.
-
-**Proposed direction:** architect Option B. Prefer Approach C when both people have a personal agent. Use a thin negotiator plus a provider adapter when someone doesn't. Do not put availability windows into `intents`, `negotiations`, or `negotiation_turns`. The tradeoffs above remain open for discussion.
-
-## The flow
-
 ```mermaid
 flowchart LR
-  subgraph indexSide ["Index already does this: whether two people should meet"]
+  subgraph today ["Index already does this: whether two people should meet"]
     Intent --> Discovery --> FitNegotiation["Negotiation of fit"] --> Opportunity --> DoubleOptIn["Both humans commit"]
   end
-  DoubleOptIn --> Handoff
-  subgraph schedSide ["Scheduling layer: when they meet"]
-    Handoff --> Adapters["Provider adapters"] --> TimeNegotiation["Negotiation of time"] --> HumanConfirm["Human confirms common slots"] --> Agreement
-  end
+  DoubleOptIn --> TimeNegotiation["Time negotiation: when they meet"]
 ```
 
-More precisely:
+## 2. Core workflows
 
-1. Agents negotiate fit. The opportunity goes pending, then both humans commit, and status becomes `accepted`.
-2. Index hands off to a scheduling session for that opportunity.
-3. Each side's adapter, or personal agent, produces a small candidate set, or computes overlap privately.
-4. Common slots are shown with action buttons.
-5. Both humans confirm.
-6. The chosen provider writes the event. Index records the Agreement. Both people get notified.
+Five workflows, in order. Workflows 3, 4, and 5 end at "Confirm a time" unless the path is fully automatic.
 
-## Privacy
+### Workflow 1 — Connect availability
 
-A full calendar should not be sent to Index or to the other party. That is Appropriateness.
+A new connection on the user's **profile**, separate from intents. An intent describes a goal, not availability.
 
-- **Weaker:** share free/busy for a window. iCalendar and CalDAV already support this. It still leaks busy patterns.
-- **Better, and the suggested starting point:** each side shares only a small candidate set of slots. Reveal the intersection, not the rest.
-- **Stronger, if both runtimes support it:** private set intersection or an equivalent, so only the overlap is learned.
-- **Always:** the human confirms common slots before any provider writes an event. That is Consent and Decision.
+Two kinds of connection:
 
-A first version need not wait on private set intersection. Candidate sets plus human confirmation get most of the way there without Index ever seeing a full calendar.
+- A **readable calendar** (Google Calendar, ICS / CalDAV), which can be read to propose times.
+- A **booking link** that can only be booked against (Calendly, Cal.com).
 
-## Provider adapter
+The primitives here are Delegation (limited authority to read the person's time) and Consent (what level of detail is shared). Calendars are the source of facts, not primitives. Other third-party providers should fit the same connection model through the adapter layer in section 4.
 
-Conceptual, not built. The scheduling layer would talk to providers through a small interface, for example:
+### Workflow 2 — Availability preferences (optional)
 
-- `capabilities`: `candidates`, `freebusy`, and/or `private_overlap`
+Standing rules that can exist with or without a connection: hours, days, meeting length, buffers, in-person vs remote, and how much autonomy the negotiator has. The primitives are Preference, plus limits on Delegation.
+
+### Workflow 3 — Time Confirmation
+
+UI label: "Confirm a time." On the accepted opportunity, Index shows a short list of times. Each person can pick one, suggest others, or decline. When both confirm, that produces an Agreement plus each side's Commitment. Workflow 4 and Workflow 5 end here unless the path is fully automatic.
+
+A full calendar should not be sent to Index or to the other party. A reasonable starting point is that each side shares only a small candidate set of slots; only the intersection is shown. The human still confirms before any provider writes an event.
+
+### Workflow 4 — Personal agent negotiates
+
+The owner's agent (Grok Bot, Hermes, Dot, and others) takes turns over MCP and checks the calendar its own way. Index only relays the turns and records the outcome. This is Negotiation under Delegation. Index sees the least.
+
+Not everyone has a personal agent, and those agents do not share a runtime. Confirmation can still be shown in Index so the UX stays recognizable.
+
+### Workflow 5 — Index negotiates
+
+Index's negotiator uses Workflow 1 and Workflow 2, and reuses the existing propose / counter / accept / decline pattern on `negotiation_turns`. This is the default when there is no personal agent.
+
+This is where the **in-model vs separate-layer** choice matters most:
+
+- **In-model:** add a scheduling phase on the existing negotiation. Reuse `negotiation_turns` with a structured slot payload.
+- **Separate layer:** the accepted opportunity hands off to a scheduling session. Fit tables stay fit-only. The scheduling layer holds `scheduling_sessions` and `slot_proposals`. Index stores a session pointer plus the confirmed Agreement.
+
+**Proposed direction:** architect the separate layer, and reuse the turn pattern there. Prefer Workflow 4 when both people have a personal agent. Use Workflow 5 (a thin negotiator plus provider adapters) when someone does not. Do not put availability windows onto `intents`. The tradeoffs are in section 3 and remain open for discussion.
+
+A separate layer is looser coupling, a better fit for not becoming a calendar product, and easier to federate: a self-hosted Index can invoke local providers, and Index need not see raw calendars. The cost is a new session and a handoff contract, and the UX has to be designed across Index and providers. Extending the existing model reuses the turn log, the hosted negotiator, and the opportunity inbox, but calendar-like data would sit next to intents in the same Postgres, which is harder to federate and a weaker privacy boundary.
+
+### Notifications
+
+Paths used across the workflows:
+
+- To the human — email today, then in-app or push (Workflows 1–5, especially Workflow 3).
+- Index to the agent — a webhook or callback URL, or the agent polling over MCP (Workflow 4).
+- Agent-to-agent turns (Workflow 4).
+- Human to agent (Workflows 3 and 4).
+- Timeouts and reminders when one side goes quiet (Workflows 3, 4, and 5).
+
+### Exceptions and scope
+
+In scope as cross-cutting exceptions: reschedule or cancel after confirmation, and the case where one side is unresponsive.
+
+Out of scope for a first version: **group scheduling**. A separate scheduling layer is meant to leave room for it later, without stretching the bilateral fit-negotiation log.
+
+## 3. Data model
+
+Current tables and fields are from `services/api/src/schemas/database.schema.ts` and `services/api/src/schemas/conversation.schema.ts`. There are no calendar or availability tables today, which is consistent with the comments in `negotiate.ts` and `protocol.prompt.ts`.
+
+`opportunities` has no foreign key to intents. The matched intents live on `negotiations.initiator_intent_id` and `negotiations.responder_intent_id`. `conversation_participants.participant_id` and `messages.sender_id` are not formal foreign keys in the schema. Some user-auth and intent-embedding columns are omitted here.
+
+### Existing tables (relevant subset)
+
+- `users` — `id` (PK); `email`, `name`, `timezone`, `intro`, `location`, `created_at`
+- `intents` — `id` (PK); `user_id` (FK → `users.id`); `payload`, `summary`, `status`, `source_type`, `is_private`, `archived_at`
+- `opportunities` — `id` (PK); `status`, `confidence`, `actors`, `detection`, `interpretation`, `context`, `metadata`, `expires_at`, `created_at`, `updated_at`
+- `opportunity_events` — `id` (PK); `opportunity_id` (FK → `opportunities.id`); `type`; `actor_user_id` (FK → `users.id`); `at`, `data`
+- `negotiations` — `id` (PK); `pair_key`; `opportunity_id` (FK → `opportunities.id`); `initiator_user_id`, `responder_user_id`, `awaiting_user_id` (FK → `users.id`); `initiator_intent_id`, `responder_intent_id` (FK → `intents.id`); `outcome`, `settled_at`, `created_at`, `updated_at`
+- `negotiation_turns` — `id` (PK); `negotiation_id` (FK → `negotiations.id`); `turn_index`; `seat_user_id` (FK → `users.id`); `action`, `message`, `client_turn_id`, `created_at`
+- `agents` — `id` (PK); `owner_id` (FK → `users.id`); `name`, `type`, `status`, `runtime_kind`, `handle_negotiations`, `notify_on_opportunity`
+- `agent_sessions` — composite PK `user_id` + `intent_id` (both also FKs → `users.id` and `intents.id`); `conversation_id` (FK → `conversations.id`); `state`, `revision`, `lease_token`, `lease_expires_at`
+- `conversations` — `id` (PK); `dm_pair`, `last_message_at`, `created_at`, `updated_at`
+- `conversation_participants` — composite PK `conversation_id` + `participant_id`; `conversation_id` (FK → `conversations.id`); `participant_type`, `joined_at`, `hidden_at`, `last_read_at`
+- `conversation_sessions` — `id` (PK); `conversation_id` (FK → `conversations.id`); `started_at`, `last_message_at`, `created_at`
+- `messages` — `id` (PK); `conversation_id` (FK → `conversations.id`); `session_id` (FK → `conversation_sessions.id`); `sender_id`, `role`, `parts`, `metadata`, `extensions`, `created_at`
+- `conversation_metadata` — `conversation_id` is PK and FK → `conversations.id`; `metadata`, `created_at`, `updated_at`
+
+### Proposed tables (not in the repo)
+
+These are proposed, not implemented.
+
+- `availability_connections` — profile-level connection for Workflow 1. `id` (PK); `user_id` (FK → `users.id`); `kind` (`readable_calendar` | `booking_link`); `provider` (`google` | `ics` | `caldav` | `calendly` | `cal.com`, and other third-party providers through the same adapter); `status`, `consent_scope`, `created_at`, `updated_at`
+- `availability_preferences` — standing rules for Workflow 2. `id` (PK); `user_id` (FK → `users.id`); `hours`, `days`, `meeting_length`, `buffer`, `location_mode`, `autonomy`, `created_at`, `updated_at`
+- `time_confirmations` — Workflow 3 "Confirm a time." `id` (PK); `opportunity_id` (FK → `opportunities.id`); `slots`; `status` (`pending` | `confirmed` | `declined` | `expired`); `confirmed_start`, `confirmed_end`, `timezone`, `confirmed_by`, `created_at`, `updated_at`
+
+### Workflow 5 storage options
+
+- **In-model:** reuse `negotiation_turns` (`propose`, `counter`, `accept`, `decline`) with a structured slot payload.
+- **Separate layer (proposed direction):** `scheduling_sessions` and `slot_proposals`; fit tables stay fit-only. Index stores a session pointer plus the confirmed Agreement.
+
+## 4. Systems diagram
+
+The systems view on the FigJam board places a scheduling layer next to Index's existing API host, agent runtimes, and data stores. Provider adapters sit at the edge. They are how Workflow 1 and Workflow 5 talk to calendars and booking tools, without those products becoming Index primitives.
+
+Adapters to support first:
+
+- Calendly
+- ICS / CalDAV
+- Cal.com
+- Google Calendar
+- Other third-party providers, through the same adapter interface
+
+The scheduling layer is shown in two variants, matching section 2: a scheduling phase on the existing model, or a separate scheduling layer with a handoff. Session pointer and Agreement write back to Index in the separate-layer case. Clients (web app, personal agents over MCP), notifications (email today), and hosted or external agents (including `@indexnetwork/agent`) stay in their current roles.
+
+A conceptual adapter interface, not built:
+
 - `listCandidateSlots({ window, duration, constraints })`
 - `proposeSlot` / `respondToSlot`
 - `commitSlot` — only after both humans confirm
 - `cancelSlot`
 
-Providers to support first: Google Calendar, Calendly, Cal.com, ICS/CalDAV, and a personal-agent MCP. Other availability tools should fit the same adapter. Index should not pick a winner or ship its own calendar product.
+Index should not pick a winner among providers or ship its own calendar product.
 
-## UX sketch
+## 5. API
 
-A common-slot confirmation, with action buttons, can live on the accepted opportunity — for example in the opportunity inbox, after double opt-in:
+REST controllers live under `services/api/src/controllers/`, with prefix `/api` (`GLOBAL_PREFIX` in `services/api/src/main.ts`). MCP tools live in `services/api/src/lib/mcp/mcp.tools.ts`.
 
-**We found times that work for both of you.** No full calendars were shared.
+### Current REST
 
-- Accept Tue 3:00–3:30pm PT
-- Accept Wed 10:00–10:30am PT
-- Propose other times
-- Not now
+From `opportunity.controller.ts` (`/api/opportunities`): `GET /`, `POST /`, `POST /pair`, `POST /:id/link-action`, `GET /:id`, `PATCH /:id/status`, `POST /:id/start-chat`, `POST /:id/events`, `GET /:id/negotiation`, `POST /:id/negotiation/resume`, `POST /:id/negotiation/turns`.
 
-Then a confirm step:
+From `negotiation.controller.ts`: `GET /api/negotiations`.
 
-**Book Tuesday 3:00–3:30pm PT with [the other person]?** This will be written to your connected calendar or booking tool. Confirm / Back.
+From `intent.controller.ts`: `POST` and `GET /api/intents/:id/opportunities`, `PATCH /api/intents/:id/opportunities/:opportunityId/status`, `POST /api/intents/:id/opportunities/:opportunityId/start-chat`.
 
-After confirm: Agreement recorded, the chosen provider creates the event, both people are notified.
+From `conversation.controller.ts`: conversation and message routes, including DMs. From `events.controller.ts`: `GET /api/events/log`, `GET /api/events`.
 
-```mermaid
-flowchart TB
-  Accepted["Opportunity accepted"] --> Card["Common slots card"]
-  Card --> AcceptA["Accept Tue 3:00 to 3:30pm"]
-  Card --> AcceptB["Accept Wed 10:00 to 10:30am"]
-  Card --> Propose["Propose other times"]
-  Card --> Later["Not now"]
-  AcceptA --> Confirm["Confirm the slot"]
-  AcceptB --> Confirm
-  Confirm --> Done["Provider writes the event"]
-```
+### Current MCP
 
-Which surface ships first — the Index inbox, or the personal agent — is still an open question. Keeping confirmation in Index even when agents do the proposing would help the UX stay recognizable.
+`get_my_profile`, `update_my_profile`, `enrich_my_profile`, `list_intents`, `get_intent`, `create_intent`, `update_intent`, `pause_intent`, `resume_intent`, `archive_intent`, `join_network`, `list_opportunities`, `get_opportunity`, `list_negotiations`, `get_negotiation`, `get_intent_conversation`, `principal_send_message`, plus `accept_opportunity` and `reject_opportunity`.
 
-## Onboarding people who don't have a personal agent
+Relevant to opportunities, negotiation, and chat after a match. Profile and intent tools are also registered in the same file.
 
-Not everyone will have Hermes, Grok Bot, or Index set up as their agent. An Approach C-only design would leave those people behind.
+### Proposed (not in the repo today)
 
-An open, unauthenticated MCP that anyone can point ChatGPT or Claude at is a weak answer. The trust problem is obvious: someone else could fill in times on that id.
+Grouped by workflow, as on the board.
 
-Better options, in order:
+**Setup (Workflow 1–2)**
 
-1. A provider booking flow the person already has (Calendly, Cal.com, and so on), through the adapter.
-2. A constrained, authenticated MCP, tied to a signed-in Index **Identity**, that ChatGPT or Claude can use on that person's behalf under **Delegation**.
-3. The thin Index negotiator as a fallback, still reading only candidate slots from an adapter, not a raw calendar.
+- REST: `GET`/`POST /api/users/me/availability-connections`, `DELETE /api/users/me/availability-connections/:id`, `GET`/`PATCH /api/users/me/availability-preferences`
+- MCP: `list_connections`, `connect_calendar`, `disconnect_connection`, `get_availability_preferences`, `update_availability_preferences`
 
-Shared compute and negotiation state — for example a runtime such as Instinct — is worth exploring, because personal agents today are not in a shared conversation with each other. Whether that should be a base layer or just one runtime is still open, and the design should not depend on it.
+**Confirm a time (Workflow 3)**
 
-## Out of scope
+- REST: `GET /api/opportunities/:id/times`, `POST /api/opportunities/:id/confirm`, `POST /api/opportunities/:id/suggest`, `POST /api/opportunities/:id/decline`
+- MCP: `list_proposed_times`, `confirm_time`, `suggest_times`, `decline_times`
 
-- **Group scheduling.** Useful, and a more advanced challenge. Option B is meant to leave room for it later. Not in a first version.
-- **Index becoming a calendar product.** A common concern is not turning Index into a calendar company. Index should not provide the calendar, store weekly hours, or replace Calendly, Cal.com, or Google Calendar. Confirmed-slot state on the Index side should stay as small as possible: a handoff and an Agreement.
+**Negotiation (Workflow 4–5)**
+
+- Workflow 4 MCP: `propose_times`, `respond`, `confirm`. REST: `POST /api/agents/me/callback` (webhook URL).
+- Workflow 5 reuses `POST /api/opportunities/:id/negotiation/turns`. In-model: slot payload on those turns. Separate layer: `POST /api/opportunities/:id/schedule`, plus `/propose`, `/respond`, `/confirm`.
 
 ## Open questions
 
-1. **UX surface.** What is the right agentic UX, and should the common-slot card live in the Index inbox, the personal agent, or both? Sketched above; not settled.
-2. **Standards.** Is iCalendar free/busy, or some other availability standard, enough on its own? This proposal treats free/busy as a weaker adapter, not the whole design.
-3. **Privacy mechanism.** Candidate sets vs private set intersection is still a design choice. The suggested starting point is candidate sets.
-4. **In-model vs separate.** The key decision. The proposed direction is a separate layer that reuses the turn pattern.
-5. **Who negotiates.** Personal agents when both have one; thin negotiator plus adapter otherwise.
-6. **How much slot state Index keeps.** Still open. A reasonable default is the session pointer and the confirmed Agreement.
-7. **Onboarding and identity.** Authenticated, constrained MCP or a provider flow — not a public id. Details still open.
-8. **Shared runtime.** Still open whether a shared compute and negotiation layer should be a base layer or one runtime among others.
-9. **Notifications.** Index already notifies by email. The channel after an Agreement is still open.
-10. **Trust, spam, and federation.** How scheduling inherits Index's trust mechanism, and how this works for a self-hosted network (including possible TEE setups), is still open. Option B is meant to federate more cleanly.
-11. **Prior art.** Existing agentic scheduling products may be useful UX references.
+Still open, and not a complete implementation plan:
 
-## A short phased plan
-
-1. **Agree on the architecture.** If Option B is the chosen direction, specify the handoff: accepted opportunity → scheduling session, and what Index stores (session id and confirmed Agreement).
-2. **Adapter and privacy.** Write the adapter interface. Ship candidate sets first; keep free/busy as a fallback; leave room for private overlap later.
-3. **UX on the accepted opportunity.** Common-slot card, action buttons, confirm step.
-4. **Personal-agent path.** When both sides have an agent, let the agents propose and counter; Index still shows the confirmation.
-5. **Agentless path.** Authenticated MCP or provider booking flow, plus the thin negotiator fallback.
-6. **Later.** Group scheduling, stronger private overlap, and notification channels beyond email.
+1. **UX surface.** Should "Confirm a time" live in the Index inbox, the personal agent, or both? Keeping confirmation in Index even when agents do the proposing would help the UX stay recognizable.
+2. **In-model vs separate layer.** The key decision, especially for Workflow 5. The proposed direction is a separate layer that reuses the turn pattern.
+3. **How much slot state Index keeps.** A reasonable default, under the proposed direction, is the session pointer and the confirmed Agreement.
+4. **Notifications.** Index already notifies by email. In-app or push, and the channel after an Agreement, are still open.
+5. **Trust, spam, and federation.** How scheduling inherits Index's trust mechanism, and how this works for a self-hosted network, is still open. A separate layer is meant to federate more cleanly.
