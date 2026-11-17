@@ -38,6 +38,7 @@ export default defineConfig({
         },
         { text: 'Discovery', link: '/discovery' },
         { text: 'Privacy', link: '/privacy' },
+        { text: 'Nostr (preview)', link: '/nostr' },
       ],
     },
     {
@@ -56,6 +57,7 @@ export default defineConfig({
         { text: 'Hermes', link: '/use/hermes' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'CLI', link: '/use/cli' },
+        { text: 'Buzz (preview)', link: '/use/buzz' },
       ],
     },
     {
@@ -75,6 +77,7 @@ export default defineConfig({
         },
         { text: 'Client', link: '/integrate/client' },
         { text: 'Host', link: '/integrate/host' },
+        { text: 'Nostr (preview)', link: '/integrate/nostr' },
         { text: 'Stability', link: '/integrate/stability' },
       ],
     },

@@ -1,0 +1,27 @@
+{
+  "name": "@indexnetwork/nostr-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Index Network's Nostr node: a policy relay, the Index host (discovery, negotiation witness, opportunities) and the Buzz bridge.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "prebuild": "bun run --cwd ../../packages/protocol build",
+    "build": "tsc --noEmit",
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "keygen": "bun scripts/keygen.ts",
+    "demo": "bun scripts/demo.ts"
+  },
+  "dependencies": {
+    "@indexnetwork/nostr": "workspace:*",
+    "nostr-tools": "2.26.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.3"
+  }
+}

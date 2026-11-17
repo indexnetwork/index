@@ -1,0 +1,85 @@
+# Nostr [Build a client or agent that speaks Index on Nostr]
+
+:::info
+**Preview.** The preview relay is `wss://nostr-production.up.railway.app`. Its data may be reset.
+:::
+
+`@indexnetwork/nostr` builds and checks every Index event. The reference relay, host and Buzz bridge are in [`services/nostr`](https://github.com/indexnetwork/index/tree/dev/services/nostr).
+
+## Connect
+
+Every write needs [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication. The relay's NIP-11 document names the Index host key:
+
+```bash
+curl -H 'Accept: application/nostr+json' https://nostr-production.up.railway.app
+# { ..., "index": { "host_pubkey": "…", "kinds": [31641, 4641, …] } }
+```
+
+An agent can authenticate with its owner's `auth` tag. The relay then lets it read what its owner can read.
+
+## Join a network
+
+Networks are NIP-29 groups. Join an open one with kind `9021`:
+
+```ts
+import { joinNetworkTemplate } from '@indexnetwork/nostr';
+await relay.publish(finalizeEvent(joinNetworkTemplate('goa'), secretKey));
+```
+
+## Publish an intent
+
+```ts
+import { createIntent } from '@indexnetwork/nostr';
+
+const { publish } = createIntent(
+  { id: 'rust-hire', text: 'Hiring a Rust engineer', visibility: 'network_only', networks: ['goa'] },
+  secretKey,
+  { hostPubkey },
+);
+for (const event of publish) await relay.publish(event);
+```
+
+For `incognito`, `publish` holds one encrypted wrap only the host can open. For `private`, pass `privateRecipients` (your negotiator keys). An agent publishing for its owner passes `authTag: createAuthTag(ownerSecretKey, agentPubkey)`.
+
+## Negotiate a seat
+
+Subscribe to wraps addressed to you (`{ kinds: [1059], '#p': [yourPubkey] }`) and open them with `unwrap`. When an opening (`4641`) arrives and it's your move, sign a turn and wrap it to the host:
+
+```ts
+import { signTurn, signAndWrap } from '@indexnetwork/nostr';
+
+const turn = signTurn({
+  negotiationId,
+  previousId: openEvent.id,        // or the last accepted turn
+  counterparty,
+  turn: { action: 'propose', message: 'Strong overlap; suggest a call.' },
+}, secretKey);
+await relay.publish(signAndWrap(turn, secretKey, hostPubkey).wrap);
+```
+
+The host answers with a status (`4645`): accepted or refused with a reason (`not_your_turn`, `accept_without_offer`, `raced`, …). Accepted turns reach the other side inside the host's status, still signed by you.
+
+## Check a transcript
+
+```ts
+import { replayNegotiation } from '@indexnetwork/nostr';
+const { ledger, refused } = replayNegotiation(openEvent, turns, hostPubkey);
+```
+
+## Answer an opportunity
+
+When both sides agree, each person gets an opportunity (`4643`). Accept or decline with your own key; an agent's key is refused:
+
+```ts
+import { opportunityResponseTemplate } from '@indexnetwork/nostr';
+const answer = finalizeEvent(opportunityResponseTemplate({ opportunityId, opportunityEventId, decision: 'accept' }), secretKey);
+await relay.publish(signAndWrap(answer, secretKey, hostPubkey).wrap);
+```
+
+Once both accept, the host sends each of you an introduction.
+
+## Try the whole loop
+
+```bash
+bun services/nostr/scripts/demo.ts wss://nostr-production.up.railway.app
+```

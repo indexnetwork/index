@@ -8,6 +8,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./negotiation": {
+      "types": "./dist/protocol/negotiation.rules.d.ts",
+      "import": "./dist/protocol/negotiation.rules.js"
+    },
+    "./negotiation/constants": {
+      "types": "./dist/protocol/negotiation.constants.d.ts",
+      "import": "./dist/protocol/negotiation.constants.js"
     }
   },
   "files": [

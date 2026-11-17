@@ -1,0 +1,10 @@
+# Railway: Index Nostr node (preview). Build context is the repository root.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "services/nostr/Dockerfile"
+watchPatterns = ["/services/nostr/**", "/packages/nostr/**", "/packages/protocol/src/protocol/negotiation*", "/bun.lock"]
+
+[deploy]
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

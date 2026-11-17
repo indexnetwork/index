@@ -9,8 +9,11 @@ npm install @indexnetwork/protocol
 
 A host supplies persistence, an embedder, a cache, and request context; the
 package supplies the graphs, the capability classes (`Intents`, `Networks`,
-`Negotiations`), and the opportunity presenter. The package root is the only
-import: `package.json` exports nothing else, so deep imports do not resolve.
+`Negotiations`), and the opportunity presenter. Import from the package root.
+The only other entry points are `@indexnetwork/protocol/negotiation` (the pure
+negotiation rules) and `@indexnetwork/protocol/negotiation/constants`, for
+hosts that check turns without loading the agents. Other deep imports do not
+resolve.
 
 The package builds its own models through OpenRouter from environment
 variables, and a host cannot pass in its own:

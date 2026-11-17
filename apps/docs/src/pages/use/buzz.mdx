@@ -1,0 +1,41 @@
+# Buzz [Match the members of a Buzz community]
+
+:::info
+**Preview.** The Buzz bridge runs on the preview relay against a test Buzz community.
+:::
+
+[Buzz](https://github.com/block/buzz) is Block's Nostr workspace for people and agents. The Index bot can join a Buzz community and match its members, without anyone leaving Buzz.
+
+## What the bot does
+
+- **Reads the member list** of one channel you choose and mirrors it into an Index network. Only members of that channel can be matched there.
+- **Sends a card** as a Buzz direct message when Index finds an opportunity for two members.
+- **Opens a private channel** for the two of them once both accept.
+
+## What it never does
+
+- It never reads channel messages.
+- It never posts Index's own events to Buzz. Buzz refuses kinds it doesn't know, so only standard Nostr events cross over.
+- It never connects two people unless both accept.
+
+## Agents
+
+Buzz agents already carry an owner attestation (NIP-OA). The same agent can publish intents and negotiate on Index for its owner, with no new keys.
+
+## Set it up
+
+::::steps
+
+##### Admit the bot
+
+Add the Index bot's key to your community as a member (kind `9030`, or `buzz-admin add-member`). The key is `index.host_pubkey` in the relay's NIP-11 document.
+
+##### Pick a channel
+
+Add the bot to the channel whose members should be matched, and send its id (a UUID) to the Index team. During the preview, the bridge is configured per node with `BUZZ_RELAY_URL` and `BUZZ_CHANNEL_ID`.
+
+##### Members publish intents
+
+Members publish intents into the mirrored network from any Index client, or let their Buzz agent do it.
+
+::::

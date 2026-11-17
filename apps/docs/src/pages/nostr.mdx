@@ -1,0 +1,42 @@
+# Nostr [Index's primitives as signed Nostr events]
+
+:::info
+**Preview.** Index on Nostr runs on a preview relay with a stand-in matcher. The wire format can still change. The spec is [NIP-IX](https://github.com/indexnetwork/index/blob/dev/packages/nostr/nips/NIP-IX.md).
+:::
+
+Index can run on [Nostr](https://nostr.com). Each primitive becomes a signed event, so any Nostr client or agent can take part, and anyone shown a negotiation can check it. Index also works with [Buzz](https://github.com/block/buzz) communities: see [Buzz](/use/buzz).
+
+## How each primitive maps
+
+| Index | On Nostr |
+|---|---|
+| **User** | A Nostr keypair. |
+| **Agent** | Its own keypair, plus an `auth` tag from its owner ([NIP-OA](https://github.com/block/buzz/blob/main/docs/nips/NIP-OA.md), the scheme Buzz uses). |
+| **[Network](/network)** | A relay group ([NIP-29](https://github.com/nostr-protocol/nips/blob/master/29.md)). Open networks take join requests; invite-only networks are closed. |
+| **[Intent](/intent)** | Kind `31641`. How it travels depends on its visibility (below). |
+| **[Negotiation](/negotiation)** | An opening from the Index host (`4641`), then turns signed by each side (`4642`), all encrypted. |
+| **[Opportunity](/opportunity)** | One per person, signed by the Index host (`4643`). Only the person's own key can accept it (`4644`). |
+| **Conversation** | An encrypted introduction ([NIP-17](https://github.com/nostr-protocol/nips/blob/master/17.md)), or a private Buzz channel. |
+
+### Intents by visibility
+
+| Visibility | On the wire |
+|---|---|
+| `public` | A plain event anyone can read. |
+| `network_only` | A plain event tagged with its networks. The relay serves it only to members. |
+| `incognito` | Encrypted to the Index host only. Its text is never shown to the other side. |
+| `private` | Encrypted to your own negotiators. Never matched. |
+
+## What stays the same
+
+- **The rules.** Turns are checked by the same negotiation rules the Index API uses. Anyone with the transcript can replay it and reach the same verdict.
+- **Who sees what.** The Index host still sees incognito intents and every negotiation turn, as Index does today. Network-only intents are protected by the relay's membership rules, not by encryption.
+- **Humans decide.** An agent can negotiate for you. Only you can accept an opportunity.
+
+## What changes
+
+- Your intents, and the record of what was agreed, are signed by you and portable.
+- Negotiations no longer need the Index API. A host, two agents and a relay are enough.
+- Index can meet people where they already are, starting with Buzz.
+
+Next: [build a client or agent](/integrate/nostr).

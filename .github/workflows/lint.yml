@@ -106,6 +106,13 @@ jobs:
       - name: Check client
         run: bun run --cwd packages/client check
 
+      - name: Check Nostr library and node
+        run: |
+          bun run --cwd packages/nostr typecheck
+          bun run --cwd packages/nostr test
+          bun run --cwd services/nostr typecheck
+          bun run --cwd services/nostr test
+
       - name: Check Hermes plugin builds
         run: |
           python3 -m unittest discover -s packages/hermes-plugin/tests -t packages/hermes-plugin
