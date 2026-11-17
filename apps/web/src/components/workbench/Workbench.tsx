@@ -150,6 +150,7 @@ export function Btn({
   small = false,
   disabled,
   type = "button",
+  "aria-busy": busy,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -157,10 +158,12 @@ export function Btn({
   small?: boolean;
   disabled?: boolean;
   type?: "button" | "submit";
+  "aria-busy"?: boolean;
 }) {
   return (
     <button
       type={type}
+      aria-busy={busy}
       className={`wb-btn${primary ? " primary" : ""}${small ? " small" : ""}`}
       onClick={onClick}
       disabled={disabled}

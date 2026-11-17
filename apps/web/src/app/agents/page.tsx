@@ -13,6 +13,7 @@ import { log } from "@/lib/logger";
 import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("agents");
 
@@ -26,10 +27,10 @@ function NegotiatorMark() {
   return <span title="speaks for you" style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, color: "#ff8a00", fontWeight: 700 }}>*</span>;
 }
 
-function LineButton({ children, onClick, disabled, primary }: { children: ReactNode; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+function LineButton({ children, onClick, disabled, primary, "aria-busy": busy }: { children: ReactNode; onClick: () => void; disabled?: boolean; primary?: boolean; "aria-busy"?: boolean }) {
   // Grey outline .wb-btn; `primary` is the orange one for the screen's single main action.
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={primary ? "wb-btn primary" : "wb-btn"} style={{
+    <button type="button" onClick={onClick} disabled={disabled} aria-busy={busy} className={primary ? "wb-btn primary" : "wb-btn"} style={{
       cursor: disabled ? "default" : "pointer",
     }}>{children}</button>
   );
@@ -305,7 +306,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
 
   if (authLoading || !isAuthenticated) {
     return (
-      <p style={{ padding: 24, fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
+      <Placeholder.Window rows={3} label="loading your agents" style={{ padding: 24 }} />
     );
   }
 
@@ -314,7 +315,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
   const content = (
     <>
           {loading ? (
-            <EmptyState tone="loading" style={{ padding: 28 }} />
+            <Placeholder.Window rows={3} label="loading your agents" style={{ padding: 28 }} />
           ) : loadFailed ? (
             <EmptyState
               tone="error"
@@ -410,7 +411,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                         </span>
                       </label>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <LineButton primary disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
+                        <LineButton aria-busy={creating} primary disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating" : "create"}</LineButton>
                         <LineButton disabled={creating} onClick={() => { setRegisterOpen(false); setNewAgentName(""); }}>cancel</LineButton>
                       </div>
                     </div>

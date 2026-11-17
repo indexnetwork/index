@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
@@ -139,13 +140,13 @@ export default function ApiKeysSection() {
           action={{ label: "try again", onClick: () => void reload() }}
         />
       ) : keys === null ? (
-        <p style={note}>loading…</p>
+        <Placeholder.Rows count={2} avatar={false} label="loading api keys" />
       ) : keys.length === 0 ? (
         <EmptyState
           align="start"
           style={{ maxWidth: 520, margin: "0 0 10px" }}
           message="no api keys yet."
-          action={{ label: generating ? "generating…" : "generate key", onClick: () => { if (!generating) void handleGenerateKey(); } }}
+          action={{ label: generating ? "generating" : "generate key", busy: generating, onClick: () => { if (!generating) void handleGenerateKey(); } }}
         />
       ) : (
         <div style={{ overflowX: "auto" }}>

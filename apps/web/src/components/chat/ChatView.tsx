@@ -13,6 +13,7 @@ import { buildChatTimeline } from './timeline';
 import OpportunityDivider from './OpportunityDivider';
 import { log } from '@/lib/logger';
 import { useInAppFrame } from '@/components/intents-home/appFrameContext';
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.ui.from('ChatView');
 
@@ -307,7 +308,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         </div>
 
         <div className="pl-agent-log">
-          {history?.hasPreviousSession && conversationId && history.loadingPrevious && <p className="pl-dim pl-small">loading…</p>}
+          {history?.hasPreviousSession && conversationId && history.loadingPrevious && <Placeholder.Thread label="loading earlier messages" />}
           {openerBody && (
             <div className="pl-dm-opener">
               {showOpenerHeadline && <b>{openerHeadline}</b>}
@@ -315,7 +316,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             </div>
           )}
           {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
-            <p className="pl-dim pl-small">loading…</p>
+            <Placeholder.Thread label="loading messages" />
           ) : messages.length === 0 && via.length > 0 && !openerBody ? (
             <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
           ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
@@ -393,7 +394,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {history?.hasPreviousSession && conversationId && history.loadingPrevious && (
-              <p style={{ textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+              <Placeholder.Thread label="loading earlier messages" />
             )}
             {openerBody && (
               <div style={{ border: "1px solid var(--ink-4)", background: "#FBFAF7", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
@@ -404,7 +405,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               </div>
             )}
             {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
-              <EmptyState tone="loading" style={{ padding: "60px 0" }} />
+              <Placeholder.Thread label="loading messages" />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
               <EmptyState message="agents matched you on this intent. say hi." style={{ padding: "20px 0" }} />
             ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (

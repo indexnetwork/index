@@ -65,7 +65,7 @@ export default function EmailSection({ email }: { email: string }) {
             <div className="email-dialog-footer">
               {sentTo ? <Dialog.Close asChild><button type="button" className="wb-btn primary">done</button></Dialog.Close> : <>
                 <Dialog.Close asChild><button type="button" className="wb-btn" disabled={busy}>cancel</button></Dialog.Close>
-                <button type="submit" className="wb-btn primary" disabled={busy || !newEmail.trim() || newEmail.trim().toLowerCase() === email.toLowerCase()}>{busy ? 'sending…' : 'continue'}</button>
+                <button aria-busy={busy} type="submit" className="wb-btn primary" disabled={busy || !newEmail.trim() || newEmail.trim().toLowerCase() === email.toLowerCase()}>{busy ? 'sending' : 'continue'}</button>
               </>}
             </div>
           </form>

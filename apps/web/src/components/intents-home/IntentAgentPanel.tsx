@@ -7,6 +7,7 @@ import QuestionItem from "@/components/intents-home/QuestionItem";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { AgentFeedNote, DiscoveryTrace } from "@/components/workbench/mac-blocks";
 import { formatChatClock } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /** One line of the chat, drawn like Home's agent window: my avatar and a bubble, yours on the right. */
 function Line({ who, at, mine = false, open = false, children }: { who: ReactNode; at?: string; mine?: boolean; open?: boolean; children: ReactNode }) {
@@ -55,7 +56,7 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
       </div>
       <div className="pl-agent-log">
         {loading && !fresh ? (
-          <p className="pl-dim pl-small">loading…</p>
+          <Placeholder.Thread label="loading this chat" />
         ) : feed.length === 0 && questions.length === 0 && loadFailed ? (
           <p className="pl-dim pl-small">couldn&apos;t load this chat. <button type="button" onClick={retry}>try again</button></p>
         ) : feed.length === 0 && questions.length === 0 ? (
@@ -105,7 +106,7 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
         {waiting && (
           <div className="pl-agent-line">
             <MyAgentAvatar size={22} />
-            <div className="pl-agent-bubble pl-dim">working on it<span className="pl-blink">_</span></div>
+            <Placeholder.Reply who="working on it" />
           </div>
         )}
         <div ref={endRef} />

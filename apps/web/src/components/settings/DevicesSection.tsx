@@ -5,6 +5,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
@@ -143,7 +144,7 @@ export default function DevicesSection() {
           action={{ label: "try again", onClick: () => void reload() }}
         />
       ) : sessions === null ? (
-        <p style={note}>loading…</p>
+        <Placeholder.Rows count={2} avatar={false} label="loading devices" />
       ) : sessions.length === 0 ? (
         <p style={note}>no active devices.</p>
       ) : (

@@ -4,6 +4,8 @@ import { OpenAgentLines } from "@/components/intents-home/openAgentLines";
 import { NEW_INTENT_EXAMPLES, NEW_INTENT_PROMPT, type NewIntentFlow } from "@/components/intents-home/useNewIntentFlow";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import type { PrepareAnswer, RecoveryField } from "@/services/intent-prepare";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { AgentWorking } from "@/components/ui/AgentWorking";
 
 /** My line in the flow: a bubble in Home's chat, open on the new intent page. */
 export function AgentSays({ children }: { children: ReactNode }) {
@@ -56,9 +58,9 @@ export default function NewIntentSteps({ flow }: { flow: NewIntentFlow }) {
           </div>
         </>
       ) : flow.stage === "thinking" ? (
-        <AgentSays><span className="pl-dim">reading that<span className="pl-blink">_</span></span></AgentSays>
+        <AgentSays><span className="pl-dim">reading that</span><Placeholder.Text lines={2} label="reading that" style={{ width: 220, marginTop: 6 }} /></AgentSays>
       ) : flow.stage === "creating" ? (
-        <AgentSays><span className="pl-dim">setting it up<span className="pl-blink">_</span></span></AgentSays>
+        <AgentWorking kind="grow" size={110}>setting it up</AgentWorking>
       ) : flow.stage === "retry" ? (
         <AgentSays>
           couldn&apos;t reach your agent.

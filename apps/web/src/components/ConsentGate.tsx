@@ -123,7 +123,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
               {error && (
                 <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>{error}</p>
               )}
-              <Btn primary type="submit" disabled={!ready}>{submitting ? "saving…" : "I agree"}</Btn>
+              <Btn aria-busy={submitting} primary type="submit" disabled={!ready}>{submitting ? "saving" : "I agree"}</Btn>
             </div>
           </form>
         </Window>

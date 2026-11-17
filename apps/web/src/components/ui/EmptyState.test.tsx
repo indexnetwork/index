@@ -7,11 +7,6 @@ import { radarEmptyLine } from "@/lib/radar-buckets";
 import { APIError, isNotFoundError } from "@/lib/api";
 
 describe("EmptyState", () => {
-  it("defaults the loading tone to the canonical loading line", () => {
-    render(<EmptyState tone="loading" />);
-    expect(screen.getByRole("status")).toHaveTextContent("loading…");
-  });
-
   it("announces errors and runs the retry action", () => {
     const retry = vi.fn();
     render(<EmptyState tone="error" message="couldn't load members." action={{ label: "try again", onClick: retry }} />);

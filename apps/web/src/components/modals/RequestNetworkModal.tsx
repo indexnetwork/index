@@ -84,7 +84,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={isSubmitting} style={field} />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>cancel</button>
-                <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "sending…" : isEdit ? "resubmit" : "request network"}</button>
+                <button aria-busy={isSubmitting} type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "sending" : isEdit ? "resubmit" : "request network"}</button>
               </div>
             </form>
           )}

@@ -150,7 +150,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>cancel</button>
-              <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "creating…" : "create"}</button>
+              <button aria-busy={isSubmitting} type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "creating" : "create"}</button>
             </div>
           </form>
         </div>

@@ -439,12 +439,6 @@
 .pl-agent-compose textarea:focus {
   background: #fffbe6;
 }
-.pl-blink {
-  animation: pl-blink 1s steps(1) infinite;
-}
-@keyframes pl-blink {
-  50% { opacity: 0; }
-}
 @media (max-width: 1100px) {
   .pl-wrap {
     flex-direction: column;
@@ -2452,14 +2446,6 @@
   font: 400 11px "JetBrains Mono", ui-monospace, monospace;
   letter-spacing: 1.5px;
   color: #5a5548;
-}
-.pl-live-sq {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  background: #ff8a00;
-  border: 1px solid #000;
-  animation: mac-blink 1.2s steps(2) infinite;
 }
 .pl-intent-since {
   color: #8a8578;

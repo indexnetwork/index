@@ -164,7 +164,7 @@ export default function PlainProfile({
               pair them and they&apos;ll keep talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over.
               {pairError && <div className="profile-dim">no intents to pair in a network you share.</div>}
               <div style={{ marginTop: 10 }}>
-                <button type="button" className="wb-btn primary small" disabled={pairing} onClick={onPair}>{pairing ? "pairing…" : "pair agents"}</button>
+                <button aria-busy={pairing} type="button" className="wb-btn primary small" disabled={pairing} onClick={onPair}>{pairing ? "pairing" : "pair agents"}</button>
               </div>
             </div>
           </section>

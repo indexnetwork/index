@@ -5,6 +5,7 @@ import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
 import { intentLabel, type Stage } from "@/components/intents-home/stages";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /**
  * Every intent as a row, with the same lines and hover as Home's cards: the
@@ -26,7 +27,7 @@ export default function IntentsIndex() {
         {intentsError && !intents.length ? (
           <p>couldn&apos;t load your intents. <button type="button" onClick={() => void fetchIntents()}>try again</button></p>
         ) : !intentsLoaded ? (
-          <p className="pl-dim">loading…</p>
+          <Placeholder.Rows count={4} avatar={false} label="loading intents" />
         ) : intents.length === 0 ? (
           <p className="pl-dim">none yet.</p>
         ) : (
@@ -50,7 +51,7 @@ export default function IntentsIndex() {
                     </div>
                     {/* Status as on production (a blinking orange square while my agents talk), then the date, on one line. */}
                     <div className="pl-intent-state">
-                      {!paused && <span className="pl-live-sq" aria-hidden />}
+                      {!paused && <span className="live-sq" aria-hidden />}
                       {paused ? "paused" : "agents in talks"}
                       {intent.createdAt && <span className="pl-intent-since">· since {new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                     </div>

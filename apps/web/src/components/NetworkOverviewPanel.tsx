@@ -11,6 +11,7 @@ import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.ui.from('NetworkOverviewPanel');
 
@@ -154,7 +155,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           </div>
         )}
         {overviewLoading ? (
-          <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+          <Placeholder.Rows count={3} avatar={false} label="loading intents" />
         ) : overviewFailed && visible.length === 0 ? (
           <div className="pl-profile-empty">
             <p>couldn&apos;t load your intents in this network.</p>
@@ -222,7 +223,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           );
         })}
       </div>
-      {overviewLoading && <EmptyState tone="loading" />}
+      {overviewLoading && <Placeholder.Rows count={3} avatar={false} label="loading intents" />}
       {!overviewLoading && overviewFailed && visible.length === 0 && (
         <EmptyState
           tone="error"

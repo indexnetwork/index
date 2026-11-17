@@ -17,6 +17,7 @@ import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from('networks');
 
@@ -290,7 +291,7 @@ export default function NetworksPage() {
               )}
 
               {networksLoading ? (
-                <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+                <Placeholder.Rows count={4} label="loading networks" />
               ) : networksError && allNetworks.length === 0 ? (
                 <div className="pl-profile-empty">
                   <p>couldn&apos;t load your networks.</p>
@@ -331,7 +332,7 @@ export default function NetworksPage() {
           {activeTab === 'discover' && (
             <>
               {loadingPublic && publicNetworks.length === 0 ? (
-                <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+                <Placeholder.Rows count={4} label="loading networks" />
               ) : publicError && publicNetworks.length === 0 ? (
                 <div className="pl-profile-empty">
                   <p>couldn&apos;t load public networks.</p>
@@ -350,8 +351,8 @@ export default function NetworksPage() {
                         {network.isMember ? (
                           <span className="pl-net-n">member</span>
                         ) : (
-                          <button type="button" className="go" onClick={() => handleJoinNetwork(network.id)} disabled={joiningNetwork === network.id}>
-                            {joiningNetwork === network.id ? 'joining…' : 'join'}
+                          <button aria-busy={joiningNetwork === network.id} type="button" className="go" onClick={() => handleJoinNetwork(network.id)} disabled={joiningNetwork === network.id}>
+                            {joiningNetwork === network.id ? 'joining' : 'join'}
                           </button>
                         )}
                       </div>
@@ -455,7 +456,7 @@ export default function NetworksPage() {
                 )}
 
                 {networksLoading ? (
-                  <EmptyState tone="loading" style={{ padding: "48px 12px" }} />
+                  <Placeholder.Rows count={5} label="loading networks" style={{ padding: "12px" }} />
                 ) : networksError && allNetworks.length === 0 ? (
                   <EmptyState
                     tone="error"
@@ -509,7 +510,7 @@ export default function NetworksPage() {
               {activeTab === 'discover' && (
                 <>
                 {loadingPublic && publicNetworks.length === 0 ? (
-                  <EmptyState tone="loading" style={{ padding: "48px 12px" }} message="loading public networks…" />
+                  <Placeholder.Rows count={5} label="loading public networks" style={{ padding: "12px" }} />
                 ) : publicError && publicNetworks.length === 0 ? (
                   <EmptyState
                     tone="error"
@@ -529,13 +530,13 @@ export default function NetworksPage() {
                         {network.isMember ? (
                           <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12 }}>member</span>
                         ) : (
-                          <button
+                          <button aria-busy={joiningNetwork === network.id}
                             type="button"
                             className="wb-btn small"
                             onClick={() => handleJoinNetwork(network.id)}
                             disabled={joiningNetwork === network.id}
                           >
-                            {joiningNetwork === network.id ? 'joining…' : 'join'}
+                            {joiningNetwork === network.id ? 'joining' : 'join'}
                           </button>
                         )}
                       </div>

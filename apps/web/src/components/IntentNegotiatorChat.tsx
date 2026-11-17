@@ -9,6 +9,7 @@ import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/com
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatChatClock } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 type Provenance = {
   kind?: string;
@@ -392,7 +393,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
       <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {loading ? <EmptyState tone="loading" align="start" style={{ padding: 0 }} />
+      {loading ? <Placeholder.Thread label="loading this chat" />
         : feed.length === 0 && questions.length === 0 && loadFailed ? (
           <EmptyState
             tone="error"
@@ -438,14 +439,14 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             </AgentFeedNote>
           );
         })}
-      {waiting && <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· thinking…</p>}
+      {waiting && <Placeholder.Reply who="your agent · thinking" />}
       <div ref={endRef} />
       </div>
 
       {chosen.length > 0 && (
         <div style={{ borderTop: "1px solid var(--wb-hairline)", padding: "10px 16px", background: "#fff", display: "flex", flexDirection: "row-reverse", alignItems: "center", gap: 12 }}>
-          <button type="button" className="wb-btn small" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}>
-            {sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
+          <button aria-busy={sending} type="button" className="wb-btn small" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}>
+            {sending ? "sending" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
           </button>
           <span style={{ flex: 1, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
             {questions.length - chosen.length > 0 ? `${questions.length - chosen.length} of ${questions.length} unanswered` : "all answered · ready to send"}

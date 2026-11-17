@@ -16,6 +16,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import type { RadarCardItem } from "@/services/opportunities";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /** How often to reread an intent right after an answer, and for how long. */
 const ANSWER_POLL_MS = 3_000;
@@ -276,7 +277,7 @@ export default function HomeDashboard() {
         <h2 id="questions">questions from your agents {questionsLoaded && `(${questions.length})`}</h2>
         {staleLink && <p className="pl-dim">that question was already answered.</p>}
         {!questionsLoaded ? (
-          <p className="pl-dim">loading…</p>
+          <Placeholder.Rows count={2} avatar={false} label="loading questions" />
         ) : questions.length === 0 ? (
           <p className="pl-dim">none right now.</p>
         ) : (
@@ -291,7 +292,7 @@ export default function HomeDashboard() {
 
         <h2 id="waiting">waiting on you {!loadingPeople && `(${waitingCount})`}</h2>
         {loadingPeople && !waitingRows.length ? (
-          <p className="pl-dim">loading…</p>
+          <Placeholder.Rows count={3} label="loading people" />
         ) : waitingRows.length === 0 ? (
           <p className="pl-dim">nobody yet. your agents are still looking.</p>
         ) : (
@@ -340,8 +341,7 @@ export default function HomeDashboard() {
           <>
             <hr />
             <h2 id="progress">
-              in progress ({moving.length})
-              {refreshingIds.length > 0 && <span className="pl-dim"> updating<span className="pl-blink">_</span></span>}
+              in progress ({refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length})
             </h2>
             <ul className="pl-cards">
               {moving.map((person) => {

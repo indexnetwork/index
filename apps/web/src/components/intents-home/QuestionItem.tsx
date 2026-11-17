@@ -114,8 +114,8 @@ export default function QuestionItem({ question, forIntents, selected, onAnswer 
           )}
         </div>
         <div className="pl-actions">
-          <button type="submit" className="go" disabled={!text || sending || skipping}>{sending ? "sending…" : "send answer"}</button>
-          <button type="button" className="pl-skip" disabled={sending || skipping} onClick={() => void skip()}>{skipping ? "skipping…" : "skip"}</button>
+          <button aria-busy={sending} type="submit" className="go" disabled={!text || sending || skipping}>{sending ? "sending" : "send answer"}</button>
+          <button aria-busy={skipping} type="button" className="pl-skip" disabled={sending || skipping} onClick={() => void skip()}>{skipping ? "skipping" : "skip"}</button>
         </div>
       </form>
     </li>

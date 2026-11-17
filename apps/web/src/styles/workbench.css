@@ -488,17 +488,6 @@
   border-collapse: collapse;
 }
 
-@keyframes mac-blink {
-  50% { opacity: 0.35; }
-}
-@keyframes mac-stripes {
-  from { background-position: 0 0; }
-  to { background-position: 24px 0; }
-}
-@keyframes mac-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }

@@ -6,6 +6,7 @@ import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import { StatusPage } from '@/components/SiteSignIn';
+import { BootSplash } from '@/components/ui/AgentWorking';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
@@ -184,13 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {isLoading ? (
-        // The workbench blue with a white segmented bar filling while auth settles.
-        <div className="index-splash" role="status" aria-label="loading">
-          <div className="index-splash-bar" aria-hidden>
-            {Array.from({ length: 12 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 0.1}s` }} />)}
-          </div>
-          <div className="index-splash-label">loading<span className="index-splash-blink">_</span></div>
-        </div>
+        // The eye on white while auth settles: until then we don't know if this is the site or the app.
+        <BootSplash />
       ) : error ? (
         <StatusPage bar="error" title="Something went wrong" message={error}>
           <button type="button" className="site-btn" onClick={() => window.location.reload()}>

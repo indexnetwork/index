@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
 
-export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'intent_broadcast';
+export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'intent_indexing';
 
 export interface Notification {
   id: string;
@@ -48,7 +48,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
 
     // Actionable intent toasts own their timer so async Undo can pause it.
-    if (notification.type !== 'intent_broadcast' || !notification.onAction) {
+    if (notification.type !== 'intent_indexing' || !notification.onAction) {
       const duration = notification.duration || 4000;
       setTimeout(() => {
         removeNotification(id);
@@ -137,9 +137,9 @@ function NotificationToasts({
   return (
     <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2 items-center">
       {notifications.map((notification, index) => {
-        if (notification.type === 'intent_broadcast') {
+        if (notification.type === 'intent_indexing') {
           return (
-            <IntentBroadcastToast
+            <IndexingToast
               key={notification.id}
               notification={notification}
               onRemove={onRemove}
@@ -194,7 +194,7 @@ function NotificationToasts({
   );
 }
 
-function IntentBroadcastToast({
+function IndexingToast({
   notification,
   onRemove,
   index,
@@ -224,8 +224,8 @@ function IntentBroadcastToast({
       onRemove(notification.id);
     } catch (error) {
       setActionError(error instanceof Error && error.message
-        ? `Undo failed: ${error.message}`
-        : "Undo failed. Please try again.");
+        ? `undo failed: ${error.message}`
+        : "undo failed. try again.");
     } finally {
       setIsUndoing(false);
     }
@@ -238,12 +238,9 @@ function IntentBroadcastToast({
     >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-green-600">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-            </span>
-            {notification.title || "broadcasting"}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, font: "500 10px 'JetBrains Mono', ui-monospace, monospace", letterSpacing: "0.12em", textTransform: "uppercase", color: "#000" }}>
+            <span className="live-sq" aria-hidden />
+            {notification.title || "indexing"}
           </div>
           <p className="text-[13px] text-[#3D3D3D] leading-relaxed mt-0.5 line-clamp-2">
             {notification.message || notification.title}
@@ -258,9 +255,10 @@ function IntentBroadcastToast({
               type="button"
               onClick={handleUndo}
               disabled={isUndoing}
-              className="text-xs text-gray-400 hover:text-gray-500 disabled:opacity-60"
+              aria-busy={isUndoing}
+              className="wb-btn small"
             >
-              {isUndoing ? "Undoing…" : "Undo"}
+              {isUndoing ? "undoing" : "undo"}
             </button>
           )}
         </div>

@@ -17,6 +17,7 @@ import { INVITE_URL, buildInviteMessage, emailFromSocials, inviteEmailHref, invi
 import { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
 import { getPublicUserProfile } from "@/services/users";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 interface Person {
   key: string;
@@ -180,7 +181,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
           </div>
           {blurb
             ? <div className="pl-blurb">{blurb}</div>
-            : lead.item.presentationPending && <div className="pl-blurb pl-dim">I&apos;m still writing this up<span className="pl-blink">_</span></div>}
+            : lead.item.presentationPending && <div className="pl-blurb"><Placeholder.Text lines={2} label="writing this up" /></div>}
           <div className="pl-actions">
             {stage === "awaiting" && hasChat ? (
               <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
@@ -266,15 +267,19 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
             {current && (
               <div className="ih-actions">
                 <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
-                <button type="button" className={`danger${archiveArmed || archiving ? " on" : ""}`} disabled={archiving} onClick={() => void clickArchive()}>
-                  {archiving ? "archiving…" : archiveArmed ? "archive, sure?" : "archive"}
+                <button aria-busy={archiving} type="button" className={`danger${archiveArmed || archiving ? " on" : ""}`} disabled={archiving} onClick={() => void clickArchive()}>
+                  {archiving ? "archiving" : archiveArmed ? "archive, sure?" : "archive"}
                 </button>
               </div>
             )}
           </div>
-          <h1 className="ih-title">
-            {current ? (current.payload?.trim() || current.summary?.trim() || "your intent") : missing ? "this intent doesn't exist or was removed." : "loading…"}
-          </h1>
+          {current || missing ? (
+            <h1 className="ih-title">
+              {current ? (current.payload?.trim() || current.summary?.trim() || "your intent") : "this intent doesn't exist or was removed."}
+            </h1>
+          ) : (
+            <Placeholder.Text lines={1} title label="loading this intent" style={{ margin: "6px 0 14px", maxWidth: 520 }} />
+          )}
           {current && (
             <div className="ih-status">
               <span className="ih-status-dot" style={{ background: paused ? "var(--ih-closed)" : "var(--ih-live)" }} />
@@ -288,7 +293,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
             {peopleFailed ? (
               <p>couldn&apos;t load people. <button type="button" onClick={() => void loadRadar(selectedId)}>try again</button></p>
             ) : loadingPeople && found === 0 ? (
-              <p className="pl-dim">loading…</p>
+              <Placeholder.Rows count={3} label="loading people" />
             ) : (
               <>
                 <h2>waiting on you ({sections.matches.length})</h2>

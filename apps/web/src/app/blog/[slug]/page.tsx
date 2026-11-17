@@ -8,6 +8,7 @@ import SiteLayout from "@/app/site/SiteLayout";
 import { formatEntryDate } from "@/app/site/blog-entries";
 import { type BlogPost, getAuthors, getPostBySlug } from "@/lib/blog";
 import "../blog.css";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 function getAudioType(src: string): string {
   const ext = src.split(".").pop()?.toLowerCase();
@@ -182,7 +183,7 @@ function BlogPostPage() {
         </Link>
 
         {state.kind === "loading" ? (
-          <div className="post-status">loading…</div>
+          <Placeholder.Text lines={8} title label="loading post" style={{ marginTop: 24 }} />
         ) : state.kind === "not_found" ? (
           <div className="post-status">post not found.</div>
         ) : (

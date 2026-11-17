@@ -2,13 +2,12 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
 export type EmptyStateAction =
-  | { label: string; onClick: () => void; primary?: boolean; large?: boolean }
+  | { label: string; onClick: () => void; primary?: boolean; large?: boolean; busy?: boolean }
   | { label: string; to: string; primary?: boolean; large?: boolean };
 
 export interface EmptyStateProps {
-  /** loading, error or empty. Error is announced to assistive tech. */
-  tone?: "empty" | "error" | "loading";
-  /** Defaults to `loading…` for the loading tone. */
+  /** empty or error. Error is announced to assistive tech. Loading uses `Placeholder`, shaped like the content. */
+  tone?: "empty" | "error";
   message?: ReactNode;
   /** One CTA, or several rendered side by side. */
   action?: EmptyStateAction | EmptyStateAction[];
@@ -21,7 +20,7 @@ export interface EmptyStateProps {
 }
 
 /**
- * The one empty / loading / error block for the authenticated web app.
+ * The one empty / error block for the authenticated web app.
  * Sans 13px in `--ink-3`, optional hairline frame, actions use the workbench button.
  */
 export function EmptyState({
@@ -34,13 +33,12 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   const actions = action ? (Array.isArray(action) ? action : [action]) : [];
-  const text = message ?? (tone === "loading" ? "loading…" : null);
+  const text = message ?? null;
   const centred = align === "center";
   return (
     <div
       className={className}
-      role={tone === "error" ? "alert" : tone === "loading" ? "status" : undefined}
-      aria-live={tone === "loading" ? "polite" : undefined}
+      role={tone === "error" ? "alert" : undefined}
       data-tone={tone}
       style={{
         display: "flex",
@@ -68,7 +66,7 @@ export function EmptyState({
                 {a.label}
               </Link>
             ) : (
-              <button key={a.label} type="button" className={cls} onClick={a.onClick}>
+              <button key={a.label} type="button" className={cls} onClick={a.onClick} aria-busy={a.busy}>
                 {a.label}
               </button>
             );
