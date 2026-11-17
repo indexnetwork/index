@@ -14,8 +14,7 @@
  *
  * Everything it says is a signed event, so its work can be checked.
  */
-import { KIND, NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT, NegotiationLedger, isIntentExpired, negotiationOpenTemplate, opportunityTemplate, parseIntent, parseOpportunityResponse, hostStatusTemplate, signAndWrap, tagValue, unwrap, type HostStatus, type Intent, type Keypair } from '@indexnetwork/nostr';
-import * as nip17 from 'nostr-tools/nip17';
+import { KIND, NEGOTIATION_MAX_TURNS, directMessage, NEGOTIATION_MESSAGE_LIMIT, NegotiationLedger, isIntentExpired, negotiationOpenTemplate, opportunityTemplate, parseIntent, parseOpportunityResponse, hostStatusTemplate, signAndWrap, tagValue, unwrap, type HostStatus, type Intent, type Keypair } from '@indexnetwork/nostr';
 import { finalizeEvent, type NostrEvent } from 'nostr-tools/pure';
 
 import type { Relay } from '../relay/relay.js';
@@ -248,7 +247,7 @@ export class Host {
     for (const party of opportunity.parties) await this.sendStatus({ type: 'opportunity', opportunityId: opportunity.id, status: 'connected', ref: event.id }, party);
     const network = this.relay.groups.get(opportunity.networkId);
     const intro = `You both said yes, so here's the introduction. You met through ${network?.name ?? opportunity.networkId} on Index. Reply here to start talking.`;
-    for (const wrap of nip17.wrapManyEvents(this.key.secretKey, opportunity.parties.map((publicKey) => ({ publicKey })), intro, 'Index introduction')) {
+    for (const wrap of directMessage(this.key.secretKey, opportunity.parties, intro, { subject: 'Index introduction' })) {
       await this.relay.publishTrusted(wrap);
     }
     const notice = { opportunity: connected, networkName: network?.name ?? opportunity.networkId, headlines: this.headlines.get(opportunity.id) ?? new Map() };

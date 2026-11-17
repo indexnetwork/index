@@ -33,11 +33,14 @@ Full wire format: [`nips/NIP-IX.md`](./nips/NIP-IX.md).
 
 - `@indexnetwork/nostr`: kinds, signed wraps, NIP-OA, builders/parsers, `NegotiationLedger`.
 - `services/nostr`: relay + host + Buzz bridge, Dockerfile, Railway config, demo script, end-to-end tests.
+- `apps/nostr`: a browser client straight on the relay (keys in the browser, networks, intents, negotiations with in-browser transcript verification, opportunities, NIP-17 messages, a wire log, and a demo partner).
 - `@indexnetwork/protocol`: subpath exports for the negotiation rules.
 - NIP-IX spec, READMEs, docs pages (marked preview).
 - Preview deployment on its own Railway project (`index-nostr-preview`), separate from dev and prod, plus a Buzz relay from Buzz's Railway template.
 
-Exit: the demo runs end to end against the preview; the Buzz bridge mirrors a real Buzz channel.
+Exit: the demo runs end to end against the preview, from the terminal and from the web client; the Buzz bridge mirrors a real Buzz channel.
+
+Preview: relay `wss://nostr-production.up.railway.app`, web client https://web-production-456f14f9.up.railway.app, docs https://docs-production-81b7b3df.up.railway.app/nostr.
 
 ### Phase 1: Connect the API (the real engine)
 
@@ -102,6 +105,7 @@ docs.index.network (apps/docs, Vocs):
 | Page | Audience | Phase |
 |---|---|---|
 | `nostr` (How it works → Nostr): the mapping, trust model, and preview status | everyone | 0 (this PR) |
+| Web client (`apps/nostr`) linked from the docs as the hands-on demo; NIP-07 sign-in next | everyone | 0 (this PR); NIP-07 in 1 |
 | `integrate/nostr`: connect, AUTH, publish an intent, negotiate a seat, answer an opportunity, verify a transcript | client and agent builders | 0 (this PR) |
 | `use/buzz`: add Index to a Buzz community | community admins | 0 (this PR, preview) |
 | `integrate/nostr/self-host`: run your own node (Docker, Railway, env vars) | operators | 1 |

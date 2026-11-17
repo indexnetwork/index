@@ -1,5 +1,6 @@
 export * from './attestation.js';
 export * from './buzz.js';
+export * from './dm.js';
 export * from './intent.js';
 export * from './keys.js';
 export * from './kinds.js';

@@ -112,6 +112,7 @@ jobs:
           bun run --cwd packages/nostr test
           bun run --cwd services/nostr typecheck
           bun run --cwd services/nostr test
+          bun run --cwd apps/nostr build
 
       - name: Check Hermes plugin builds
         run: |

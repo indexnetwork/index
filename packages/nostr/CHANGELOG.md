@@ -10,3 +10,4 @@
 - `NegotiationLedger` and `replayNegotiation`, which apply `decideNegotiationTurn` and `decideNegotiationResume` from `@indexnetwork/protocol` to Nostr turns.
 - Builders and parsers for intents, networks (NIP-29), opportunities, host status and Buzz interop events.
 - `isValidEvent`, a signature check that ignores nostr-tools' verification cache.
+- `directMessage`: NIP-17 messages whose rumor tags every participant, so group threads (the host's introduction) line up. `sealAndWrap` and a `timestamps: 'now'` option for relays, like Buzz, that refuse backdated wraps.

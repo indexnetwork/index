@@ -12,11 +12,12 @@
  *
  * Buzz channel ids are UUIDs.
  */
-import { getEventHash, getPublicKey, type NostrEvent } from 'nostr-tools/pure';
+import type { NostrEvent } from 'nostr-tools/pure';
+
+import { directMessage } from './dm.js';
 
 import { KIND } from './kinds.js';
 import { unixNow } from './tags.js';
-import { sealAndWrap } from './wrap.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -40,8 +41,5 @@ export function buzzChannelMessageTemplate(channelId: string, text: string, crea
  * NIP-59 otherwise recommends.
  */
 export function buzzDirectMessage(senderSecretKey: Uint8Array, recipients: string[], text: string): NostrEvent[] {
-  const pubkey = getPublicKey(senderSecretKey);
-  const unsigned = { kind: KIND.PRIVATE_DM, created_at: unixNow(), tags: recipients.map((recipient) => ['p', recipient]), content: text, pubkey };
-  const rumor = { ...unsigned, id: getEventHash(unsigned) };
-  return [...new Set([...recipients, pubkey])].map((recipient) => sealAndWrap(rumor, senderSecretKey, recipient, { timestamps: 'now' }));
+  return directMessage(senderSecretKey, recipients, text, { timestamps: 'now' });
 }
