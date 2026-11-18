@@ -3,6 +3,7 @@ import "./profile.css";
 import { Check, Copy } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useUsers, useNetworks, useOpportunities } from "@/contexts/APIContext";
 import type { RadarCardItem } from "@/services/opportunities";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
@@ -69,6 +70,10 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   const profileId = profileData?.id;
   const isSelf = signedIn && !!user?.id && !!profileId && user.id === profileId;
   const isOtherUser = signedIn && !!user?.id && !!profileId && user.id !== profileId;
+  const { conversations } = useConversation();
+  // A match with someone you already chat with is not awaiting you.
+  const chatOpen = isOtherUser && conversations.some((conv) =>
+    (conv.participants ?? []).some((p) => p.participantType === "user" && p.participantId === profileId));
 
   useEffect(() => {
     // /u/ is a public route, so authLoading clears before /auth/me resolves; wait for the viewer too.
@@ -338,7 +343,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
               <h3 style={sectionLabel}>opportunities</h3>
               <div style={{ display: "grid", gap: 8 }}>
                 {sharedOpportunities.map((o) => {
-                  const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted);
+                  const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted, chatOpen);
                   const open = openOpportunityId === o.opportunityId;
                   const toggle = () => setOpenOpportunityId(open ? null : o.opportunityId);
                   return (
