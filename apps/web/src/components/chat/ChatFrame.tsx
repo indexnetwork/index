@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "@/styles/plain.css";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { useCompact } from "@/hooks/useCompact";
+import { useTranslation } from "react-i18next";
 
 /**
  * The box chat pages sit in. Desktop fills the space beside the sidebar,
@@ -12,6 +13,7 @@ import { useCompact } from "@/hooks/useCompact";
  */
 export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClose?: () => void; children: ReactNode }) {
   const compact = useCompact();
+  const { t } = useTranslation();
   if (!compact) {
     return (
       <div className={list ? "ih-view ih-chat" : "ih-view ih-chat solo"}>
@@ -22,7 +24,7 @@ export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClo
   }
   return (
     <Stage>
-      <Window title="conversations" onClose={onClose} style={{ height: "100%" }}>
+      <Window title={t("conversations")} onClose={onClose} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateColumns: list ? "280px minmax(0, 1fr)" : "minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
           {list && <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>{list}</div>}
           <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</div>

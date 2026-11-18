@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
+import { useTranslation } from 'react-i18next';
 
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window } from '@/components/workbench/Workbench';
@@ -53,6 +54,7 @@ export interface NetworkDetailProps {
 }
 
 export default function NetworkDetailPage({ networkIdOverride, basePath }: NetworkDetailProps = {}) {
+  const { t } = useTranslation();
   const params = useParams();
   const navigate = useNavigate();
   const compact = useCompact();
@@ -186,20 +188,20 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
         <div className="pl-page pl-netdetail">
           {/* Like the intent page: back and the page's button share the top line. */}
           <div className="pl-intent-top">
-            <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ networks</button>
-            {network && !isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
+            <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ {t('networks')}</button>
+            {network && !isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>{t('leave')}</button>}
           </div>
           {loading ? (
-            <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+            <p className="pl-dim">{t('loading')}<span className="pl-blink">_</span></p>
           ) : notFound ? (
             <div className="pl-profile-empty">
-              <p>this network doesn&apos;t exist, or you don&apos;t have access to it.</p>
-              <button type="button" onClick={() => navigate('/networks')}>back to networks</button>
+              <p>{t("this network doesn't exist, or you don't have access to it.")}</p>
+              <button type="button" onClick={() => navigate('/networks')}>{t('back to networks')}</button>
             </div>
           ) : loadFailed ? (
             <div className="pl-profile-empty">
-              <p>couldn&apos;t load this network.</p>
-              <button type="button" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
+              <p>{t("couldn't load this network.")}</p>
+              <button type="button" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>{t('try again')}</button>
             </div>
           ) : network ? (
             <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange}>
@@ -210,14 +212,14 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                 <div className="pl-netdetail-who">
                   <h1 className="ih-title">{network.title}</h1>
                   <div className="pl-netdetail-meta">
-                    {[isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "owner" : "member"].filter(Boolean).join(" · ")}
+                    {[isPublic ? t("public") : t("private"), network._count?.members !== undefined ? t("{{count}} people", { count: network._count.members }) : null, isOwner ? t("owner") : t("member")].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>
               {tabs && (
                 <Tabs.List className="pl-tabs pl-netdetail-tabs">
                   {tabs.map((tab) => (
-                    <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{tab}</Tabs.Trigger>
+                    <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{t(tab)}</Tabs.Trigger>
                   ))}
                 </Tabs.List>
               )}
@@ -245,44 +247,44 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   return (
     <>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
-      <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
+      <Window title={network?.title?.toLowerCase() || t('networks')} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
       {loading ? (
         <EmptyState tone="loading" style={{ padding: "64px 24px" }} />
       ) : notFound ? (
         <EmptyState
           style={{ padding: "64px 24px" }}
-          message="this network doesn't exist, or you don't have access to it."
-          action={{ label: "back to networks", to: "/networks" }}
+          message={t("this network doesn't exist, or you don't have access to it.")}
+          action={{ label: t("back to networks"), to: "/networks" }}
         />
       ) : loadFailed ? (
         <EmptyState
           tone="error"
           style={{ padding: "64px 24px" }}
-          message="couldn't load this network."
-          action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
+          message={t("couldn't load this network.")}
+          action={{ label: t("try again"), onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
         />
       ) : network ? (
         <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: compact ? "12px 16px 0" : "14px 24px 0", borderBottom: "1px solid #e3e3e0" }}>
-            <button type="button" onClick={() => navigate('/networks')} style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-2)" }}>← back</button>
+            <button type="button" onClick={() => navigate('/networks')} style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-2)" }}>{t('← back')}</button>
             <div style={{ marginTop: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
               <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{network.title}</div>
                 <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 12, color: "#666" }}>
-                  <span>{isPublic ? "public" : "private"}</span>
-                  {network._count?.members !== undefined && <span>{network._count.members} members</span>}
-                  {isOwner && <span>owner</span>}
+                  <span>{isPublic ? t("public") : t("private")}</span>
+                  {network._count?.members !== undefined && <span>{t("{{count}} members", { count: network._count.members })}</span>}
+                  {isOwner && <span>{t("owner")}</span>}
                 </div>
               </div>
               {!isOwner && (
-                <button type="button" onClick={() => setLeaveRequested(true)} style={{ flex: "0 0 auto", cursor: "pointer", fontSize: 12, padding: "5px 12px", border: "1px solid #ddd", borderRadius: 3, background: "#fff", color: "var(--ink-warn)" }}>leave</button>
+                <button type="button" onClick={() => setLeaveRequested(true)} style={{ flex: "0 0 auto", cursor: "pointer", fontSize: 12, padding: "5px 12px", border: "1px solid #ddd", borderRadius: 3, background: "#fff", color: "var(--ink-warn)" }}>{t('leave')}</button>
               )}
             </div>
             {isOwner && (
               <Tabs.List style={{ display: "flex", gap: 2 }}>
                 {(['overview', 'settings', 'access'] as const).map((tab) => (
-                  <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px", border: "none", borderBottom: activeTab === tab ? "1px solid var(--ink)" : "1px solid transparent", marginBottom: -1, background: "transparent", fontSize: 13, fontWeight: activeTab === tab ? 500 : 400, color: activeTab === tab ? "var(--ink)" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{tab}</Tabs.Trigger>
+                  <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px", border: "none", borderBottom: activeTab === tab ? "1px solid var(--ink)" : "1px solid transparent", marginBottom: -1, background: "transparent", fontSize: 13, fontWeight: activeTab === tab ? 500 : 400, color: activeTab === tab ? "var(--ink)" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{t(tab)}</Tabs.Trigger>
                 ))}
               </Tabs.List>
             )}

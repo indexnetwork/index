@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'intent_broadcast';
@@ -108,6 +109,7 @@ function NotificationToasts({
   notifications: Notification[];
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const getIcon = (type: NotificationType) => {
     switch (type) {
       case 'success':
@@ -185,7 +187,7 @@ function NotificationToasts({
               }}
               className="wb-btn small"
             >
-              dismiss
+              {t("dismiss")}
             </button>
           </div>
         );
@@ -203,6 +205,7 @@ function IntentBroadcastToast({
   onRemove: (id: string) => void;
   index: number;
 }) {
+  const { t } = useTranslation();
   const [isUndoing, setIsUndoing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -224,8 +227,8 @@ function IntentBroadcastToast({
       onRemove(notification.id);
     } catch (error) {
       setActionError(error instanceof Error && error.message
-        ? `Undo failed: ${error.message}`
-        : "Undo failed. Please try again.");
+        ? t("Undo failed: {{message}}", { message: error.message })
+        : t("Undo failed. Please try again."));
     } finally {
       setIsUndoing(false);
     }
@@ -243,7 +246,7 @@ function IntentBroadcastToast({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
             </span>
-            {notification.title || "broadcasting"}
+            {notification.title || t("broadcasting")}
           </div>
           <p className="text-[13px] text-[#3D3D3D] leading-relaxed mt-0.5 line-clamp-2">
             {notification.message || notification.title}
@@ -260,7 +263,7 @@ function IntentBroadcastToast({
               disabled={isUndoing}
               className="text-xs text-gray-400 hover:text-gray-500 disabled:opacity-60"
             >
-              {isUndoing ? "Undoing…" : "Undo"}
+              {isUndoing ? t("Undoing…") : t("Undo")}
             </button>
           )}
         </div>

@@ -1,8 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 import { EmptyState } from "@/components/ui/EmptyState";
+import i18n from "@/lib/i18n";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
@@ -19,18 +21,19 @@ const note: CSSProperties = {
 };
 
 function accessDay(value: string | null): string {
-  if (!value) return "never";
+  if (!value) return i18n.t("never");
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "never"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    ? i18n.t("never")
+    : date.toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function maskKey(start: string): string {
-  return start ? `${start}${"*".repeat(24)}` : "unavailable";
+  return start ? `${start}${"*".repeat(24)}` : i18n.t("unavailable");
 }
 
 function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
+  const { t } = useTranslation();
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -39,7 +42,7 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
       onBlur={() => setArmed(false)}
       disabled={busy}
       className={`wb-btn danger${armed ? " on" : ""}`}
-    >{armed ? "sure?" : "revoke"}</button>
+    >{armed ? t("sure?") : t("revoke")}</button>
   );
 }
 
@@ -53,6 +56,7 @@ function generateDefaultKeyName(keys: ApiKeyInfo[]): string {
 
 /** The account's API keys. A key authenticates its owner, not an agent. */
 export default function ApiKeysSection() {
+  const { t } = useTranslation();
   const { error } = useNotifications();
 
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
@@ -73,7 +77,7 @@ export default function ApiKeysSection() {
         if (!cancelled) setKeys(result);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : "could not load");
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : t("could not load"));
       });
     return () => {
       cancelled = true;
@@ -85,7 +89,7 @@ export default function ApiKeysSection() {
       setKeys(await apiKeysService.list());
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "could not load");
+      setLoadError(err instanceof Error ? err.message : t("could not load"));
     }
   }
 
@@ -96,7 +100,7 @@ export default function ApiKeysSection() {
       setMintedKey(created.key);
       await reload();
     } catch (err) {
-      error("Failed to create API key", err instanceof Error ? err.message : undefined);
+      error(t("Failed to create API key"), err instanceof Error ? err.message : undefined);
     } finally {
       setGenerating(false);
     }
@@ -108,7 +112,7 @@ export default function ApiKeysSection() {
       await apiKeysService.revoke(id);
       await reload();
     } catch (err) {
-      error("Failed to revoke API key", err instanceof Error ? err.message : undefined);
+      error(t("Failed to revoke API key"), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -117,17 +121,17 @@ export default function ApiKeysSection() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-        <h2 className="st-h" style={{ flex: 1, margin: 0 }}>api keys</h2>
+        <h2 className="st-h" style={{ flex: 1, margin: 0 }}>{t("api keys")}</h2>
         <button
           type="button"
           onClick={() => void handleGenerateKey()}
           disabled={generating}
           className="wb-btn primary"
-        >generate key</button>
+        >{t("generate key")}</button>
       </div>
 
       <p style={note}>
-        a key authenticates you in personal agents, CLI clients, and any other client.
+        {t("a key authenticates you in personal agents, CLI clients, and any other client.")}
       </p>
 
       {loadError ? (
@@ -135,27 +139,27 @@ export default function ApiKeysSection() {
           tone="error"
           align="start"
           style={{ padding: 0, margin: "0 0 10px" }}
-          message="couldn't load api keys."
-          action={{ label: "try again", onClick: () => void reload() }}
+          message={t("couldn't load api keys.")}
+          action={{ label: t("try again"), onClick: () => void reload() }}
         />
       ) : keys === null ? (
-        <p style={note}>loading…</p>
+        <p style={note}>{t("loading…")}</p>
       ) : keys.length === 0 ? (
         <EmptyState
           align="start"
           style={{ maxWidth: 520, margin: "0 0 10px" }}
-          message="no api keys yet."
-          action={{ label: generating ? "generating…" : "generate key", onClick: () => { if (!generating) void handleGenerateKey(); } }}
+          message={t("no api keys yet.")}
+          action={{ label: generating ? t("generating…") : t("generate key"), onClick: () => { if (!generating) void handleGenerateKey(); } }}
         />
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
             <thead>
               <tr>
-                <th style={th}>key</th>
-                <th style={th}>created</th>
-                <th style={th}>last used</th>
-                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
+                <th style={th}>{t("key")}</th>
+                <th style={th}>{t("created")}</th>
+                <th style={th}>{t("last used")}</th>
+                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label={t("actions")} />
               </tr>
             </thead>
             <tbody>
@@ -176,9 +180,9 @@ export default function ApiKeysSection() {
 
       {mintedKey && (
         <div style={{ marginTop: 10, borderRadius: 2, background: "#f7f7f5", padding: "12px 14px" }}>
-          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>copy this key now. it won&apos;t be shown again.</p>
+          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{t("copy this key now. it won't be shown again.")}</p>
           <code style={{ display: "block", fontFamily: "var(--wb-code)", fontSize: 12, wordBreak: "break-all", userSelect: "text" }}>{mintedKey}</code>
-          <button type="button" onClick={() => setMintedKey(null)} className="pl-plain-btn st-link" style={{ marginTop: 8 }}>dismiss</button>
+          <button type="button" onClick={() => setMintedKey(null)} className="pl-plain-btn st-link" style={{ marginTop: 8 }}>{t("dismiss")}</button>
         </div>
       )}
     </div>

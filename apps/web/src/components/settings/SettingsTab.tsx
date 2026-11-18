@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import { Network } from '@/lib/types';
 import { validateFiles } from '@/lib/file-validation';
@@ -53,6 +54,7 @@ export default function SettingsTab({
   success,
   error,
 }: SettingsTabProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [title, setTitle] = useState(network.title || '');
   // The network's index.network/<key> link name, shared with usernames.
@@ -97,7 +99,7 @@ export default function SettingsTab({
     if (file) {
       const validation = validateFiles([file], 'avatar');
       if (!validation.isValid) {
-        setImageError(validation.message || 'Invalid image file');
+        setImageError(validation.message || t('Invalid image file'));
         e.target.value = '';
         return;
       }
@@ -108,7 +110,7 @@ export default function SettingsTab({
       reader.onload = (ev) => setImagePreview(ev.target?.result as string);
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [t]);
 
   const resetSettings = () => {
     setTitle(originalTitle);
@@ -124,7 +126,7 @@ export default function SettingsTab({
 
   const handleSaveSettings = async () => {
     if (!title.trim()) {
-      error('Title cannot be empty');
+      error(t('Title cannot be empty'));
       return;
     }
     try {
@@ -149,11 +151,11 @@ export default function SettingsTab({
       setRemoveImageRequested(false);
       setImageUrl(finalImageUrl);
       onUpdated(updatedIndex);
-      success('Settings updated');
+      success(t('Settings updated'));
     } catch (err) {
       logger.error('Error updating network', { error: err });
       // A refused link name (rule broken, or taken by a person or network) says why.
-      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : 'Failed to update settings');
+      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : t('Failed to update settings'));
     } finally {
       setIsSavingSettings(false);
     }
@@ -164,11 +166,11 @@ export default function SettingsTab({
       setIsDeletingNetwork(true);
       await deleteNetwork(networkId);
       onRemoved(networkId);
-      success('Network deleted');
+      success(t('Network deleted'));
       onDeleted?.();
     } catch (err) {
       logger.error('Error deleting network', { error: err });
-      error('Failed to delete network');
+      error(t('Failed to delete network'));
     } finally {
       setIsDeletingNetwork(false);
     }
@@ -185,7 +187,7 @@ export default function SettingsTab({
         <span
           role="button"
           tabIndex={0}
-          aria-label="change network picture"
+          aria-label={t("change network picture")}
           onClick={() => imageInputRef.current?.click()}
           onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); imageInputRef.current?.click(); } }}
           onMouseEnter={() => setHot(true)}
@@ -203,14 +205,14 @@ export default function SettingsTab({
         <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
         {imageError && <span style={{ fontFamily: "var(--mac-sans)", fontSize: 11, color: "var(--ink-warn)" }}>{imageError}</span>}
         {displayImageUrl && (
-          <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); setRemoveImageRequested(true); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={busy} className="pl-plain-btn" style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)", textDecoration: "underline", textUnderlineOffset: 3 }}>remove image</button>
+          <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); setRemoveImageRequested(true); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={busy} className="pl-plain-btn" style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)", textDecoration: "underline", textUnderlineOffset: 3 }}>{t("remove image")}</button>
         )}
       </div>
 
-      <Field label="title" required>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" style={fieldInput} />
+      <Field label={t("title")} required>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Network title")} style={fieldInput} />
       </Field>
-      <Field label="link">
+      <Field label={t("link")}>
         <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
           <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", whiteSpace: "nowrap" }}>{window.location.host}/</span>
           <input
@@ -225,27 +227,27 @@ export default function SettingsTab({
         </div>
       </Field>
       <div>
-        <div style={fieldLabel}>prompt</div>
+        <div style={fieldLabel}>{t("prompt")}</div>
         <div style={{ ...well, display: "flex", alignItems: "stretch" }}>
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network…" rows={4} style={{ ...fieldInput, resize: "vertical", lineHeight: 1.5 }} />
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t("What people can share in this network…")} rows={4} style={{ ...fieldInput, resize: "vertical", lineHeight: 1.5 }} />
         </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" disabled={!hasSettingsChanged || busy} onClick={resetSettings} className="wb-btn">cancel</button>
-        <button type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? "saving…" : "save"}</button>
+        <button type="button" disabled={!hasSettingsChanged || busy} onClick={resetSettings} className="wb-btn">{t("cancel")}</button>
+        <button type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? t("saving…") : t("save")}</button>
       </div>
 
       <div style={{ borderTop: "1px solid var(--wb-hairline)", paddingTop: 14 }}>
         <button type="button" onClick={() => setShowDelete((open) => !open)} aria-expanded={showDelete} className="pl-plain-btn" style={{ padding: 0, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-warn)" }}>
           <span aria-hidden style={{ fontSize: 10, lineHeight: 1 }}>{showDelete ? "▲" : "▼"}</span>
-          delete this network
+          {t("delete this network")}
         </button>
         {showDelete && (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>this deletes the network for everyone. type its name to confirm.</p>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>{t("this deletes the network for everyone. type its name to confirm.")}</p>
             <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} style={{ padding: "8px 10px", border: "1px solid #e6e6e6", borderRadius: 2, outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13 }} />
-            <button type="button" disabled={deleteConfirmationText !== network.title || busy} onClick={() => void handleDeleteNetwork()} className="wb-btn danger" style={{ justifySelf: "end" }}>delete</button>
+            <button type="button" disabled={deleteConfirmationText !== network.title || busy} onClick={() => void handleDeleteNetwork()} className="wb-btn danger" style={{ justifySelf: "end" }}>{t("delete")}</button>
           </div>
         )}
       </div>

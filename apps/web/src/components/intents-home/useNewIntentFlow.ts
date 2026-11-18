@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useAuthContext } from "@/contexts/AuthContext";
+import i18n from "@/lib/i18n";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 import { createFailureReason, intentService, type PrepareAnswer, type RecoveryField } from "@/services/intent-prepare";
 
@@ -64,7 +65,7 @@ export function useNewIntentFlow(onCreated: (intent: { id: string; text: string;
       onCreated({ id: created.intentId, text: description, asked: askedRef.current });
     } catch (error) {
       setReceipt("");
-      setFeedback(`that didn't go through. ${createFailureReason(error)}`);
+      setFeedback(i18n.t("that didn't go through. {{reason}}", { reason: createFailureReason(error) }));
       setStage("summary");
     }
   }, [user, refetchUser, onCreated, reset]);

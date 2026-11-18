@@ -1,4 +1,5 @@
 import { useLocation, useSearchParams, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 
 const TABS = [
   { key: "agents", label: "agents", to: "/settings?tab=agents" },
@@ -9,6 +10,7 @@ const TABS = [
 
 /** Account panes. The profile and agents are their own screens. */
 export default function SettingsTabs() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -20,7 +22,7 @@ export default function SettingsTabs() {
     <div className="wb-segmented lg" role="tablist">
       {TABS.map(({ key, label, to }) => (
         <button key={key} type="button" role="tab" aria-pressed={key === active} onClick={() => navigate(to)}>
-          {label}
+          {t(label)}
         </button>
       ))}
     </div>

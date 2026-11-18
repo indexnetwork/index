@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
@@ -12,6 +13,7 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
  * opens the intent.
  */
 export default function IntentsIndex() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { intents, intentsLoaded, intentsError, fetchIntents, entriesByIntent } = useIntentsData();
 
@@ -19,16 +21,16 @@ export default function IntentsIndex() {
     <div className="ih-view pl">
       <div className="pl-col">
       {/* A title line like Home's, with the way to start another. */}
-      <PageHead title="intents" centered>
-        <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+      <PageHead title={t("intents")} centered>
+        <button type="button" className="go" onClick={() => navigate("/i/new")}>{t("+ new intent")}</button>
       </PageHead>
       <div className="pl-page">
         {intentsError && !intents.length ? (
-          <p>couldn&apos;t load your intents. <button type="button" onClick={() => void fetchIntents()}>try again</button></p>
+          <p>{t("couldn't load your intents.")} <button type="button" onClick={() => void fetchIntents()}>{t("try again")}</button></p>
         ) : !intentsLoaded ? (
-          <p className="pl-dim">loading…</p>
+          <p className="pl-dim">{t("loading…")}</p>
         ) : intents.length === 0 ? (
-          <p className="pl-dim">none yet.</p>
+          <p className="pl-dim">{t("none yet.")}</p>
         ) : (
           <ul className="pl-cards">
             {intents.map((intent) => {
@@ -45,14 +47,14 @@ export default function IntentsIndex() {
                     <div className="pl-card-head">
                       <b className="pl-intent-title"><Link to={`/i/${intent.id}`} className="pl-name">{text || intentLabel(intent)}</Link></b>
                       {!paused && counts.awaiting > 0 && (
-                        <span className="ih-badge pl-intent-count" title={`${counts.awaiting} waiting on you`}>{counts.awaiting}</span>
+                        <span className="ih-badge pl-intent-count" title={t("{{n}} waiting on you", { n: counts.awaiting })}>{counts.awaiting}</span>
                       )}
                     </div>
                     {/* Status as on production (a blinking orange square while my agents talk), then the date, on one line. */}
                     <div className="pl-intent-state">
                       {!paused && <span className="pl-live-sq" aria-hidden />}
-                      {paused ? "paused" : "agents in talks"}
-                      {intent.createdAt && <span className="pl-intent-since">· since {new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                      {paused ? t("paused") : t("agents in talks")}
+                      {intent.createdAt && <span className="pl-intent-since">· {t("since {{date}}", { date: new Date(intent.createdAt).toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "numeric" }) })}</span>}
                     </div>
                   </div>
                 </li>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { authClient } from "@/lib/auth-client";
 import { SiteSignInCard, SiteSignInPage } from "@/components/SiteSignIn";
@@ -47,6 +48,7 @@ function Status({ title, message, ok, action }: {
  *      this exact validated request after login
  */
 function CliAuthPage() {
+  const { t } = useTranslation();
   const [request] = useState<CliAuthRequest | null>(() =>
     parseCliAuthRequest(new URLSearchParams(window.location.search))
   );
@@ -120,13 +122,13 @@ function CliAuthPage() {
   if (status === "login" && request) {
     return (
       <SiteSignInPage
-        title="Sign in to Index"
-        meta={<p className="site-p">Sign in here to finish connecting your app or the Index CLI.</p>}
+        title={t("Sign in to Index")}
+        meta={<p className="site-p">{t("Sign in here to finish connecting your app or the Index CLI.")}</p>}
       >
         <SiteSignInCard
-          bar="Sign in"
+          bar={t("Sign in")}
           sentTo={linkSentTo}
-          sentNote="Open the link in the email to finish signing in. It expires in 10 minutes."
+          sentNote={t("Open the link in the email to finish signing in. It expires in 10 minutes.")}
           callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
           onAuthenticated={() => window.location.reload()}
           onMagicLinkSent={setLinkSentTo}
@@ -136,20 +138,20 @@ function CliAuthPage() {
     );
   }
   if (status === "redirecting") {
-    return <Status ok title="Authentication complete" message="You can close this window now." />;
+    return <Status ok title={t("Authentication complete")} message={t("You can close this window now.")} />;
   }
   if (status === "error") {
     return (
       <Status
-        title="Authorization failed"
-        message={error ?? ""}
+        title={t("Authorization failed")}
+        message={error ? t(error) : ""}
         // A malformed request can only be fixed by starting again from the app or CLI.
         // Runtime failures reload this same validated request, which mints a fresh device code.
-        action={request ? { label: "Try again", onClick: () => window.location.reload() } : undefined}
+        action={request ? { label: t("Try again"), onClick: () => window.location.reload() } : undefined}
       />
     );
   }
-  return <Status title="Signing you in" message="Connecting to your account…" />;
+  return <Status title={t("Signing you in")} message={t("Connecting to your account…")} />;
 }
 
 export const Component = CliAuthPage;

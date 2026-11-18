@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
@@ -32,6 +33,7 @@ function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: 
 }
 
 export default function InviteNetworksModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { networks, loading, error, refreshNetworks } = useNetworksState();
   const { user } = useAuthContext();
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -59,10 +61,10 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
 
   return (
     <Stage width={660} height="min(620px, calc(100vh - 96px))">
-      <Window title="invite" onClose={onClose} style={{ height: "100%" }}>
+      <Window title={t("invite")} onClose={onClose} style={{ height: "100%" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #e3e3e0" }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>invite</h2>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ink-2)" }}>share a link to any network you can invite people to.</p>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{t("invite")}</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ink-2)" }}>{t("share a link to any network you can invite people to.")}</p>
         </div>
         <div className="mac-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "6px 12px 14px" }}>
           {invitable.map(({ network, isOwner, isPublic, url }) => (
@@ -71,7 +73,7 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{network.title}</span>
-                  {isOwner && <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12, fontWeight: 400 }}>{isPublic ? "public" : "private"}</span>}
+                  {isOwner && <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12, fontWeight: 400 }}>{isPublic ? t("public") : t("private")}</span>}
                 </span>
                 <code style={{ display: "block", marginTop: 1, fontFamily: "var(--wb-code)", fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</code>
               </span>
@@ -83,7 +85,7 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
                   background: copiedId === network.id ? "#f0f0ed" : "#fff",
                   color: copiedId === network.id ? "var(--ink-2)" : "var(--ink)",
                   fontSize: 12,
-                }}>{copiedId === network.id ? "copied" : "copy"}</button>
+                }}>{copiedId === network.id ? t("copied") : t("copy")}</button>
             </div>
           ))}
           {!invitable.length && (
@@ -93,20 +95,20 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
               <EmptyState
                 tone="error"
                 style={{ padding: "48px 12px" }}
-                message="couldn't load your networks."
-                action={{ label: "try again", onClick: () => void refreshNetworks() }}
+                message={t("couldn't load your networks.")}
+                action={{ label: t("try again"), onClick: () => void refreshNetworks() }}
               />
             ) : networks.length === 0 ? (
               <EmptyState
                 style={{ padding: "48px 12px" }}
-                message="you're not in any networks yet. create one to invite people."
-                action={{ label: "create a network", to: "/networks", primary: true }}
+                message={t("you're not in any networks yet. create one to invite people.")}
+                action={{ label: t("create a network"), to: "/networks", primary: true }}
               />
             ) : (
               <EmptyState
                 style={{ padding: "48px 12px" }}
-                message="none of your networks has a link you can share. an owner can create one in the network's access tab."
-                action={{ label: "see networks", to: "/networks" }}
+                message={t("none of your networks has a link you can share. an owner can create one in the network's access tab.")}
+                action={{ label: t("see networks"), to: "/networks" }}
               />
             )
           )}

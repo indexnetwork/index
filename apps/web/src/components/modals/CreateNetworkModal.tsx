@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { validateFiles } from '@/lib/file-validation';
 import NetworkAvatar from '@/components/NetworkAvatar';
 import { log } from '@/lib/logger';
@@ -18,6 +19,7 @@ interface CreateNetworkModalProps {
 }
 
 export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploadNetworkImage }: CreateNetworkModalProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [joinPolicy, setJoinPolicy] = useState<'anyone' | 'invite_only'>('invite_only');
@@ -32,7 +34,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
     if (file) {
       const validation = validateFiles([file], 'avatar');
       if (!validation.isValid) {
-        setImageError(validation.message || 'Invalid file');
+        setImageError(validation.message || t('Invalid file'));
         e.target.value = '';
         return;
       }
@@ -42,7 +44,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
       reader.onload = (ev) => setImagePreview(ev.target?.result as string);
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [t]);
 
   const handleRemoveImage = useCallback(() => {
     setImageFile(null);
@@ -120,37 +122,37 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mac-titlebar">
-          <span className="mac-close" role="button" tabIndex={0} aria-label="close" onClick={() => handleOpenChange(false)} />
-          <span className="mac-title"><span className="t">new network</span></span>
+          <span className="mac-close" role="button" tabIndex={0} aria-label={t("close")} onClick={() => handleOpenChange(false)} />
+          <span className="mac-title"><span className="t">{t("new network")}</span></span>
         </div>
         <div className="wb-body mac-scroll" style={{ padding: 18, gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
           <p id="create-network-title" style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "var(--ink-2)" }}>
-            a network is a group that shares intents. if you run a community, event, or team, create one here, then invite your members so their intents can find each other.
+            {t("a network is a group that shares intents. if you run a community, event, or team, create one here, then invite your members so their intents can find each other.")}
           </p>
           <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
             <button type="button" onClick={() => uploadNetworkImage && fileInputRef.current?.click()} disabled={isSubmitting || !uploadNetworkImage} style={{ display: "flex", gap: 12, alignItems: "center", background: "none", border: "none", padding: 0, textAlign: "left" }}>
-              <NetworkAvatar title={name || "network name"} imageUrl={imagePreview} size={48} />
-              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{imagePreview ? "picture" : "picture optional"}</span>
+              <NetworkAvatar title={name || t("network name")} imageUrl={imagePreview} size={48} />
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{imagePreview ? t("picture") : t("picture optional")}</span>
             </button>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display: "none" }} />
-            {imagePreview && <button type="button" className="wb-btn small" onClick={handleRemoveImage} disabled={isSubmitting}>remove image</button>}
+            {imagePreview && <button type="button" className="wb-btn small" onClick={handleRemoveImage} disabled={isSubmitting}>{t("remove image")}</button>}
             {imageError && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-warn)" }}>{imageError}</p>}
-            <label style={label}>name
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="network name" disabled={isSubmitting} autoFocus required style={field} />
+            <label style={label}>{t("name", { context: "network" })}
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("network name")} disabled={isSubmitting} autoFocus required style={field} />
             </label>
-            <label style={label}>description
-              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="optional" rows={3} disabled={isSubmitting} style={field} />
+            <label style={label}>{t("description")}
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t("optional")} rows={3} disabled={isSubmitting} style={field} />
             </label>
             <div>
-              <p style={{ margin: "0 0 6px", ...label }}>access</p>
+              <p style={{ margin: "0 0 6px", ...label }}>{t("access")}</p>
               <div className="wb-segmented">
-                <button type="button" aria-pressed={joinPolicy === "anyone"} onClick={() => setJoinPolicy("anyone")}>public</button>
-                <button type="button" aria-pressed={joinPolicy === "invite_only"} onClick={() => setJoinPolicy("invite_only")}>private</button>
+                <button type="button" aria-pressed={joinPolicy === "anyone"} onClick={() => setJoinPolicy("anyone")}>{t("public")}</button>
+                <button type="button" aria-pressed={joinPolicy === "invite_only"} onClick={() => setJoinPolicy("invite_only")}>{t("private")}</button>
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>cancel</button>
-              <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "creating…" : "create"}</button>
+              <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>{t("cancel")}</button>
+              <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? t("creating…") : t("create")}</button>
             </div>
           </form>
         </div>

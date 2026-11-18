@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/plain.css";
 import PageHead from "@/components/intents-home/PageHead";
-import { AgentSays, Recovery, YouSaid } from "@/components/intents-home/NewIntentSteps";
+import { AgentSays, FlowText, Recovery, YouSaid } from "@/components/intents-home/NewIntentSteps";
 import { OpenAgentLines } from "@/components/intents-home/openAgentLines";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { CALIBRATING_LINES } from "@/components/workbench/mac-blocks";
@@ -34,6 +35,7 @@ type Turn = { id: string; prompt: string; answer: string; at: string };
 
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewIntentPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   useVisualViewport();
@@ -87,7 +89,11 @@ export default function NewIntentPage() {
     // The first intent after the profile review finishes onboarding, as on the Mac.
     if (ids[0]) void onboardingService.complete(ids[0]).then(() => refetchUser()).catch(() => {});
     const failed = picked.length - ids.length;
-    setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
+    setPicksNote(failed
+      ? failed === 1
+        ? t("couldn't save one of those. write it below if you still want it.")
+        : t("couldn't save {{n}} of those. write it below if you still want it.", { n: failed })
+      : "");
     setCreatedIds(ids);
     if (saved.length) setTurns([{ id: "picks", prompt: PICKS_PROMPT, answer: saved.map((s) => `· ${s.text}`).join("\n"), at: new Date().toISOString() }]);
     setStage("opening");
@@ -117,7 +123,7 @@ export default function NewIntentPage() {
       navigate(onboarding ? "/" : `/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
-      setFeedback(`that didn't go through. ${createFailureReason(error)}`);
+      setFeedback(t("that didn't go through. {{reason}}", { reason: createFailureReason(error) }));
       setStage("summary");
       setCreating(false);
     }
@@ -139,37 +145,37 @@ export default function NewIntentPage() {
       <div className="ih-view pl pl-new-page">
         <div className="pl-col">
           <PageHead
-            back={{ label: "intents", onClick: () => navigate("/intents") }}
-            title="new intent"
-            status={<span className="pl-new-steps">step {stepIdx} of {stepCount}
+            back={{ label: t("intents"), onClick: () => navigate("/intents") }}
+            title={t("new intent")}
+            status={<span className="pl-new-steps">{t("step {{n}} of {{total}}", { n: stepIdx, total: stepCount })}
               <span className="pl-new-bar" aria-hidden>
                 {Array.from({ length: stepCount }, (_, i) => <span key={i} className={i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "now" : undefined} />)}
               </span>
             </span>}
           >
-            <button type="button" onClick={() => navigate("/")}>close</button>
+            <button type="button" onClick={() => navigate("/")}>{t("close")}</button>
           </PageHead>
           <OpenAgentLines.Provider value>
           <div className="pl-page pl-new-chat">
             {turns.map((turn) => (
               <div key={turn.id} className="pl-ni-turn">
-                <AgentSays>{turn.prompt}</AgentSays>
+                <AgentSays>{t(turn.prompt)}</AgentSays>
                 <YouSaid>{turn.answer}</YouSaid>
               </div>
             ))}
             {thinking ? (
-              <AgentSays><span className="pl-dim">reading that<span className="pl-blink">_</span></span></AgentSays>
+              <AgentSays><span className="pl-dim">{t("reading that")}<span className="pl-blink">_</span></span></AgentSays>
             ) : stage === "retry" ? (
               <AgentSays>
-                couldn&apos;t reach your agent.
-                <div className="pl-ni-actions"><button type="button" className="go" onClick={() => void runPrepare(payload)}>try again</button></div>
+                {t("couldn't reach your agent.")}
+                <div className="pl-ni-actions"><button type="button" className="go" onClick={() => void runPrepare(payload)}>{t("try again")}</button></div>
               </AgentSays>
             ) : stage === "summary" ? (
               <AgentSays>
-                {preparationReceipt ? "here's your intent. change anything you like, then create it." : feedback || "here's your intent."}
+                {preparationReceipt ? t("here's your intent. change anything you like, then create it.") : feedback ? <FlowText text={feedback} mark /> : t("here's your intent.")}
                 <textarea
                   className="pl-ni-text"
-                  aria-label="Intent description"
+                  aria-label={t("Intent description")}
                   value={payload}
                   rows={5}
                   maxLength={65_536}
@@ -177,9 +183,9 @@ export default function NewIntentPage() {
                 />
                 <div className="pl-ni-actions">
                   {preparationReceipt ? (
-                    <button type="button" className="go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>create this intent</button>
+                    <button type="button" className="go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>{t("create this intent")}</button>
                   ) : (
-                    <button type="button" className="go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check intent</button>
+                    <button type="button" className="go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>{t("check intent")}</button>
                   )}
                 </div>
               </AgentSays>
@@ -202,7 +208,7 @@ export default function NewIntentPage() {
       </div>
       {/* The live preview is a side panel, as on production; a phone has no side. */}
       {!compact && (
-        <Window title="warming up" style={{ flex: "none", width: "clamp(420px, 34vw, 600px)", borderTop: "none", borderRight: "none", borderBottom: "none", borderLeft: "1px solid #e6e6e6" }}>
+        <Window title={t("warming up")} style={{ flex: "none", width: "clamp(420px, 34vw, 600px)", borderTop: "none", borderRight: "none", borderBottom: "none", borderLeft: "1px solid #e6e6e6" }}>
           <FieldPreview turns={turns} refining={stepIdx === stepCount} />
         </Window>
       )}
@@ -218,6 +224,7 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
   /** After the picks: leave without writing another. */
   onDone?: () => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   return (
     // The first question, open on the page: who's asking, the question in bold, a box to
@@ -225,8 +232,8 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
     <div className="pl-open">
       <MyAgentAvatar size={36} />
       <div className="pl-open-body">
-        <div className="pl-open-who">your agent</div>
-        <div className="pl-open-q">{prompt}</div>
+        <div className="pl-open-who">{t("your agent")}</div>
+        <div className="pl-open-q">{t(prompt)}</div>
         {note && <div className="pl-dim pl-small pl-new-note">{note}</div>}
         <form className="pl-open-box" onSubmit={(event) => { event.preventDefault(); onSubmit(draft); }}>
           <textarea
@@ -241,17 +248,17 @@ function Opening({ prompt, note, examples, onSubmit, onDone }: {
                 onSubmit(draft);
               }
             }}
-            placeholder={OPENING_PLACEHOLDER}
-            aria-label="What you're looking for"
+            placeholder={t(OPENING_PLACEHOLDER)}
+            aria-label={t("What you're looking for")}
           />
-          <button type="submit" className="go" disabled={!draft.trim()}>send →</button>
+          <button type="submit" className="go" disabled={!draft.trim()}>{t("send →")}</button>
         </form>
         <div className="pl-open-options">
           {examples.map((option) => (
-            <button key={option} type="button" onClick={() => onSubmit(option)}>{option}</button>
+            <button key={option} type="button" onClick={() => onSubmit(option)}><FlowText text={option} /></button>
           ))}
         </div>
-        {onDone && <div className="pl-open-done"><button type="button" onClick={onDone}>that&apos;s all for now</button></div>}
+        {onDone && <div className="pl-open-done"><button type="button" onClick={onDone}>{t("that's all for now")}</button></div>}
       </div>
     </div>
   );
@@ -263,26 +270,27 @@ function Picks({ suggestions, onCreate, onSkip }: {
   onCreate: (picked: IntentSuggestion[]) => void;
   onSkip: () => void;
 }) {
+  const { t } = useTranslation();
   const [picked, setPicked] = useState<number[]>([]);
   if (suggestions === "loading") {
-    return <AgentSays><span className="pl-dim">reading what i found about you<span className="pl-blink">_</span></span></AgentSays>;
+    return <AgentSays><span className="pl-dim">{t("reading what i found about you")}<span className="pl-blink">_</span></span></AgentSays>;
   }
   const toggle = (i: number) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
   return (
     <AgentSays>
-      {PICKS_PROMPT}
+      {t(PICKS_PROMPT)}
       <div className="pl-q-options">
         {suggestions.map((s, i) => (
           <label key={s.text}>
-            <input type="checkbox" checked={picked.includes(i)} onChange={() => toggle(i)} /> {s.text}
+            <input type="checkbox" checked={picked.includes(i)} onChange={() => toggle(i)} /> <FlowText text={s.text} />
           </label>
         ))}
       </div>
       <div className="pl-ni-actions pl-actions">
         <button type="button" className="go" disabled={!picked.length} onClick={() => onCreate(picked.sort().map((i) => suggestions[i]))}>
-          {picked.length > 1 ? `create these ${picked.length}` : "create this"}
+          {picked.length > 1 ? t("create these {{n}}", { n: picked.length }) : t("create this")}
         </button>
-        <button type="button" className="pl-skip" onClick={onSkip}>none of these, i&apos;ll write my own</button>
+        <button type="button" className="pl-skip" onClick={onSkip}>{t("none of these, i'll write my own")}</button>
       </div>
     </AgentSays>
   );
@@ -306,11 +314,12 @@ function useSuggestions(enabled: boolean): { suggestions: IntentSuggestion[] | "
 }
 
 function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean }) {
+  const { t } = useTranslation();
   const latest = turns.at(-1);
   const lines = [
-    "getting a read on what you need…",
-    latest ? `you're after: "${truncate(latest.answer.replace(/^· /, ""), 40)}"` : null,
-    refining ? "sharpening the edges…" : null,
+    t("getting a read on what you need…"),
+    latest ? t("you're after: \"{{text}}\"", { text: truncate(latest.answer.replace(/^· /, ""), 40) }) : null,
+    refining ? t("sharpening the edges…") : null,
   ].filter((line): line is string => Boolean(line));
 
   return (
@@ -351,10 +360,11 @@ function FieldGlyph() {
 }
 
 function Calibrating() {
+  const { t } = useTranslation();
   return (
     // No frame, title or name: just the striped bar and the lines.
     <div className="pl-calibrating" style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto", flex: "none", border: "none" }}>
+      <Window title={t("calibrating")} style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto", flex: "none", border: "none" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
           <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
             <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
@@ -366,7 +376,7 @@ function Calibrating() {
               letterSpacing: 0.2, padding: "4px 0",
               fontWeight: i === CALIBRATING_LINES.length - 1 ? 700 : 400,
             }}>
-              <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{line}
+              <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{t(line)}
             </div>
           ))}
         </div>

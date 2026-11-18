@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { APIError } from "@/lib/api";
@@ -44,6 +45,7 @@ type JoinOutcome = "pending" | "declined";
  * onboarding (which ends on its first intent), an existing one to the network.
  */
 export default function NetworkWebInviteLanding() {
+  const { t } = useTranslation();
   const { code } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated, isReady, user, refetchUser } = useAuthContext();
@@ -206,24 +208,24 @@ export default function NetworkWebInviteLanding() {
     typeof window !== "undefined" && code ? `${window.location.origin}/l/${encodeURIComponent(code)}` : "";
 
   if (previewStep === "loading") {
-    return <SiteSignInPage><SiteSignInMeta>Loading invitation…</SiteSignInMeta></SiteSignInPage>;
+    return <SiteSignInPage><SiteSignInMeta>{t("Loading invitation…")}</SiteSignInMeta></SiteSignInPage>;
   }
 
   if (previewStep === "error" || !network) {
     return (
-      <SiteSignInPage title="Invitation unavailable">
+      <SiteSignInPage title={t("Invitation unavailable")}>
         <div className="signin-status">
-          <p className="site-p">{previewError || INVALID_INVITE}</p>
+          <p className="site-p">{t(previewError || INVALID_INVITE)}</p>
           {previewRetryable ? (
             <button
               type="button"
               className="site-btn"
               onClick={() => { setPreviewStep("loading"); setPreviewError(null); setPreviewKey((k) => k + 1); }}
             >
-              Try again
+              {t("Try again")}
             </button>
           ) : (
-            <Link className="site-btn" to="/">Go home</Link>
+            <Link className="site-btn" to="/">{t("Go home")}</Link>
           )}
         </div>
       </SiteSignInPage>
@@ -232,9 +234,9 @@ export default function NetworkWebInviteLanding() {
 
   const signInCard = (
     <SiteSignInCard
-      bar="Join the network"
+      bar={t("Join the network")}
       sentTo={linkSentTo}
-      sentNote="Open the link in the email to join. It expires in 10 minutes."
+      sentNote={t("Open the link in the email to join. It expires in 10 minutes.")}
       callbackURL={callbackURL}
       onAuthenticated={() => setLoginRequested(true)}
       onMagicLinkSent={setLinkSentTo}
@@ -249,24 +251,23 @@ export default function NetworkWebInviteLanding() {
       pulse={network.pulse}
       inviteUrl={inviteUrl}
       status={showChoice ? null : linkSentTo ? signInCard : joining ? (
-        <SiteSignInMeta>Joining…</SiteSignInMeta>
+        <SiteSignInMeta>{t("Joining…")}</SiteSignInMeta>
       ) : joinOutcome === "pending" ? (
         <p className="site-p signin-status">
-          Your request is waiting for an admin to review it. You&apos;ll be
-          in as soon as they approve it.
+          {t("Your request is waiting for an admin to review it. You'll be in as soon as they approve it.")}
         </p>
       ) : joinOutcome === "declined" ? (
         <div className="signin-status">
-          <p className="site-p">An admin declined your request to join this network.</p>
-          <Link className="site-btn" to="/">Go home</Link>
+          <p className="site-p">{t("An admin declined your request to join this network.")}</p>
+          <Link className="site-btn" to="/">{t("Go home")}</Link>
         </div>
       ) : joinError ? (
         <div className="signin-status">
-          <p className="site-p">{joinError}</p>
-          <button type="button" className="site-btn" onClick={() => void attemptJoin()}>Try again</button>
+          <p className="site-p">{t(joinError)}</p>
+          <button type="button" className="site-btn" onClick={() => void attemptJoin()}>{t("Try again")}</button>
         </div>
       ) : (
-        <SiteSignInMeta>Loading…</SiteSignInMeta>
+        <SiteSignInMeta>{t("Loading…")}</SiteSignInMeta>
       )}
     />
   );

@@ -13,6 +13,9 @@ import { buildChatTimeline } from './timeline';
 import OpportunityDivider from './OpportunityDivider';
 import { log } from '@/lib/logger';
 import { useInAppFrame } from '@/components/intents-home/appFrameContext';
+import { useTranslation } from 'react-i18next';
+import TranslatedMark from '@/components/TranslatedMark';
+import { useContentTranslation } from '@/lib/content-translation';
 
 const logger = log.ui.from('ChatView');
 
@@ -39,6 +42,19 @@ function normText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+type MarkdownComponents = React.ComponentProps<typeof ReactMarkdown>['components'];
+
+/** One message body. The other person's words are shown in the viewer's language; the viewer's own never are. */
+function MessageBody({ content, isOwn, components }: { content: string; isOwn: boolean; components: MarkdownComponents }) {
+  const shown = useContentTranslation(isOwn ? null : content);
+  return (
+    <>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{isOwn ? content : shown.text}</ReactMarkdown>
+      {!isOwn && <TranslatedMark state={shown} />}
+    </>
+  );
+}
+
 function conversationIdForPeer(
   conversations: { id: string; participants?: { participantId: string; participantType: string }[] }[],
   userId: string,
@@ -51,6 +67,7 @@ function conversationIdForPeer(
 }
 
 export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener }: ChatViewProps) {
+  const { t } = useTranslation();
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const {
@@ -286,6 +303,10 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const openerHeadline = opener?.headline?.trim() ?? "";
   const openerBody = opener?.detail?.trim() || openerHeadline;
   const showOpenerHeadline = Boolean(openerHeadline && openerBody && normText(openerHeadline) !== normText(openerBody));
+  // The match write-up is agent-written: shown in the viewer's language.
+  const shownOpenerHeadline = useContentTranslation(showOpenerHeadline ? openerHeadline : null);
+  const shownOpenerBody = useContentTranslation(openerBody);
+  const firstName = userName.split(" ")[0];
 
   // Signed in on desktop: drawn like the agent chat beside Home (plain.css .pl-agent-*).
   if (inFrame && !embedded) {
@@ -298,7 +319,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             <Link to={`/u/${userId}`} className="pl-dm-name">{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (
               <div className="pl-dm-sub">
-                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
+                {conversationSummary?.createdAt ? t("started {{date}}", { date: formatChatDayLabel(conversationSummary.createdAt) }) : ""}
                 {conversationSummary?.createdAt && latestVia ? " · " : ""}
                 {latestVia ? <Link to={`/i/${latestVia.intentId}`}>{latestVia.title}</Link> : null}
               </div>
@@ -307,19 +328,20 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         </div>
 
         <div className="pl-agent-log">
-          {history?.hasPreviousSession && conversationId && history.loadingPrevious && <p className="pl-dim pl-small">loading…</p>}
+          {history?.hasPreviousSession && conversationId && history.loadingPrevious && <p className="pl-dim pl-small">{t("loading…")}</p>}
           {openerBody && (
             <div className="pl-dm-opener">
-              {showOpenerHeadline && <b>{openerHeadline}</b>}
-              <span>{openerBody}</span>
+              {showOpenerHeadline && <b>{shownOpenerHeadline.text}</b>}
+              <span>{shownOpenerBody.text}</span>
+              <TranslatedMark state={shownOpenerBody} />
             </div>
           )}
           {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
-            <p className="pl-dim pl-small">loading…</p>
+            <p className="pl-dim pl-small">{t("loading…")}</p>
           ) : messages.length === 0 && via.length > 0 && !openerBody ? (
-            <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
+            <p className="pl-dim pl-small">{t("agents matched you on this intent. say hi.")}</p>
           ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
-            <p className="pl-dim pl-small">no messages yet. say hello.</p>
+            <p className="pl-dim pl-small">{t("no messages yet. say hello.")}</p>
           ) : null}
 
           {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
@@ -342,8 +364,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 <div className={isOwn ? "pl-agent-line mine" : "pl-agent-line"}>
                   {isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
                   <div className={isOwn ? "pl-agent-bubble mine" : "pl-agent-bubble"}>
-                    <div className="pl-agent-meta">{isOwn ? "you" : userName.split(" ")[0]}</div>
-                    <div className="pl-agent-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={linkOut}>{content}</ReactMarkdown></div>
+                    <div className="pl-agent-meta">{isOwn ? t("you") : firstName}</div>
+                    <div className="pl-agent-md"><MessageBody content={content} isOwn={isOwn} components={linkOut} /></div>
                   </div>
                   {!isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
                 </div>
@@ -360,12 +382,12 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder={`write to ${userName.split(" ")[0]}…`}
+            placeholder={t("write to {{name}}…", { name: firstName })}
             disabled={sending}
             autoFocus
-            aria-label={`Message ${userName}`}
+            aria-label={t("Message {{name}}", { name: userName })}
           />
-          <button type="submit" className="go" disabled={!messageText.trim() || sending}>send</button>
+          <button type="submit" className="go" disabled={!messageText.trim() || sending}>{t("send")}</button>
         </form>
       </div>
     );
@@ -380,7 +402,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             <Link to={`/u/${userId}`} style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600, color: "#000", textDecoration: "none" }}>{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (
               <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
+                {conversationSummary?.createdAt ? t("started {{date}}", { date: formatChatDayLabel(conversationSummary.createdAt) }) : ""}
                 {conversationSummary?.createdAt && latestVia ? " · " : ""}
                 {latestVia ? <Link to={`/i/${latestVia.intentId}`} style={{ color: "inherit", textDecoration: "none" }}>{latestVia.title}</Link> : null}
               </div>
@@ -393,22 +415,23 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {history?.hasPreviousSession && conversationId && history.loadingPrevious && (
-              <p style={{ textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+              <p style={{ textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 11 }}>{t("loading…")}</p>
             )}
             {openerBody && (
               <div style={{ border: "1px solid var(--ink-4)", background: "#FBFAF7", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
                 {showOpenerHeadline && (
-                  <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5, fontWeight: 600, color: "#000", lineHeight: 1.35, letterSpacing: -0.1 }}>{openerHeadline}</span>
+                  <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5, fontWeight: 600, color: "#000", lineHeight: 1.35, letterSpacing: -0.1 }}>{shownOpenerHeadline.text}</span>
                 )}
-                <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{openerBody}</span>
+                <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{shownOpenerBody.text}</span>
+                <TranslatedMark state={shownOpenerBody} />
               </div>
             )}
             {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
               <EmptyState tone="loading" style={{ padding: "60px 0" }} />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
-              <EmptyState message="agents matched you on this intent. say hi." style={{ padding: "20px 0" }} />
+              <EmptyState message={t("agents matched you on this intent. say hi.")} style={{ padding: "20px 0" }} />
             ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
-              <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
+              <EmptyState message={t("no messages yet. say hello.")} style={{ padding: "20px 0" }} />
             ) : null}
 
             {timeline.map((item, index) => {
@@ -452,8 +475,9 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                         fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4,
                         boxShadow: isOwn ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
                       }}>
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
+                        <MessageBody
+                          content={content}
+                          isOwn={isOwn}
                           components={{
                             a: ({ href, children }) => (
                               <a href={href} target="_blank" rel="noopener noreferrer">
@@ -461,9 +485,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                               </a>
                             ),
                           }}
-                        >
-                          {content}
-                        </ReactMarkdown>
+                        />
                       </div>
                       {!isOwn && clock && <time style={{ fontFamily: "var(--mac-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: 0.2, whiteSpace: "nowrap" }}>{clock}</time>}
                     </div>
@@ -481,12 +503,12 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           value={messageText}
           onChange={(e) => setMessageText(e.target.value)}
           onKeyDown={handleKeyPress}
-          placeholder={embedded ? `message ${userName}…` : "write a message…"}
+          placeholder={embedded ? t("message {{name}}…", { name: userName }) : t("write a message…")}
           disabled={sending}
           autoFocus
           style={{ flex: 1, minWidth: 0, border: "none", outline: "none", resize: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }}
         />
-        <button type="submit" disabled={!messageText.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: 0, cursor: messageText.trim() ? "pointer" : "default", color: messageText.trim() ? "#111" : "#b9b3a4" }}>
+        <button type="submit" disabled={!messageText.trim() || sending} aria-label={t("send")} title={t("send")} style={{ background: "none", border: "none", padding: 0, cursor: messageText.trim() ? "pointer" : "default", color: messageText.trim() ? "#111" : "#b9b3a4" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
             <line x1="12" y1="20" x2="12" y2="5" />
             <polyline points="5,12 12,5 19,12" />

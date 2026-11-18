@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 const PALETTE = ["#0B5FA5", "#2E8B7A", "#E8C84A", "#7B62B8", "#C9518B", "#F26B0F"];
 const INK = "#111";
 const PAPER = "#FAF8F3";
@@ -111,11 +113,12 @@ function faceFor(seed: string) {
   return { face, colors };
 }
 
-export function AgentFace({ seed, size = 22, title = "agent" }: { seed: string; size?: number; title?: string }) {
+export function AgentFace({ seed, size = 22, title }: { seed: string; size?: number; title?: string }) {
+  const { t } = useTranslation();
   const { face, colors } = faceFor(seed);
   const scale = size / UNIT;
   return (
-    <div title={title} style={{ width: size, height: size, flex: "0 0 auto", boxSizing: "border-box", position: "relative", overflow: "hidden", borderRadius: 2, background: face.bg(colors) }}>
+    <div title={title ?? t("agent")} style={{ width: size, height: size, flex: "0 0 auto", boxSizing: "border-box", position: "relative", overflow: "hidden", borderRadius: 2, background: face.bg(colors) }}>
       <div style={{ position: "absolute", left: 0, top: 0, width: UNIT, height: UNIT, transform: `scale(${scale})`, transformOrigin: "top left" }}>
         {face.layers(colors).map((layer) => (
           <div key={layer.key} style={{

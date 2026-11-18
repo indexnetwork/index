@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { NegoClosedLine, NegoOpenLine, NegoThreadRow, NegoTurnLine, negoResult } from "@/components/workbench/mac-blocks";
@@ -18,6 +19,7 @@ type HistoryFilter = "all" | "won" | "lost" | "open";
 type HistoryMode = "stream" | "grouped";
 
 export default function NegotiationsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   const back = useBack("/");
@@ -87,23 +89,23 @@ export default function NegotiationsPage() {
               align="start"
               framed
               style={emptyBox}
-              message="couldn't load the agent log."
-              action={{ label: "try again", onClick: () => void refreshNegotiations() }}
+              message={t("couldn't load the agent log.")}
+              action={{ label: t("try again"), onClick: () => void refreshNegotiations() }}
             />
           ) : threads.length === 0 ? (
             <EmptyState
               align="start"
               framed
               style={emptyBox}
-              message="nothing on the wire yet. your agent logs every conversation with other agents here as it happens."
+              message={t("nothing on the wire yet. your agent logs every conversation with other agents here as it happens.")}
             />
           ) : (
             <EmptyState
               align="start"
               framed
               style={emptyBox}
-              message="no sessions match this filter."
-              action={filter !== "all" ? { label: "clear filter", onClick: () => { setFilter("all"); setSelectedId(null); } } : undefined}
+              message={t("no sessions match this filter.")}
+              action={filter !== "all" ? { label: t("clear filter"), onClick: () => { setFilter("all"); setSelectedId(null); } } : undefined}
             />
           )
         ) : events.map((ev, i) =>
@@ -120,19 +122,19 @@ export default function NegotiationsPage() {
   if (isLoading || !isAuthenticated) return null;
   return (
     <Stage width={1000} height="calc(100vh - 112px)">
-      <Window title="agent log" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
+      <Window title={t("agent log")} onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
           <div style={{
             padding: "10px 16px", borderBottom: "1px solid var(--wb-hairline)", background: "#fff",
             display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
           }}>
             <span style={{ fontSize: 12, color: "var(--ink-2)" }}>
-              <b style={countNum}>{threads.length}</b> sessions · <b style={countNum}>{counts.won}</b> ✓ · <b style={countNum}>{counts.lost}</b> ✕ · <b style={countNum}>{counts.open}</b> open
+              <b style={countNum}>{threads.length}</b> {t("sessions")} · <b style={countNum}>{counts.won}</b> ✓ · <b style={countNum}>{counts.lost}</b> ✕ · <b style={countNum}>{counts.open}</b> {t("open")}
             </span>
             <div style={{ flex: 1 }} />
-            <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: "stream" }, { value: "grouped", label: "grouped" }]} />
+            <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: t("stream") }, { value: "grouped", label: t("grouped") }]} />
             <Segmented value={filter} onChange={(f) => { setFilter(f); setSelectedId(null); }} options={[
-              { value: "all", label: "all" }, { value: "won", label: "won" }, { value: "lost", label: "lost" }, { value: "open", label: "open" },
+              { value: "all", label: t("all") }, { value: "won", label: t("won") }, { value: "lost", label: t("lost") }, { value: "open", label: t("open") },
             ]} />
           </div>
           {mode === "stream" ? log : compact ? (
@@ -142,7 +144,7 @@ export default function NegotiationsPage() {
                 <button type="button" onClick={() => setSelectedId(null)} style={{
                   padding: "10px 16px", border: "none", borderBottom: "1px solid var(--wb-divider)", background: "#fff",
                   textAlign: "left", fontSize: 12, color: "var(--ink-2)", cursor: "pointer",
-                }}>← all sessions</button>
+                }}>← {t("all sessions")}</button>
                 {log}
               </div>
             ) : (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
@@ -39,6 +40,7 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
 
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
 function AppRail({ here }: { here: RailKey }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { conversations } = useConversation();
@@ -58,32 +60,32 @@ function AppRail({ here }: { here: RailKey }) {
   );
 
   return (
-    <nav className="ih-rail" aria-label="main">
+    <nav className="ih-rail" aria-label={t("main")}>
       <div className="ih-brand">index</div>
       <div className="ih-rail-body">
-        {item("home", "home", "/", waiting)}
+        {item("home", t("home"), "/", waiting)}
         {/* Home's sections stay listed on every page; from elsewhere they open Home there. */}
-        <ul className="ih-sub" aria-label="jump to">
+        <ul className="ih-sub" aria-label={t("jump to")}>
             {(sections.length ? sections : DEFAULT_HOME_SECTIONS).map((section) => (
               <li key={section.id}>
                 <button type="button" className="ih-sub-link" onClick={() => { if (here !== "home") navigate("/"); jumpTo(section.id); }}>
-                  <span className="ih-nav-label">{section.label}</span>
+                  <span className="ih-nav-label">{t(section.label)}</span>
                   {section.loading
-                    ? <span className="ih-sub-n ih-sub-loading" aria-label="loading">{section.count ? `${section.count} ` : ""}<span className="ih-blink">…</span></span>
+                    ? <span className="ih-sub-n ih-sub-loading" aria-label={t("loading")}>{section.count ? `${section.count} ` : ""}<span className="ih-blink">…</span></span>
                     : !!section.count && <span className="ih-sub-n">{section.count}</span>}
                 </button>
               </li>
             ))}
         </ul>
-        {item("intents", "intents", "/intents", waiting)}
-        {item("chat", "conversations", "/chat", unread)}
+        {item("intents", t("intents"), "/intents", waiting)}
+        {item("chat", t("conversations"), "/chat", unread)}
 
         <div className="ih-foot">
           <ConnectAgent />
           <div className="ih-menu">
-            {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
-            {item("networks", "networks", "/networks")}
-            {item("settings", "settings", "/settings?tab=notifications")}
+            {item("profile", t("profile"), user?.id ? `/u/${user.id}` : "/settings")}
+            {item("networks", t("networks"), "/networks")}
+            {item("settings", t("settings"), "/settings?tab=notifications")}
             <AccountMenu />
           </div>
         </div>
@@ -94,6 +96,7 @@ function AppRail({ here }: { here: RailKey }) {
 
 /** You, at the foot of the sidebar: your photo and name; a click opens log out above it (as on x.com). */
 function AccountMenu() {
+  const { t } = useTranslation();
   const { user, signOut } = useAuthContext();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -120,7 +123,7 @@ function AccountMenu() {
       {open && (
         <div className="ih-account-menu" role="menu">
           <button type="button" role="menuitem" className="ih-account-out" onClick={() => { setOpen(false); void signOut(); }}>
-            log out
+            {t("log out")}
           </button>
         </div>
       )}
@@ -133,7 +136,7 @@ function AccountMenu() {
       >
         <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={28} />
         <span className="ih-account-who">
-          <span className="ih-account-name">{user?.name || "you"}</span>
+          <span className="ih-account-name">{user?.name || t("you")}</span>
           {user?.email && <span className="ih-account-sub">{user.email}</span>}
         </span>
         <span className="ih-account-more" aria-hidden>···</span>
@@ -144,6 +147,7 @@ function AccountMenu() {
 
 /** The agent's own window beside Home, opened from Home's "talk to your agent". */
 function AgentWindow() {
+  const { t } = useTranslation();
   const { open, setOpen } = useAgentWindow();
   const { intents, fetchIntents, loadRadar } = useIntentsData();
   // After the agent changes something, show it: reread intents and everyone's stage.
@@ -154,14 +158,14 @@ function AgentWindow() {
   if (!open) {
     // Closed, the chat stays docked on the right as a thin strip; a click opens it.
     return (
-      <button type="button" className="ih-agentdock" aria-label="open your agent" title="talk to your agent" onClick={() => setOpen(true)}>
+      <button type="button" className="ih-agentdock" aria-label={t("open your agent")} title={t("talk to your agent")} onClick={() => setOpen(true)}>
         <span className="ih-agentdock-arrow" aria-hidden>◂</span>
-        <span className="ih-agentdock-label">talk to your agent</span>
+        <span className="ih-agentdock-label">{t("talk to your agent")}</span>
       </button>
     );
   }
   return (
-    <section className="ih-agentwin" aria-label="your agent">
+    <section className="ih-agentwin" aria-label={t("your agent")}>
       <PersonalAgentPanel onChanged={onChanged} onClose={() => setOpen(false)} />
     </section>
   );
@@ -169,12 +173,13 @@ function AgentWindow() {
 
 /** Beside an intent: that intent's agent, always open (it's half of the page). */
 function IntentAgentWindow({ intentId }: { intentId: string }) {
+  const { t } = useTranslation();
   const { intents } = useIntentsData();
   const intent = intents.find((i) => i.id === intentId);
   if (!intent) return null;
   const paused = (intent.status || "").toLowerCase() === "paused";
   return (
-    <section className="ih-agentwin" aria-label="this intent's agent">
+    <section className="ih-agentwin" aria-label={t("this intent's agent")}>
       <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} />
     </section>
   );

@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { StatusPage } from "@/components/SiteSignIn";
+import i18n from "@/lib/i18n";
 
 export default function SkipOpportunityPage() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
@@ -29,7 +32,7 @@ export default function SkipOpportunityPage() {
         await opportunitiesService.updateStatus(id!, "rejected");
         if (!cancelled) {
           navigate("/", { replace: true });
-          setTimeout(() => infoRef.current("Opportunity skipped"), 0);
+          setTimeout(() => infoRef.current(i18n.t("Opportunity skipped")), 0);
         }
       } catch (err: unknown) {
         if (cancelled) return;
@@ -38,7 +41,7 @@ export default function SkipOpportunityPage() {
           navigate("/", { replace: true });
           return;
         }
-        const message = err instanceof Error ? err.message : "Something went wrong";
+        const message = err instanceof Error ? err.message : i18n.t("Something went wrong");
         setError(message);
       }
     })();
@@ -47,15 +50,15 @@ export default function SkipOpportunityPage() {
 
   if (error) {
     return (
-      <StatusPage bar="opportunity" title="Couldn’t skip that" message={error}>
+      <StatusPage bar={t("opportunity")} title={t("Couldn’t skip that")} message={error}>
         <button type="button" className="site-btn" onClick={() => navigate("/")}>
-          Go home
+          {t("Go home")}
         </button>
       </StatusPage>
     );
   }
 
-  return <StatusPage bar="opportunity" title="Skipping…" />;
+  return <StatusPage bar={t("opportunity")} title={t("Skipping…")} />;
 }
 
 export const Component = SkipOpportunityPage;

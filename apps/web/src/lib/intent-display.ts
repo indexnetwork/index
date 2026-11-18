@@ -1,10 +1,12 @@
+import i18n from "@/lib/i18n";
+
 const TITLE_MAX = 45;
 const TITLE_LEAD = /^(receive|explore|find|discover|connect with|connect to|connect|meet|seeking|seek|looking for|look for|get)\s+/;
 
 /** Shelf title: lowercase, drop a leading verb, cut on a word at 45 characters. */
 export function intentTitle(raw: string): string {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ").replace(TITLE_LEAD, "");
-  if (!text) return "untitled intent";
+  if (!text) return i18n.t("untitled intent");
   if (text.length <= TITLE_MAX) return text;
   const head = text.slice(0, TITLE_MAX + 1);
   const lastSpace = head.lastIndexOf(" ");
@@ -27,7 +29,7 @@ export function intentShort(raw: string, maxWords = 5): string {
   }
   text = text.replace(/^(?:a|an|the)\s+/, "");
   const words = text.split(" ").filter(Boolean);
-  if (!words.length) return "untitled intent";
+  if (!words.length) return i18n.t("untitled intent");
   let head = words.slice(0, maxWords).map((word) => word.replace(/[,;:.!?]+$/, ""));
   // A comma or full stop ends the thought early, if that still leaves a name.
   const stop = words.slice(0, maxWords).findIndex((word) => /[,;:.!?]$/.test(word));

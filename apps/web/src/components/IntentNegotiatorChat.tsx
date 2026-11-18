@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTranslation } from "react-i18next";
 
 import { useConversations } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -8,6 +9,9 @@ import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type Pr
 import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import TranslatedMark from "@/components/TranslatedMark";
+import { useContentTranslation } from "@/lib/content-translation";
+import i18n from "@/lib/i18n";
 import { formatChatClock } from "@/lib/utils";
 
 type Provenance = {
@@ -136,8 +140,8 @@ export function questionAsker(question: { scope?: string; matches?: PrincipalQue
     .map((match) => match.counterparty)
     .filter((person): person is { id: string; name: string } => Boolean(person?.name));
   if (people.length === 1) return { label: agentLabel(people[0].name), owner: people[0] };
-  if (people.length > 1) return { label: `${people.map((person) => person.name).join(", ")}’s agents`, owner: null };
-  return { label: question.scope === "match" ? "this match’s agent" : "your agent", owner: null };
+  if (people.length > 1) return { label: i18n.t("{{names}}’s agents", { names: people.map((person) => person.name).join(", ") }), owner: null };
+  return { label: question.scope === "match" ? i18n.t("this match’s agent") : i18n.t("your agent"), owner: null };
 }
 
 function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch?: (opportunityId: string) => void) {
@@ -176,6 +180,8 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
   setWriting: Dispatch<SetStateAction<Record<string, boolean>>>;
   onSelectMatch(opportunityId: string): void;
 }) {
+  const { t } = useTranslation();
+  const shown = useContentTranslation(question.text);
   const id = question.questionId;
   const options = question.options;
   const answer = selections[id] || "";
@@ -188,16 +194,17 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
       {owner ? <TheirAgentAvatar owner={owner} size={20} style={{ marginTop: 1 }} /> : <MyAgentAvatar size={20} style={{ marginTop: 1 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
-          <span>QUESTION</span>
+          <span>{t("QUESTION")}</span>
           <span aria-hidden>·</span>
           {questionAskerLabel(question, asker.label, onSelectMatch)}
           {at && <time className="wb-stamp" dateTime={at} style={{ letterSpacing: 0 }}>{formatChatClock(at)}</time>}
         </div>
         <div style={{ background: "var(--wb-selected)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{question.text}</div>
+        <div style={{ fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{shown.text}</div>
+        {shown.active && <div style={{ display: "flex" }}><TranslatedMark state={shown} /></div>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {options.map((option) => (
-            <OptionChip key={option} label={option} selected={answer === option}
+            <TranslatedOptionChip key={option} option={option} selected={answer === option}
               onClick={() => {
                 setSelections((current) => ({ ...current, [id]: current[id] === option ? "" : option }));
                 setWriting((current) => ({ ...current, [id]: false }));
@@ -211,12 +218,12 @@ function OpenQuestion({ question, at, selections, setSelections, writing, setWri
               onFocus={(event) => revealQuestion(event.currentTarget)}
               onBlur={(event) => { if (!event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
               onKeyDown={(event) => { if (event.key === "Escape" && !event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
-              placeholder="write your own"
-              aria-label="Write your own answer"
+              placeholder={t("write your own")}
+              aria-label={t("Write your own answer")}
               style={{ flex: "1 1 200px", minWidth: 160, background: "#fff", padding: "4px 10px", fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink)", outline: "none" }}
             />
           ) : (
-            <OptionChip write label="write your own" onClick={() => {
+            <OptionChip write label={t("write your own")} onClick={() => {
               setSelections((current) => ({ ...current, [id]: "" }));
               setWriting((current) => ({ ...current, [id]: true }));
             }} />
@@ -233,6 +240,8 @@ function AnsweredQuestion({ question, answer, at }: {
   at?: string;
   answer: string;
 }) {
+  const { t } = useTranslation();
+  const shown = useContentTranslation(question.text);
   const asker = questionAsker(question);
   const owner = asker.owner;
   return (
@@ -240,16 +249,38 @@ function AnsweredQuestion({ question, answer, at }: {
       {owner ? <TheirAgentAvatar owner={owner} size={20} style={{ marginTop: 1 }} /> : <MyAgentAvatar size={20} style={{ marginTop: 1 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          <span style={{ color: "var(--wb-live)" }}>✓ answered</span>
+          <span style={{ color: "var(--wb-live)" }}>✓ {t("answered")}</span>
           <span aria-hidden>·</span>
           <span>{asker.label}</span>
           {at && <time className="wb-stamp" dateTime={at} style={{ textTransform: "none", letterSpacing: 0 }}>{formatChatClock(at)}</time>}
         </div>
-        <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{question.text}</div>
+        <div style={{ background: "var(--wb-selected)", padding: "10px 12px", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{shown.text}</div>
+        {shown.active && <div style={{ display: "flex" }}><TranslatedMark state={shown} /></div>}
         <div style={{ marginTop: 4, padding: "10px 12px", background: "#fff", border: "1px solid var(--wb-hairline)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>{answer}</div>
       </div>
     </article>
   );
+}
+
+/** An agent-written answer option: shown in the viewer's language, picked as the original. */
+function TranslatedOptionChip({ option, selected, onClick }: { option: string; selected: boolean; onClick: () => void }) {
+  const shown = useContentTranslation(option);
+  return <OptionChip label={shown.text} selected={selected} onClick={onClick} />;
+}
+
+function AgentNote({ text, at }: { text: string; at?: string }) {
+  const shown = useContentTranslation(text);
+  return (
+    <AgentFeedNote at={at}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{shown.text}</ReactMarkdown>
+      <TranslatedMark state={shown} />
+    </AgentFeedNote>
+  );
+}
+
+function ProgressLine({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· {shown.text}</p>;
 }
 
 /** The intent's private agent conversation: transcript, open questions, and the two ways to write back. */
@@ -385,6 +416,7 @@ export function useIntentAgentChat(intentId: string) {
 
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const { loading, loadFailed, retry, feed, questions, chosen, selections, setSelections, writing, setWriting, draft, setDraft, send, sendAnswers, sending, waiting, firstWaiting, timeById, inputRef } = useIntentAgentChat(intentId);
+  const { t } = useTranslation();
   const endRef = useRef<HTMLDivElement>(null);
   // Follow new content, not an answer: it turns its question into an answered card in place, so the feed doesn't grow.
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [feed.length]);
@@ -398,11 +430,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             tone="error"
             align="start"
             style={{ padding: 0 }}
-            message="couldn't load your agent's messages."
-            action={{ label: "try again", onClick: retry }}
+            message={t("couldn't load your agent's messages.")}
+            action={{ label: t("try again"), onClick: retry }}
           />
         ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>
-          ask about your matches, share a preference, or tell your agent what to look for.
+          {t("ask about your matches, share a preference, or tell your agent what to look for.")}
         </p> : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
           if (piece.kind === "discovery") {
@@ -412,17 +444,17 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             return (
               <div key={piece.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
-                  YOU{at && <time dateTime={at} title={new Date(at).toLocaleString()} style={{ letterSpacing: 0 }}> · {formatChatClock(at)}</time>}
+                  {t("YOU")}{at && <time dateTime={at} title={new Date(at).toLocaleString()} style={{ letterSpacing: 0 }}> · {formatChatClock(at)}</time>}
                 </div>
                 <div style={{ padding: "10px 12px", background: "#fff", border: "1px solid var(--wb-hairline)", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)", wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
-                {waiting && index > firstWaiting && <span style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>queued</span>}
+                {waiting && index > firstWaiting && <span style={{ fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>{t("queued")}</span>}
               </div>
             );
           }
           if (piece.kind === "progress") {
-            return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· {piece.text}</p>;
+            return <ProgressLine key={piece.id} text={piece.text} />;
           }
           if (piece.kind === "open-question") {
             return (
@@ -432,23 +464,19 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           if (piece.kind === "answered-question") {
             return <AnsweredQuestion key={piece.id} at={at} question={piece.question} answer={piece.answer} />;
           }
-          return (
-            <AgentFeedNote key={piece.id} at={at}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
-            </AgentFeedNote>
-          );
+          return <AgentNote key={piece.id} at={at} text={piece.text} />;
         })}
-      {waiting && <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· thinking…</p>}
+      {waiting && <p style={{ margin: 0, fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)" }}>· {t("thinking…")}</p>}
       <div ref={endRef} />
       </div>
 
       {chosen.length > 0 && (
         <div style={{ borderTop: "1px solid var(--wb-hairline)", padding: "10px 16px", background: "#fff", display: "flex", flexDirection: "row-reverse", alignItems: "center", gap: 12 }}>
           <button type="button" className="wb-btn small" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}>
-            {sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
+            {sending ? t("sending…") : chosen.length > 1 ? t("send {{n}} answers", { n: chosen.length }) : t("send answer")}
           </button>
           <span style={{ flex: 1, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
-            {questions.length - chosen.length > 0 ? `${questions.length - chosen.length} of ${questions.length} unanswered` : "all answered · ready to send"}
+            {questions.length - chosen.length > 0 ? t("{{left}} of {{total}} unanswered", { left: questions.length - chosen.length, total: questions.length }) : t("all answered · ready to send")}
           </span>
         </div>
       )}
@@ -457,10 +485,10 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
         <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
-          placeholder="message your agent…"
-          aria-label="Message your agent"
+          placeholder={t("message your agent…")}
+          aria-label={t("Message your agent")}
           style={{ flex: 1, border: "none", borderRadius: 0, resize: "none", outline: "none", fontFamily: "var(--wb-code)", fontSize: 12.5, lineHeight: 1.4, color: "var(--ink)", background: "transparent", padding: "14px 0" }} />
-        <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: "8px 10px", fontFamily: "var(--wb-code)", fontSize: 13, fontWeight: 500, color: draft.trim() && !sending ? "var(--ink)" : "#aaa", cursor: draft.trim() ? "pointer" : "default" }}>
+        <button type="submit" disabled={!draft.trim() || sending} aria-label={t("send")} title={t("send")} style={{ background: "none", border: "none", padding: "8px 10px", fontFamily: "var(--wb-code)", fontSize: 13, fontWeight: 500, color: draft.trim() && !sending ? "var(--ink)" : "#aaa", cursor: draft.trim() ? "pointer" : "default" }}>
           ↑
         </button>
       </form>

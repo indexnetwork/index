@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
@@ -40,6 +41,7 @@ function Tab({ label, icon, active, badge, onClick }: {
  * in the "you" sheet.
  */
 export default function MobileTabBar() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user } = useAuthContext();
@@ -63,12 +65,12 @@ export default function MobileTabBar() {
 
   return (
     <>
-      <nav className="wb-tabbar" aria-label="primary">
-        <Tab label="intents" icon={<IntentGlyph />} active={active === "intents"} onClick={() => navigate("/")} />
-        <Tab label="conversations" icon={<ChatGlyph size={19} />} active={active === "chats"} badge={unread} onClick={() => navigate("/chat")} />
-        <Tab label="agents" icon={<AgentGlyph size={22} />} active={active === "agents"} onClick={() => navigate("/agents")} />
+      <nav className="wb-tabbar" aria-label={t("primary")}>
+        <Tab label={t("intents")} icon={<IntentGlyph />} active={active === "intents"} onClick={() => navigate("/")} />
+        <Tab label={t("conversations")} icon={<ChatGlyph size={19} />} active={active === "chats"} badge={unread} onClick={() => navigate("/chat")} />
+        <Tab label={t("agents")} icon={<AgentGlyph size={22} />} active={active === "agents"} onClick={() => navigate("/agents")} />
         <Tab
-          label="you"
+          label={t("you")}
           icon={<UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={22} />}
           active={sheetOpen}
           badge={pendingJoins}
@@ -86,6 +88,7 @@ export default function MobileTabBar() {
 }
 
 function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; onClose: () => void; onInvite: () => void }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, signOut } = useAuthContext();
 
@@ -110,14 +113,14 @@ function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; o
 
   return (
     <div className="wb-sheet-scrim" onClick={onClose}>
-      <div className="wb-sheet" role="menu" aria-label="you" onClick={(e) => e.stopPropagation()}>
+      <div className="wb-sheet" role="menu" aria-label={t("you")} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
           <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "you"}</div>
+            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || t("you")}</div>
             {user?.email && <div style={{ marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>}
           </div>
-          <button type="button" className="wb-btn small" onClick={onClose}>done</button>
+          <button type="button" className="wb-btn small" onClick={onClose}>{t("done")}</button>
         </div>
         {rows.map((row) => (
           <button
@@ -127,13 +130,13 @@ function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; o
             className="wb-sheet-row"
             onClick={() => (row.action ? row.action() : navigate(row.to!))}
           >
-            <span style={{ flex: 1 }}>{row.label}</span>
-            {row.badge ? <QCount n={row.badge} title={`${row.badge} waiting on you: people asking to join`} /> : null}
+            <span style={{ flex: 1 }}>{t(row.label)}</span>
+            {row.badge ? <QCount n={row.badge} title={t("{{n}} waiting on you: people asking to join", { n: row.badge })} /> : null}
             <span aria-hidden="true">›</span>
           </button>
         ))}
         <button type="button" role="menuitem" className="wb-sheet-row danger" onClick={() => { onClose(); void signOut(); }}>
-          sign out
+          {t("sign out")}
         </button>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n';
 import type { NegotiationSummary } from '@/services/negotiations';
 
 export type NegotiationInboxGroup = 'your_move' | 'in_progress' | 'resolved';
@@ -32,14 +33,14 @@ const THEIR_MOVE = { label: 'Their agent’s turn', chipClass: 'border-amber-200
 
 function formatTimeAgo(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return i18n.t('just now');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return i18n.t('{{n}}m ago', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return i18n.t('{{n}}h ago', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
+  if (days < 30) return i18n.t('{{n}}d ago', { n: days });
+  return i18n.t('{{n}}mo ago', { n: Math.floor(days / 30) });
 }
 
 /**
@@ -72,12 +73,12 @@ export function deriveNegotiationInbox(
       opportunityId: negotiation.opportunityId,
       counterpart: {
         id: negotiation.counterparty.userId,
-        name: negotiation.counterparty.name ?? 'Unknown user',
+        name: negotiation.counterparty.name ?? i18n.t('Unknown user'),
         avatar: negotiation.counterparty.avatar,
       },
       statement: negotiation.counterparty.statement,
       group,
-      label: presentation.label,
+      label: i18n.t(presentation.label),
       chipClass: presentation.chipClass,
       turnCount: negotiation.turnCount,
       timeAgo: formatTimeAgo(Number.isFinite(timestamp) ? timestamp : 0, now),

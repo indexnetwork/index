@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
@@ -22,6 +23,7 @@ function AgentOverview({
   agent: Agent;
   userId: string;
 }) {
+  const { t } = useTranslation();
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   if (isNegotiator) {
@@ -31,7 +33,7 @@ function AgentOverview({
   return (
     <div className="space-y-6">
       <div style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, padding: 16, background: "#fff" }}>
-        <p style={{ margin: "0 0 8px", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)" }}>agent</p>
+        <p style={{ margin: "0 0 8px", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)" }}>{t("agent")}</p>
         <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14 }}>{agent.name}</p>
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-3)" }}>{agent.type} · {agent.status}</p>
       </div>
@@ -40,6 +42,7 @@ function AgentOverview({
 }
 
 export default function AgentDetailPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: authLoading, user } = useAuthContext();
@@ -86,18 +89,18 @@ export default function AgentDetailPage() {
   if (authLoading || !isAuthenticated || loading || !agent) {
     return (
       <Stage width={520}>
-        <Window title="agents" onClose={() => navigate("/agents")}>
+        <Window title={t("agents")} onClose={() => navigate("/agents")}>
           <div style={{ padding: 28 }}>
             {authLoading || !isAuthenticated || loading ? (
               <EmptyState tone="loading" />
             ) : failed ? (
               <EmptyState
                 tone="error"
-                message="couldn't load this agent."
-                action={{ label: "try again", onClick: () => { setLoading(true); setFailed(false); setReloadKey((k) => k + 1); } }}
+                message={t("couldn't load this agent.")}
+                action={{ label: t("try again"), onClick: () => { setLoading(true); setFailed(false); setReloadKey((k) => k + 1); } }}
               />
             ) : (
-              <EmptyState message="this agent doesn't exist or was removed." action={{ label: "back to agents", to: "/agents" }} />
+              <EmptyState message={t("this agent doesn't exist or was removed.")} action={{ label: t("back to agents"), to: "/agents" }} />
             )}
           </div>
         </Window>
@@ -108,11 +111,11 @@ export default function AgentDetailPage() {
   return (
     <>
       <Stage width={860} height="min(720px, calc(100vh - 112px))">
-        <Window title="agents" onClose={() => navigate("/agents")} style={{ height: "100%" }}>
+        <Window title={t("agents")} onClose={() => navigate("/agents")} style={{ height: "100%" }}>
           <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
             <h1 style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{agent.name}</h1>
             <p style={{ margin: "6px 0 16px", fontSize: 12, color: "var(--ink-3)" }}>
-              {agent.type === "system" ? "hosted by index" : agent.status}
+              {agent.type === "system" ? t("hosted by index") : agent.status}
             </p>
             <AgentOverview agent={agent} userId={user?.id ?? ""} />
           </div>

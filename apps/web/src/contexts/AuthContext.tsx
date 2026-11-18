@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router';
 import { authClient, clearJwtToken } from '@/lib/auth-client';
 import { isHandlePath } from '@/lib/handle-route';
@@ -34,6 +35,7 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const session = authClient.useSession();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -185,16 +187,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     >
       {isLoading ? (
         // The workbench blue with a white segmented bar filling while auth settles.
-        <div className="index-splash" role="status" aria-label="loading">
+        <div className="index-splash" role="status" aria-label={t("loading")}>
           <div className="index-splash-bar" aria-hidden>
             {Array.from({ length: 12 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 0.1}s` }} />)}
           </div>
-          <div className="index-splash-label">loading<span className="index-splash-blink">_</span></div>
+          <div className="index-splash-label">{t("loading")}<span className="index-splash-blink">_</span></div>
         </div>
       ) : error ? (
-        <StatusPage bar="error" title="Something went wrong" message={error}>
+        <StatusPage bar={t("error")} title={t("Something went wrong")} message={t(error)}>
           <button type="button" className="site-btn" onClick={() => window.location.reload()}>
-            Refresh
+            {t("Refresh")}
           </button>
         </StatusPage>
       ) : (

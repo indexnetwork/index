@@ -3,6 +3,7 @@ import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkService } from '@/services/networks';
 import { log } from '@/lib/logger';
+import i18n from '@/lib/i18n';
 
 const logger = log.context.from('NetworksContext');
 
@@ -39,7 +40,7 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
       hasDataRef.current = true;
     } catch (err) {
       logger.error('Error fetching networks', { error: err });
-      setError('Failed to load networks');
+      setError(i18n.t('Failed to load networks'));
       setNetworks([]);
     } finally {
       setLoading(false);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode, type UIEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import AppHandoff from "@/components/AppHandoff";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
@@ -7,6 +8,9 @@ import IntentsHome from "@/components/intents-home/IntentsHome";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import ChatView from "@/components/chat/ChatView";
 import UserAvatar from "@/components/UserAvatar";
+import TranslatedMark from "@/components/TranslatedMark";
+import { useContentTranslation } from "@/lib/content-translation";
+import i18n from "@/lib/i18n";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -65,6 +69,7 @@ function IntentWeb() {
 }
 
 function IntentDetail() {
+  const { t, i18n: i18nInstance } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   const back = useBack("/");
@@ -274,11 +279,11 @@ function IntentDetail() {
       await intentsService.archiveIntent(intentId);
       navigate("/");
     } catch {
-      showError("couldn't archive this intent.");
+      showError(t("couldn't archive this intent."));
     } finally {
       setArchiving(false);
     }
-  }, [intentId, archiving, intentsService, navigate, showError]);
+  }, [intentId, archiving, intentsService, navigate, showError, t]);
 
   const clickArchive = useCallback(() => {
     if (archiving || !intentId) return;
@@ -316,8 +321,8 @@ function IntentDetail() {
         if (!isCurrentRequest()) return;
         showError(
           status === "paused"
-            ? "Failed to pause intent"
-            : "Failed to resume intent",
+            ? t("Failed to pause intent")
+            : t("Failed to resume intent"),
         );
       } finally {
         if (isCurrentRequest()) {
@@ -326,7 +331,7 @@ function IntentDetail() {
         }
       }
     },
-    [intentId, intentsService, showError],
+    [intentId, intentsService, showError, t],
   );
 
   /** Feed the header ✎ input's text to the intent's refine flow and reload
@@ -341,11 +346,11 @@ function IntentDetail() {
         void loadOpportunities();
         return true;
       } catch {
-        showError("Failed to refine intent");
+        showError(t("Failed to refine intent"));
         return false;
       }
     },
-    [intentId, intentsService, loadOpportunities, showError],
+    [intentId, intentsService, loadOpportunities, showError, t],
   );
 
   const handleRefine = useCallback(async () => {
@@ -473,26 +478,26 @@ function IntentDetail() {
       borderBottom: "1px solid var(--wb-hairline)", background: "#fff", transition: "padding 180ms ease, min-height 180ms ease",
     }}>
       {intentLoading ? (
-        <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
+        <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{t("loading…")}</p>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <h2 title={title || "your intent"} style={{
+            <h2 title={title || t("your intent")} style={{
               margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
               fontSize: small ? 14 : 16, color: "var(--ink)", lineHeight: 1.4,
               flex: 1, minWidth: 0, transition: "font-size 180ms ease",
               display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: small ? 1 : 3,
               maxHeight: small ? "1.4em" : "4.2em", overflow: "hidden",
-            }}>{title || "your intent"}</h2>
+            }}>{title || t("your intent")}</h2>
             <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
               <IntentAction
-                label={lifecycleStatus === "paused" ? "▶ resume" : "❚❚ pause"}
+                label={lifecycleStatus === "paused" ? `▶ ${t("resume")}` : `❚❚ ${t("pause")}`}
                 active={lifecycleStatus === "paused"}
                 onClick={() => { if (!lifecycleBusy) void handleSetIntentStatus(lifecycleStatus === "paused" ? "active" : "paused"); }}
               />
               <IntentAction
                 danger
-                label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
+                label={archiving ? t("archiving…") : archiveArmed ? t("archive · confirm") : t("archive")}
                 active={archiveArmed || archiving}
                 onClick={clickArchive}
               />
@@ -505,8 +510,8 @@ function IntentDetail() {
           }}>
             {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6, borderRadius: "50%" }} />}
             <span>
-              {lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}
-              {intent?.createdAt && ` · created ${new Date(intent.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+              {lifecycleStatus === "paused" ? t("paused · agent on hold") : t("live · agent is looking in the background")}
+              {intent?.createdAt && ` · ${t("created {{date}}", { date: new Date(intent.createdAt).toLocaleDateString(i18nInstance.resolvedLanguage ?? "en-US", { month: "short", day: "numeric", year: "numeric" }) })}`}
             </span>
           </div>
         </>
@@ -525,7 +530,7 @@ function IntentDetail() {
         onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
         stages={RADAR_STAGES.map((stage) => ({
           label: stage,
-          display: stage === "negotiating" ? "in talks" : stage === "accepted" ? "chat open" : stage,
+          display: t(stage === "negotiating" ? "in talks" : stage === "accepted" ? "chat open" : stage),
           count: bucketCounts[stage] ?? 0,
           accent: stage === "awaiting you" || stage === "accepted",
         }))}
@@ -539,8 +544,8 @@ function IntentDetail() {
         <EmptyState
           tone="error"
           style={{ padding: 16 }}
-          message="radar couldn't load."
-          action={{ label: "try again", onClick: () => void loadOpportunities() }}
+          message={t("radar couldn't load.")}
+          action={{ label: t("try again"), onClick: () => void loadOpportunities() }}
         />
       ) : opportunitiesLoading && opportunities.length === 0 ? (
         <div data-testid="radar-skeleton"><EmptyState tone="loading" style={{ padding: 28 }} /></div>
@@ -551,10 +556,10 @@ function IntentDetail() {
           framed
           style={{ padding: 28, marginTop: 12 }}
           message={selectedBucket === "all" && lifecycleStatus === "paused" && shownCount === 0
-            ? "this intent is paused, so your agent isn't looking right now."
+            ? t("this intent is paused, so your agent isn't looking right now.")
             : radarEmptyLine(selectedBucket)}
           action={selectedBucket === "accepted" && (bucketCounts["awaiting you"] ?? 0) > 0
-            ? { label: "see awaiting you", onClick: () => setSelectedBucket("awaiting you") }
+            ? { label: t("see awaiting you"), onClick: () => setSelectedBucket("awaiting you") }
             : undefined}
         />
       ) : visibleOpportunities.map((item) => {
@@ -562,7 +567,7 @@ function IntentDetail() {
         if (!bucket) return null;
         const busy = !!opportunityActionLoading[item.opportunityId];
         const peer = item.peer;
-        const name = item.name || peer?.name || "unknown";
+        const name = item.name || peer?.name || t("unknown");
         const blurb = item.headline || item.mainText || "";
         const activityAt = radarActivityAt(item);
         return (
@@ -615,17 +620,17 @@ function IntentDetail() {
       {opportunityModalElement}
       <Stage>
         {!intent ? (
-          <Window title="intent" onClose={back}>
+          <Window title={t("intent")} onClose={back}>
             <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
               {intentLoading ? (
                 <EmptyState tone="loading" />
               ) : intentMissing ? (
-                <EmptyState message="this intent doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
+                <EmptyState message={t("this intent doesn't exist or was removed.")} action={{ label: t("go home"), to: "/" }} />
               ) : intentFailed ? (
                 <EmptyState
                   tone="error"
-                  message="couldn't load this intent."
-                  action={{ label: "try again", onClick: () => setIntentReloadKey((k) => k + 1) }}
+                  message={t("couldn't load this intent.")}
+                  action={{ label: t("try again"), onClick: () => setIntentReloadKey((k) => k + 1) }}
                 />
               ) : null /* signed out: the effect above is already redirecting to /login */}
             </div>
@@ -635,7 +640,7 @@ function IntentDetail() {
             {personPane}
           </Window>
         ) : (
-          <Window title="intent" onClose={back}>
+          <Window title={t("intent")} onClose={back}>
             <div
               style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
               onScrollCapture={onBodyScroll}
@@ -652,8 +657,8 @@ function IntentDetail() {
                     value={compactPane}
                     onChange={setCompactPane}
                     options={[
-                      { value: "agent", label: "agent" },
-                      { value: "radar", label: shownCount ? `radar · ${shownCount}` : "radar" },
+                      { value: "agent", label: t("agent") },
+                      { value: "radar", label: shownCount ? `${t("radar")} · ${shownCount}` : t("radar") },
                     ]}
                   />
                 </div>
@@ -673,24 +678,36 @@ function IntentDetail() {
 }
 
 function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, pane: "stage" | "profile" | "negotiation", notOnIndex = false) {
-  if (pane === "profile") return "profile";
-  if (pane === "negotiation") return "agent log";
+  if (pane === "profile") return i18n.t("profile");
+  if (pane === "negotiation") return i18n.t("agent log");
   // Someone not on Index has no chat; their accepted stage is the invite.
-  if (bucket === "accepted" && notOnIndex) return "invite";
-  return personWindowTitle(bucket);
+  if (bucket === "accepted" && notOnIndex) return i18n.t("invite");
+  return i18n.t(personWindowTitle(bucket));
+}
+
+/** A summary section whose body was written by an agent or by the other person. */
+function TranslatedSection({ label, text }: { label: string; text: string }) {
+  const shown = useContentTranslation(text);
+  return (
+    <SummarySection label={label}>
+      {shown.text}
+      {shown.active && <div><TranslatedMark state={shown} /></div>}
+    </SummarySection>
+  );
 }
 
 function PersonHead({ name, photo, userId, unverified, sub, size = 28, action, onOpenProfile }: {
   name: string; photo?: string | null; userId?: string; unverified?: boolean; sub?: string; size?: number; action?: ReactNode; onOpenProfile?: () => void;
 }) {
+  const { t } = useTranslation();
   const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 16 : 14, fontWeight: 500, color: "var(--ink)", whiteSpace: "normal", cursor: onOpenProfile ? "pointer" : undefined } as const;
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--wb-hairline)", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-      <span title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
+      <span title={onOpenProfile ? t("view profile") : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
         <UserAvatar id={userId} name={name} avatar={photo} size={size} />
       </span>
       <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
-        <div title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={nameStyle}>{name}</div>
+        <div title={onOpenProfile ? t("view profile") : undefined} onClick={onOpenProfile} style={nameStyle}>{name}</div>
         {unverified && <NotOnIndexTag />}
         {sub && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 11, color: "var(--ink-2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{sub}</div>}
       </div>
@@ -715,6 +732,7 @@ function InvitePane({ item, name, intent, senderName, onOpenProfile, onNegotiati
   onOpenProfile: () => void;
   onNegotiation?: () => void;
 }) {
+  const { t } = useTranslation();
   // Keyed by userId so another person's profile never shows while this one loads.
   const [loaded, setLoaded] = useState<{ userId: string; user: Awaited<ReturnType<typeof getPublicUserProfile>> } | null>(null);
   const profile = loaded && loaded.userId === item.userId ? loaded.user : null;
@@ -754,13 +772,13 @@ function InvitePane({ item, name, intent, senderName, onOpenProfile, onNegotiati
       <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified size={36} onOpenProfile={onOpenProfile} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
-          {first} isn&apos;t on Index yet, so there&apos;s no chat to open. {canSend
-            ? "Send them an invite and the two of you can pick it up here once they join."
-            : "Share the invite link with them, and the two of you can pick it up here once they join."}
+          {t("{{name}} isn't on Index yet, so there's no chat to open.", { name: first })} {canSend
+            ? t("Send them an invite and the two of you can pick it up here once they join.")
+            : t("Share the invite link with them, and the two of you can pick it up here once they join.")}
         </div>
-        {note && <SummarySection label="the opportunity">{note}</SummarySection>}
+        {note && <TranslatedSection label={t("the opportunity")} text={note} />}
         {canSend ? (
-        <SummarySection label="your message">
+        <SummarySection label={t("your message")}>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -769,12 +787,12 @@ function InvitePane({ item, name, intent, senderName, onOpenProfile, onNegotiati
           />
         </SummarySection>
         ) : (
-          <SummarySection label="invite link">
+          <SummarySection label={t("invite link")}>
             <div style={{ fontFamily: "var(--wb-code)", fontSize: 12, padding: "8px 10px", border: "1px solid var(--wb-control)", borderRadius: 3, background: "#fff", userSelect: "text" }}>{INVITE_URL}</div>
           </SummarySection>
         )}
         {socials.length > 0 && (
-          <SummarySection label="elsewhere">
+          <SummarySection label={t("elsewhere")}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {socials.map((s) => (
                 <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--wb-control)", borderRadius: 3, padding: "4px 10px", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", textDecoration: "none" }}>
@@ -789,22 +807,22 @@ function InvitePane({ item, name, intent, senderName, onOpenProfile, onNegotiati
       <div style={{ borderTop: "1px solid var(--wb-hairline)", padding: "10px 16px", background: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {x && (
           <a className="wb-btn primary small" href={inviteXHref(message)} target="_blank" rel="noopener noreferrer"
-            title={`Opens an X message. Pick @${x.handle} as the recipient.`}
+            title={t("Opens an X message. Pick @{{handle}} as the recipient.", { handle: x.handle })}
             style={linkBtn}>
             {SOCIAL_ICONS.x}
-            send on X
+            {t("send on X")}
           </a>
         )}
         {email && (
           <a className={`wb-btn small${x ? "" : " primary"}`} href={inviteEmailHref({ to: email, subject: inviteSubject(senderName), body: message })}
-            title={`Opens your mail app with this message to ${email}.`}
+            title={t("Opens your mail app with this message to {{email}}.", { email })}
             style={linkBtn}>
-            email
+            {t("email")}
           </a>
         )}
-        <Btn small primary={!canSend} onClick={copy}>{copied ? "copied" : "copy invite link"}</Btn>
+        <Btn small primary={!canSend} onClick={copy}>{copied ? t("copied") : t("copy invite link")}</Btn>
         {onNegotiation && (
-          <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>agent log ›</Btn></span>
+          <span style={{ marginLeft: "auto" }}><Btn small onClick={onNegotiation}>{t("agent log")} ›</Btn></span>
         )}
       </div>
     </div>
@@ -838,6 +856,7 @@ function PersonPane({
   hasChat?: boolean;
   onOpenChat?: () => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const name = item.name || "someone";
   const notOnIndex = item.peer?.emailVerified === false;
@@ -865,20 +884,20 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--wb-hairline)", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-          <span title="view profile" onClick={openFullProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
+          <span title={t("view profile")} onClick={openFullProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
             <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={28} />
           </span>
           <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: "var(--amiga-title)", fontSize: 14, fontWeight: 500 }}>
-              your agent ⇄ <span title="view profile" onClick={openFullProfile} style={{ cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{first}&apos;s agent</span>
+              {t("your agent")} ⇄ <span title={t("view profile")} onClick={openFullProfile} style={{ cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{t("{{name}}'s agent", { name: first })}</span>
             </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
               {bucket === "closed"
-                ? <>The agents finished talking. This isn&apos;t a chat with {name}.</>
-                : <>The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.</>}
+                ? t("The agents finished talking. This isn't a chat with {{name}}.", { name })
+                : t("The two agents are working out whether you and {{name}} should meet. This isn't a chat with {{name}}.", { name })}
             </div>
           </div>
-          {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>{notOnIndex ? "invite ›" : "chat ›"}</Btn>}
+          {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>{notOnIndex ? t("invite") : t("chat")} ›</Btn>}
         </div>
         <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={onClose} />
       </div>
@@ -903,7 +922,7 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <PersonHead name={name} photo={item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} onOpenProfile={openProfile} action={intentId && (
-          <Btn small onClick={() => onPane("negotiation")}>agent log ›</Btn>
+          <Btn small onClick={() => onPane("negotiation")}>{t("agent log")} ›</Btn>
         )} />
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
           <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
@@ -918,10 +937,10 @@ function PersonPane({
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
       <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} unverified={item.peer?.emailVerified === false} size={36} onOpenProfile={item.userId ? () => navigate(`/u/${item.userId}`) : undefined} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
-        {bio && <SummarySection label="bio">{bio}</SummarySection>}
-        {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
+        {bio && <TranslatedSection label={t("bio")} text={bio} />}
+        {note && <TranslatedSection label={t("why your agent surfaced them")} text={note} />}
         {socials.length > 0 && (
-          <SummarySection label="elsewhere">
+          <SummarySection label={t("elsewhere")}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {socials.map((s) => (
                 <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--wb-control)", borderRadius: 3, padding: "4px 10px", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", textDecoration: "none" }}>
@@ -935,34 +954,34 @@ function PersonPane({
         {profile?.location && (
           <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{profile.location}</div>
         )}
-        {bucket === "closed" && item.status === "expired" && <SummarySection label="why it closed">an intent was archived.</SummarySection>}
+        {bucket === "closed" && item.status === "expired" && <SummarySection label={t("why it closed")}>{t("an intent was archived.")}</SummarySection>}
         {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
             ? <EmptyState tone="loading" align="start" />
-            : <EmptyState align="start" message="nothing recorded yet." />
+            : <EmptyState align="start" message={t("nothing recorded yet.")} />
         )}
       </div>
       <div style={{ borderTop: "1px solid var(--wb-hairline)", padding: "10px 16px", background: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {/* Same as the radar card: a chat that already exists means there is
             nothing left to accept, so offer the chat instead. */}
         {(bucket === "awaiting you" || bucket === "accepted") && hasChat && !notOnIndex ? (
-          <Btn primary small onClick={onOpenChat}>open chat ›</Btn>
+          <Btn primary small onClick={onOpenChat}>{t("open chat")} ›</Btn>
         ) : bucket === "awaiting you" ? (
           <>
-            <Btn primary small onClick={onAccept}>accept</Btn>
-            <Btn small onClick={onPass}>pass</Btn>
+            <Btn primary small onClick={onAccept}>{t("accept")}</Btn>
+            <Btn small onClick={onPass}>{t("pass")}</Btn>
           </>
         ) : bucket === "accepted" ? (
-          <Btn small onClick={() => onPane("stage")}>{notOnIndex ? "invite ›" : "chat ›"}</Btn>
+          <Btn small onClick={() => onPane("stage")}>{notOnIndex ? t("invite") : t("chat")} ›</Btn>
         ) : bucket === "closed" ? (
-          <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>this intent closed.</span>
+          <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{t("this intent closed.")}</span>
         ) : bucket !== "negotiating" ? (
           <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>
-            answer their question in your feed to move forward.
+            {t("answer their question in your feed to move forward.")}
           </span>
         ) : null}
         {intentId && (
-          <Btn small onClick={() => onPane(bucket === "negotiating" ? "stage" : "negotiation")}>agent log ›</Btn>
+          <Btn small onClick={() => onPane(bucket === "negotiating" ? "stage" : "negotiation")}>{t("agent log")} ›</Btn>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiClient, APIError } from "@/lib/api";
+import i18n from "@/lib/i18n";
 import type { ConversationMessage } from "@/services/conversation";
 
 /** Id prefix for the owner's message before the server has stored it. */
@@ -75,7 +76,7 @@ export function usePersonalAgentChat(onChanged: (tools: string[]) => void) {
       if (res.changed?.length) changedRef.current(res.changed);
       return true;
     } catch (err) {
-      const message = err instanceof APIError && err.status !== 0 ? err.message : "couldn't reach your agent.";
+      const message = err instanceof APIError && err.status !== 0 ? err.message : i18n.t("couldn't reach your agent.");
       setError(message);
       // The server keeps the owner's message even when the turn fails; reread to match it.
       await load();
@@ -93,7 +94,7 @@ export function usePersonalAgentChat(onChanged: (tools: string[]) => void) {
       await apiClient.post("/personal-agent/new", {});
       setMessages([]);
     } catch (err) {
-      setError(err instanceof APIError && err.status !== 0 ? err.message : "couldn't start a new chat.");
+      setError(err instanceof APIError && err.status !== 0 ? err.message : i18n.t("couldn't start a new chat."));
     }
   }, [sending]);
 

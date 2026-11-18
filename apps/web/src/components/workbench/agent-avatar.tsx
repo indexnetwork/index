@@ -1,4 +1,7 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
+
+import i18n from "@/lib/i18n";
 
 import UserAvatar from "@/components/UserAvatar";
 import { AgentFace } from "@/components/workbench/agent-face";
@@ -21,9 +24,9 @@ function agentOwner(name?: string | null) {
 /** A nameless agent is yours; an "unknown" counterparty's is still somebody's. */
 export function agentLabel(name?: string | null) {
   const owner = agentOwner(name);
-  if (!owner) return "your agent";
-  if (/^unknown$/i.test(owner)) return "someone's agent";
-  return `${owner}'s agent`;
+  if (!owner) return i18n.t("your agent");
+  if (/^unknown$/i.test(owner)) return i18n.t("someone's agent");
+  return i18n.t("{{name}}'s agent", { name: owner });
 }
 
 function OwnedAgentAvatar({ owner, seed, label, size, style, title }: {
@@ -45,13 +48,14 @@ function OwnedAgentAvatar({ owner, seed, label, size, style, title }: {
 
 /** Your negotiator: your photo with your agent's face in the corner. */
 export function MyAgentAvatar({ size = 22, style, title }: { size?: number; style?: CSSProperties; title?: string }) {
+  const { t } = useTranslation();
   const { user } = useAuthContext();
   const first = String(user?.name || "").trim().split(/\s+/)[0];
   return (
     <OwnedAgentAvatar
       owner={{ id: user?.id, name: user?.name, photo: user?.avatar }}
       seed={user?.id || user?.name || "index"}
-      label={first ? `${first}'s agent` : "your agent"}
+      label={first ? t("{{name}}'s agent", { name: first }) : t("your agent")}
       size={size} style={style} title={title}
     />
   );

@@ -25,6 +25,7 @@ import { ConversationController } from './controllers/conversation.controller';
 import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { PersonalAgentController } from './controllers/personal-agent.controller';
+import { TranslateController } from './controllers/translate.controller';
 import { ConversationService } from './services/conversation.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -107,6 +108,7 @@ controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
 controllerInstances.set(DocsController, new DocsController());
 controllerInstances.set(ScrapeController, new ScrapeController());
+controllerInstances.set(TranslateController, new TranslateController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 

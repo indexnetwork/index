@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import UserAvatar from '@/components/UserAvatar';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 
@@ -20,6 +21,7 @@ function BoringFallback({ id, title, size, className }: { id?: string; title?: s
  * previous failure instead of needing an effect to reset it.
  */
 function NetworkImage({ id, title, imageUrl, size, className }: NetworkAvatarProps & { imageUrl: string; className: string }) {
+  const { t } = useTranslation();
   const [imgError, setImgError] = useState(false);
 
   if (imgError) {
@@ -33,7 +35,7 @@ function NetworkImage({ id, title, imageUrl, size, className }: NetworkAvatarPro
     >
       <img
         src={resolveNetworkImageSrc(imageUrl)}
-        alt={title || 'Network'}
+        alt={title || t('Network')}
         width={size}
         height={size}
         loading="lazy"

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 export type EmptyStateAction =
@@ -33,8 +34,9 @@ export function EmptyState({
   style,
   className,
 }: EmptyStateProps) {
+  const { t } = useTranslation();
   const actions = action ? (Array.isArray(action) ? action : [action]) : [];
-  const text = message ?? (tone === "loading" ? "loading…" : null);
+  const text = message ?? (tone === "loading" ? t("loading…") : null);
   const centred = align === "center";
   return (
     <div

@@ -8,9 +8,11 @@ import { Stage, Window } from "@/components/workbench/Workbench";
 import { ChatFrame } from "@/components/chat/ChatFrame";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCompact } from "@/hooks/useCompact";
+import { useTranslation } from "react-i18next";
 
 export default function ChatLandingPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const compact = useCompact();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { conversations, conversationsStatus } = useConversation();
@@ -37,7 +39,7 @@ export default function ChatLandingPage() {
   if (compact) {
     return (
       <Stage>
-        <Window title="conversations">
+        <Window title={t("conversations")}>
           <div style={{ flex: 1, minHeight: 0 }}>
             <ChatSidebar />
           </div>
@@ -54,13 +56,13 @@ export default function ChatLandingPage() {
     <ChatFrame list={listColumn ? <ChatSidebar showEmpty={false} /> : undefined} onClose={() => navigate("/")}>
       <div style={{ flex: 1, display: "grid", placeItems: "center", alignContent: "center", padding: 24, minHeight: 0, overflow: "auto" }}>
         {hasConversations ? (
-          <EmptyState message="pick a conversation." />
+          <EmptyState message={t("pick a conversation.")} />
         ) : conversationsStatus === "ready" ? (
           <EmptyState
             framed
             style={{ maxWidth: 360 }}
-            message="no conversations yet. a chat opens when you and someone both accept an intro."
-            action={{ label: "start an intent", to: "/i/new" }}
+            message={t("no conversations yet. a chat opens when you and someone both accept an intro.")}
+            action={{ label: t("start an intent"), to: "/i/new" }}
           />
         ) : null}
       </div>

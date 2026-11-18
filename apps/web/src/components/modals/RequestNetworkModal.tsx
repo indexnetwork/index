@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequests';
 import { log } from '@/lib/logger';
 
@@ -19,6 +20,7 @@ interface RequestNetworkModalProps {
  * the form seeds itself from `initial` instead of resetting through an effect.
  */
 export default function RequestNetworkModal({ open, onOpenChange, onSubmit, initial }: RequestNetworkModalProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initial?.title ?? '');
   const [purpose, setPurpose] = useState(initial?.purpose ?? '');
   const [expectedSize, setExpectedSize] = useState(initial?.expectedSize ?? '');
@@ -55,36 +57,36 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
   const field = { width: "100%", padding: "8px 10px", fontSize: 13, color: "var(--ink)" } as const;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(20,20,20,0.18)", padding: 24 }}>
-      <div className="amiga-window" role="dialog" aria-modal="true" aria-label={isEdit ? "update network request" : "request a network"} style={{ width: 480, maxWidth: "100%", flex: "0 1 auto", border: "1px solid #e3e3e0", borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}>
+      <div className="amiga-window" role="dialog" aria-modal="true" aria-label={isEdit ? t("update network request") : t("request a network")} style={{ width: 480, maxWidth: "100%", flex: "0 1 auto", border: "1px solid #e3e3e0", borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}>
         <div className="mac-titlebar">
-          <span className="mac-title"><span className="t">{submitted ? "request sent" : isEdit ? "update request" : "request a network"}</span></span>
+          <span className="mac-title"><span className="t">{submitted ? t("request sent") : isEdit ? t("update request") : t("request a network")}</span></span>
         </div>
         <div className="wb-body mac-scroll" style={{ padding: 18, gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
           {submitted ? (
             <>
-              <p style={{ margin: 0, fontSize: 14, color: "var(--ink)" }}>{submitted.title} is in review.</p>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--ink)" }}>{t("{{title}} is in review.", { title: submitted.title })}</p>
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button type="button" className="wb-btn" onClick={() => onOpenChange(false)}>back to networks</button>
+                <button type="button" className="wb-btn" onClick={() => onOpenChange(false)}>{t("back to networks")}</button>
               </div>
             </>
           ) : (
             <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>tell us what you have in mind. every request is reviewed.</p>
-              <label className="wb-field">network name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. edge city" disabled={isSubmitting} autoFocus required style={field} />
-              <label className="wb-field">what are you hoping to build?</label>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>{t("tell us what you have in mind. every request is reviewed.")}</p>
+              <label className="wb-field">{t("network name")}</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("e.g. edge city")} disabled={isSubmitting} autoFocus required style={field} />
+              <label className="wb-field">{t("what are you hoping to build?")}</label>
               <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={3} disabled={isSubmitting} style={field} />
-              <label className="wb-field">how many people?</label>
+              <label className="wb-field">{t("how many people?")}</label>
               <div className="wb-segmented" style={{ flexWrap: "wrap", justifySelf: "start" }}>
                 {SIZE_OPTIONS.map((opt) => (
-                  <button key={opt} type="button" aria-pressed={expectedSize === opt} disabled={isSubmitting} onClick={() => setExpectedSize(expectedSize === opt ? "" : opt)}>{opt}</button>
+                  <button key={opt} type="button" aria-pressed={expectedSize === opt} disabled={isSubmitting} onClick={() => setExpectedSize(expectedSize === opt ? "" : opt)}>{t(opt)}</button>
                 ))}
               </div>
-              <label className="wb-field">anything else? (optional)</label>
+              <label className="wb-field">{t("anything else? (optional)")}</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={isSubmitting} style={field} />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>cancel</button>
-                <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "sending…" : isEdit ? "resubmit" : "request network"}</button>
+                <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>{t("cancel")}</button>
+                <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? t("sending…") : isEdit ? t("resubmit") : t("request network")}</button>
               </div>
             </form>
           )}

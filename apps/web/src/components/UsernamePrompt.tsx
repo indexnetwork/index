@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
@@ -25,6 +26,7 @@ function suggestFromName(name: string | undefined): string {
  * username field, and this only asks afterwards if that was left blank.
  */
 export default function UsernamePrompt() {
+  const { t } = useTranslation();
   const { user, isAuthenticated, refetchUser } = useAuthContext();
   const authService = useAuth();
   const { pathname } = useLocation();
@@ -48,7 +50,7 @@ export default function UsernamePrompt() {
       await refetchUser();
     } catch (err) {
       // 400 is a rule it broke, 409 is someone else holding it; both read as written.
-      setError(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : "Couldn't save your username");
+      setError(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : t("Couldn't save your username"));
     } finally {
       setSaving(false);
     }
@@ -62,11 +64,11 @@ export default function UsernamePrompt() {
         onSubmit={(e) => { e.preventDefault(); void save(); }}
       >
         <div className="mac-titlebar">
-          <span className="mac-title"><span className="t">pick a username</span></span>
+          <span className="mac-title"><span className="t">{t("pick a username")}</span></span>
         </div>
         <div className="wb-body" style={{ padding: 18, gap: 12 }}>
           <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }}>
-            it&apos;s your link on index, and it&apos;s yours alone. you can change it later in your profile.
+            {t("it's your link on index, and it's yours alone. you can change it later in your profile.")}
           </p>
           <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px", display: "flex", alignItems: "center", gap: 2 }}>
             <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>@</span>
@@ -74,7 +76,7 @@ export default function UsernamePrompt() {
               autoFocus
               value={value}
               placeholder="yourname"
-              aria-label="username"
+              aria-label={t("username")}
               autoComplete="off"
               data-1p-ignore
               // Same alphabet the server accepts: lowercase letters, numbers, hyphens.
@@ -87,7 +89,7 @@ export default function UsernamePrompt() {
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="submit" className="wb-btn primary" disabled={!ready}>
-              {saving ? "saving…" : "save"}
+              {saving ? t("saving…") : t("save")}
             </button>
           </div>
         </div>

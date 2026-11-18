@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { authClient } from '@/lib/auth-client';
 import { ensureLandingFonts } from '@/app/landing/fonts';
 import { protocolOrigin } from '@/lib/protocol-origin';
@@ -26,6 +27,7 @@ type AuthView = 'main' | 'magic-link-sent' | 'email-password';
  * wrapper and SiteSignIn.css give it the public site's style.
  */
 export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default', onMagicLinkSent }: AuthFormProps) {
+  const { t } = useTranslation();
   const [view, setView] = useState<AuthView>('main');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -99,13 +101,13 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         callbackURL: resolvedCallbackURL,
       });
       if (magicLinkError) {
-        setError(magicLinkError.message || 'Failed to send sign-in link');
+        setError(magicLinkError.message || t('Failed to send sign-in link'));
         return;
       }
       setView('magic-link-sent');
       onMagicLinkSent?.(email);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('Something went wrong'));
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
           callbackURL: resolvedCallbackURL,
         });
         if (signUpError) {
-          setError(signUpError.message || 'Sign up failed');
+          setError(signUpError.message || t('Sign up failed'));
           return;
         }
       } else {
@@ -135,7 +137,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
           callbackURL: resolvedCallbackURL,
         });
         if (signInError) {
-          setError(signInError.message || 'Sign in failed');
+          setError(signInError.message || t('Sign in failed'));
           return;
         }
       }
@@ -149,7 +151,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         onAuthenticated?.();
         return;
       }
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('Something went wrong'));
     } finally {
       setLoading(false);
     }
@@ -164,7 +166,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         callbackURL: resolvedCallbackURL,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google sign in failed');
+      setError(err instanceof Error ? err.message : t('Google sign in failed'));
       setLoading(false);
     }
   };
@@ -177,17 +179,17 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         <>
           <div className="av-head">
             <h2 id="auth-modal-title" className="av-title">
-              Check your email
+              {t("Check your email")}
             </h2>
           </div>
           <p className="av-lede">
-            We sent a sign-in link to <strong>{email}</strong>.
+            <Trans i18nKey="We sent a sign-in link to <strong>{{email}}</strong>." values={{ email }} components={{ strong: <strong /> }} />
           </p>
           <p className="av-note">
-            Click the link in the email to sign in. It expires in 10 minutes.
+            {t("Click the link in the email to sign in. It expires in 10 minutes.")}
           </p>
           <button type="button" className="av-submit ghost" onClick={resetForm}>
-            Back to sign in
+            {t("Back to sign in")}
           </button>
         </>
       )}
@@ -198,24 +200,24 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             <>
               <div className="av-head">
                 <h2 id="auth-modal-title" className="av-title">
-                  Sign in to the Index Network
+                  {t("Sign in to the Index Network")}
                 </h2>
               </div>
               <p className="av-lede">
-                Write what you want. Let the network bring people to you.
+                {t("Write what you want. Let the network bring people to you.")}
               </p>
             </>
           )}
 
           {providersStatus === 'error' && (
             <p className="av-note">
-              Couldn&apos;t load all sign-in options.{' '}
+              {t("Couldn't load all sign-in options.")}{' '}
               <button
                 type="button"
                 className="av-link"
                 onClick={() => setProvidersRetryKey((k) => k + 1)}
               >
-                Retry
+                {t("Retry")}
               </button>
             </p>
           )}
@@ -233,14 +235,14 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                 <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
               </svg>
-              Continue with Google
+              {t("Continue with Google")}
             </button>
           )}
 
-          {hasGoogle && <div className="av-divider">or</div>}
+          {hasGoogle && <div className="av-divider">{t("or")}</div>}
 
           <form onSubmit={handleMagicLink} className="av-form">
-            <label htmlFor="auth-email" className="av-label">Email</label>
+            <label htmlFor="auth-email" className="av-label">{t("Email")}</label>
             <input
               id="auth-email"
               type="email"
@@ -255,19 +257,19 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             {error && <p className="av-error">{error}</p>}
 
             <button type="submit" disabled={loading} className="av-submit">
-              {loading ? "Sending…" : "Send sign-in link"}
+              {loading ? t("Sending…") : t("Send sign-in link")}
             </button>
           </form>
 
           {canUseEmailPassword && (
             <p className="av-alt">
-              or{' '}
+              {t("or")}{' '}
               <button
                 type="button"
                 className="av-link"
                 onClick={() => setView('email-password')}
               >
-                sign in with a password
+                {t("sign in with a password")}
               </button>
             </p>
           )}
@@ -281,30 +283,30 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
               type="button"
               className="av-back"
               onClick={() => { setView('main'); setError(null); }}
-              aria-label="Back"
+              aria-label={t("Back")}
             >
               ←
             </button>
             <h2 id="auth-modal-title" className="av-title">
-              {isSignUp ? "Create an account" : "Sign in with a password"}
+              {isSignUp ? t("Create an account") : t("Sign in with a password")}
             </h2>
           </div>
 
           <form onSubmit={handleEmailPassword} className="av-form">
             {isSignUp && (
               <>
-                <label htmlFor="auth-name" className="av-label">Name</label>
+                <label htmlFor="auth-name" className="av-label">{t("Name")}</label>
                 <input
                   id="auth-name"
                   type="text"
-                  placeholder="Your name"
+                  placeholder={t("Your name")}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="av-input"
                 />
               </>
             )}
-            <label htmlFor="auth-email-pw" className="av-label">Email</label>
+            <label htmlFor="auth-email-pw" className="av-label">{t("Email")}</label>
             <input
               id="auth-email-pw"
               type="email"
@@ -314,7 +316,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
               required
               className="av-input"
             />
-            <label htmlFor="auth-password" className="av-label">Password</label>
+            <label htmlFor="auth-password" className="av-label">{t("Password")}</label>
             <input
               id="auth-password"
               type="password"
@@ -329,31 +331,31 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             {error && <p className="av-error">{error}</p>}
 
             <button type="submit" disabled={loading} className="av-submit">
-              {loading ? "Loading…" : isSignUp ? "Create account" : "Sign in"}
+              {loading ? t("Loading…") : isSignUp ? t("Create account") : t("Sign in")}
             </button>
           </form>
 
           <p className="av-alt">
             {isSignUp ? (
               <>
-                Already have an account?{' '}
+                {t("Already have an account?")}{' '}
                 <button
                   type="button"
                   className="av-link"
                   onClick={() => { setIsSignUp(false); setError(null); }}
                 >
-                  Sign in
+                  {t("Sign in")}
                 </button>
               </>
             ) : (
               <>
-                Don't have an account?{' '}
+                {t("Don't have an account?")}{' '}
                 <button
                   type="button"
                   className="av-link"
                   onClick={() => { setIsSignUp(true); setError(null); }}
                 >
-                  Sign up
+                  {t("Sign up")}
                 </button>
               </>
             )}

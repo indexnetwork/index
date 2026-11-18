@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 
 import { useCompact } from "@/hooks/useCompact";
@@ -64,6 +65,7 @@ export function Window({
   children: ReactNode;
   style?: CSSProperties;
 }) {
+  const { t } = useTranslation();
   const compact = useCompact();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -94,8 +96,8 @@ export function Window({
           className={compact ? "mac-close mac-back" : dismiss ? "mac-close mac-dismiss" : "mac-close"}
           role="button"
           tabIndex={0}
-          title={compact ? "back" : dismiss ? "put away" : "close"}
-          aria-label={compact ? "back" : dismiss ? "put away" : "close"}
+          title={compact ? t("back") : dismiss ? t("put away") : t("close")}
+          aria-label={compact ? t("back") : dismiss ? t("put away") : t("close")}
           onClick={onClose}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -112,6 +114,7 @@ export function Window({
 }
 
 function HomeBox({ onClose }: { onClose?: () => void }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const goHome = onClose ?? (() => navigate("/", { replace: atHistoryEntry() }));
   return (
@@ -119,8 +122,8 @@ function HomeBox({ onClose }: { onClose?: () => void }) {
       className="mac-close mac-home"
       role="button"
       tabIndex={0}
-      title="home"
-      aria-label="home"
+      title={t("home")}
+      aria-label={t("home")}
       onClick={goHome}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -171,9 +174,10 @@ export function Btn({
 }
 
 export function QCount({ n, title }: { n: number; title?: string }) {
+  const { t } = useTranslation();
   if (!n) return null;
   return (
-    <span className="wb-count" title={title || `${n} waiting on you: pending opportunities`}>
+    <span className="wb-count" title={title || t("{{n}} waiting on you: pending opportunities", { n })}>
       {n}
     </span>
   );
@@ -226,6 +230,7 @@ export function ConfirmWindow({
   onConfirm: () => void;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(20,20,20,0.18)", padding: 24 }}>
       <div className="amiga-window" style={{ width: 420, maxWidth: "100%", flex: "none", border: "1px solid var(--wb-hairline)", borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
@@ -236,7 +241,7 @@ export function ConfirmWindow({
           <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13 }}>{body}</p>
           {children}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="wb-btn" disabled={busy} onClick={onCancel}>cancel</button>
+            <button type="button" className="wb-btn" disabled={busy} onClick={onCancel}>{t("cancel")}</button>
             <button type="button" className="wb-btn primary" disabled={busy || disabled} onClick={onConfirm}>
               {busy ? `${confirmLabel}…` : confirmLabel}
             </button>

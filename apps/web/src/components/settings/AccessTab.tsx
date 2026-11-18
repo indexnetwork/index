@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -33,6 +34,7 @@ export default function AccessTab({
   error,
   info: _info,
 }: AccessTabProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   const { user: currentUser } = useAuthContext();
@@ -149,7 +151,7 @@ export default function AccessTab({
       await refreshNetworks();
     } catch (err) {
       logger.error('Error updating permissions', { error: err });
-      error('Failed to update permissions');
+      error(t('Failed to update permissions'));
     }
   };
 
@@ -164,7 +166,7 @@ export default function AccessTab({
     } catch (err) {
       setRequireApproval(!nextRequireApproval);
       logger.error('Error updating approval requirement', { error: err });
-      error('Failed to update approval requirement');
+      error(t('Failed to update approval requirement'));
     }
   };
 
@@ -175,10 +177,10 @@ export default function AccessTab({
       setJoinRequests(prev => prev.filter(r => r.id !== userId));
       if (decision === 'approve') await loadMembers();
       await refreshNetworks();
-      success(decision === 'approve' ? 'request approved' : 'request declined');
+      success(decision === 'approve' ? t('request approved') : t('request declined'));
     } catch (err) {
       logger.error('Error reviewing join request', { error: err });
-      error('Failed to review request');
+      error(t('Failed to review request'));
     } finally {
       setBusyId(null);
     }
@@ -193,7 +195,7 @@ export default function AccessTab({
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch {
-      error('Failed to copy link');
+      error(t('Failed to copy link'));
     }
   };
 
@@ -204,10 +206,10 @@ export default function AccessTab({
       onUpdated(updatedNetwork);
       if (updatedNetwork.permissions?.invitationLink?.code) setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       setShowRegenerateConfirm(false);
-      success(invitationLink ? 'Invitation link regenerated' : 'Invitation link created');
+      success(invitationLink ? t('Invitation link regenerated') : t('Invitation link created'));
     } catch (err) {
       logger.error('Error regenerating invitation link', { error: err });
-      error('Failed to regenerate invitation link');
+      error(t('Failed to regenerate invitation link'));
     } finally {
       setIsRegeneratingLink(false);
     }
@@ -246,7 +248,7 @@ export default function AccessTab({
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, permissions: updated.permissions } : m));
     } catch (err) {
       logger.error('Error updating member role', { error: err });
-      error(err instanceof Error ? err.message : 'Failed to update role');
+      error(err instanceof Error ? err.message : t('Failed to update role'));
     } finally {
       setBusyId(null);
     }
@@ -264,7 +266,7 @@ export default function AccessTab({
       await loadMembers();
     } catch (err) {
       logger.error('Error inviting member', { error: err });
-      error('Failed to invite member');
+      error(t('Failed to invite member'));
     } finally {
       setIsAddingMember(false);
     }
@@ -282,44 +284,44 @@ export default function AccessTab({
   return (
     <div style={{ display: "grid", gap: 22 }}>
       <div>
-        <RuleLabel>Visibility</RuleLabel>
+        <RuleLabel>{t("Visibility")}</RuleLabel>
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
-          <ChoiceCard title="Public" sub="Anyone can join" selected={anyoneCanJoin} onClick={() => { setAnyoneCanJoin(true); void handleUpdatePermissions(true); }} />
-          <ChoiceCard title="Private" sub="Invite only" selected={!anyoneCanJoin} onClick={() => { setAnyoneCanJoin(false); void handleUpdatePermissions(false); }} />
+          <ChoiceCard title={t("Public")} sub={t("Anyone can join")} selected={anyoneCanJoin} onClick={() => { setAnyoneCanJoin(true); void handleUpdatePermissions(true); }} />
+          <ChoiceCard title={t("Private")} sub={t("Invite only")} selected={!anyoneCanJoin} onClick={() => { setAnyoneCanJoin(false); void handleUpdatePermissions(false); }} />
         </div>
       </div>
 
       {!anyoneCanJoin && (
         <div>
-          <RuleLabel>Approval</RuleLabel>
+          <RuleLabel>{t("Approval")}</RuleLabel>
           <div style={{ marginTop: 12 }}>
-            <Toggle on={requireApproval} onClick={() => void handleUpdateApproval(!requireApproval)} title="Require admin approval" blurb="Require an admin to approve new members joining via the group link." />
+            <Toggle on={requireApproval} onClick={() => void handleUpdateApproval(!requireApproval)} title={t("Require admin approval")} blurb={t("Require an admin to approve new members joining via the group link.")} />
           </div>
         </div>
       )}
 
       <div>
-        <RuleLabel>Invitation link</RuleLabel>
+        <RuleLabel>{t("Invitation link")}</RuleLabel>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e6e6e6", borderRadius: 2, background: "#f7f7f5" }}>
-          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "no invitation link yet."}</code>
+          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || t("no invitation link yet.")}</code>
           {!shareUrl && (
             <button type="button" className="wb-btn small" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()}>
-              {isRegeneratingLink ? "creating…" : "create link"}
+              {isRegeneratingLink ? t("creating…") : t("create link")}
             </button>
           )}
           {shareUrl && (
             <>
-              <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title="Regenerate invitation link" aria-label="Regenerate invitation link" className={showRegenerateConfirm ? "on" : undefined}>↻</button>
-              <button type="button" onClick={() => void handleCopyLink()} title={isCopied ? "Copied" : "Copy link"}>{isCopied ? "copied" : "copy"}</button>
+              <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title={t("Regenerate invitation link")} aria-label={t("Regenerate invitation link")} className={showRegenerateConfirm ? "on" : undefined}>↻</button>
+              <button type="button" onClick={() => void handleCopyLink()} title={isCopied ? t("Copied") : t("Copy link")}>{isCopied ? t("copied") : t("copy")}</button>
             </>
           )}
         </div>
         {showRegenerateConfirm && shareUrl && (
           <div style={{ marginTop: 8, padding: 12, border: "1px solid #e6e6e6", borderRadius: 2, background: "#FFF5F5", display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#8A0000" }}>The current link stops working immediately. Regenerate?</p>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#8A0000" }}>{t("The current link stops working immediately. Regenerate?")}</p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)}>cancel</button>
-              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} className="danger">{isRegeneratingLink ? "regenerating…" : "regenerate"}</button>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)}>{t("cancel")}</button>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} className="danger">{isRegeneratingLink ? t("regenerating…") : t("regenerate")}</button>
             </div>
           </div>
         )}
@@ -327,7 +329,7 @@ export default function AccessTab({
 
       {isGated && joinRequests.length > 0 && (
         <div>
-          <RuleLabel>Pending ({joinRequests.length})</RuleLabel>
+          <RuleLabel>{t("Pending ({{n}})", { n: joinRequests.length })}</RuleLabel>
           <div style={{ marginTop: 12, border: "1px solid #e6e6e6", borderRadius: 2, background: "#fff" }}>
             {joinRequests.map((request) => (
               <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
@@ -336,8 +338,8 @@ export default function AccessTab({
                   <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.name}</span>
                   <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.email}</span>
                 </span>
-                <button type="button" title="Approve" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'approve')}>approve</button>
-                <button type="button" title="Decline" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'decline')} className="danger">decline</button>
+                <button type="button" title={t("Approve")} disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'approve')}>{t("approve")}</button>
+                <button type="button" title={t("Decline")} disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'decline')} className="danger">{t("decline")}</button>
               </div>
             ))}
           </div>
@@ -345,13 +347,13 @@ export default function AccessTab({
       )}
 
       <div>
-        <RuleLabel>Members ({members.length})</RuleLabel>
+        <RuleLabel>{t("Members ({{n}})", { n: members.length })}</RuleLabel>
         <div ref={searchRef} style={{ marginTop: 12, position: "relative" }}>
           <input
             value={memberSearchQuery}
             onChange={(e) => { setMemberSearchQuery(e.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
-            placeholder="Search by name or add by email…"
+            placeholder={t("Search by name or add by email…")}
             style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid #e6e6e6", borderRadius: 2, outline: "none", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 12 }}
           />
           {showSuggestions && memberSearchQuery.trim() && filteredSuggestions.length > 0 && (
@@ -360,7 +362,7 @@ export default function AccessTab({
                 <button key={person.id} type="button" className="pl-plain-btn" onClick={() => void handleAddMember(person)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
                   <UserAvatar id={person.id} name={person.name} avatar={person.avatar} size={24} />
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{person.name}</span>
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>Add</span>
+                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{t("Add")}</span>
                 </button>
               ))}
             </div>
@@ -368,27 +370,27 @@ export default function AccessTab({
           {noResults && (
             <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid #e6e6e6", borderRadius: 2, background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,.06)" }}>
               {memberSearchQuery.includes('@') ? (
-                <button type="button" className="pl-plain-btn" disabled={isAddingMember} onClick={() => void handleInviteMember(memberSearchQuery.trim())} style={{ width: "100%", padding: "10px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>Invite &quot;{memberSearchQuery.trim()}&quot;</button>
+                <button type="button" className="pl-plain-btn" disabled={isAddingMember} onClick={() => void handleInviteMember(memberSearchQuery.trim())} style={{ width: "100%", padding: "10px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>{t("Invite \"{{email}}\"", { email: memberSearchQuery.trim() })}</button>
               ) : (
-                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>no one found. enter a full email to invite them.</div>
+                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{t("no one found. enter a full email to invite them.")}</div>
               )}
             </div>
           )}
         </div>
 
         <div style={{ marginTop: 12, display: "grid", gap: 2 }}>
-          {isMembersLoading && members.length === 0 && <EmptyState tone="loading" align="start" message="loading members…" />}
+          {isMembersLoading && members.length === 0 && <EmptyState tone="loading" align="start" message={t("loading members…")} />}
           {!isMembersLoading && membersFailed && members.length === 0 && (
             <EmptyState
               tone="error"
               align="start"
-              message="couldn't load members."
-              action={{ label: "try again", onClick: () => void loadMembers() }}
+              message={t("couldn't load members.")}
+              action={{ label: t("try again"), onClick: () => void loadMembers() }}
             />
           )}
           {!isMembersLoading && !membersFailed && members.length === 0 && (
             // The search box above is the invite action: type a name or a full email.
-            <EmptyState align="start" message="no members yet. search above or enter an email to add someone." />
+            <EmptyState align="start" message={t("no members yet. search above or enter an email to add someone.")} />
           )}
           {!isMembersLoading && slice.map((member) => {
             const isOwner = member.permissions.includes('owner');
@@ -403,15 +405,15 @@ export default function AccessTab({
                     {unverified && <NotOnIndexTag />}
                   </span>
                 </button>
-                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", borderRadius: 2, background: "#f0f0ed", color: isOwner ? "#000" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", borderRadius: 2, background: "#f0f0ed", color: isOwner ? "#000" : "var(--ink-2)" }}>{isOwner ? t("Owner") : (member.permissions.includes('member') ? t("Member") : t("Contact"))}</span>
                 {!isOwner && member.permissions.includes('member') && !isSelf && (
-                  <button type="button" title="Promote to owner" disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'owner')}>↑</button>
+                  <button type="button" title={t("Promote to owner")} disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'owner')}>↑</button>
                 )}
                 {isOwner && !isSelf && (
-                  <button type="button" title="Demote to member" disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'member')}>↓</button>
+                  <button type="button" title={t("Demote to member")} disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'member')}>↓</button>
                 )}
                 {!isOwner && (
-                  <button type="button" title="Remove member" disabled={busyId === member.id} onClick={() => void handleRemoveMember(member.id)} className="danger">×</button>
+                  <button type="button" title={t("Remove member")} disabled={busyId === member.id} onClick={() => void handleRemoveMember(member.id)} className="danger">×</button>
                 )}
               </div>
             );
@@ -420,10 +422,10 @@ export default function AccessTab({
 
         {totalPages > 1 && (
           <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #ddd", paddingTop: 10, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-            <span>{(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}</span>
+            <span>{t("{{from}}–{{to}} of {{total}}", { from: (safePage - 1) * MEMBERS_PAGE_SIZE + 1, to: Math.min(safePage * MEMBERS_PAGE_SIZE, members.length), total: members.length })}</span>
             <span style={{ display: "flex", gap: 6 }}>
-              <button type="button" disabled={safePage <= 1} onClick={() => setMembersPage(safePage - 1)}>prev</button>
-              <button type="button" disabled={safePage >= totalPages} onClick={() => setMembersPage(safePage + 1)}>next</button>
+              <button type="button" disabled={safePage <= 1} onClick={() => setMembersPage(safePage - 1)}>{t("prev")}</button>
+              <button type="button" disabled={safePage >= totalPages} onClick={() => setMembersPage(safePage + 1)}>{t("next")}</button>
             </span>
           </div>
         )}

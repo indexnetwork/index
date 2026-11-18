@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 
 import { apiClient } from "@/lib/api";
@@ -23,6 +24,7 @@ interface HomeIntent {
 const SHELF_ROW_GAP = 0;
 
 export default function DiscoverHome() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { error: showError } = useNotifications();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
@@ -72,9 +74,9 @@ export default function DiscoverHome() {
     try {
       await apiClient.patch(`/intents/${intent.id}/archive`);
     } catch {
-      showError("Failed to archive intent");
+      showError(t("Failed to archive intent"));
     }
-  }, [showError]);
+  }, [showError, t]);
 
   const visible = intents.filter((intent) => intent.status !== "archived");
 
@@ -90,7 +92,7 @@ export default function DiscoverHome() {
         fontWeight: 400,
         lineHeight: 1,
       }}>+</span>
-      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500 }}>new intent</span>
+      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500 }}>{t("new intent")}</span>
     </button>
   );
 
@@ -104,14 +106,14 @@ export default function DiscoverHome() {
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <h1 style={{ fontFamily: "var(--amiga-sans)", fontWeight: 500, fontSize: 16, lineHeight: 1.4, margin: 0, color: "var(--ink)" }}>
-                find your others
+                {t("find your others")}
               </h1>
               <p style={{ margin: "6px 0 0", color: "var(--ink-2)", fontSize: 13, lineHeight: 1.5, fontFamily: "var(--mac-sans)" }}>
-                start an intent by talking to your agent. it negotiates with other agents and makes an intro when both sides are interested.
+                {t("start an intent by talking to your agent. it negotiates with other agents and makes an intro when both sides are interested.")}
               </p>
             </div>
           </div>
-          <RuleLabel>your intents</RuleLabel>
+          <RuleLabel>{t("your intents")}</RuleLabel>
           <IntentList
             intents={visible}
             isLoading={loading}

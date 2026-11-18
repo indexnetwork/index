@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
+import TranslatedMark from "@/components/TranslatedMark";
 import UserAvatar from "@/components/UserAvatar";
 import { useNegotiations, useUsers } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { NegotiationHistoryEntry } from "@/services/users";
 import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiations";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useContentTranslation } from "@/lib/content-translation";
 import { formatChatClock } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
@@ -24,7 +27,9 @@ const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: str
 };
 
 function TurnMessage({ turn, own, isLast, theirId }: { turn: NegotiationTurn; own: boolean; isLast: boolean; theirId: string }) {
+  const { t } = useTranslation();
   const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
+  const shown = useContentTranslation(turn.message);
 
   return (
     <div style={{ display: "flex", gap: 12 }}>
@@ -35,11 +40,12 @@ function TurnMessage({ turn, own, isLast, theirId }: { turn: NegotiationTurn; ow
       <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>
-            {own ? "you.agent" : <Link to={`/u/${theirId}`} title="view profile" style={{ color: "#000", textDecoration: "underline" }}>their.agent</Link>} · {actionInfo.label}
+            {own ? t("you.agent") : <Link to={`/u/${theirId}`} title={t("view profile")} style={{ color: "#000", textDecoration: "underline" }}>{t("their.agent")}</Link>} · {t(actionInfo.label)}
             {turn.createdAt && <time dateTime={turn.createdAt} title={new Date(turn.createdAt).toLocaleString()} style={{ color: "var(--ink-3)" }}> · {formatChatClock(turn.createdAt)}</time>}
           </span>
         </div>
-        <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{turn.message}</p>
+        <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{shown.text}</p>
+        <TranslatedMark state={shown} />
       </div>
     </div>
   );
@@ -50,6 +56,7 @@ interface NegotiationHistoryProps {
 }
 
 export default function NegotiationHistory({ userId }: NegotiationHistoryProps) {
+  const { t } = useTranslation();
   const usersService = useUsers();
   const negotiationService = useNegotiations();
   const { user: viewer } = useAuthContext();
@@ -124,8 +131,8 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
           tone="error"
           framed
           style={{ padding: "28px 16px", borderColor: "#000" }}
-          message="couldn't load the agent log."
-          action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+          message={t("couldn't load the agent log.")}
+          action={{ label: t("try again"), onClick: () => setReloadKey((k) => k + 1) }}
         />
       )}
 
@@ -133,7 +140,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         <EmptyState
           framed
           style={{ padding: "28px 16px", borderColor: "#000" }}
-          message="nothing on the wire yet. your agent logs every conversation with other agents here as it happens."
+          message={t("nothing on the wire yet. your agent logs every conversation with other agents here as it happens.")}
         />
       )}
 
@@ -177,14 +184,14 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
               </Link>
               {outcomeInfo ? (
                 <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
-                  {outcomeInfo.label}
+                  {t(outcomeInfo.label)}
                 </span>
               ) : (
-                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11 }}>{t("open")}</span>
               )}
               <span style={{ flex: 1 }} />
               {neg.turnCount > 0 && (
-                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{neg.turnCount === 1 ? t("{{n}} turn", { n: neg.turnCount }) : t("{{n}} turns", { n: neg.turnCount })}</span>
               )}
               <time dateTime={lastAt} title={new Date(lastAt).toLocaleString()} style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{formatChatClock(lastAt)}</time>
 
@@ -194,12 +201,12 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
             {isExpanded && (
               <div style={{ padding: "8px 16px 16px", borderTop: "1px solid #000" }}>
                 {turns === undefined ? (
-                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>{t("loading…")}</p>
                 ) : turns.length === 0 ? (
-                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, textAlign: "center" }}>no turns yet.</p>
+                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, textAlign: "center" }}>{t("no turns yet.")}</p>
                 ) : (
                   <>
-                    <p style={{ margin: "8px 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>agents spoke for both of you</p>
+                    <p style={{ margin: "8px 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{t("agents spoke for both of you")}</p>
                     <div>
                       {turns.map((turn, i) => (
                         <TurnMessage
@@ -227,7 +234,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
           disabled={loadingMore}
           style={{ width: "100%", background: "none", border: "none", fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}
         >
-          {loadingMore ? "loading…" : "show more"}
+          {loadingMore ? t("loading…") : t("show more")}
         </button>
       )}
     </div>

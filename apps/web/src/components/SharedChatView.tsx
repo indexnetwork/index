@@ -7,6 +7,9 @@ import SiteLayout from "@/app/site/SiteLayout";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { apiUrl } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
+import TranslatedMark from "@/components/TranslatedMark";
+import { useContentTranslation } from "@/lib/content-translation";
 
 const logger = log.ui.from("SharedChatView");
 
@@ -86,11 +89,25 @@ function dedupeOpportunitySegments(
   });
 }
 
+/** Message text written by the agent or by the person who shared the chat, shown in the viewer's language. */
+function TranslatedMarkdown({ content }: { content: string }) {
+  const shown = useContentTranslation(content);
+  return (
+    <div className="chat-markdown max-w-none">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {shown.text}
+      </ReactMarkdown>
+      <TranslatedMark state={shown} />
+    </div>
+  );
+}
+
 interface SharedChatViewProps {
   token: string;
 }
 
 export default function SharedChatView({ token }: SharedChatViewProps) {
+  const { t } = useTranslation();
   const [session, setSession] = useState<SharedSession | null>(null);
   const [messages, setMessages] = useState<SharedMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,10 +134,12 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
       .finally(() => setLoading(false));
   }, [token, reloadKey]);
 
+  const shownTitle = useContentTranslation(session?.title);
+
   if (loading) {
     return (
       <SiteLayout>
-        <p className="site-p">Loading…</p>
+        <p className="site-p">{t("Loading…")}</p>
       </SiteLayout>
     );
   }
@@ -129,14 +148,14 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
     return (
       <SiteLayout>
         <section className="site-hero">
-          <h1 className="site-h1">Couldn&apos;t load this conversation</h1>
-          <p className="site-p">Check your connection and try again.</p>
+          <h1 className="site-h1">{t("Couldn't load this conversation")}</h1>
+          <p className="site-p">{t("Check your connection and try again.")}</p>
           <button
             type="button"
             className="site-btn"
             onClick={() => { setLoading(true); setError(null); setReloadKey((k) => k + 1); }}
           >
-            Try again
+            {t("Try again")}
           </button>
         </section>
       </SiteLayout>
@@ -147,9 +166,9 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
     return (
       <SiteLayout>
         <section className="site-hero">
-          <h1 className="site-h1">Conversation not found</h1>
-          <p className="site-p">This shared conversation doesn&apos;t exist, or its link was turned off.</p>
-          <Link className="site-btn" to="/">Go home</Link>
+          <h1 className="site-h1">{t("Conversation not found")}</h1>
+          <p className="site-p">{t("This shared conversation doesn't exist, or its link was turned off.")}</p>
+          <Link className="site-btn" to="/">{t("Go home")}</Link>
         </section>
       </SiteLayout>
     );
@@ -160,9 +179,9 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
   return (
     <SiteLayout>
       <section className="site-hero">
-        <h1 className="site-h1">{session.title || "Shared conversation"}</h1>
+        <h1 className="site-h1">{session.title ? shownTitle.text : t("Shared conversation")}</h1>
         {visibleMessages.length === 0 && (
-          <p className="site-p">This conversation has no messages yet.</p>
+          <p className="site-p">{t("This conversation has no messages yet.")}</p>
         )}
         <div className="space-y-4">
             {visibleMessages
@@ -212,23 +231,15 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
                                 );
                               }
                               return (
-                                <div
+                                <TranslatedMarkdown
                                   key={`text-${idx}`}
-                                  className="chat-markdown max-w-none"
-                                >
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {segment.content}
-                                  </ReactMarkdown>
-                                </div>
+                                  content={segment.content}
+                                />
                               );
                             })}
                           </div>
                         ) : (
-                          <div className="chat-markdown max-w-none">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {msg.content}
-                            </ReactMarkdown>
-                          </div>
+                          <TranslatedMarkdown content={msg.content} />
                         )}
                       </article>
                     </div>
@@ -236,8 +247,8 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
                 </div>
               ))}
           </div>
-        <p className="site-p">This is a shared conversation from Index.</p>
-        <Link className="site-btn" to="/">Try Index</Link>
+        <p className="site-p">{t("This is a shared conversation from Index.")}</p>
+        <Link className="site-btn" to="/">{t("Try Index")}</Link>
       </section>
     </SiteLayout>
   );

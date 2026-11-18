@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 import { EmptyState } from "@/components/ui/EmptyState";
+import i18n from "@/lib/i18n";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
@@ -29,23 +31,24 @@ interface DeviceSession {
 }
 
 function accessDay(value: string | null): string {
-  if (!value) return "never";
+  if (!value) return i18n.t("never");
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "never"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    ? i18n.t("never")
+    : date.toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function describeDevice(userAgent: string | null): string {
-  if (!userAgent) return "unknown device";
-  if (isMacUserAgent(userAgent)) return "index for mac";
+  if (!userAgent) return i18n.t("unknown device");
+  if (isMacUserAgent(userAgent)) return i18n.t("index for mac");
   if (userAgent.startsWith("index-cli")) return "index cli";
-  if (isHermesUserAgent(userAgent)) return "hermes agent";
-  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
+  if (isHermesUserAgent(userAgent)) return i18n.t("hermes agent");
+  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return i18n.t("web browser");
   return userAgent.slice(0, 32);
 }
 
 function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
+  const { t } = useTranslation();
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -54,7 +57,7 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
       onBlur={() => setArmed(false)}
       disabled={busy}
       className={`wb-btn danger${armed ? " on" : ""}`}
-    >{armed ? "sure?" : "revoke"}</button>
+    >{armed ? t("sure?") : t("revoke")}</button>
   );
 }
 
@@ -63,6 +66,7 @@ function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolea
  * signed in through the device grant. Revoking one signs that device out.
  */
 export default function DevicesSection() {
+  const { t } = useTranslation();
   const { signOut } = useAuthContext();
   const { error } = useNotifications();
 
@@ -76,7 +80,7 @@ export default function DevicesSection() {
       authClient.listSessions(),
       authClient.getSession(),
     ]);
-    if (listed.error) throw new Error(listed.error.message ?? "could not load");
+    if (listed.error) throw new Error(listed.error.message ?? i18n.t("could not load"));
     return {
       sessions: (listed.data ?? []) as unknown as DeviceSession[],
       currentToken: current.data?.session.token ?? null,
@@ -90,7 +94,7 @@ export default function DevicesSection() {
       setCurrentToken(result.currentToken);
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "could not load");
+      setLoadError(err instanceof Error ? err.message : t("could not load"));
     }
   }, [fetchDevices]);
 
@@ -103,7 +107,7 @@ export default function DevicesSection() {
         setCurrentToken(result.currentToken);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : "could not load");
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : t("could not load"));
       });
     return () => {
       cancelled = true;
@@ -118,10 +122,10 @@ export default function DevicesSection() {
     setBusy(true);
     try {
       const result = await authClient.revokeSession({ token: session.token });
-      if (result.error) throw new Error(result.error.message ?? "request failed");
+      if (result.error) throw new Error(result.error.message ?? t("request failed"));
       await reload();
     } catch (err) {
-      error("Failed to sign out device", err instanceof Error ? err.message : undefined);
+      error(t("Failed to sign out device"), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -129,9 +133,9 @@ export default function DevicesSection() {
 
   return (
     <div>
-      <h2 className="st-h">devices</h2>
+      <h2 className="st-h">{t("devices")}</h2>
       <p style={note}>
-        where you are signed in. the mac app, cli and personal agents each hold their own session, so signing one out here leaves the others alone.
+        {t("where you are signed in. the mac app, cli and personal agents each hold their own session, so signing one out here leaves the others alone.")}
       </p>
 
       {loadError ? (
@@ -139,22 +143,22 @@ export default function DevicesSection() {
           tone="error"
           align="start"
           style={{ padding: 0, margin: "0 0 10px" }}
-          message="couldn't load devices."
-          action={{ label: "try again", onClick: () => void reload() }}
+          message={t("couldn't load devices.")}
+          action={{ label: t("try again"), onClick: () => void reload() }}
         />
       ) : sessions === null ? (
-        <p style={note}>loading…</p>
+        <p style={note}>{t("loading…")}</p>
       ) : sessions.length === 0 ? (
-        <p style={note}>no active devices.</p>
+        <p style={note}>{t("no active devices.")}</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
             <thead>
               <tr>
-                <th style={th}>device</th>
-                <th style={th}>signed in</th>
-                <th style={th}>expires</th>
-                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
+                <th style={th}>{t("device")}</th>
+                <th style={th}>{t("signed in")}</th>
+                <th style={th}>{t("expires")}</th>
+                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label={t("actions")} />
               </tr>
             </thead>
             <tbody>
@@ -163,7 +167,7 @@ export default function DevicesSection() {
                   <td style={td}>
                     {describeDevice(session.userAgent)}
                     {session.token === currentToken && (
-                      <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578" }}>this browser</span>
+                      <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578" }}>{t("this browser")}</span>
                     )}
                   </td>
                   <td style={td}>{accessDay(session.createdAt)}</td>

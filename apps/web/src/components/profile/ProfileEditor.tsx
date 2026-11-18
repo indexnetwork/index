@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -24,6 +25,7 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
   onSaved: (user: T) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const { user, refetchUser } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
@@ -49,7 +51,7 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
     if (!picked) return;
     const check = validateFiles([picked], "avatar");
     if (!check.isValid) {
-      setFileError(check.message || "that file won't work as a photo.");
+      setFileError(check.message || t("that file won't work as a photo."));
       event.target.value = "";
       return;
     }
@@ -72,10 +74,10 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
         socials: socials.filter((s) => s.value.trim() !== ""),
       });
       await refetchUser();
-      success("Profile saved");
+      success(t("Profile saved"));
       onSaved(saved as T);
     } catch {
-      error("Failed to save profile");
+      error(t("Failed to save profile"));
     } finally {
       setSaving(false);
     }
@@ -83,37 +85,37 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
 
   return (
     <form className="pl-edit" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <button type="button" className="pl-edit-photo" aria-label="change photo" title="change photo" onClick={() => fileRef.current?.click()}>
+      <button type="button" className="pl-edit-photo" aria-label={t("change photo")} title={t("change photo")} onClick={() => fileRef.current?.click()}>
         {preview
           ? <img src={preview} alt="" width={96} height={96} />
           : <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={96} />}
-        <span className="pl-edit-photo-tag">change</span>
+        <span className="pl-edit-photo-tag">{t("change")}</span>
       </button>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
       {fileError && <p className="pl-edit-err">{fileError}</p>}
 
       <label className="pl-edit-field">
-        <span>name</span>
+        <span>{t("name")}</span>
         <input type="text" value={name} required onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="pl-edit-field">
-        <span>location</span>
-        <input type="text" value={location} placeholder="city, country" onChange={(e) => setLocation(e.target.value)} />
+        <span>{t("location")}</span>
+        <input type="text" value={location} placeholder={t("city, country")} onChange={(e) => setLocation(e.target.value)} />
       </label>
       <label className="pl-edit-field">
-        <span>bio</span>
+        <span>{t("bio")}</span>
         <textarea value={intro} rows={6} onChange={(e) => setIntro(e.target.value)} />
       </label>
 
       <div className="pl-edit-field">
-        <span>elsewhere</span>
+        <span>{t("elsewhere")}</span>
         {SOCIALS.map(({ label, platform, prefix }) => (
           <label key={label} className="pl-edit-social">
             <span className="pl-edit-prefix">{prefix}</span>
             <input
               type="text"
               value={social(label)}
-              placeholder="username"
+              placeholder={t("username")}
               onChange={(e) => setSocial(label, e.target.value)}
               onBlur={(e) => {
                 const resolved = parseSocial({ label, value: e.target.value });
@@ -125,8 +127,8 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
       </div>
 
       <div className="pl-edit-actions">
-        <button type="button" onClick={onCancel} disabled={saving}>cancel</button>
-        <button type="submit" className="go" disabled={saving || !name.trim() || !!fileError}>{saving ? "saving…" : "save"}</button>
+        <button type="button" onClick={onCancel} disabled={saving}>{t("cancel")}</button>
+        <button type="submit" className="go" disabled={saving || !name.trim() || !!fileError}>{saving ? t("saving…") : t("save")}</button>
       </div>
     </form>
   );

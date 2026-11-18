@@ -5,6 +5,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import TranslatedMark from "@/components/TranslatedMark";
+import { useContentTranslation } from "@/lib/content-translation";
 
 /**
  * Shared opportunity card data structure.
@@ -189,6 +192,10 @@ export default function OpportunityCard({
   pendingActionable = true,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  // Agent-written card text, shown in the viewer's language.
+  const shownMainText = useContentTranslation(card.presentationPending ? null : card.mainText);
+  const shownNarratorText = useContentTranslation(card.narratorChip?.text);
   const [actionTaken, setActionTaken] = useState<
     "accepted" | "rejected" | null
   >(null);
@@ -254,13 +261,13 @@ export default function OpportunityCard({
   if (actionError) {
     return (
       <div className="bg-gray-50 rounded-lg p-4 my-2 text-center text-sm">
-        <p className="text-red-600 mb-2">Something went wrong. Please try again.</p>
+        <p className="text-red-600 mb-2">{t("Something went wrong. Please try again.")}</p>
         <button
           type="button"
           onClick={() => setActionError(false)}
           className="text-[#041729] font-medium hover:underline"
         >
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
@@ -288,7 +295,7 @@ export default function OpportunityCard({
                 handleProfileClick();
               }
             }}
-            aria-label={`View profile of ${card.name || "Someone"}`}
+            aria-label={t("View profile of {{name}}", { name: card.name || t("Someone") })}
           >
             <UserAvatar
               id={card.userId}
@@ -299,10 +306,10 @@ export default function OpportunityCard({
             />
             <div className="min-w-0">
               <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
-                {card.name || "Someone"}
+                {card.name || t("Someone")}
               </h4>
               <p className="text-[11px] text-[#3D3D3D]">
-                {card.mutualIntentsLabel || "Potential connection"}
+                {card.mutualIntentsLabel || t("Potential connection")}
               </p>
             </div>
           </div>
@@ -316,8 +323,8 @@ export default function OpportunityCard({
                 onClick={handlePrimaryAction}
               >
                 {isLoading
-                  ? "On it..."
-                  : card.primaryActionLabel || "Start Chat"}
+                  ? t("On it...")
+                  : card.primaryActionLabel || t("Start Chat")}
               </button>
             )}
             {onSecondaryAction && (
@@ -327,7 +334,7 @@ export default function OpportunityCard({
                 className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handleSecondaryAction}
               >
-                {card.secondaryActionLabel || "Skip"}
+                {card.secondaryActionLabel || t("Skip")}
               </button>
             )}
           </div>
@@ -335,18 +342,18 @@ export default function OpportunityCard({
         {actionTaken === "rejected" && (
           <div className="flex items-center gap-1.5 shrink-0 text-sm text-gray-500">
             <Check className="w-4 h-4 text-green-600 shrink-0" />
-            <span>Dismissed</span>
+            <span>{t("Dismissed")}</span>
           </div>
         )}
         {showWaiting && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[11px] text-gray-500">Chat open</span>
+            <span className="text-[11px] text-gray-500">{t("Chat open")}</span>
             <button
               type="button"
               className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
               onClick={openChat}
             >
-              Open chat
+              {t("Open chat")}
             </button>
           </div>
         )}
@@ -356,27 +363,27 @@ export default function OpportunityCard({
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1.5 text-green-600 text-xs font-semibold font-mono">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  Connected
+                  {t("Connected")}
                 </span>
                 <button
                   type="button"
                   className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
                   onClick={openChat}
                 >
-                  Open chat
+                  {t("Open chat")}
                 </button>
               </span>
             )}
             {effectiveStatus === "rejected" && (
               <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium">
                 <X className="w-3 h-3" />
-                Declined
+                {t("Declined")}
               </span>
             )}
             {effectiveStatus === "expired" && (
               <span className="inline-flex items-center gap-1 text-amber-500 text-xs font-medium">
                 <Clock className="w-3 h-3" />
-                Expired
+                {t("Expired")}
               </span>
             )}
           </div>
@@ -403,8 +410,9 @@ export default function OpportunityCard({
               ),
             }}
           >
-            {card.mainText}
+            {shownMainText.text}
           </ReactMarkdown>
+          <TranslatedMark state={shownMainText} />
         </div>
       )}
 
@@ -430,7 +438,7 @@ export default function OpportunityCard({
                       handleNarratorClick();
                     }
                   },
-                  "aria-label": `View profile of ${card.narratorChip.name}`,
+                  "aria-label": t("View profile of {{name}}", { name: card.narratorChip.name }),
                 }
               : {})}
           >
@@ -450,7 +458,7 @@ export default function OpportunityCard({
               >
                 {card.narratorChip.name}:
               </span>{" "}
-              {card.narratorChip.text}
+              {shownNarratorText.text}
             </span>
           </div>
         </div>
@@ -459,7 +467,7 @@ export default function OpportunityCard({
       {/* Match score (subtle indicator, optional) */}
       {showScore && typeof card.score === "number" && card.score > 0 && (
         <div className="mt-2 text-xs text-gray-400">
-          {Math.round(card.score * 100)}% match
+          {t("{{percent}}% match", { percent: Math.round(card.score * 100) })}
         </div>
       )}
     </div>

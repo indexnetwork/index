@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -14,6 +15,7 @@ import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import EmailSection from "@/components/settings/EmailSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
+import LanguagePicker from "@/components/settings/LanguagePicker";
 import AgentsPage from "@/app/agents/page";
 import { parseSocial } from "@/lib/socials";
 import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visibleProtocolOrigin } from "@/lib/protocol-origin";
@@ -55,6 +57,7 @@ export default function SettingsPage() {
  * /profile/edit) and `firstRun` show the profile form alone.
  */
 export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRunReview; editProfile?: boolean } = {}) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   // Signed in on desktop the page sits in the app frame; first run keeps its window.
@@ -152,7 +155,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     if (!file) return;
     const validation = validateFiles([file], "avatar");
     if (!validation.isValid) {
-      setAvatarError(validation.message || "Invalid file");
+      setAvatarError(validation.message || t("Invalid file"));
       e.target.value = "";
       return;
     }
@@ -196,7 +199,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       setAvatarFile(null);
       setAvatarPreview(null);
       setIsDirty(false);
-      success("Profile saved");
+      success(t("Profile saved"));
       // A new username moves the profile, so the page behind this one is stale: replace instead.
       if (editProfile) {
         if (usernameChanged) navigate("/profile", { replace: true });
@@ -204,7 +207,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       }
     } catch (err) {
       // A refused username comes back as 400 or 409 with a message worth showing.
-      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : "Failed to save profile");
+      error(err instanceof APIError && (err.status === 400 || err.status === 409) ? err.message : t("Failed to save profile"));
     } finally {
       setSaving(false);
     }
@@ -217,7 +220,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       await signOut();
       navigate("/");
     } catch {
-      error("Failed to delete account");
+      error(t("Failed to delete account"));
       setIsDeletingAccount(false);
     }
   };
@@ -225,7 +228,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
   if (authLoading) {
     return (
       <>
-        <p style={{ padding: 24, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
+        <p style={{ padding: 24, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{t("loading…")}</p>
       </>
     );
   }
@@ -254,17 +257,17 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
           {avatarError && <p className="st-error">{avatarError}</p>}
 
           <div className="st-grid" style={{ gridTemplateColumns: compact ? "minmax(0, 1fr)" : undefined }}>
-            <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
-            <MacField label="username" prefix="@" placeholder="yourname" value={username} onChange={(v) => { setUsername(v.toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-]/g, "")); mark(); }} />
+            <MacField label={t("name")} required value={name} onChange={(v) => { setName(v); mark(); }} />
+            <MacField label={t("username")} prefix="@" placeholder="yourname" value={username} onChange={(v) => { setUsername(v.toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-]/g, "")); mark(); }} />
              <EmailSection email={user?.email || ""} />
-            <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
+            <MacField label={t("location")} value={location} onChange={(v) => { setLocation(v); mark(); }} />
           </div>
 
           <div>
             <div className="st-label st-label-row">
-              <span>introduction</span>
+              <span>{t("introduction")}</span>
               {firstRun && !lookupFoundNothing(firstRun.lookup) && (
-                <button type="button" onClick={writeOwnIntro} className="pl-plain-btn st-link">not you? write your own</button>
+                <button type="button" onClick={writeOwnIntro} className="pl-plain-btn st-link">{t("not you? write your own")}</button>
               )}
             </div>
             <div className="st-well">
@@ -273,7 +276,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
           </div>
 
           <div>
-            <h2 className="st-h">socials</h2>
+            <h2 className="st-h">{t("socials")}</h2>
             <div className="st-grid st-grid-tight" style={{ gridTemplateColumns: compact ? "minmax(0, 1fr)" : undefined }}>
               {[
                 { prefix: "x.com/", label: "twitter", value: getSocial("twitter") },
@@ -286,7 +289,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                   <span className="st-prefix">{prefix}</span>
                   <input
                     value={value}
-                    placeholder="username"
+                    placeholder={t("username")}
                     onChange={(e) => setSocial(label, e.target.value)}
                     onBlur={(e) => {
                       const resolved = parseSocial({ label, value: e.target.value });
@@ -306,11 +309,11 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                       mark();
                     }}
                   />
-                  <button type="button" className="pl-plain-btn st-link st-remove" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }}>remove</button>
+                  <button type="button" className="pl-plain-btn st-link st-remove" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }}>{t("remove")}</button>
                 </label>
               ))}
               {customSocials.length < 3 && (
-                <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} className="wb-btn" style={{ justifySelf: "start", alignSelf: "center" }}>+ add website</button>
+                <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} className="wb-btn" style={{ justifySelf: "start", alignSelf: "center" }}>{t("+ add website")}</button>
               )}
             </div>
           </div>
@@ -334,16 +337,16 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
             <div className="st-danger">
               <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} aria-expanded={isDangerZoneExpanded} className="pl-plain-btn st-danger-toggle">
                 <span aria-hidden>{isDangerZoneExpanded ? "▲" : "▼"}</span>
-                delete my account
+                {t("delete my account")}
               </button>
               {isDangerZoneExpanded && (
                 <div className="st-danger-box">
-                  <p>index stops right away and every intent closes. connections you&apos;ve already made stay with the other person. type your email to confirm.</p>
+                  <p>{t("index stops right away and every intent closes. connections you've already made stay with the other person. type your email to confirm.")}</p>
                   <div className="st-well">
                     <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} />
                   </div>
                   <button type="button" disabled={deleteConfirmationText !== user?.email || isDeletingAccount} onClick={() => void handleDeleteAccount()} className="wb-btn danger" style={{ justifySelf: "end" }}>
-                    {isDeletingAccount ? "deleting…" : "delete"}
+                    {isDeletingAccount ? t("deleting…") : t("delete")}
                   </button>
                 </div>
               )}
@@ -353,9 +356,9 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
       {activeTab === "notifications" && (
         <div className="st-stack">
-          <p className="st-note">index works in the background. choose what&apos;s worth interrupting you for.</p>
+          <p className="st-note">{t("index works in the background. choose what's worth interrupting you for.")}</p>
           <div>
-            <label htmlFor="timezone" className="st-label">timezone</label>
+            <label htmlFor="timezone" className="st-label">{t("timezone")}</label>
             <div className="st-well">
               <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }}>
                 {Intl.supportedValuesOf("timeZone").map((tz) => (
@@ -364,15 +367,16 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
               </select>
             </div>
           </div>
+          <LanguagePicker />
           <div>
-            <h2 className="st-h">tell me when</h2>
+            <h2 className="st-h">{t("tell me when")}</h2>
             <ul className="st-rows">
               {NOTIFY.map(({ key, title, body: text }) => (
                 <li key={key}>
                   <label className="st-row">
                     <span className="st-row-text">
-                      <b>{title}</b>
-                      <span>{text}</span>
+                      <b>{t(title)}</b>
+                      <span>{t(text)}</span>
                     </span>
                     <input
                       type="checkbox"
@@ -391,14 +395,14 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
   // Only the profile and notifications panes have anything to save.
   const savable = activeTab === "profile" || activeTab === "notifications";
-  const saveLabel = saving ? "saving…" : firstRun ? "looks good →" : "save changes";
+  const saveLabel = saving ? t("saving…") : firstRun ? t("looks good →") : t("save changes");
 
   // Signed in on desktop: the plain page, like Home, Intents and Networks.
   if (plain) {
     return (
       <div className="ih-view pl">
         <div className="pl-col">
-          <PageHead title="settings" centered />
+          <PageHead title={t("settings")} centered />
           <div className="pl-page pl-settings">
             <div className="pl-tabbar">
               <div className="pl-tabs" role="tablist">
@@ -410,14 +414,14 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                     aria-selected={tab === activeTab}
                     className={tab === activeTab ? "on" : undefined}
                     onClick={() => navigate(tab === "notifications" ? "/settings" : `/settings?tab=${tab}`)}
-                  >{tab}</button>
+                  >{t(tab)}</button>
                 ))}
               </div>
             </div>
             <div className="st-body">{body}</div>
             {savable && (
               <div className="st-actions">
-                <button type="button" onClick={() => resetForm(user)} disabled={saving || !isDirty} className="wb-btn">cancel</button>
+                <button type="button" onClick={() => resetForm(user)} disabled={saving || !isDirty} className="wb-btn">{t("cancel")}</button>
                 <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || !isDirty} className="wb-btn primary">{saveLabel}</button>
               </div>
             )}
@@ -430,7 +434,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
   return (
     <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window
-        title={firstRun ? "getting started" : editProfile ? "edit profile" : "settings"}
+        title={firstRun ? t("getting started") : editProfile ? t("edit profile") : t("settings")}
         // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
         onClose={firstRun ? () => void signOut() : editProfile ? leaveEdit : compact ? back : () => navigate("/")}
         style={{ height: "100%" }}
@@ -438,8 +442,8 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
         {firstRun && (
           <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "1px solid var(--wb-hairline)", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", flex: "0 0 auto" }}>
             {lookupFoundNothing(firstRun.lookup)
-              ? "i couldn't find anything public about you, so fill this in yourself. it's what your agent works from."
-              : "here's what i pulled together. make sure it's right."}
+              ? t("i couldn't find anything public about you, so fill this in yourself. it's what your agent works from.")
+              : t("here's what i pulled together. make sure it's right.")}
           </div>
         )}
         <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
@@ -458,12 +462,12 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
           {/* First run, as on the Mac: reset restores the prefill, sign out
               leaves without committing, "looks good" is the only commit. */}
           {firstRun && isDirty && (
-            <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn" style={{ marginRight: "auto" }}>reset</button>
+            <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn" style={{ marginRight: "auto" }}>{t("reset")}</button>
           )}
           {firstRun ? (
-            <button type="button" onClick={() => void signOut()} disabled={saving} className="pl-plain-btn st-link">sign out</button>
+            <button type="button" onClick={() => void signOut()} disabled={saving} className="pl-plain-btn st-link">{t("sign out")}</button>
           ) : (
-            <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
+            <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} className="wb-btn">{t("cancel")}</button>
           )}
           <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} className="wb-btn primary">{saveLabel}</button>
         </div>
@@ -480,14 +484,15 @@ function PhotoPicker({ name, preview, userId, userName, avatar, onPick }: {
   avatar?: string | null;
   onPick: () => void;
 }) {
+  const { t } = useTranslation();
   const [hot, setHot] = useState(false);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
       <span
         role="button"
         tabIndex={0}
-        aria-label="change photo"
-        title="change photo"
+        aria-label={t("change photo")}
+        title={t("change photo")}
         onClick={onPick}
         onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPick(); } }}
         onMouseEnter={() => setHot(true)}
@@ -514,6 +519,7 @@ function PhotoPicker({ name, preview, userId, userName, avatar, onPick }: {
 }
 
 function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
+  const { t } = useTranslation();
   const active = visibleProtocolOrigin();
   const preset = PROTOCOL_PRESETS.find((item) => item.url === active);
   const [choice, setChoice] = useState<string>(preset ? preset.value : "custom");
@@ -539,9 +545,9 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
   return (
     <div className="st-stack">
       <div>
-        <h2 className="st-h">protocol server</h2>
+        <h2 className="st-h">{t("protocol server")}</h2>
         <p className="st-note">
-          requests go to <code>{active}</code>. switching signs you out. a session belongs to the server it was made on.
+          {t("requests go to")} <code>{active}</code>{t(". switching signs you out. a session belongs to the server it was made on.")}
         </p>
         <div className="pl-q-options st-options" role="radiogroup">
           {[...PROTOCOL_PRESETS.map((item) => ({ value: item.value, label: item.label })), { value: "custom", label: "custom" }].map((option) => (
@@ -555,13 +561,13 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
                   const next = PROTOCOL_PRESETS.find((item) => item.value === option.value);
                   if (next) void apply(next.url);
                 }}
-              /> {option.label}
+              /> {option.value === "custom" ? t(option.label) : option.label}
             </label>
           ))}
         </div>
         {choice === "custom" && (
           <div style={{ marginTop: 12, maxWidth: 360 }}>
-            <div className="st-label">origin</div>
+            <div className="st-label">{t("origin")}</div>
             <div className="st-well">
               <input
                 value={custom}

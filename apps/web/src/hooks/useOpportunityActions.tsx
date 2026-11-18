@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -37,6 +38,7 @@ export function useOpportunityActions({
   onRemove,
   onAccepted,
 }: UseOpportunityActionsOptions = {}) {
+  const { t } = useTranslation();
   const opportunitiesService = useOpportunities();
   const { error: showError } = useNotifications();
   const { refreshConversations } = useConversation();
@@ -70,7 +72,7 @@ export function useOpportunityActions({
             viewerCommitted: result.opportunity?.viewerCommitted ?? true,
           });
         } catch (error) {
-          showError(error instanceof Error ? error.message : "Failed to accept");
+          showError(error instanceof Error ? error.message : t("Failed to accept"));
         } finally {
           setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
         }
@@ -96,7 +98,7 @@ export function useOpportunityActions({
             });
           }
         } catch (error) {
-          showError(error instanceof Error ? error.message : "Failed to start chat");
+          showError(error instanceof Error ? error.message : t("Failed to start chat"));
         } finally {
           setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
         }
@@ -110,12 +112,12 @@ export function useOpportunityActions({
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: action }));
         onRemove?.(opportunityId);
       } catch (error) {
-        showError(error instanceof Error ? error.message : "Failed to update opportunity");
+        showError(error instanceof Error ? error.message : t("Failed to update opportunity"));
       } finally {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, showError, refreshConversations, onRemove, onAccepted, scope],
+    [opportunitiesService, showError, refreshConversations, onRemove, onAccepted, scope, t],
   );
 
   /**
@@ -138,12 +140,12 @@ export function useOpportunityActions({
           });
         }
       } catch (error) {
-        showError(error instanceof Error ? error.message : "Failed to start chat");
+        showError(error instanceof Error ? error.message : t("Failed to start chat"));
       } finally {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, showError, refreshConversations, onAccepted, scope],
+    [opportunitiesService, showError, refreshConversations, onAccepted, scope, t],
   );
 
   // The uptake-preflight modal is retired; nothing renders here any more.

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
 import AgentLog from "@/components/intents-home/AgentLog";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import type { Entry } from "@/components/intents-home/stages";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
+import TranslatedMark from "@/components/TranslatedMark";
 import UserAvatar from "@/components/UserAvatar";
 import { useOpportunities, useUsers } from "@/contexts/APIContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
+import { useContentTranslation } from "@/lib/content-translation";
 import { resolveSocials } from "@/lib/socials";
 import type { OpportunityDetailResponse } from "@/services/opportunities";
 
@@ -18,11 +21,23 @@ interface Who {
   socials?: Array<{ label: string; value: string }> | null;
 }
 
+/** Someone else's words (their bio, or the agent's account of why): shown in the viewer's language. */
+function Paragraph({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return (
+    <>
+      <p className="profile-bio">{shown.text}</p>
+      <TranslatedMark state={shown} />
+    </>
+  );
+}
+
 /**
  * One match beside Home, in the agent window's place: their profile, why
  * your agent surfaced them, and the agents' conversation behind "agent log".
  */
 export default function MatchWindow() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { log: match, setLog } = useAgentWindow();
   const { entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
@@ -98,36 +113,36 @@ export default function MatchWindow() {
 
   // Drawn like the classic profile window (as on main): who they are first, then why.
   return (
-    <section className="ih-agentwin ih-matchwin ih-classic ih-profile" aria-label={`you and ${first}`}>
+    <section className="ih-agentwin ih-matchwin ih-classic ih-profile" aria-label={t("you and {{name}}", { name: first })}>
       <div className="profile-header ih-match-top">
         {match.userId
-          ? <Link to={`/u/${match.userId}`} title={`${match.name}'s profile`} style={{ display: "flex" }}><UserAvatar id={match.userId} name={match.name} avatar={match.avatar} size={54} /></Link>
+          ? <Link to={`/u/${match.userId}`} title={t("{{name}}'s profile", { name: match.name })} style={{ display: "flex" }}><UserAvatar id={match.userId} name={match.name} avatar={match.avatar} size={54} /></Link>
           : <UserAvatar id={match.opportunityId} name={match.name} avatar={match.avatar} size={54} />}
         <div className="profile-identity">
           <div className="profile-name">
             {match.userId ? <Link to={`/u/${match.userId}`} className="ih-match-name">{match.name}</Link> : match.name}
           </div>
-          {match.notOnIndex && <div className="profile-location">not on index yet</div>}
+          {match.notOnIndex && <div className="profile-location">{t("not on index yet")}</div>}
         </div>
-        <button type="button" className="pl-win-close" aria-label="close (esc)" title="close (esc)" onClick={() => setLog(null)}>×</button>
+        <button type="button" className="pl-win-close" aria-label={t("close (esc)")} title={t("close (esc)")} onClick={() => setLog(null)}>×</button>
       </div>
 
       <div className="mac-scroll profile-content ih-match-content">
         {(who?.intro || (!who && match.userId)) && (
           <section>
-            <h3 className="ih-match-label">bio</h3>
-            {who?.intro ? <p className="profile-bio">{who.intro}</p> : <div className="profile-dim">loading…</div>}
+            <h3 className="ih-match-label">{t("bio")}</h3>
+            {who?.intro ? <Paragraph text={who.intro} /> : <div className="profile-dim">{t("loading…")}</div>}
           </section>
         )}
 
         <section>
-          <h3 className="ih-match-label">why your agent surfaced them</h3>
-          {surfaced ? <p className="profile-bio">{surfaced}</p> : <div className="profile-dim">I&apos;m still writing this up.</div>}
+          <h3 className="ih-match-label">{t("why your agent surfaced them")}</h3>
+          {surfaced ? <Paragraph text={surfaced} /> : <div className="profile-dim">{t("I'm still writing this up.")}</div>}
         </section>
 
         {socials.length > 0 && (
           <section>
-            <h3 className="ih-match-label">elsewhere</h3>
+            <h3 className="ih-match-label">{t("elsewhere")}</h3>
             <div className="profile-chips">
               {socials.map((s) => (
                 <a className="profile-social" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">
@@ -143,7 +158,7 @@ export default function MatchWindow() {
 
         {showLog && canLog && (
           <section id="ih-match-log" className="profile-ruled">
-            <h3 className="ih-match-label">my agent and {first}&apos;s agent</h3>
+            <h3 className="ih-match-label">{t("my agent and {{name}}'s agent", { name: first })}</h3>
             <AgentLog key={match.opportunityId} opportunityId={match.opportunityId} name={match.name} />
           </section>
         )}
@@ -152,18 +167,18 @@ export default function MatchWindow() {
       <div className="ih-match-foot">
         {stage === "awaiting" && (
           <>
-            <button type="button" className="wb-btn primary small" disabled={busy} onClick={() => act("accepted")}>{busy ? "sending…" : "accept"}</button>
-            <button type="button" className="wb-btn small" disabled={busy} onClick={() => act("rejected")}>pass</button>
+            <button type="button" className="wb-btn primary small" disabled={busy} onClick={() => act("accepted")}>{busy ? t("sending…") : t("accept")}</button>
+            <button type="button" className="wb-btn small" disabled={busy} onClick={() => act("rejected")}>{t("pass")}</button>
           </>
         )}
-        {stage === "chat" && match.notOnIndex && <button type="button" className="wb-btn small" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>}
-        {stage === "chat" && !match.notOnIndex && match.userId && <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${match.userId}/chat`)}>go to chat</button>}
+        {stage === "chat" && match.notOnIndex && <button type="button" className="wb-btn small" onClick={() => navigate(`/i/${lead.intentId}`)}>{t("send invite")}</button>}
+        {stage === "chat" && !match.notOnIndex && match.userId && <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${match.userId}/chat`)}>{t("go to chat")}</button>}
         {canLog && (
           <button type="button" className="wb-btn small" aria-pressed={showLog} onClick={() => {
             const next = !showLog;
             setShowLog(next);
             if (next) setTimeout(() => document.getElementById("ih-match-log")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-          }}>agent log {showLog ? "▾" : "›"}</button>
+          }}>{t("agent log")} {showLog ? "▾" : "›"}</button>
         )}
       </div>
     </section>

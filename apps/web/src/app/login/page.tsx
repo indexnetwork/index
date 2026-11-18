@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { authClient } from "@/lib/auth-client";
 import { protocolOrigin } from "@/lib/protocol-origin";
@@ -13,6 +14,7 @@ function resumePath(): string {
 
 /** Browser login, returning the owner to the app. */
 function LoginPage() {
+  const { t } = useTranslation();
   const [sessionChecked, setSessionChecked] = useState(false);
   // The mailed link finishes sign-in in its own tab; this one stays on "check your email".
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
@@ -37,13 +39,13 @@ function LoginPage() {
 
   return (
     <SiteSignInPage
-      title="Sign in to Index"
-      meta={<p className="site-p">Index finds the right people for you, before you even think to look.</p>}
+      title={t("Sign in to Index")}
+      meta={<p className="site-p">{t("Index finds the right people for you, before you even think to look.")}</p>}
     >
       <SiteSignInCard
-        bar="Sign in"
+        bar={t("Sign in")}
         sentTo={linkSentTo}
-        sentNote="Open the link in the email to sign in. It expires in 10 minutes."
+        sentNote={t("Open the link in the email to sign in. It expires in 10 minutes.")}
         callbackURL={isMcpLogin ? window.location.href : window.location.origin + destination}
         onAuthenticated={() => {
           authClient.getSession().then(({ data }) => {

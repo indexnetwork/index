@@ -1,4 +1,5 @@
 import { useMemo, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { intentStatus, intentTitle } from "@/lib/intent-display";
@@ -39,12 +40,13 @@ export default function IntentList<T extends BaseIntent>({
   isLoading = false,
   loadError = false,
   onRetry,
-  emptyMessage = "nothing here yet.",
+  emptyMessage,
   onIntentClick,
   className = "",
   shelf = false,
   style,
 }: IntentListProps<T>) {
+  const { t } = useTranslation();
   const sortedIntents = useMemo(() => {
     const rank = (status?: string) => {
       const value = (status || "active").toLowerCase();
@@ -70,8 +72,8 @@ export default function IntentList<T extends BaseIntent>({
         tone="error"
         align={shelf ? "start" : "center"}
         className={className}
-        message="couldn't load your intents."
-        action={onRetry ? { label: "try again", onClick: onRetry } : undefined}
+        message={t("couldn't load your intents.")}
+        action={onRetry ? { label: t("try again"), onClick: onRetry } : undefined}
       />
     );
   }
@@ -82,7 +84,7 @@ export default function IntentList<T extends BaseIntent>({
       <EmptyState
         align={shelf ? "start" : "center"}
         className={className}
-        message={shelf ? "no intents yet. start one and your agent goes looking." : emptyMessage}
+        message={shelf ? t("no intents yet. start one and your agent goes looking.") : emptyMessage ?? t("nothing here yet.")}
       />
     );
   }
@@ -135,7 +137,7 @@ export default function IntentList<T extends BaseIntent>({
                 color: "var(--ink-2)",
               }}>
                 <span aria-hidden className={running ? "wb-live" : undefined} style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", flex: "0 0 auto", background: running ? undefined : "#ccc" }} />
-                {label}
+                {t(label)}
               </span>
             </span>
             <QCount n={pending} />

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { questionAsker, useIntentAgentChat, type QuestionCard } from "@/components/IntentNegotiatorChat";
 import QuestionItem from "@/components/intents-home/QuestionItem";
+import TranslatedMark from "@/components/TranslatedMark";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { AgentFeedNote, DiscoveryTrace } from "@/components/workbench/mac-blocks";
+import { useContentTranslation } from "@/lib/content-translation";
 import { formatChatClock } from "@/lib/utils";
 
 /** One line of the chat, drawn like Home's agent window: my avatar and a bubble, yours on the right. */
@@ -25,6 +28,33 @@ function Markdown({ text }: { text: string }) {
   return <div className="pl-agent-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>;
 }
 
+/** What the agent wrote, in the viewer's language. */
+function AgentMarkdown({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return (
+    <>
+      <Markdown text={shown.text} />
+      <TranslatedMark state={shown} />
+    </>
+  );
+}
+
+/** The agent's question, in the viewer's language. */
+function AgentText({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return (
+    <>
+      {shown.text}
+      {shown.active && <div><TranslatedMark state={shown} /></div>}
+    </>
+  );
+}
+
+/** One step the agent reported, in the viewer's language. */
+function ProgressStep({ text }: { text: string }) {
+  return <p className="pl-dim pl-small pl-trace-step">· {useContentTranslation(text).text}</p>;
+}
+
 /**
  * This intent's agent, in the window beside the intent page (as Home's agent
  * window): how it went looking, its notes and questions, and a composer.
@@ -37,6 +67,7 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
   paused: boolean;
   createdAt?: string;
 }) {
+  const { t } = useTranslation();
   const {
     loading, loadFailed, retry, feed, questions, draft, setDraft, send, answerOne, sending, waiting, firstWaiting, timeById, inputRef,
   } = useIntentAgentChat(intentId);
@@ -51,18 +82,18 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
   return (
     <div className="pl pl-agent pl-intent-agent" data-testid="intent-agent-panel">
       <div className="pl-agent-head">
-        <span>talk to me about this intent</span>
+        <span>{t("talk to me about this intent")}</span>
       </div>
       <div className="pl-agent-log">
         {loading && !fresh ? (
-          <p className="pl-dim pl-small">loading…</p>
+          <p className="pl-dim pl-small">{t("loading…")}</p>
         ) : feed.length === 0 && questions.length === 0 && loadFailed ? (
-          <p className="pl-dim pl-small">couldn&apos;t load this chat. <button type="button" onClick={retry}>try again</button></p>
+          <p className="pl-dim pl-small">{t("couldn't load this chat.")} <button type="button" onClick={retry}>{t("try again")}</button></p>
         ) : feed.length === 0 && questions.length === 0 ? (
           // Nothing from me yet: a new intent starts on my trace, as on production; an older one on a note.
           fresh
             ? <DiscoveryTrace loading={["Warming up"]} />
-            : <AgentFeedNote>ask me about your matches, share a preference, or tell me what to look for.</AgentFeedNote>
+            : <AgentFeedNote>{t("ask me about your matches, share a preference, or tell me what to look for.")}</AgentFeedNote>
         ) : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
           if (piece.kind === "discovery") {
@@ -72,13 +103,13 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
           if (piece.kind === "user") {
             return (
               <div key={piece.id}>
-                <Line who="you" at={at} mine><Markdown text={piece.text} /></Line>
-                {waiting && index > firstWaiting && <div className="pl-agent-meta pl-queued">queued</div>}
+                <Line who={t("you")} at={at} mine><Markdown text={piece.text} /></Line>
+                {waiting && index > firstWaiting && <div className="pl-agent-meta pl-queued">{t("queued")}</div>}
               </div>
             );
           }
           if (piece.kind === "progress") {
-            return <p key={piece.id} className="pl-dim pl-small pl-trace-step">· {piece.text}</p>;
+            return <ProgressStep key={piece.id} text={piece.text} />;
           }
           if (piece.kind === "open-question") {
             // The same question card as Home's: who's asking, the question, radios, send answer and skip.
@@ -95,17 +126,17 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
           if (piece.kind === "answered-question") {
             return (
               <div key={piece.id} className="pl-answered">
-                <Line who={`answered · ${askerLabel(piece.question)}`} at={at} open>{piece.question.text}</Line>
-                <Line who="you" mine>{piece.answer}</Line>
+                <Line who={`${t("answered")} · ${askerLabel(piece.question)}`} at={at} open><AgentText text={piece.question.text} /></Line>
+                <Line who={t("you")} mine>{piece.answer}</Line>
               </div>
             );
           }
-          return <AgentFeedNote key={piece.id} at={at}><Markdown text={piece.text} /></AgentFeedNote>;
+          return <AgentFeedNote key={piece.id} at={at}><AgentMarkdown text={piece.text} /></AgentFeedNote>;
         })}
         {waiting && (
           <div className="pl-agent-line">
             <MyAgentAvatar size={22} />
-            <div className="pl-agent-bubble pl-dim">working on it<span className="pl-blink">_</span></div>
+            <div className="pl-agent-bubble pl-dim">{t("working on it")}<span className="pl-blink">_</span></div>
           </div>
         )}
         <div ref={endRef} />
@@ -118,10 +149,10 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
-          placeholder="tell your agent…"
-          aria-label="Message your agent"
+          placeholder={t("tell your agent…")}
+          aria-label={t("Message your agent")}
         />
-        <button type="submit" className="go" disabled={!draft.trim() || sending}>send</button>
+        <button type="submit" className="go" disabled={!draft.trim() || sending}>{t("send")}</button>
       </form>
     </div>
   );

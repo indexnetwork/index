@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/plain.css";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { RANK, filterOf, personKey, type Entry, type Filter, type HomeIntent } from "@/components/intents-home/stages";
+import TranslatedMark from "@/components/TranslatedMark";
 import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -13,6 +15,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { isNotFoundError } from "@/lib/api";
+import { useContentTranslation } from "@/lib/content-translation";
 import { INVITE_URL, buildInviteMessage, emailFromSocials, inviteEmailHref, inviteSubject, inviteXHref } from "@/lib/invite";
 import { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
@@ -30,6 +33,12 @@ interface Person {
   intentCount: number;
 }
 
+/** Why the agent brought this person: agent-written, so shown in the viewer's language. */
+function Blurb({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return <div className="pl-blurb">{shown.text}{shown.active && <> <TranslatedMark state={shown} /></>}</div>;
+}
+
 /**
  * One intent, drawn like Home: the intent as the page's title, then the
  * people my agent found for it in Home's sections and cards. This intent's
@@ -37,6 +46,7 @@ interface Person {
  * opens that match in its place until it's closed.
  */
 export default function IntentsHome({ selectedId }: { selectedId: string }) {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const intentsService = useIntents();
@@ -78,10 +88,10 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     }).catch((error: unknown) => {
       if (!active) return;
       if (isNotFoundError(error)) setMissing(true);
-      else showError("couldn't load this intent.");
+      else showError(t("couldn't load this intent."));
     });
     return () => { active = false; };
-  }, [selectedId, intentsLoaded, current, intentsService, updateIntents, showError]);
+  }, [selectedId, intentsLoaded, current, intentsService, updateIntents, showError, t]);
 
 
   const intentCountByPerson = useMemo(() => {
@@ -102,7 +112,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     const people = (entriesByIntent[selectedId] ?? []).map((entry): Person => ({
       key: `${entry.intentId}:${entry.item.opportunityId}`,
       userId: entry.item.userId || entry.item.peer?.userId,
-      name: entry.item.name || entry.item.peer?.name || "unknown",
+      name: entry.item.name || entry.item.peer?.name || t("unknown"),
       avatar: entry.item.avatar ?? entry.item.peer?.avatar,
       notOnIndex: entry.item.peer?.emailVerified === false,
       entries: [entry],
@@ -111,7 +121,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     people.sort((a, b) => RANK[a.entries[0].stage] - RANK[b.entries[0].stage] || b.intentCount - a.intentCount);
     for (const person of people) out[filterOf(person.entries[0].stage)].push(person);
     return out;
-  }, [selectedId, entriesByIntent, intentCountByPerson]);
+  }, [selectedId, entriesByIntent, intentCountByPerson, t]);
 
   const chatPeers = useMemo(() => {
     const ids = new Set<string>();
@@ -154,9 +164,9 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
     const on = log?.opportunityId === lead.item.opportunityId;
     const inviting = inviteFor === person.key;
-    const chip = stage === "talks" ? { tone: "talks", text: "agents talking" }
-      : stage === "chat" ? { tone: "chat", text: person.notOnIndex ? "not on index yet" : "chat open" }
-        : stage === "closed" ? { tone: "paused", text: lead.item.status === "rejected" ? "not a fit" : "missed" }
+    const chip = stage === "talks" ? { tone: "talks", text: t("agents talking") }
+      : stage === "chat" ? { tone: "chat", text: person.notOnIndex ? t("not on index yet") : t("chat open") }
+        : stage === "closed" ? { tone: "paused", text: lead.item.status === "rejected" ? t("not a fit") : t("missed") }
           : null;
     const tone = stage === "talks" ? " talks" : stage === "chat" ? " live" : stage === "closed" ? " paused" : "";
     const face = stage === "awaiting"
@@ -168,33 +178,33 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
           if ((event.target as HTMLElement).closest("a, button, textarea, input")) return;
           if (on) setLog(null); else openMatch(person);
         }}>
-        {person.userId ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}>{face}</Link> : face}
+        {person.userId ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={t("{{name}}'s profile", { name: person.name })}>{face}</Link> : face}
         <div className="pl-card-body">
           <div className="pl-card-head">
             <span>
-              <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-              {person.notOnIndex && stage !== "chat" && <span className="pl-dim"> (not on index)</span>}
-              {person.intentCount > 1 && <span className="pl-dim"> · in {person.intentCount} of your intents</span>}
+              <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={t("{{name}}'s profile", { name: person.name })}>{person.name}</Link> : person.name}</b>
+              {person.notOnIndex && stage !== "chat" && <span className="pl-dim"> {t("(not on index)")}</span>}
+              {person.intentCount > 1 && <span className="pl-dim"> · {t("in {{n}} of your intents", { n: person.intentCount })}</span>}
             </span>
             {chip && <span className={`pl-status ${chip.tone}`}>{chip.text}</span>}
           </div>
           {blurb
-            ? <div className="pl-blurb">{blurb}</div>
-            : lead.item.presentationPending && <div className="pl-blurb pl-dim">I&apos;m still writing this up<span className="pl-blink">_</span></div>}
+            ? <Blurb text={blurb} />
+            : lead.item.presentationPending && <div className="pl-blurb pl-dim">{t("I'm still writing this up")}<span className="pl-blink">_</span></div>}
           <div className="pl-actions">
             {stage === "awaiting" && hasChat ? (
-              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
+              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>{t("open chat")}</button>
             ) : stage === "awaiting" ? (
               <>
-                <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>{t("accept")}</button>{" "}
+                <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>{t("pass")}</button>
               </>
             ) : stage === "chat" && person.notOnIndex ? (
-              <button type="button" aria-pressed={inviting} onClick={() => setInviteFor(inviting ? null : person.key)}>send invite</button>
+              <button type="button" aria-pressed={inviting} onClick={() => setInviteFor(inviting ? null : person.key)}>{t("send invite")}</button>
             ) : stage === "chat" && person.userId ? (
-              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
+              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>{t("go to chat")}</button>
             ) : (
-              <button type="button" onClick={() => openMatch(person)}>read the log</button>
+              <button type="button" onClick={() => openMatch(person)}>{t("read the log")}</button>
             )}
           </div>
           {inviting && (
@@ -221,7 +231,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
       const updated = await intentsService.setIntentStatus(current.id, next);
       updateIntents((prev) => prev.map((intent) => intent.id === updated.id ? { ...intent, status: updated.status } : intent));
     } catch {
-      showError(next === "paused" ? "Failed to pause intent" : "Failed to resume intent");
+      showError(next === "paused" ? t("Failed to pause intent") : t("Failed to resume intent"));
     } finally {
       if (mountedRef.current) setStatusPending(null);
     }
@@ -243,7 +253,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
       setLog(null);
       navigate("/intents");
     } catch {
-      showError("couldn't archive this intent.");
+      showError(t("couldn't archive this intent."));
     } finally {
       if (mountedRef.current) setArchiving(false);
     }
@@ -253,7 +263,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
   const peopleFailed = radarFailed[selectedId] && !radar[selectedId];
   const found = sections.matches.length + sections["in progress"].length + sections.closed.length;
   const created = current?.createdAt
-    ? ` · since ${new Date(current.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    ? ` · ${t("since {{date}}", { date: new Date(current.createdAt).toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "numeric", year: "numeric" }) })}`
     : "";
 
   return (
@@ -262,23 +272,23 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
         {/* It's all about the intent: back and the buttons share the top line, so the intent gets the column's full width. */}
         <header className="ih-head pl-intent-head">
           <div className="pl-intent-top">
-            <button type="button" className="pl-back ih-head-back" onClick={() => navigate("/intents")}>◂ intents</button>
+            <button type="button" className="pl-back ih-head-back" onClick={() => navigate("/intents")}>◂ {t("intents")}</button>
             {current && (
               <div className="ih-actions">
-                <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
+                <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? `▶ ${t("resume")}` : `❚❚ ${t("pause")}`}</button>
                 <button type="button" className={`danger${archiveArmed || archiving ? " on" : ""}`} disabled={archiving} onClick={() => void clickArchive()}>
-                  {archiving ? "archiving…" : archiveArmed ? "archive, sure?" : "archive"}
+                  {archiving ? t("archiving…") : archiveArmed ? t("archive, sure?") : t("archive")}
                 </button>
               </div>
             )}
           </div>
           <h1 className="ih-title">
-            {current ? (current.payload?.trim() || current.summary?.trim() || "your intent") : missing ? "this intent doesn't exist or was removed." : "loading…"}
+            {current ? (current.payload?.trim() || current.summary?.trim() || t("your intent")) : missing ? t("this intent doesn't exist or was removed.") : t("loading…")}
           </h1>
           {current && (
             <div className="ih-status">
               <span className="ih-status-dot" style={{ background: paused ? "var(--ih-closed)" : "var(--ih-live)" }} />
-              <span style={{ flex: 1, minWidth: 0 }}>{paused ? "paused, your agent isn't looking" : "live, your agent is looking in the background"}{created}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{paused ? t("paused, your agent isn't looking") : t("live, your agent is looking in the background")}{created}</span>
             </div>
           )}
         </header>
@@ -286,24 +296,24 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
         {current && (
           <div className="pl-page">
             {peopleFailed ? (
-              <p>couldn&apos;t load people. <button type="button" onClick={() => void loadRadar(selectedId)}>try again</button></p>
+              <p>{t("couldn't load people.")} <button type="button" onClick={() => void loadRadar(selectedId)}>{t("try again")}</button></p>
             ) : loadingPeople && found === 0 ? (
-              <p className="pl-dim">loading…</p>
+              <p className="pl-dim">{t("loading…")}</p>
             ) : (
               <>
-                <h2>waiting on you ({sections.matches.length})</h2>
+                <h2>{t("waiting on you")} ({sections.matches.length})</h2>
                 {sections.matches.length > 0 ? (
                   <ul className="pl-cards">{sections.matches.map(renderCard)}</ul>
                 ) : (
                   <p className="pl-dim">
-                    {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
+                    {found > 0 ? t("good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready.") : paused ? t("this intent is paused, so your agent isn't looking right now.") : t("nobody yet. your agent is still looking.")}
                   </p>
                 )}
 
                 {sections["in progress"].length > 0 && (
                   <>
                     <hr />
-                    <h2>in progress ({sections["in progress"].length})</h2>
+                    <h2>{t("in progress")} ({sections["in progress"].length})</h2>
                     <ul className="pl-cards">{sections["in progress"].map(renderCard)}</ul>
                   </>
                 )}
@@ -311,10 +321,10 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
                 {sections.closed.length > 0 && (
                   <>
                     <hr />
-                    <h2>closed ({sections.closed.length})</h2>
+                    <h2>{t("closed")} ({sections.closed.length})</h2>
                     {showClosed
                       ? <ul className="pl-cards">{sections.closed.map(renderCard)}</ul>
-                      : <p><button type="button" onClick={() => setShowClosed(true)}>show closed</button></p>}
+                      : <p><button type="button" onClick={() => setShowClosed(true)}>{t("show closed")}</button></p>}
                   </>
                 )}
               </>
@@ -332,6 +342,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
  * otherwise the invite link is there to copy.
  */
 function InviteLog({ item, name, intent, senderName }: { item: RadarCardItem; name: string; intent?: string; senderName?: string | null }) {
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
   const [message, setMessage] = useState(() => buildInviteMessage({ name, intent, senderName }));
   const [copied, setCopied] = useState(false);
@@ -353,20 +364,20 @@ function InviteLog({ item, name, intent, senderName }: { item: RadarCardItem; na
   };
   const x = resolveSocials(profile?.socials).find((s) => s.platform === "x");
   const email = emailFromSocials(profile?.socials);
-  const first = name.split(/\s+/)[0] || "them";
+  const first = name.split(/\s+/)[0] || t("them");
   return (
     <div className="pl-invite">
-      <p className="pl-dim pl-small">{first} isn&apos;t on index yet, so there&apos;s no chat to open. send an invite and pick it up here once they join.</p>
+      <p className="pl-dim pl-small">{t("{{name}} isn't on index yet, so there's no chat to open. send an invite and pick it up here once they join.", { name: first })}</p>
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         rows={6}
-        aria-label="Invite message"
+        aria-label={t("Invite message")}
       />
       <div className="pl-actions">
-        {x && <button type="button" className="go" title={`Opens an X message. Pick @${x.handle} as the recipient.`} onClick={() => window.open(inviteXHref(message), "_blank", "noopener,noreferrer")}>send on X</button>}
-        {email && <button type="button" className={x ? undefined : "go"} onClick={() => { window.location.href = inviteEmailHref({ to: email, subject: inviteSubject(senderName), body: message }); }}>email</button>}
-        <button type="button" className={x || email ? undefined : "go"} onClick={copy}>{copied ? "copied" : "copy invite link"}</button>
+        {x && <button type="button" className="go" title={t("Opens an X message. Pick @{{handle}} as the recipient.", { handle: x.handle })} onClick={() => window.open(inviteXHref(message), "_blank", "noopener,noreferrer")}>{t("send on X")}</button>}
+        {email && <button type="button" className={x ? undefined : "go"} onClick={() => { window.location.href = inviteEmailHref({ to: email, subject: inviteSubject(senderName), body: message }); }}>{t("email")}</button>}
+        <button type="button" className={x || email ? undefined : "go"} onClick={copy}>{copied ? t("copied") : t("copy invite link")}</button>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { RouterProvider } from "react-router";
 
 import { TooltipProvider } from "@/components/ui/Tooltip";
 import { router } from "@/routes";
+import "@/lib/i18n";
 
 import "./app/globals.css";
 import "./styles/workbench.css";

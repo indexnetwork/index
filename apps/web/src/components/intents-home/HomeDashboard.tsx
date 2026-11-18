@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import "@/styles/intents-home.css";
@@ -10,11 +11,13 @@ import { usePublishHomeSections } from "@/components/intents-home/homeSectionsCo
 import { focusedGroup, intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import QuestionItem from "@/components/intents-home/QuestionItem";
+import TranslatedMark from "@/components/TranslatedMark";
 import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
+import { useContentTranslation } from "@/lib/content-translation";
 import type { RadarCardItem } from "@/services/opportunities";
 
 /** How often to reread an intent right after an answer, and for how long. */
@@ -85,11 +88,18 @@ const HOME_STATUS_LINES = [
 ];
 const HOME_STATUS_LINE = HOME_STATUS_LINES[Math.floor(Math.random() * HOME_STATUS_LINES.length)];
 
+/** Why your agent brought this person: written by the agent, so shown in the viewer's language. */
+function Blurb({ text }: { text: string }) {
+  const shown = useContentTranslation(text);
+  return <div className="pl-blurb">{shown.text}{shown.active && <> <TranslatedMark state={shown} /></>}</div>;
+}
+
 /**
  * Home: come in, answer your agents, see who they found, leave.
  * A plain page on purpose: text, links and native controls.
  */
 export default function HomeDashboard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { conversations } = useConversation();
@@ -100,10 +110,10 @@ export default function HomeDashboard() {
     <div className="ih-view pl">
       <div className="pl-col">
         <PageHead
-          title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} {HOME_STATUS_LINE}</>}
+          title={<>{user?.name ? t("hi {{name}}.", { name: user.name.split(" ")[0].toLowerCase() }) : t("hi.")} {t(HOME_STATUS_LINE)}</>}
           centered
         >
-          <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+          <button type="button" className="go" onClick={() => navigate("/i/new")}>{t("+ new intent")}</button>
         </PageHead>
         {page}
       </div>
@@ -121,7 +131,7 @@ export default function HomeDashboard() {
   }, [linkedGroup]);
   /** "for: …" under a card that stands for more than one intent. */
   const forLine = (question: AgentQuestion) => question.intentIds.length > 1
-    ? `for: ${question.intentIds.map((id) => intentLabel(intents.find((intent) => intent.id === id))).filter(Boolean).join(", ")}`
+    ? t("for: {{intents}}", { intents: question.intentIds.map((id) => intentLabel(intents.find((intent) => intent.id === id))).filter(Boolean).join(", ") })
     : undefined;
 
   // After an answer my agent goes back to work on that intent, so "in progress"
@@ -166,14 +176,14 @@ export default function HomeDashboard() {
       out[sorted[0].stage].push({
         key,
         userId: item.userId || item.peer?.userId,
-        name: item.name || item.peer?.name || "unknown",
+        name: item.name || item.peer?.name || t("unknown"),
         avatar: item.avatar ?? item.peer?.avatar,
         notOnIndex: item.peer?.emailVerified === false,
         entries: sorted,
       });
     }
     return out;
-  }, [entriesByIntent]);
+  }, [entriesByIntent, t]);
 
   const chatPeers = useMemo(() => {
     const ids = new Set<string>();
@@ -261,11 +271,11 @@ export default function HomeDashboard() {
   if (intentsLoaded && intents.length === 0) {
     return withAgent(
       <div className="pl-page">
-        <h1>welcome to index.</h1>
-        <p>tell your agent who you want to meet. it goes looking, talks to other agents, and brings you the people worth meeting.</p>
+        <h1>{t("welcome to index.")}</h1>
+        <p>{t("tell your agent who you want to meet. it goes looking, talks to other agents, and brings you the people worth meeting.")}</p>
         <p>
-          <button type="button" className="go big" onClick={() => toggleAgent(true)}>talk to your agent</button>{" "}
-          <button type="button" onClick={() => navigate("/i/new")}>+ start an intent</button>
+          <button type="button" className="go big" onClick={() => toggleAgent(true)}>{t("talk to your agent")}</button>{" "}
+          <button type="button" onClick={() => navigate("/i/new")}>{t("+ start an intent")}</button>
         </p>
       </div>,
     );
@@ -273,12 +283,12 @@ export default function HomeDashboard() {
 
   return withAgent(
       <div className="pl-page">
-        <h2 id="questions">questions from your agents {questionsLoaded && `(${questions.length})`}</h2>
-        {staleLink && <p className="pl-dim">that question was already answered.</p>}
+        <h2 id="questions">{t("questions from your agents")} {questionsLoaded && `(${questions.length})`}</h2>
+        {staleLink && <p className="pl-dim">{t("that question was already answered.")}</p>}
         {!questionsLoaded ? (
-          <p className="pl-dim">loading…</p>
+          <p className="pl-dim">{t("loading…")}</p>
         ) : questions.length === 0 ? (
-          <p className="pl-dim">none right now.</p>
+          <p className="pl-dim">{t("none right now.")}</p>
         ) : (
           <ul className="pl-cards pl-q-list">
             {questions.map((question) => (
@@ -289,11 +299,11 @@ export default function HomeDashboard() {
 
         <hr />
 
-        <h2 id="waiting">waiting on you {!loadingPeople && `(${waitingCount})`}</h2>
+        <h2 id="waiting">{t("waiting on you")} {!loadingPeople && `(${waitingCount})`}</h2>
         {loadingPeople && !waitingRows.length ? (
-          <p className="pl-dim">loading…</p>
+          <p className="pl-dim">{t("loading…")}</p>
         ) : waitingRows.length === 0 ? (
-          <p className="pl-dim">nobody yet. your agents are still looking.</p>
+          <p className="pl-dim">{t("nobody yet. your agents are still looking.")}</p>
         ) : (
           <ul className="pl-cards">
             {waitingRows.map(({ person, passed: wasPassed }) => {
@@ -301,7 +311,7 @@ export default function HomeDashboard() {
                 return (
                   <li key={person.key} className="pl-card pl-card-passed">
                     <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
-                    <div className="pl-card-body">you passed on <b>{person.name}</b>.</div>
+                    <div className="pl-card-body"><Trans i18nKey="you passed on <b>{{name}}</b>." values={{ name: person.name }} components={{ b: <b /> }} /></div>
                   </li>
                 );
               }
@@ -313,19 +323,19 @@ export default function HomeDashboard() {
                 <li key={person.key} {...cardProps(person, "pl-card")}>
                   {/* The person themselves here, not their agent: this is who you'd meet. */}
                   {person.userId
-                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={36} /></Link>
+                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={t("{{name}}'s profile", { name: person.name })}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={36} /></Link>
                     : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={36} />}
                   <div className="pl-card-body">
-                  <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                  {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
-                  {blurb && <div className="pl-blurb">{blurb}</div>}
+                  <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={t("{{name}}'s profile", { name: person.name })}>{person.name}</Link> : person.name}</b>
+                  {person.notOnIndex && <span className="pl-dim"> {t("(not on index)")}</span>}
+                  {blurb && <Blurb text={blurb} />}
                   <div className="pl-actions">
                     {hasChat ? (
-                      <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
+                      <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>{t("open chat")}</button>
                     ) : (
                       <>
-                        <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                        <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                        <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>{t("accept")}</button>{" "}
+                        <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>{t("pass")}</button>
                       </>
                     )}
                   </div>
@@ -340,8 +350,8 @@ export default function HomeDashboard() {
           <>
             <hr />
             <h2 id="progress">
-              in progress ({moving.length})
-              {refreshingIds.length > 0 && <span className="pl-dim"> updating<span className="pl-blink">_</span></span>}
+              {t("in progress")} ({moving.length})
+              {refreshingIds.length > 0 && <span className="pl-dim"> {t("updating")}<span className="pl-blink">_</span></span>}
             </h2>
             <ul className="pl-cards">
               {moving.map((person) => {
@@ -351,25 +361,25 @@ export default function HomeDashboard() {
                 return (
                   <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
                     {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={t("{{name}}'s profile", { name: person.name })}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
                       : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={36} />}
                     <div className="pl-card-body">
                       <div className="pl-card-head">
                         <span>
-                          <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
+                          <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={t("{{name}}'s profile", { name: person.name })}>{person.name}</Link> : person.name}</b>
                         </span>
                         <span className={`pl-status ${talking ? "talks" : "chat"}`}>
-                          {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
+                          {talking ? t("agents talking") : person.notOnIndex ? t("not on index yet") : t("chat open")}
                         </span>
                       </div>
-                      {blurb && <div className="pl-blurb">{blurb}</div>}
+                      {blurb && <Blurb text={blurb} />}
                       <div className="pl-actions">
                         {talking ? (
-                          <button type="button" onClick={() => openMatch(person)}>read the log</button>
+                          <button type="button" onClick={() => openMatch(person)}>{t("read the log")}</button>
                         ) : person.notOnIndex ? (
-                          <button type="button" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
+                          <button type="button" onClick={() => navigate(`/i/${lead.intentId}`)}>{t("send invite")}</button>
                         ) : (
-                          person.userId && <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
+                          person.userId && <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>{t("go to chat")}</button>
                         )}
                       </div>
                     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { useAgents } from "@/contexts/APIContext";
@@ -50,6 +51,7 @@ export function AddYourAgent({
   /** The name form, shown in place of the register row. */
   registerForm?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const missing = useMissingOwnAgent(onlyIfMissing);
   const [copied, setCopied] = useState<"mcp" | "cli" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -68,47 +70,47 @@ export function AddYourAgent({
 
   const byHand = registerForm ?? (onRegister && (
     <Choice
-      title="register manually"
-      detail="name an agent on this page."
-      action={<button type="button" className="wb-btn small" onClick={onRegister}>register</button>}
+      title={t("register manually")}
+      detail={t("name an agent on this page.")}
+      action={<button type="button" className="wb-btn small" onClick={onRegister}>{t("register")}</button>}
     />
   ));
 
   return (
     <div style={{ display: "grid", width: "100%", textAlign: "left" }}>
-      <h2 className="st-h">add your agent</h2>
+      <h2 className="st-h">{t("add your agent")}</h2>
       <p className="st-note" style={{ marginBottom: 6 }}>
-        index speaks for you until yours does.
+        {t("index speaks for you until yours does.")}
       </p>
       {linkToPage && (
         <Choice
-          title="agents page"
-          detail="register one, and choose who negotiates."
-          action={<Link to="/agents" className="wb-btn small" style={btn}>open</Link>}
+          title={t("agents page")}
+          detail={t("register one, and choose who negotiates.")}
+          action={<Link to="/agents" className="wb-btn small" style={btn}>{t("open")}</Link>}
         />
       )}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, padding: "14px 0", borderTop: "1px solid #e6e6e6" }}>
         <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-          <div style={title_}>hermes agent</div>
+          <div style={title_}>{t("hermes agent")}</div>
           <p style={{ ...blurb, margin: "3px 0 0" }}>
-            the agent you already talk to. it negotiates for you once the plugin is in.
+            {t("the agent you already talk to. it negotiates for you once the plugin is in.")}
           </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flex: "1 1 auto", minWidth: 0 }}>
-          <a className="wb-btn small" href={HERMES_INSTALL_URL} style={btn}>install desktop</a>
+          <a className="wb-btn small" href={HERMES_INSTALL_URL} style={btn}>{t("install desktop")}</a>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, minWidth: 0, maxWidth: "100%" }}>
             <span style={{ ...code, minWidth: 0, padding: "4px 8px", overflowWrap: "anywhere" }}>{HERMES_INSTALL_COMMAND}</span>
-            <button type="button" className="wb-btn small" style={{ flex: "0 0 auto" }} onClick={() => copy("cli", HERMES_INSTALL_COMMAND)}>{copied === "cli" ? "copied" : "copy cli cmd"}</button>
+            <button type="button" className="wb-btn small" style={{ flex: "0 0 auto" }} onClick={() => copy("cli", HERMES_INSTALL_COMMAND)}>{copied === "cli" ? t("copied") : t("copy cli cmd")}</button>
           </div>
         </div>
       </div>
       <div style={{ padding: "14px 0", borderTop: "1px solid #e6e6e6" }}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
           <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 3 }}>
-            <span style={title_}>any other agent</span>
-            <span style={blurb}>paste this into claude, cursor, or another mcp client.</span>
+            <span style={title_}>{t("any other agent")}</span>
+            <span style={blurb}>{t("paste this into claude, cursor, or another mcp client.")}</span>
           </span>
-          <button type="button" className="wb-btn small" onClick={() => copy("mcp", prompt)}>{copied === "mcp" ? "copied" : "copy"}</button>
+          <button type="button" className="wb-btn small" onClick={() => copy("mcp", prompt)}>{copied === "mcp" ? t("copied") : t("copy")}</button>
         </div>
         <p className="mac-scroll" style={{ ...code, margin: 0, padding: "10px 12px", maxHeight: 119, overflow: "auto", whiteSpace: "pre-wrap", color: "#5a5548" }}>{prompt}</p>
       </div>

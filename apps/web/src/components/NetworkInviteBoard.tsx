@@ -1,9 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import { ensureSiteFonts } from "@/app/site/SiteLayout";
 import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { mcpInvitePrompt } from "@/lib/agent-prompt";
+import { useContentTranslation } from "@/lib/content-translation";
+import TranslatedMark from "@/components/TranslatedMark";
 import "@/app/site/site.css";
 import "@/app/site/flow.css";
 import "./SiteSignIn.css";
@@ -62,11 +66,12 @@ function CopyIcon() {
 
 /** The two install paths from the Hermes page: desktop plugin, or the CLI command. */
 function HermesInstall() {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
   }, [copied]);
 
   return (
@@ -74,9 +79,9 @@ function HermesInstall() {
       <div className="invite-hermes__way">
         <h3 className="invite-hermes__title">
           <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />
-          Hermes desktop
+          {t("Hermes desktop")}
         </h3>
-        <a className="site-btn site-btn--secondary" href={HERMES_INSTALL_URL}>Install plugin</a>
+        <a className="site-btn site-btn--secondary" href={HERMES_INSTALL_URL}>{t("Install plugin")}</a>
       </div>
       <div className="invite-hermes__way">
         <h3 className="invite-hermes__title">
@@ -92,13 +97,13 @@ function HermesInstall() {
             type="button"
             className="invite-hermes__copy"
             onClick={() => { void navigator.clipboard?.writeText(HERMES_INSTALL_COMMAND).then(() => setCopied(true)); }}
-            aria-label={copied ? "Copied" : "Copy command"}
+            aria-label={copied ? t("Copied") : t("Copy command")}
           >
-            {copied ? "Copied" : <CopyIcon />}
+            {copied ? t("Copied") : <CopyIcon />}
           </button>
         </div>
         <a className="site-arrow-link" href={docsUrl("/use/hermes")} target="_blank" rel="noreferrer">
-          Read the docs ↗
+          {t("Read the docs ↗")}
         </a>
       </div>
     </div>
@@ -107,13 +112,14 @@ function HermesInstall() {
 
 /** Each way in is a button. Hermes expands its install options; MCP gets the invite to paste. */
 function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [hermesOpen, setHermesOpen] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(timer);
   }, [copied]);
 
   const go = (id: AgentChoice) => {
@@ -130,7 +136,7 @@ function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string
 
   return (
     <div className="invite-bring">
-      <h2 className="invite-ask">Which agent goes in?</h2>
+      <h2 className="invite-ask">{t("Which agent goes in?")}</h2>
       <div className="invite-agents">
         {AGENT_CHOICES.map((agent) => (
           <div key={agent.id} className="invite-agent-slot">
@@ -145,9 +151,9 @@ function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string
                   {agent.id === "here" && <WebIcon />}
                   {agent.id === "hermes" && <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />}
                   {agent.id === "mcp" && <CopyIcon />}
-                  {agent.id === "mcp" && copied ? "copied, paste it in →" : agent.label}
+                  {agent.id === "mcp" && copied ? t("copied, paste it in →") : t(agent.label)}
                 </span>
-                {agent.hint && !(agent.id === "mcp" && copied) && <span className="invite-agent__hint">{agent.hint}</span>}
+                {agent.hint && !(agent.id === "mcp" && copied) && <span className="invite-agent__hint">{t(agent.hint)}</span>}
               </span>
             </button>
             {agent.id === "hermes" && hermesOpen && <HermesInstall />}
@@ -181,13 +187,13 @@ function useNow(everyMs: number): number {
   return now;
 }
 
-function ago(iso: string, now: number): string {
+function ago(iso: string, now: number, t: TFunction): string {
   const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t("just now");
+  if (minutes < 60) return t("{{n}}m ago", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t("{{n}}h ago", { n: hours });
+  return t("{{n}}d ago", { n: Math.floor(hours / 24) });
 }
 
 /** A number that briefly highlights when a refresh changes it. */
@@ -200,8 +206,8 @@ function LiveNumber({ value }: { value: number }) {
   }
   useEffect(() => {
     if (!changed) return;
-    const t = setTimeout(() => setChanged(false), 1600);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setChanged(false), 1600);
+    return () => clearTimeout(timer);
   }, [changed]);
   return <span className={changed ? "invite-num invite-num--changed" : "invite-num"}>{value.toLocaleString()}</span>;
 }
@@ -219,7 +225,10 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
   /** Set while a join is under way or has an outcome; replaces the actions. */
   status?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const now = useNow(15_000);
+  // The summary is written on the server by an agent.
+  const summary = useContentTranslation(pulse?.summary);
   useEffect(() => {
     ensureSiteFonts();
   }, []);
@@ -242,14 +251,13 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
 
       <main className="invite-grid">
         <div className="invite-stack">
-        <Window label="Invitation">
+        <Window label={t("Invitation")}>
           <div className="invite-body">
             <div className="invite-hero">
-              <p className="invite-label">You&apos;re invited to</p>
+              <p className="invite-label">{t("You're invited to")}</p>
               <h1 className="invite-title">{title}</h1>
               <p className="invite-lede">
-                A network where your agent finds the people you&apos;re looking for, and
-                introduces you only when it&apos;s mutual.
+                {t("A network where your agent finds the people you're looking for, and introduces you only when it's mutual.")}
               </p>
             </div>
 
@@ -257,7 +265,7 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
               <dl className="invite-stats">
                 {stats.map(([label, value]) => (
                   <div key={label} className="invite-stat">
-                    <dt>{label}</dt>
+                    <dt>{t(label)}</dt>
                     <dd><LiveNumber value={value} /></dd>
                   </div>
                 ))}
@@ -265,24 +273,26 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
             )}
 
             <div className="invite-looking">
-              <h2 className="invite-label">What people are looking for</h2>
+              <h2 className="invite-label">{t("What people are looking for")}</h2>
               <p className="invite-summary">
-                {pulse?.summary
-                  ?? `${pulse && pulse.intents > 0 ? `${pulse.intents.toLocaleString()} intents are open right now. ` : ""}What they say stays private until you join.`}
+                {pulse?.summary != null
+                  ? summary.text
+                  : `${pulse && pulse.intents > 0 ? `${t("{{n}} intents are open right now.", { n: pulse.intents.toLocaleString() })} ` : ""}${t("What they say stays private until you join.")}`}
               </p>
+              {pulse?.summary != null && <TranslatedMark state={summary} />}
             </div>
 
           </div>
           {pulse?.lastActivityAt && (
             <p className="invite-updated" title={new Date(pulse.lastActivityAt).toLocaleString()}>
               <span className="invite-live" aria-hidden="true" />
-              last change {ago(pulse.lastActivityAt, now)}
+              {t("last change {{when}}", { when: ago(pulse.lastActivityAt, now, t) })}
             </p>
           )}
         </Window>
         </div>
 
-        <Window label="bring your agent" mark>
+        <Window label={t("bring your agent")} mark>
           <div className="invite-body invite-body--join">
             {status ? (
               <div className="signin invite-signin invite-status">{status}</div>

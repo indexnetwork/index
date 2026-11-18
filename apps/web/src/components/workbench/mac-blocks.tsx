@@ -1,21 +1,26 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
+import TranslatedMark from "@/components/TranslatedMark";
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
+import { useContentTranslation } from "@/lib/content-translation";
+import i18n from "@/lib/i18n";
 import { formatChatClock } from "@/lib/utils";
 
 /* Copied from apps/mac/src/ui. Data bindings are the only web-side change. */
 
 /** Marks someone who has not verified their email with Index yet. */
 export function NotOnIndexTag() {
+  const { t } = useTranslation();
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifySelf: "start", width: "fit-content", maxWidth: "100%",
       fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4, whiteSpace: "normal",
       color: "var(--ink-2)", background: "#E8E6E1", padding: "2px 6px",
-    }}>Not yet on Index</span>
+    }}>{t("Not yet on Index")}</span>
   );
 }
 
@@ -58,6 +63,8 @@ export function MatchCard({
   onAccept: () => void;
   onPass: () => void;
 }) {
+  const { t } = useTranslation();
+  const shownBlurb = useContentTranslation(blurb);
   const [hover, setHover] = useState(false);
   const openProfile = (e: MouseEvent) => {
     e.stopPropagation();
@@ -66,23 +73,23 @@ export function MatchCard({
   const agentLogStyle = { display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" } as const;
   const actions = accepted ? (
     <button type="button" className="wb-btn primary small" onClick={onOpen}>
-      {unverified ? "invite" : hasChat ? "open chat ›" : "send message"}
+      {unverified ? t("invite") : hasChat ? t("open chat ›") : t("send message")}
     </button>
   ) : ready && hasChat ? (
-    <button type="button" className="wb-btn primary small" onClick={onOpenChat}>open chat ›</button>
+    <button type="button" className="wb-btn primary small" onClick={onOpenChat}>{t("open chat ›")}</button>
   ) : ready ? (
     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-      <button type="button" className="wb-btn primary small" onClick={onAccept}>accept</button>
-      <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
+      <button type="button" className="wb-btn primary small" onClick={onAccept}>{t("accept")}</button>
+      <button type="button" className="wb-btn small" onClick={onPass}>{t("pass")}</button>
     </div>
   ) : negotiating ? (
     <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
       <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
-      agent log ›
+      {t("agent log ›")}
     </button>
   ) : expired ? (
     <button type="button" className="wb-btn small" onClick={onOpen} style={agentLogStyle}>
-      agent log ›
+      {t("agent log ›")}
     </button>
   ) : null;
   return (
@@ -104,18 +111,19 @@ export function MatchCard({
         cursor: "pointer",
         transition: "all .12s ease",
       }}>
-      <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
+      <span title={t("view profile")} onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
         <UserAvatar id={userId} name={name} avatar={photo} size={36} />
       </span>
       <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-          <span title="view profile" onClick={openProfile} style={{
+          <span title={t("view profile")} onClick={openProfile} style={{
             fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
             minWidth: 0, whiteSpace: "normal",
           }}>{name}</span>
           {unverified && <NotOnIndexTag />}
         </div>
-        <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{blurb}</div>
+        <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4 }}>{shownBlurb.text}</div>
+        {shownBlurb.active && <div onClick={(e) => e.stopPropagation()} style={{ lineHeight: 1 }}><TranslatedMark state={shownBlurb} /></div>}
       </div>
       <div style={{ display: "grid", gap: 6, alignContent: "start", justifyItems: "end" }} onClick={(e) => e.stopPropagation()}>
         {actions}
@@ -167,7 +175,8 @@ export function OptionChip({ label, selected = false, write = false, onClick }: 
 export function WriteOwn({ open, value, onOpen, onChange, onClose }: {
   open: boolean; value: string; onOpen: () => void; onChange: (value: string) => void; onClose: () => void;
 }) {
-  if (!open) return <OptionChip write label="write your own" onClick={onOpen} />;
+  const { t } = useTranslation();
+  if (!open) return <OptionChip write label={t("write your own")} onClick={onOpen} />;
   return (
     <input
       autoFocus
@@ -175,8 +184,8 @@ export function WriteOwn({ open, value, onOpen, onChange, onClose }: {
       onChange={(e) => onChange(e.target.value)}
       onBlur={(e) => { if (!e.currentTarget.value.trim()) onClose(); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !e.currentTarget.value.trim()) onClose(); }}
-      placeholder="write your own"
-      aria-label="Write your own answer"
+      placeholder={t("write your own")}
+      aria-label={t("Write your own answer")}
       style={{
         flex: "1 1 200px", minWidth: 160,
         padding: "4px 10px",
@@ -199,9 +208,9 @@ function negoResult(th: NegotiationSummary): "won" | "lost" | "open" {
   return "open";
 }
 function negoDetail(th: NegotiationSummary) {
-  if (th.outcome === "agreed") return "opportunity";
-  if (th.outcome === "declined") return "declined";
-  return "no opportunity";
+  if (th.outcome === "agreed") return i18n.t("opportunity");
+  if (th.outcome === "declined") return i18n.t("declined");
+  return i18n.t("no opportunity");
 }
 function negoFirstName(th: NegotiationSummary) {
   return (th.counterparty?.name || "unknown").split(/\s+/)[0].toLowerCase();
@@ -211,7 +220,7 @@ function negoClock(iso: string | null | undefined) {
   const d = new Date(iso || "");
   if (isNaN(d.getTime())) return "------ --:--";
   const p = (n: number) => String(n).padStart(2, "0");
-  const day = d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }).toLowerCase();
+  const day = d.toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "2-digit" }).toLowerCase();
   return `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
@@ -224,6 +233,8 @@ const NEGO_RESULT_GLYPH = {
 export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
   th: NegotiationSummary; turn: NegotiationTurn; you: boolean; withTag: boolean; onTag?: (th: NegotiationSummary) => void;
 }) {
+  const { t } = useTranslation();
+  const shownMessage = useContentTranslation(turn.message);
   return (
     <div style={{ display: "grid", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-3)" }}>
@@ -237,7 +248,7 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
           }}>{negoFirstName(th)}</button>
         )}
         {!you && th.counterparty?.userId ? (
-          <Link to={`/u/${th.counterparty.userId}`} title="view profile" style={{ flex: "0 0 auto", color: "var(--ink-3)", textDecoration: "underline", textUnderlineOffset: 3 }}>{negoFirstName(th)}.agent</Link>
+          <Link to={`/u/${th.counterparty.userId}`} title={t("view profile")} style={{ flex: "0 0 auto", color: "var(--ink-3)", textDecoration: "underline", textUnderlineOffset: 3 }}>{negoFirstName(th)}.agent</Link>
         ) : (
           <span style={{ flex: "0 0 auto" }}>{you ? "you.agent" : `${negoFirstName(th)}.agent`}</span>
         )}
@@ -246,20 +257,24 @@ export function NegoTurnLine({ th, turn, you, withTag, onTag }: {
           flex: "0 0 auto", textTransform: "uppercase", letterSpacing: "0.1em",
           background: "var(--wb-selected)", color: "var(--ink-2)",
           borderRadius: 2, padding: "0 6px", fontSize: 11, fontFamily: "var(--mac-sans)",
-        }}>{turn.action || "unknown"}</span>
+        }}>{t(turn.action || "unknown")}</span>
       </div>
       {turn.message && (
         <div style={{
           marginLeft: withTag ? "calc(12ch + 92px)" : "calc(12ch + 8px)",
           fontFamily: "var(--wb-code)", fontSize: 12, lineHeight: 1.6,
           color: "var(--ink)", maxWidth: 560,
-        }}>"{turn.message}"</div>
+        }}>"{shownMessage.text}"</div>
+      )}
+      {turn.message && shownMessage.active && (
+        <div style={{ marginLeft: withTag ? "calc(12ch + 92px)" : "calc(12ch + 8px)" }}><TranslatedMark state={shownMessage} /></div>
       )}
     </div>
   );
 }
 
 export function NegoClosedLine({ th, withTag }: { th: NegotiationSummary; withTag: boolean }) {
+  const { t } = useTranslation();
   const r = negoResult(th);
   const { g } = NEGO_RESULT_GLYPH[r];
   return (
@@ -269,30 +284,32 @@ export function NegoClosedLine({ th, withTag }: { th: NegotiationSummary; withTa
       color: r === "won" ? "var(--ink)" : "var(--ink-3)",
     }}>
       <span style={{ color: "#aaa" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
-      <span>{withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}</span>
+      <span>{withTag ? `${negoFirstName(th)} · ` : ""}{t("closed")} {g} {negoDetail(th)}</span>
       <span style={{ flex: 1, borderTop: "1px solid var(--wb-divider)" }} />
     </div>
   );
 }
 
 export function NegoOpenLine({ th, withTag }: { th: NegotiationSummary; withTag: boolean }) {
+  const { t } = useTranslation();
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
       fontFamily: "var(--wb-code)", fontSize: 11, color: "var(--ink-2)",
     }}>
       <span style={{ color: "#aaa" }}>{negoClock(th.updatedAt)}</span>
-      <span>{withTag ? `${negoFirstName(th)} · ` : ""}open <span style={{ color: "var(--wb-live)" }}>●</span> {th.turnCount || 0}t</span>
+      <span>{withTag ? `${negoFirstName(th)} · ` : ""}{t("open")} <span style={{ color: "var(--wb-live)" }}>●</span> {t("{{n}}t", { n: th.turnCount || 0 })}</span>
       <span style={{ flex: 1, borderTop: "1px solid var(--wb-divider)" }} />
     </div>
   );
 }
 
 export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; active: boolean; onPick: () => void }) {
+  const { t } = useTranslation();
   const r = negoResult(th);
   const { g, color } = NEGO_RESULT_GLYPH[r];
   return (
-    <button type="button" onClick={onPick} title={`last activity ${new Date(th.updatedAt || th.settledAt || th.createdAt).toLocaleString()}`} style={{
+    <button type="button" onClick={onPick} title={t("last activity {{time}}", { time: new Date(th.updatedAt || th.settledAt || th.createdAt).toLocaleString() })} style={{
       display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8,
       alignItems: "center", width: "100%", textAlign: "left",
       padding: "7px 10px", cursor: "pointer",
@@ -302,7 +319,7 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
       fontFamily: "var(--mac-sans)", fontSize: 13,
     }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: active ? 500 : 400 }}>{negoFirstName(th)}</span>
-      <span style={{ color: "var(--ink-3)", fontSize: 11, whiteSpace: "nowrap" }}>{th.turnCount || 0}t</span>
+      <span style={{ color: "var(--ink-3)", fontSize: 11, whiteSpace: "nowrap" }}>{t("{{n}}t", { n: th.turnCount || 0 })}</span>
       <span style={{ color }}>{g}</span>
     </button>
   );
@@ -381,20 +398,22 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
 
 /** The radar while the agent is still out looking: the same eye and line as the Mac app. */
 export function DiscoveryLoader() {
+  const { t } = useTranslation();
   return (
     <div style={{ padding: "16px 30px 30px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <img src="/loading-eye.gif" alt="searching" style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
+      <img src="/loading-eye.gif" alt={t("searching")} style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
       <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 400, color: "var(--ink-2)", margin: 0 }}>
-        hold on, looking for your people
+        {t("hold on, looking for your people")}
       </div>
     </div>
   );
 }
 
 function AgentLabel({ at }: { at?: string }) {
+  const { t } = useTranslation();
   return (
     <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-      your agent
+      {t("your agent")}
       {at && <time className="wb-stamp" dateTime={at} style={{ textTransform: "none" }}> · {formatChatClock(at)}</time>}
     </div>
   );
@@ -434,9 +453,15 @@ export function parseDiscovery(text: string): { plan: string; queries: string[];
 
 export function discoverySummary(discovered: number, reached: number | null) {
   const promising = reached ?? discovered;
-  const people = discovered === 1 ? "person" : "people";
-  const ones = promising === 1 ? "one" : "ones";
-  return `Discovered ${discovered} ${people} with compatible intentions, and decided to reach out to ${promising} promising ${ones}`;
+  const values = { discovered, promising };
+  if (discovered === 1) {
+    return promising === 1
+      ? i18n.t("Discovered {{discovered}} person with compatible intentions, and decided to reach out to {{promising}} promising one", values)
+      : i18n.t("Discovered {{discovered}} person with compatible intentions, and decided to reach out to {{promising}} promising ones", values);
+  }
+  return promising === 1
+    ? i18n.t("Discovered {{discovered}} people with compatible intentions, and decided to reach out to {{promising}} promising one", values)
+    : i18n.t("Discovered {{discovered}} people with compatible intentions, and decided to reach out to {{promising}} promising ones", values);
 }
 
 export function DiscoveryTrace({
@@ -444,20 +469,24 @@ export function DiscoveryTrace({
 }: {
   loading?: string[]; plan?: string; queries?: string[]; discovered?: number | null; reached?: number | null; progress?: string;
 }) {
+  const { t } = useTranslation();
   const [queriesOpen, setQueriesOpen] = useState(true);
-  const summary = typeof discovered === "number" ? discoverySummary(discovered, reached) : progress;
+  const shownPlan = useContentTranslation(plan);
+  const shownProgress = useContentTranslation(progress);
+  const summary = typeof discovered === "number" ? discoverySummary(discovered, reached) : shownProgress.text;
   const lines = loading.length && !loading.some((line) => line.startsWith("Warming up")) ? ["Warming up.", ...loading] : loading;
   return (
     <section style={{ display: "flex", gap: 12 }}>
       <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <AgentLabel />
-        {lines.map((line) => (
-          <p key={line} style={{ margin: "0 0 8px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#5A5548" }}>
-            {line.endsWith(".") ? line : `${line}.`}
-          </p>
-        ))}
-        {plan ? <p style={{ margin: "0 0 10px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{plan}</p> : null}
+        {lines.map((line) => <TraceLine key={line} line={line} />)}
+        {plan ? (
+          <div style={{ margin: "0 0 10px" }}>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{shownPlan.text}</p>
+            <TranslatedMark state={shownPlan} />
+          </div>
+        ) : null}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {queries.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -467,16 +496,11 @@ export function DiscoveryTrace({
                 fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)", color: "#5A5548",
               }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10.5" cy="10.5" r="6.5" /><line x1="15.5" y1="15.5" x2="21" y2="21" /></svg>
-                <span>Ran {queries.length} {queries.length === 1 ? "query" : "queries"}</span>
+                <span>{queries.length === 1 ? t("Ran {{n}} query", { n: queries.length }) : t("Ran {{n}} queries", { n: queries.length })}</span>
               </button>
               {queriesOpen && (
                 <div style={{ marginLeft: 8, padding: "2px 0 2px 19px", borderLeft: "1px solid #B5AF9F", display: "flex", flexDirection: "column", gap: 9 }}>
-                  {queries.map((query) => (
-                    <div key={query} style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 9, alignItems: "baseline", color: "#5A5548", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)" }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
-                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#8A8578" }}>{query}</span></span>
-                    </div>
-                  ))}
+                  {queries.map((query) => <TraceQuery key={query} query={query} />)}
                 </div>
               )}
             </div>
@@ -490,5 +514,28 @@ export function DiscoveryTrace({
         </div>
       </div>
     </section>
+  );
+}
+
+/** One progress line from the agent; the local "Warming up." is interface text, the rest is the agent's. */
+function TraceLine({ line }: { line: string }) {
+  const { t } = useTranslation();
+  const text = line.endsWith(".") ? line : `${line}.`;
+  const shown = useContentTranslation(text === "Warming up." ? null : text);
+  return (
+    <p style={{ margin: "0 0 8px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#5A5548" }}>
+      {text === "Warming up." ? t("Warming up.") : shown.text}
+    </p>
+  );
+}
+
+function TraceQuery({ query }: { query: string }) {
+  const { t } = useTranslation();
+  const shown = useContentTranslation(query);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 9, alignItems: "baseline", color: "#5A5548", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)" }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
+      <span>{t("Looking for")} <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#8A8578" }}>{shown.text}</span></span>
+    </div>
   );
 }

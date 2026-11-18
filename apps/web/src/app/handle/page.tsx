@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import AppHandoff from "@/components/AppHandoff";
 import NetworkAvatar from "@/components/NetworkAvatar";
+import TranslatedMark from "@/components/TranslatedMark";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import NotFound from "@/app/not-found";
@@ -13,6 +15,7 @@ import { useNetworks } from "@/contexts/APIContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient, isNotFoundError } from "@/lib/api";
+import { useContentTranslation } from "@/lib/content-translation";
 import { log } from "@/lib/logger";
 import { useBack } from "@/hooks/useBack";
 
@@ -27,6 +30,7 @@ type Holder =
  * share one namespace, so the handle alone says which page this is.
  */
 export default function HandlePage() {
+  const { t } = useTranslation();
   const { handle = "" } = useParams();
   const [holder, setHolder] = useState<Holder | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "failed">("loading");
@@ -55,7 +59,7 @@ export default function HandlePage() {
         <Window title={handle} onClose={back}>
           <div style={{ padding: "36px 24px" }}>
             {state === "failed"
-              ? <EmptyState tone="error" message="couldn't load this page." action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }} />
+              ? <EmptyState tone="error" message={t("couldn't load this page.")} action={{ label: t("try again"), onClick: () => setReloadKey((k) => k + 1) }} />
               : <EmptyState tone="loading" />}
           </div>
         </Window>
@@ -82,6 +86,9 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
   const back = useBack("/");
   const [preview, setPreview] = useState<{ prompt?: string | null; _count?: { members: number } } | null>(null);
   const [joining, setJoining] = useState(false);
+  const { t } = useTranslation();
+  // The description is written by the network's owner, so it is shown in the viewer's language.
+  const prompt = useContentTranslation(preview?.prompt);
 
   const isMember = !!networks?.some((n) => n.id === network.id);
   const open = network.joinPolicy === "anyone";
@@ -118,7 +125,7 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
       if (!result.alreadyMember) addNetwork(result.network);
     } catch (err) {
       logger.error("Failed to join network", { error: err });
-      error("Couldn't join this network");
+      error(t("Couldn't join this network"));
     } finally {
       setJoining(false);
     }
@@ -126,7 +133,7 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
 
   return (
     <Stage width={480}>
-      <Window title="network" onClose={back}>
+      <Window title={t("network")} onClose={back}>
         <div style={{ padding: "22px 24px", display: "grid", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={54} />
@@ -134,7 +141,7 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
               <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{network.title}</div>
               {open && preview?._count && (
                 <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-                  {preview._count.members} {preview._count.members === 1 ? "member" : "members"}
+                  {preview._count.members === 1 ? t("{{n}} member", { n: preview._count.members }) : t("{{n}} members", { n: preview._count.members })}
                 </div>
               )}
             </div>
@@ -142,16 +149,19 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
           {open ? (
             <>
               {preview?.prompt && (
-                <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{preview.prompt}</p>
+                <div>
+                  <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{prompt.text}</p>
+                  <TranslatedMark state={prompt} />
+                </div>
               )}
               <div>
                 <button type="button" className="wb-btn primary" disabled={joining} onClick={() => void join()}>
-                  {joining ? "joining…" : "join network"}
+                  {joining ? t("joining…") : t("join network")}
                 </button>
               </div>
             </>
           ) : (
-            <EmptyState framed message="this network is invite-only. ask a member for an invite link." />
+            <EmptyState framed message={t("this network is invite-only. ask a member for an invite link.")} />
           )}
         </div>
       </Window>

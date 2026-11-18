@@ -5,6 +5,7 @@ import { useOpportunities } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiUrl } from "@/lib/api";
+import i18n from "@/lib/i18n";
 import { parseSocial } from "@/lib/socials";
 
 /**
@@ -46,7 +47,7 @@ function OpenOpportunityChat({ id }: { id: string }) {
       },
       (error: unknown) => {
         if (cancelled) return;
-        showError(error instanceof Error ? error.message : "Failed to start chat");
+        showError(error instanceof Error ? error.message : i18n.t("Failed to start chat"));
         navigate("/chat", { replace: true });
       },
     );

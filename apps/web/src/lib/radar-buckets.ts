@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
 export type RadarBucket = "all" | "awaiting you" | "negotiating" | "accepted" | "closed";
@@ -31,8 +32,8 @@ export function radarBucketForOpportunity(
 }
 
 export function radarEmptyLine(bucket: RadarBucket): string {
-  if (bucket === "all") return "no one here right now. the field keeps moving, so check back.";
-  return EMPTY_RADAR[bucket];
+  if (bucket === "all") return i18n.t("no one here right now. the field keeps moving, so check back.");
+  return i18n.t(EMPTY_RADAR[bucket]);
 }
 
 export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "profile" | "chat" | "agent log" | "summary" {
@@ -66,14 +67,14 @@ export function formatRadarAge(iso: string | undefined, now: number = Date.now()
   const at = Date.parse(iso ?? "");
   if (!Number.isFinite(at)) return null;
   const elapsed = Math.max(0, now - at);
-  if (elapsed < MINUTE) return "now";
-  if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)}m`;
-  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)}h`;
-  if (elapsed < WEEK) return `${Math.floor(elapsed / DAY)}d`;
-  if (elapsed < 4 * WEEK) return `${Math.floor(elapsed / WEEK)}w`;
+  if (elapsed < MINUTE) return i18n.t("now");
+  if (elapsed < HOUR) return i18n.t("{{n}}m", { n: Math.floor(elapsed / MINUTE) });
+  if (elapsed < DAY) return i18n.t("{{n}}h", { n: Math.floor(elapsed / HOUR) });
+  if (elapsed < WEEK) return i18n.t("{{n}}d", { n: Math.floor(elapsed / DAY) });
+  if (elapsed < 4 * WEEK) return i18n.t("{{n}}w", { n: Math.floor(elapsed / WEEK) });
   const date = new Date(at);
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return date.toLocaleDateString("en-US", sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString(i18n.resolvedLanguage ?? "en-US", sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
 }
 
 /** The status word on a radar card. Closed splits into not a fit (rejected) and missed (expired). */
@@ -81,8 +82,8 @@ export function radarStatusLabel(
   bucket: Exclude<RadarBucket, "all">,
   status: OpportunityLifecycleStatus | undefined,
 ): string {
-  if (bucket === "awaiting you") return "awaiting you";
-  if (bucket === "negotiating") return "in progress";
-  if (bucket === "accepted") return "accepted";
-  return status === "rejected" ? "not a fit" : "missed";
+  if (bucket === "awaiting you") return i18n.t("awaiting you");
+  if (bucket === "negotiating") return i18n.t("in progress");
+  if (bucket === "accepted") return i18n.t("accepted");
+  return status === "rejected" ? i18n.t("not a fit") : i18n.t("missed");
 }

@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { AppsShell } from "@/app/download/page";
 import AuthForm from "@/components/AuthForm";
 import "./SiteSignIn.css";
 
 /** Public sign-in shell: logo row, intro, then the page's card or status. */
-export function SiteSignInPage({ bar = "sign in", kicker, title, meta, children }: {
+export function SiteSignInPage({ bar, kicker, title, meta, children }: {
   /** The panel's caps label. */
   bar?: string;
   kicker?: ReactNode;
@@ -13,9 +14,10 @@ export function SiteSignInPage({ bar = "sign in", kicker, title, meta, children 
   meta?: ReactNode;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     // No window frame or caps bar: the title, then the form, standing on the page like the app's pages.
-    <AppsShell bar={bar} narrow framed={false}>
+    <AppsShell bar={bar ?? t("sign in")} narrow framed={false}>
       <div className="signin">
         {(kicker || title || meta) && (
           <div className="signin-intro">
@@ -95,14 +97,15 @@ export function SiteSignInCard({ bar, sentTo, sentNote, callbackURL, onAuthentic
   onMagicLinkSent: (email: string) => void;
   onBack: () => void;
 }) {
+  const { t } = useTranslation();
   if (sentTo) {
     return (
       <Card bar={bar} className="signin-sent">
-        <h3 className="signin-subtitle">Check your email</h3>
-        <p className="site-p">We sent a sign-in link to <strong>{sentTo}</strong>.</p>
+        <h3 className="signin-subtitle">{t("Check your email")}</h3>
+        <p className="site-p"><Trans i18nKey="We sent a sign-in link to <strong>{{email}}</strong>." values={{ email: sentTo }} components={{ strong: <strong /> }} /></p>
         <p className="site-p">{sentNote}</p>
         <button type="button" className="site-btn site-btn--secondary site-btn--block" onClick={onBack}>
-          Back to sign in
+          {t("Back to sign in")}
         </button>
       </Card>
     );

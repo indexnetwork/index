@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Btn, Stage, Window } from "@/components/workbench/Workbench";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -28,6 +29,7 @@ function pendingOf(user: unknown): PendingConsent[] {
  * checkbox and a signed participation consent. Bare routes never mount this.
  */
 export default function ConsentGate({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { user, refetchUser, signOut } = useAuthContext();
   const pending = pendingOf(user);
   const [privacy, setPrivacy] = useState(false);
@@ -57,7 +59,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
       setSignature("");
       await refetchUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't record consent");
+      setError(err instanceof Error ? err.message : t("Couldn't record consent"));
     } finally {
       setSubmitting(false);
     }
@@ -66,7 +68,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
   return (
     <div className="workbench mac-desktop wb-viewport">
       <Stage width={640} height="100%">
-        <Window title="participation consent" onClose={() => void signOut()} style={{ height: "100%" }}>
+        <Window title={t("participation consent")} onClose={() => void signOut()} style={{ height: "100%" }}>
           <form
             onSubmit={(e) => { e.preventDefault(); void submit(); }}
             style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
@@ -76,7 +78,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
                 ZAMM 2026 Agent Village Participation — Consent Form
               </h1>
               <p style={{ margin: "10px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45, color: "var(--ink-2)" }}>
-                Required to continue in {current.networkTitle}.
+                {t("Required to continue in {{network}}.", { network: current.networkTitle })}
               </p>
               {FORM.map((paragraph) => (
                 <p key={paragraph.slice(0, 24)} style={{ margin: "12px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink)" }}>
@@ -89,7 +91,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
                 <input id="consent-privacy" type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} style={{ marginTop: 2 }} />
                 <span>
                   <label htmlFor="consent-privacy" style={{ cursor: "pointer" }}>
-                    I have read and agree to Index Network&apos;s
+                    {t("I have read and agree to Index Network's")}
                   </label>{" "}
                   <a
                     href="https://index.network/pages/privacy-policy"
@@ -97,17 +99,17 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
                     rel="noreferrer"
                     style={{ color: "var(--ink)", textDecoration: "underline" }}
                   >
-                    Privacy Policy
-                  </a>.
+                    {t("Privacy Policy")}
+                  </a>{t(".")}
                 </span>
               </div>
               <label style={{ display: "grid", gap: 6, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)" }}>
-                Signature
+                {t("Signature")}
                 <input
                   value={signature}
                   onChange={(e) => setSignature(e.target.value)}
-                  placeholder="type your full name"
-                  aria-label="Signature"
+                  placeholder={t("type your full name")}
+                  aria-label={t("Signature")}
                   autoComplete="name"
                   style={{
                     width: "100%", padding: "6px 0", background: "transparent",
@@ -123,7 +125,7 @@ export default function ConsentGate({ children }: { children: ReactNode }) {
               {error && (
                 <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-warn)" }}>{error}</p>
               )}
-              <Btn primary type="submit" disabled={!ready}>{submitting ? "saving…" : "I agree"}</Btn>
+              <Btn primary type="submit" disabled={!ready}>{submitting ? t("saving…") : "I agree"}</Btn>
             </div>
           </form>
         </Window>

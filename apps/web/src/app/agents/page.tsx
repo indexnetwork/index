@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
@@ -13,17 +14,20 @@ import { log } from "@/lib/logger";
 import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
+import i18n from "@/lib/i18n";
 
 const logger = log.page.from("agents");
 
 function NegotiatorBadge() {
+  const { t } = useTranslation();
   return (
-    <span className="ih-badge" style={{ flex: "0 0 auto" }}>speaks for you</span>
+    <span className="ih-badge" style={{ flex: "0 0 auto" }}>{t("speaks for you")}</span>
   );
 }
 
 function NegotiatorMark() {
-  return <span title="speaks for you" style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, color: "#ff8a00", fontWeight: 700 }}>*</span>;
+  const { t } = useTranslation();
+  return <span title={t("speaks for you")} style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, color: "#ff8a00", fontWeight: 700 }}>*</span>;
 }
 
 function LineButton({ children, onClick, disabled, primary }: { children: ReactNode; onClick: () => void; disabled?: boolean; primary?: boolean }) {
@@ -36,6 +40,7 @@ function LineButton({ children, onClick, disabled, primary }: { children: ReactN
 }
 
 function RemoveButton({ onRemove, disabled }: { onRemove: () => void; disabled?: boolean }) {
+  const { t } = useTranslation();
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -43,27 +48,28 @@ function RemoveButton({ onRemove, disabled }: { onRemove: () => void; disabled?:
       disabled={disabled}
       onClick={() => { if (armed) onRemove(); else setArmed(true); }}
       onBlur={() => setArmed(false)}
-      className={`wb-btn danger${armed ? " on" : ""}`}>{armed ? "confirm" : "remove"}</button>
+      className={`wb-btn danger${armed ? " on" : ""}`}>{armed ? t("confirm") : t("remove")}</button>
   );
 }
 
 function activeDay(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "unknown"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    ? i18n.t("unknown")
+    : date.toLocaleDateString(i18n.resolvedLanguage ?? "en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function BandHead({ label, first }: { label: string; first?: boolean }) {
   return <h2 className="st-h" style={{ marginTop: first ? 0 : 30 }}>{label}</h2>;
 }
 function CopyId({ id }: { id: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      title={copied ? "copied" : id}
-      aria-label="copy agent id"
+      title={copied ? t("copied") : id}
+      aria-label={t("copy agent id")}
       className="pl-plain-btn"
       onClick={(e) => {
         e.stopPropagation();
@@ -75,7 +81,7 @@ function CopyId({ id }: { id: string }) {
         }).catch(() => {});
       }}
       style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578", whiteSpace: "nowrap" }}>
-      {copied ? "copied" : `${id.slice(0, 8)}…`}
+      {copied ? t("copied") : `${id.slice(0, 8)}…`}
     </button>
   );
 }
@@ -167,6 +173,7 @@ function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: strin
 
 /** `embedded`: drawn inside Settings' "agents" tab, without its own head or window. */
 export default function AgentsPage({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const compact = useCompact();
   const plain = useInAppFrame();
@@ -234,9 +241,9 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
     try {
       await agentsService.revokeConnection(connection.clientId);
       setConnections((current) => current.filter((item) => item.clientId !== connection.clientId));
-      success(`${connection.name || 'agent'} disconnected`);
+      success(t('{{name}} disconnected', { name: connection.name || t('agent') }));
     } catch (err) {
-      error('Failed to disconnect agent', err instanceof Error ? err.message : undefined);
+      error(t('Failed to disconnect agent'), err instanceof Error ? err.message : undefined);
     }
   }
 
@@ -248,9 +255,9 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
       setNewAgentName('');
       setRegisterOpen(false);
       await refreshAgents();
-      success('agent created');
+      success(t('agent created'));
     } catch (err) {
-      error('Failed to create agent', err instanceof Error ? err.message : undefined);
+      error(t('Failed to create agent'), err instanceof Error ? err.message : undefined);
     } finally {
       setCreating(false);
     }
@@ -270,9 +277,9 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
       await agentsService.update(target.id, { handleNegotiations: agent !== null });
       await refreshAgents();
       setPicking(false);
-      success(agent ? `${agent.name} handles negotiations` : 'Index Negotiator handles negotiations');
+      success(agent ? t('{{name}} handles negotiations', { name: agent.name }) : t('Index Negotiator handles negotiations'));
     } catch (err) {
-      error('Failed to set the negotiator', err instanceof Error ? err.message : undefined);
+      error(t('Failed to set the negotiator'), err instanceof Error ? err.message : undefined);
     } finally {
       setSelecting(false);
     }
@@ -286,9 +293,9 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
       await agentsService.delete(agent.id);
       if (expanded === agent.id) setExpanded(null);
       await refreshAgents();
-      success('agent deleted');
+      success(t('agent deleted'));
     } catch (err) {
-      error('Failed to delete agent', err instanceof Error ? err.message : undefined);
+      error(t('Failed to delete agent'), err instanceof Error ? err.message : undefined);
     }
   }
 
@@ -298,18 +305,18 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
     try {
       await agentsService.update(agent.id, { [key]: next });
     } catch (err) {
-      error('Failed to save setting', err instanceof Error ? err.message : undefined);
+      error(t('Failed to save setting'), err instanceof Error ? err.message : undefined);
       await refreshAgents();
     }
   }
 
   if (authLoading || !isAuthenticated) {
     return (
-      <p style={{ padding: 24, fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
+      <p style={{ padding: 24, fontSize: 12, color: "var(--ink-3)" }}>{t("loading…")}</p>
     );
   }
 
-  const kind = selectedNegotiator ? "registered manually" : "hosted by index";
+  const kind = selectedNegotiator ? t("registered manually") : t("hosted by index");
 
   const content = (
     <>
@@ -319,14 +326,14 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
             <EmptyState
               tone="error"
               style={{ padding: 28 }}
-              message="couldn't load your agents."
-              action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
+              message={t("couldn't load your agents.")}
+              action={{ label: t("try again"), onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
             />
           ) : (
             <>
-              <BandHead label="which agent speaks for you" first />
+              <BandHead label={t("which agent speaks for you")} first />
               <p className="st-note" style={{ marginBottom: 12 }}>
-                one agent speaks for you in the network. index takes over if it&apos;s offline.
+                {t("one agent speaks for you in the network. index takes over if it's offline.")}
               </p>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px", borderBottom: picking ? "1px solid #e6e6e6" : "none" }}>
@@ -335,24 +342,24 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                     <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 16, fontWeight: 600, color: "#000" }}>{selectedNegotiator?.name || "Index"}</div>
                     <div style={{ marginTop: 2, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578" }}>{kind}</div>
                   </div>
-                  <LineButton disabled={selecting} onClick={() => setPicking((open) => !open)}>{picking ? "cancel" : "change"}</LineButton>
+                  <LineButton disabled={selecting} onClick={() => setPicking((open) => !open)}>{picking ? t("cancel") : t("change")}</LineButton>
                 </div>
                 {picking && (
                   <>
-                    <RosterRow name="Index" badge={selectedNegotiator === null ? <NegotiatorBadge /> : null} detail="hosted by index" last={personalAgents.length === 0} onClick={() => void handleSelectNegotiator(null)} />
+                    <RosterRow name="Index" badge={selectedNegotiator === null ? <NegotiatorBadge /> : null} detail={t("hosted by index")} last={personalAgents.length === 0} onClick={() => void handleSelectNegotiator(null)} />
                     {personalAgents.map((agent, i) => (
-                      <RosterRow key={agent.id} name={agent.name} badge={agent.handleNegotiations ? <NegotiatorBadge /> : null} detail="registered manually" last={i === personalAgents.length - 1} onClick={() => void handleSelectNegotiator(agent)} />
+                      <RosterRow key={agent.id} name={agent.name} badge={agent.handleNegotiations ? <NegotiatorBadge /> : null} detail={t("registered manually")} last={i === personalAgents.length - 1} onClick={() => void handleSelectNegotiator(agent)} />
                     ))}
                   </>
                 )}
               </div>
 
-              <BandHead label="connected agents" />
+              <BandHead label={t("connected agents")} />
               <p className="st-note" style={{ marginBottom: 12 }}>
-                everything that can act for you, from any device.
+                {t("everything that can act for you, from any device.")}
               </p>
               <div className="ag-roster">
-                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0 && connections.length === 0} />
+                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail={t("hosted by index")} id="" aside={t("always on")} last={personalAgents.length === 0 && connections.length === 0} />
                 {personalAgents.map((agent, i) => {
                   const open = expanded === agent.id;
                   const last = i === personalAgents.length - 1 && connections.length === 0;
@@ -364,15 +371,15 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                         onToggle={() => setExpanded((id) => id === agent.id ? null : agent.id)}
                         name={agent.name}
                         badge={selectedNegotiator?.id === agent.id ? <NegotiatorMark /> : null}
-                        detail="registered manually"
+                        detail={t("registered manually")}
                         id={agent.id}
                         aside={<RemoveButton disabled={selecting} onRemove={() => void handleDeleteAgent(agent)} />}
                       />
                       {open && (
                         <div style={{ background: "#f7f7f5", borderBottom: last ? "none" : "1px solid #e6e6e6", padding: "0 12px 4px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
-                            <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
-                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>id <CopyId id={agent.id} /></div>}
+                            <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title={t("connection updates")} blurb={t("tells this agent when an opportunity is accepted or someone reaches out.")} />
+                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>{t("id")} <CopyId id={agent.id} /></div>}
                           </div>
                         </div>
                       )}
@@ -382,8 +389,8 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                 {connections.map((connection, i) => (
                   <RosterRow
                     key={connection.clientId}
-                    name={connection.name || "mcp agent"}
-                    detail={`connected over mcp · active ${activeDay(connection.lastActiveAt)}`}
+                    name={connection.name || t("mcp agent")}
+                    detail={t("connected over mcp · active {{date}}", { date: activeDay(connection.lastActiveAt) })}
                     id=""
                     last={i === connections.length - 1}
                     aside={<RemoveButton onRemove={() => void handleRevokeConnection(connection)} />}
@@ -397,21 +404,21 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                   registerForm={registerOpen ? (
                     <div style={{ display: "grid", gap: 10, padding: "14px 0", borderTop: "1px solid #e6e6e6" }}>
                       <label style={{ display: "block", maxWidth: 420 }}>
-                        <span className="st-label">name your agent<span style={{ color: "#8a8578", marginLeft: 4 }}>*</span></span>
+                        <span className="st-label">{t("name your agent")}<span style={{ color: "#8a8578", marginLeft: 4 }}>*</span></span>
                         <span className="st-well">
                         <input
                           autoFocus
                           value={newAgentName}
                           disabled={creating}
-                          placeholder="agent name"
+                          placeholder={t("agent name")}
                           onChange={(e) => setNewAgentName(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") void handleCreateAgent(); }}
                         />
                         </span>
                       </label>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <LineButton primary disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? "creating…" : "create"}</LineButton>
-                        <LineButton disabled={creating} onClick={() => { setRegisterOpen(false); setNewAgentName(""); }}>cancel</LineButton>
+                        <LineButton primary disabled={creating || !newAgentName.trim()} onClick={() => void handleCreateAgent()}>{creating ? t("creating…") : t("create")}</LineButton>
+                        <LineButton disabled={creating} onClick={() => { setRegisterOpen(false); setNewAgentName(""); }}>{t("cancel")}</LineButton>
                       </div>
                     </div>
                   ) : undefined}
@@ -429,7 +436,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
 
   return (
     <Stage width={860} height="min(880px, calc(100vh - 96px))">
-      <Window title="agents" onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
+      <Window title={t("agents")} onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
         <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: compact ? '14px 16px 22px' : '18px 24px 22px' }}>
           {content}
         </div>

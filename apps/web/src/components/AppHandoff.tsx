@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
 
 import Download, { AppCard, AppsShell, HermesIcon, WebIcon } from "@/app/download/page";
@@ -104,20 +105,21 @@ function AppLaunch({ hermesHref, onContinue }: {
   hermesHref: string;
   onContinue?: () => void;
 }) {
+  const { t } = useTranslation();
   const openClass = (primary: boolean) => `site-btn site-btn--block${primary ? "" : " site-btn--secondary"}`;
   const webAction = onContinue ? (
-    <button type="button" className={openClass(false)} onClick={onContinue}>Continue in the app →</button>
+    <button type="button" className={openClass(false)} onClick={onContinue}>{t("Continue in the app →")}</button>
   ) : (
-    <a className={openClass(false)} href="/">Open app →</a>
+    <a className={openClass(false)} href="/">{t("Open app →")}</a>
   );
   return (
     <AppsShell overlay framed={false}>
       <section className="apps-board">
-        <h2 className="apps-card-bar"><span>open</span></h2>
+        <h2 className="apps-card-bar"><span>{t("open")}</span></h2>
         <div className="apps-board__body">
           <div className="apps-intro">
-            <h1 className="site-h1 apps-title">Open in Hermes</h1>
-            <p className="site-p">Pick where to open this link.</p>
+            <h1 className="site-h1 apps-title">{t("Open in Hermes")}</h1>
+            <p className="site-p">{t("Pick where to open this link.")}</p>
           </div>
         </div>
       </section>
@@ -125,21 +127,21 @@ function AppLaunch({ hermesHref, onContinue }: {
       <div className="apps-cards">
         <AppCard
           icon={<HermesIcon />}
-          label="YOUR APP"
-          title="Hermes plugin"
-          body="Open this link in Hermes, with Index as a plugin."
+          label={t("YOUR APP")}
+          title={t("Hermes plugin")}
+          body={t("Open this link in Hermes, with Index as a plugin.")}
           action={
             <div className="apps-card-actions">
-              <a className={openClass(true)} href={hermesHref}>Open in Hermes →</a>
-              <a className="apps-card-alt" href={HERMES_INSTALL_URL}><span className="apps-card-alt-lead">Don&apos;t have it? </span>Install plugin →</a>
+              <a className={openClass(true)} href={hermesHref}>{t("Open in Hermes →")}</a>
+              <a className="apps-card-alt" href={HERMES_INSTALL_URL}><span className="apps-card-alt-lead">{t("Don't have it?")} </span>{t("Install plugin →")}</a>
             </div>
           }
         />
         <AppCard
           icon={<WebIcon />}
-          label="APP"
-          title="Index app"
-          body={onContinue ? "Open this page in the Index app instead." : "Open the Index app instead."}
+          label={t("APP")}
+          title={t("Index app")}
+          body={onContinue ? t("Open this page in the Index app instead.") : t("Open the Index app instead.")}
           action={<div className="apps-card-actions">{webAction}</div>}
         />
       </div>

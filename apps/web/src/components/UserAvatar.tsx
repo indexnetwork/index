@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiUrl } from '@/lib/api';
 
 const PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
@@ -68,6 +69,7 @@ function BoringFallback({ id, name, size, className, blur }: Omit<UserAvatarProp
 }
 
 export default function UserAvatar({ id, name, avatar, size, className, blur }: UserAvatarProps) {
+  const { t } = useTranslation();
   const [imgError, setImgError] = useState(false);
 
   if (!avatar || imgError) {
@@ -81,7 +83,7 @@ export default function UserAvatar({ id, name, avatar, size, className, blur }: 
     >
       <img
         src={resolveAvatarSrc(avatar)}
-        alt={name || 'User'}
+        alt={name || t('User')}
         width={size}
         height={size}
         loading="lazy"

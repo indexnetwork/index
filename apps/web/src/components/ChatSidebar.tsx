@@ -7,6 +7,9 @@ import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useCompact } from '@/hooks/useCompact';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { useContentTranslation } from '@/lib/content-translation';
 
 interface RecentChat {
   groupId: string;
@@ -14,6 +17,8 @@ interface RecentChat {
   peerAvatar: string | null;
   name: string;
   lastMessage: string;
+  /** True when the other person wrote the last message, so the preview may be translated. */
+  lastMessageFromPeer: boolean;
   lastMessageIsInternal: boolean;
   viaTitle?: string;
   unreadCount: number;
@@ -21,7 +26,7 @@ interface RecentChat {
   sortTimestamp: number;
 }
 
-const formatConversationTime = (timestamp: number) => {
+const formatConversationTime = (timestamp: number, locale: string, t: TFunction) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   const now = new Date();
@@ -31,26 +36,36 @@ const formatConversationTime = (timestamp: number) => {
     date.getDate() === now.getDate();
 
   if (isSameDay) {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(locale, {
       hour: 'numeric',
       minute: '2-digit',
     }).format(date).toLowerCase();
   }
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return 'yesterday';
+  if (date.toDateString() === yesterday.toDateString()) return t('yesterday');
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
   }).format(date).toLowerCase();
 };
+
+/** One-line excerpt of the last message; the other person's words are shown in the viewer's language. */
+function PreviewText({ text, fromPeer }: { text: string; fromPeer: boolean }) {
+  const shown = useContentTranslation(fromPeer ? text : null);
+  return (
+    <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fromPeer ? shown.text : text}</span>
+  );
+}
 
 export default function ChatSidebar({ showEmpty = true }: {
   /** Off when the adjacent pane already renders the no-conversations empty state. */
   showEmpty?: boolean;
 } = {}) {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en-US';
   const compact = useCompact();
   const { pathname } = useLocation();
   const activePeerId = pathname.match(/^\/u\/([^/]+)\/chat/)?.[1] ?? null;
@@ -75,8 +90,9 @@ export default function ChatSidebar({ showEmpty = true }: {
         groupId: conv.id,
         peerUserId: peer?.participantId ?? null,
         peerAvatar: peer?.avatar ?? null,
-        name: conv.metadata?.title ?? peer?.name ?? 'someone',
+        name: conv.metadata?.title ?? peer?.name ?? t('someone'),
         lastMessage: lastText,
+        lastMessageFromPeer: !!conv.lastMessage && conv.lastMessage.senderId !== user?.id,
         lastMessageIsInternal: false,
         viaTitle: conv.via?.[0]?.title,
         unreadCount: conv.unreadCount,
@@ -109,15 +125,15 @@ export default function ChatSidebar({ showEmpty = true }: {
           <EmptyState
             tone="error"
             style={{ margin: 16 }}
-            message="couldn't load conversations."
-            action={{ label: 'try again', onClick: () => { setRefreshing(true); void refreshConversations().finally(() => setRefreshing(false)); } }}
+            message={t("couldn't load conversations.")}
+            action={{ label: t('try again'), onClick: () => { setRefreshing(true); void refreshConversations().finally(() => setRefreshing(false)); } }}
           />
         ) : recentChats.length === 0 ? (
           // When showEmpty is off, the main pane next to this sidebar carries the empty state.
           !showEmpty ? null : <EmptyState
             style={{ margin: 16 }}
-            message="no conversations yet. a chat opens when you and someone both accept an intro."
-            action={{ label: 'start an intent', to: '/i/new' }}
+            message={t("no conversations yet. a chat opens when you and someone both accept an intro.")}
+            action={{ label: t('start an intent'), to: '/i/new' }}
           />
         ) : (
           <div>
@@ -150,7 +166,7 @@ export default function ChatSidebar({ showEmpty = true }: {
                   <span style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
                     <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
                     {chat.lastMessage && (
-                      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
+                      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp, locale, t)}</span>
                     )}
                   </span>
                   {(() => {
@@ -160,12 +176,10 @@ export default function ChatSidebar({ showEmpty = true }: {
                     });
                     if (preview.kind === "empty") {
                       return (
-                        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{`${preview.text.toLowerCase()}.`}</span>
+                        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{t('no messages yet.')}</span>
                       );
                     }
-                    return (
-                      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
-                    );
+                    return <PreviewText text={preview.text} fromPeer={chat.lastMessageFromPeer} />;
                   })()}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>

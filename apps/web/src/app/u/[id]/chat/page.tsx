@@ -13,11 +13,13 @@ import { useBack } from "@/hooks/useBack";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 
 const logger = log.page.from("u/[id]/chat");
 
 export default function ChatPage() {
   const { id } = useParams();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -94,12 +96,12 @@ export default function ChatPage() {
       {showMissingUser ? (
         <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
           {error === "notFound" ? (
-            <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
+            <EmptyState message={t("couldn't find this person.")} action={{ label: t("go back"), onClick: leave }} />
           ) : (
             <EmptyState
               tone="error"
-              message="couldn't load this person."
-              action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+              message={t("couldn't load this person.")}
+              action={{ label: t("try again"), onClick: () => setReloadKey((k) => k + 1) }}
             />
           )}
         </div>
@@ -107,7 +109,7 @@ export default function ChatPage() {
         <ChatView
           key={id}
           userId={id}
-          userName={userName || "someone"}
+          userName={userName || t("someone")}
           userAvatar={profile?.avatar || cachedPeer?.avatar || undefined}
           initialGroupId={initialGroupId}
           initialMessage={prefillMessage}

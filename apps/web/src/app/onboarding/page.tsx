@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 
 import { ProfileSettings } from "@/app/settings/page";
@@ -73,31 +74,31 @@ function AskName({ initialName, onSubmit, onSignOut }: {
   onSubmit: (name: string) => void;
   onSignOut: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   const ready = !!name.trim();
 
   return (
     <Stage width={420}>
-      <Window title="getting started" onClose={onSignOut} style={{ height: "auto" }}>
+      <Window title={t("getting started")} onClose={onSignOut} style={{ height: "auto" }}>
         <form
           onSubmit={(e) => { e.preventDefault(); if (ready) onSubmit(name.trim()); }}
           style={{ padding: "30px 30px 26px" }}
         >
           {/* Smaller than the sign-in heading: that one introduces the app, this one asks a question. */}
           <h1 style={{ fontFamily: "var(--mac-sans)", fontWeight: 500, fontSize: 16, lineHeight: 1.3, margin: 0, color: "var(--ink)" }}>
-            what&apos;s your <span style={{ fontWeight: 500 }}>name</span>?
+            <Trans i18nKey="what's your <name>name</name>?" components={{ name: <span style={{ fontWeight: 500 }} /> }} />
           </h1>
           <p style={{ marginTop: 12, marginBottom: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
-            i&apos;ll use it to find what&apos;s already public about you, so you don&apos;t
-            have to type it all out.
+            {t("i'll use it to find what's already public about you, so you don't have to type it all out.")}
           </p>
           {/* Underlined, not a sunken well: it is the only thing on the card, the line to write on. */}
           <input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="your name"
-            aria-label="your name"
+            placeholder={t("your name")}
+            aria-label={t("your name")}
             style={{
               width: "100%", marginTop: 22, padding: "7px 0",
               background: "transparent", border: "none", borderBottom: "1px solid var(--wb-control)", borderRadius: 0,
@@ -105,7 +106,7 @@ function AskName({ initialName, onSubmit, onSignOut }: {
             }}
           />
           <div style={{ marginTop: 22, display: "grid" }}>
-            <Btn primary type="submit" disabled={!ready}>continue →</Btn>
+            <Btn primary type="submit" disabled={!ready}>{t("continue →")}</Btn>
           </div>
           <div style={{ marginTop: 20, textAlign: "center" }}>
             <button
@@ -113,7 +114,7 @@ function AskName({ initialName, onSubmit, onSignOut }: {
               onClick={onSignOut}
               style={{ fontFamily: "var(--mac-sans)", fontSize: 12, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}
             >
-              sign out
+              {t("sign out")}
             </button>
           </div>
         </form>
@@ -123,9 +124,10 @@ function AskName({ initialName, onSubmit, onSignOut }: {
 }
 
 function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () => void }) {
+  const { t } = useTranslation();
   return (
     <Stage width={960}>
-      <Window title="how this works" onClose={onSignOut} style={{ height: "auto" }}>
+      <Window title={t("how this works")} onClose={onSignOut} style={{ height: "auto" }}>
         <div style={{ padding: "36px 40px 30px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "26px 44px" }}>
             {HOW_STEPS.map((step, i) => (
@@ -136,14 +138,14 @@ function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =
                   fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500,
                 }}>{i + 1}</span>
                 <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, lineHeight: 1.3, color: "var(--ink)" }}>{step.title}</div>
-                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{step.body}</div>
+                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, lineHeight: 1.3, color: "var(--ink)" }}>{t(step.title)}</div>
+                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{t(step.body)}</div>
                 </div>
               </div>
             ))}
           </div>
           <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end" }}>
-            <Btn primary onClick={onDone}>got it →</Btn>
+            <Btn primary onClick={onDone}>{t("got it →")}</Btn>
           </div>
         </div>
       </Window>
@@ -152,9 +154,10 @@ function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =
 }
 
 function LookingUp() {
+  const { t } = useTranslation();
   return (
     <Stage width={420}>
-      <Window title="looking you up" style={{ height: "auto" }}>
+      <Window title={t("looking you up")} style={{ height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }} role="status" aria-live="polite">
           <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
             <span className="wb-live" style={{ width: 9, height: 9 }} />
@@ -168,7 +171,7 @@ function LookingUp() {
               padding: "4px 0",
               fontWeight: i === LOOKUP_LINES.length - 1 ? 500 : 400,
             }}>
-              <span style={{ marginRight: 8, color: "var(--ink-3)" }}>›</span>{line}
+              <span style={{ marginRight: 8, color: "var(--ink-3)" }}>›</span>{t(line)}
             </div>
           ))}
         </div>

@@ -1,6 +1,13 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import i18n from "./i18n";
+
+/** Chinese when the interface is in Chinese; otherwise the browser's own locale, as before. */
+function displayLocale(): string | undefined {
+  return i18n.resolvedLanguage === "zh-CN" ? "zh-CN" : undefined;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -11,7 +18,7 @@ export function cn(...inputs: ClassValue[]) {
  * @returns Formatted date string (e.g., "Jan 15, 2024, 2:30 PM")
  */
 export function formatDate(date: string | Date | number): string {
-  return new Date(date).toLocaleString(undefined, {
+  return new Date(date).toLocaleString(displayLocale(), {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -27,24 +34,24 @@ export function formatDate(date: string | Date | number): string {
 export function formatChatDayLabel(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return 'today';
+  if (d.toDateString() === now.toDateString()) return i18n.t('today');
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase();
+  if (d.toDateString() === yesterday.toDateString()) return i18n.t('yesterday');
+  return d.toLocaleDateString(displayLocale(), { month: 'short', day: 'numeric' }).toLowerCase();
 }
 
 /** A message's time of day only ("1:53 pm"), for threads that mark each day above. */
 export function formatChatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  return d.toLocaleTimeString(displayLocale(), { hour: 'numeric', minute: '2-digit' }).toLowerCase();
 }
 
 export function formatChatClock(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  const clock = d.toLocaleTimeString(displayLocale(), { hour: 'numeric', minute: '2-digit' }).toLowerCase();
   if (d.toDateString() === new Date().toDateString()) return clock;
-  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase()}, ${clock}`;
+  return `${d.toLocaleDateString(displayLocale(), { month: 'short', day: 'numeric' }).toLowerCase()}, ${clock}`;
 }
