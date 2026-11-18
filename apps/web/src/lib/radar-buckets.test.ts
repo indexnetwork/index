@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRadarAge, radarActivityAt, radarActivityMs, radarStatusLabel } from "./radar-buckets";
+import { formatRadarAge, radarActivityAt, radarActivityMs, radarBucketForOpportunity, radarStatusLabel } from "./radar-buckets";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -45,5 +45,22 @@ describe("radarStatusLabel", () => {
     expect(radarStatusLabel("accepted", "accepted")).toBe("accepted");
     expect(radarStatusLabel("closed", "rejected")).toBe("not a fit");
     expect(radarStatusLabel("closed", "expired")).toBe("missed");
+  });
+});
+
+describe("radarBucketForOpportunity", () => {
+  it("puts a pending match in awaiting you until the viewer accepts", () => {
+    expect(radarBucketForOpportunity("pending")).toBe("awaiting you");
+    expect(radarBucketForOpportunity("pending", true)).toBe("accepted");
+  });
+
+  it("does not ask the viewer to accept someone they already chat with", () => {
+    expect(radarBucketForOpportunity("pending", false, true)).toBe("accepted");
+  });
+
+  it("leaves other stages alone when a chat exists", () => {
+    expect(radarBucketForOpportunity("negotiating", false, true)).toBe("negotiating");
+    expect(radarBucketForOpportunity("expired", false, true)).toBe("closed");
+    expect(radarBucketForOpportunity("rejected", false, true)).toBe("closed");
   });
 });
