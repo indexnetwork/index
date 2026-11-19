@@ -14,6 +14,14 @@ const SEARCH_QUERIES = 5;
 /** How many counterparties one call may open, matching what Index accepts. */
 const OPEN_LIMIT = 30;
 
+/**
+ * The fewest negotiations an intent is given by its own discovery. The screen
+ * may judge everyone a mismatch, but an intent that reaches no one learns
+ * nothing: the strongest of those it skipped are reached anyway, so every
+ * intent explores at least this many people when the community has them.
+ */
+export const MIN_NEGOTIATIONS = 5;
+
 /** What a paused opportunity is, and the one reason to resume it. */
 const PAUSED_PROMPT = "An opportunity marked paused is still in talks, but nobody has the turn: its last round ended on a decline or a full round. Resume it with resume_negotiation only when your principal's unanswered message bears on that pair: a new fact, a changed or widened requirement, an instruction about this person. Its brief carries what is new, and its negotiator takes the first turn of a new round. A message that changes nothing about the pair is not a reason to try again: leave it paused.";
 
@@ -122,7 +130,8 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
  * Discover along each query and open each intent that does not already share
  * a negotiation with this one. A negotiation on some other pair does not
  * count. A person holding several matching intents keeps one seat, at their
- * strongest.
+ * strongest. Discovery that is not a since-catch-up tops an intent up to
+ * {@link MIN_NEGOTIATIONS} with the strongest candidates the screen skipped.
  *
  * @param client - Index for this owner.
  * @param intent - The intent to open from.
@@ -155,6 +164,13 @@ export async function reach(
     .sort((left, right) => right.score - left.score)
     .slice(0, OPEN_LIMIT);
   const kept = keep ? await Promise.all(ranked.map(keep)) : ranked.map(() => true);
+  // Ranked is strongest first, so the skipped ones let back in are the strongest skipped.
+  let shortfall = since ? 0 : MIN_NEGOTIATIONS - negotiations.length - kept.filter(Boolean).length;
+  for (let i = 0; i < ranked.length && shortfall > 0; i++) {
+    if (kept[i]) continue;
+    kept[i] = true;
+    shortfall--;
+  }
   const picks: CounterpartyPick[] = ranked
     .filter((_, i) => kept[i])
     .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
@@ -189,6 +205,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   let noted = false;
   /** The host's first failure to persist a decision, raised once the loop is done. */
   let unpersisted: unknown;
+  /** Whether this wake has run discovery. */
+  let discovered = false;
+  const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.decide ? { decide: input.decide } : {}), ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
 
   /**
    * @param opportunityId - An opportunity in this wake's list.
@@ -508,7 +527,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             unpersisted ??= cause;
           }
         };
-        const screen = { user, intent, principalConversation: input.principalConversation, model: input.model, ...(input.decide ? { decide: input.decide } : {}), ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}) };
+        discovered = true;
         const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
@@ -559,6 +578,21 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       }),
     tools,
   });
+
+  // An intent with nothing open is never left reaching no one: when the model
+  // did not discover, the intent's own statement is the one direction.
+  if (!unpersisted && !discovered && input.reason !== "morning" && !opportunities.length) {
+    const queries = [intent.statement];
+    const { found, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
+    if (found) {
+      try {
+        await input.onProgress?.(JSON.stringify({ plan: "Discovering and reaching out to people who fit this intent.", queries, discovered: found, reached: opened.length }));
+      } catch (cause) {
+        unpersisted ??= cause;
+      }
+    }
+    if (opened.length) input.onOpened?.(opened);
+  }
 
   // A stall is never left to disappear: focused passes over what is still owed,
   // while each one settles some, so the host does not rerun this whole wake for
