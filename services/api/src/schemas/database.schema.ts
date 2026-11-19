@@ -122,6 +122,31 @@ export const userSocials = pgTable('user_socials', {
     .where(sql`${table.label} <> 'custom'`),
 }));
 
+/**
+ * People a member knows, imported from their Google contacts. Private to the
+ * owner: only the owner's own introductions read them. `matchedUserId` is set
+ * when the contact's email belongs to an Index account.
+ */
+export const contacts = pgTable('contacts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerUserId: text('owner_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Lowercased. */
+  email: text('email').notNull(),
+  name: text('name'),
+  organization: text('organization'),
+  title: text('title'),
+  /** 'google_contacts' (saved) or 'google_other' (people you've emailed). */
+  source: text('source').notNull(),
+  matchedUserId: text('matched_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  ownerEmailUnique: uniqueIndex('contacts_owner_email_unique').on(table.ownerUserId, table.email),
+  matchedIdx: index('contacts_matched_user_idx').on(table.matchedUserId),
+}));
+
+export type Contact = typeof contacts.$inferSelect;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)
 // ═══════════════════════════════════════════════════════════════════════════════

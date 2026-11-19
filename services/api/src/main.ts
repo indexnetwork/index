@@ -25,6 +25,7 @@ import { ConversationController } from './controllers/conversation.controller';
 import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { PersonalAgentController } from './controllers/personal-agent.controller';
+import { IntroducerController } from './controllers/introducer.controller';
 import { ConversationService } from './services/conversation.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -104,6 +105,7 @@ controllerInstances.set(ConversationController, new ConversationController(conve
 controllerInstances.set(EventsController, new EventsController(conversationService));
 controllerInstances.set(PersonalAgentController, new PersonalAgentController(conversationService));
 controllerInstances.set(AgentController, new AgentController());
+controllerInstances.set(IntroducerController, new IntroducerController());
 controllerInstances.set(DebugController, new DebugController());
 controllerInstances.set(DocsController, new DocsController());
 controllerInstances.set(ScrapeController, new ScrapeController());
