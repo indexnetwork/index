@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
 import { authClient } from "@/lib/auth-client";
 import { useAuthenticatedAPI } from "@/lib/api";
@@ -282,6 +283,7 @@ function Setup({ status, importing, error, onConnect, onImport }: {
 }
 
 export default function IntroducePage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const api = useAuthenticatedAPI();
   const service = useMemo(() => createIntroducerService(api), [api]);
   const plain = useInAppFrame();
@@ -331,8 +333,9 @@ export default function IntroducePage() {
   }, [service, load]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
-  }, [load]);
+  }, [load, isAuthenticated]);
 
   // Back from Google with the contacts scope: import straight away, once.
   useEffect(() => {
@@ -382,7 +385,7 @@ export default function IntroducePage() {
   const desk = (
     <div className="idk">
       {!status ? (
-        <p className="idk-dim">loading…</p>
+        error ? <div className="idk-error">{error}</div> : <p className="idk-dim">loading…</p>
       ) : !ready ? (
         <Setup status={status} importing={importing} error={error} onConnect={connect} onImport={() => void doImport()} />
       ) : (
@@ -418,6 +421,9 @@ export default function IntroducePage() {
       />
     </div>
   );
+
+  // Signed out: sign in first, then come back here.
+  if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
   const count = shown.filter((p) => !runFor(p)).length;
 
