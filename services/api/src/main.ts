@@ -235,6 +235,9 @@ Bun.serve({
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
       '/api/auth/update-user',
       '/api/auth/token', '/api/auth/jwks',
+      // Linking Google with extra scopes (the Intro Desk's contacts access).
+      // Its OAuth return lands on /api/auth/callback like a sign-in.
+      '/api/auth/link-social',
       // API key mint/list/delete — the plugin owns them; session-only because
       // `enableSessionForAPIKeys` is off.
       '/api/auth/api-key/',
