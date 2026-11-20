@@ -122,7 +122,7 @@ function ProposalCard({ proposal, onOpen, onSkip }: {
       ) : (
         <>
           <label className="idk-label" htmlFor={`intro-${proposal.id}`}>
-            <span>YOUR INTRO · BOTH AGENTS READ THIS</span>
+            <span>YOUR INTRO</span>
             <span>{text.length} / {MAX_CONTEXT}</span>
           </label>
           <textarea id={`intro-${proposal.id}`} value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
@@ -424,11 +424,10 @@ export default function IntroducePage() {
         <>
           <div className="idk-bar">
             <div className="idk-views" role="tablist" aria-label="Introduce">
-              <button type="button" role="tab" aria-selected={view === "pairs"} onClick={() => setView("pairs")}>pairs</button>
-              <button type="button" role="tab" aria-selected={view === "contacts"} onClick={() => setView("contacts")}>contacts</button>
+              <button type="button" role="tab" aria-selected={view === "pairs"} onClick={() => setView("pairs")}>pairs ({waiting.length})</button>
+              <button type="button" role="tab" aria-selected={view === "contacts"} onClick={() => setView("contacts")}>contacts ({status.contacts.total})</button>
             </div>
             <span className="sp" />
-            <span>{status.contacts.total} contacts · {status.contacts.total - status.contacts.onIndex} not on Index</span>
             <span className="idk-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt!)} ago`}</span>
           </div>
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
