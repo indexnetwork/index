@@ -21,6 +21,8 @@ import { Placeholder } from "@/components/ui/Placeholder";
 /** How often to reread an intent right after an answer, and for how long. */
 const ANSWER_POLL_MS = 3_000;
 const ANSWER_REFRESH_MS = 60_000;
+/** In progress shows this many people before "show N more". */
+const MOVING_SHOWN = 5;
 
 interface Person {
   key: string;
@@ -229,6 +231,7 @@ export default function HomeDashboard() {
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   const moving = [...byStage.talks, ...byStage.chat];
+  const [showAllMoving, setShowAllMoving] = useState(false);
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
@@ -343,40 +346,31 @@ export default function HomeDashboard() {
             <h2 id="progress">
               in progress ({refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length})
             </h2>
-            <ul className="pl-cards">
-              {moving.map((person) => {
+            <ul className="pl-moving">
+              {(showAllMoving ? moving : moving.slice(0, MOVING_SHOWN)).map((person) => {
                 const lead = person.entries[0];
                 const talking = lead.stage === "talks";
                 const blurb = lead.item.headline || lead.item.mainText || "";
+                const { className, onClick } = cardProps(person, "pl-moving-row");
                 return (
-                  <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
+                  <li key={person.key} className={className} onClick={onClick}>
                     {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
-                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={36} />}
-                    <div className="pl-card-body">
-                      <div className="pl-card-head">
-                        <span>
-                          <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                        </span>
-                        <span className={`pl-status ${talking ? "talks" : "chat"}`}>
-                          {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
-                        </span>
-                      </div>
-                      {blurb && <div className="pl-blurb">{blurb}</div>}
-                      <div className="pl-actions">
-                        {talking ? (
-                          <button type="button" onClick={() => openMatch(person)}>read the log</button>
-                        ) : person.notOnIndex ? (
-                          <button type="button" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
-                        ) : (
-                          person.userId && <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
-                        )}
-                      </div>
-                    </div>
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={22} /></Link>
+                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={22} />}
+                    <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
+                    <span className="pl-moving-blurb">{blurb}</span>
+                    <span className={`pl-status ${talking ? "talks" : "chat"}`}>
+                      {talking ? "talking" : person.notOnIndex ? "not on index" : "chat"}
+                    </span>
                   </li>
                 );
               })}
             </ul>
+            {moving.length > MOVING_SHOWN && (
+              <button type="button" className="pl-moving-more" onClick={() => setShowAllMoving((v) => !v)}>
+                {showAllMoving ? "show fewer" : `show ${moving.length - MOVING_SHOWN} more`}
+              </button>
+            )}
           </>
         )}
       </div>,
