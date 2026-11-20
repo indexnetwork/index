@@ -102,10 +102,13 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/9db20a5fbe/edge-city-metrics", () => import("@/app/edge-city-metrics/page")),
       },
       {
-        // Unlisted: the overview written for community organizers. Kept outside
-        // the dataroom token so sharing it never exposes the dataroom path.
+        path: "/for-networks",
+        lazy: lazyRoute("/for-networks", () => import("@/app/for-networks/page")),
+      },
+      {
+        // The old organizer overview; links to it were shared, so keep them working.
         path: "/communities",
-        lazy: lazyRoute("/communities", () => import("@/app/communities-overview/page")),
+        element: <Navigate to="/for-networks" replace />,
       },
       {
         path: "/blog",
