@@ -3,7 +3,7 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 
-const { contacts, users, negotiationTurns, opportunityEvents } = schema;
+const { contacts, users } = schema;
 
 export interface ContactInput {
   email: string;
@@ -36,27 +36,8 @@ export interface IntroductionRow {
   status: string;
   createdAt: Date;
   context: string;
-  negotiationId: string | null;
-  awaitingUserId: string | null;
-  outcome: string | null;
-  settledAt: Date | null;
   a: { userId: string; name: string; avatar: string | null; intentText: string };
   b: { userId: string; name: string; avatar: string | null; intentText: string };
-}
-
-export interface TurnMeta {
-  negotiationId: string;
-  turnIndex: number;
-  seatUserId: string;
-  action: string;
-  at: Date;
-}
-
-export interface EventMeta {
-  opportunityId: string;
-  type: string;
-  actorUserId: string | null;
-  at: Date;
 }
 
 /** Candidate intents considered per request; bounds the pair cross join. */
@@ -68,8 +49,13 @@ const CANDIDATE_LIMIT = 400;
  * introductions they opened.
  */
 export class IntroducerDatabaseAdapter {
-  /** Replace-or-insert contacts by (owner, email) and match them to Index accounts. */
-  async upsertContacts(ownerUserId: string, rows: ContactInput[]): Promise<void> {
+  /**
+   * Make the owner's contacts equal Google's list: insert or update each row,
+   * drop rows Google no longer returns, then match emails to Index accounts.
+   */
+  async replaceContacts(ownerUserId: string, rows: ContactInput[]): Promise<void> {
+    // Every row this sync touches gets a later updated_at; the rest are gone from Google.
+    const [{ started }] = await db.execute<{ started: string }>(sql`select now()::text as started`) as unknown as { started: string }[];
     const CHUNK = 500;
     for (let i = 0; i < rows.length; i += CHUNK) {
       const chunk = rows.slice(i, i + CHUNK);
@@ -87,6 +73,10 @@ export class IntroducerDatabaseAdapter {
           },
         });
     }
+    await db.delete(contacts).where(and(
+      eq(contacts.ownerUserId, ownerUserId),
+      sql`${contacts.updatedAt} < ${started}::timestamptz`,
+    ));
     await db.execute(sql`
       update contacts c set matched_user_id = u.id
       from users u
@@ -201,12 +191,11 @@ export class IntroducerDatabaseAdapter {
     }));
   }
 
-  /** Introductions the viewer opened, newest first, with each side's person and intent. */
+  /** Introductions the viewer opened, newest first: who, and the opportunity's status. Never the turns. */
   async introductions(viewerId: string, opportunityId?: string, limit = 20): Promise<IntroductionRow[]> {
     const result = await db.execute(sql`
       select o.id as opportunity_id, o.status, o.created_at,
              o.metadata->'introducer'->>'context' as context,
-             n.id as negotiation_id, n.awaiting_user_id, n.outcome, n.settled_at,
              n.initiator_user_id as a_user, ua.name as a_name, ua.avatar as a_avatar,
              coalesce(nullif(ia.summary, ''), ia.payload) as a_text,
              n.responder_user_id as b_user, ub.name as b_name, ub.avatar as b_avatar,
@@ -228,47 +217,9 @@ export class IntroducerDatabaseAdapter {
       status: String(r.status),
       createdAt: new Date(String(r.created_at)),
       context: String(r.context ?? ''),
-      negotiationId: (r.negotiation_id as string | null) ?? null,
-      awaitingUserId: (r.awaiting_user_id as string | null) ?? null,
-      outcome: (r.outcome as string | null) ?? null,
-      settledAt: r.settled_at ? new Date(String(r.settled_at)) : null,
       a: { userId: String(r.a_user), name: String(r.a_name), avatar: (r.a_avatar as string | null) ?? null, intentText: String(r.a_text) },
       b: { userId: String(r.b_user), name: String(r.b_name), avatar: (r.b_avatar as string | null) ?? null, intentText: String(r.b_text) },
     }));
-  }
-
-  /** Turn shape only: who moved, which action, when. The message column is never read. */
-  async turnMeta(negotiationIds: string[]): Promise<TurnMeta[]> {
-    if (!negotiationIds.length) return [];
-    return db
-      .select({
-        negotiationId: negotiationTurns.negotiationId,
-        turnIndex: negotiationTurns.turnIndex,
-        seatUserId: negotiationTurns.seatUserId,
-        action: negotiationTurns.action,
-        at: negotiationTurns.createdAt,
-      })
-      .from(negotiationTurns)
-      .where(inArray(negotiationTurns.negotiationId, negotiationIds))
-      .orderBy(negotiationTurns.negotiationId, negotiationTurns.turnIndex);
-  }
-
-  /** Lifecycle facts only (opened, agreed, committed, declined, expired); no client data. */
-  async eventMeta(opportunityIds: string[]): Promise<EventMeta[]> {
-    if (!opportunityIds.length) return [];
-    return db
-      .select({
-        opportunityId: opportunityEvents.opportunityId,
-        type: opportunityEvents.type,
-        actorUserId: opportunityEvents.actorUserId,
-        at: opportunityEvents.at,
-      })
-      .from(opportunityEvents)
-      .where(and(
-        inArray(opportunityEvents.opportunityId, opportunityIds),
-        inArray(opportunityEvents.type, ['opened', 'agreed', 'committed', 'declined', 'expired']),
-      ))
-      .orderBy(opportunityEvents.at);
   }
 
   /** Display names for a set of users. */

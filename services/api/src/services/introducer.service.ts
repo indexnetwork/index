@@ -20,6 +20,8 @@ const CANDIDATE_LIMIT = 40;
 const PAIR_LIMIT = 15;
 /** Screened pairs per member, reused across page loads for a while. */
 const PAIRS_TTL_MS = 10 * 60_000;
+/** Contacts are re-read from Google in the background once the last sync is this old. */
+const SYNC_EVERY_MS = 24 * 60 * 60_000;
 
 let screenModel: Model | null = null;
 function introModel(): Model {
@@ -77,28 +79,20 @@ export interface PairSuggestion {
   draft: string;
 }
 
-export type StepSide = 'a' | 'b' | 'both' | 'you';
-
-/** One line of an introduction's progress. Never carries what an agent said. */
-export interface ProgressStep {
-  side: StepSide;
-  kind: 'opened' | 'turn' | 'agreed' | 'committed' | 'declined' | 'expired';
-  action?: string;
-  turn?: number;
-  at: string;
-}
+/**
+ * What an introducer learns about an introduction: where it ended up, never
+ * how. No turns, no whose-move, no wording, and a "no fit" never says which
+ * side or whether an agent or a person said it.
+ */
+export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet';
 
 export interface IntroductionProgress {
   opportunityId: string;
-  status: string;
   createdAt: string;
   context: string;
   a: IntroductionRow['a'];
   b: IntroductionRow['b'];
-  /** Whose agent has the turn now; null when nobody does. */
-  awaiting: 'a' | 'b' | null;
-  phase: 'negotiating' | 'agreed' | 'accepted' | 'declined' | 'expired';
-  steps: ProgressStep[];
+  phase: IntroductionPhase;
 }
 
 interface GooglePerson {
@@ -120,7 +114,7 @@ function clip(text: string, max = 140): string {
 /**
  * The introducer: a member imports who they know, sees pairs of other people
  * whose intents fit, and wakes both agents with their own intro. Progress is
- * the negotiation's shape (who moved, when, the outcome), never its wording.
+ * the introduction's phase only; the negotiation stays between its two seats.
  */
 export class IntroducerService {
   constructor(private readonly adapter: IntroducerDatabaseAdapter = introducerDatabaseAdapter) {}
@@ -144,8 +138,36 @@ export class IntroducerService {
     };
   }
 
-  /** Pull saved contacts and people-you've-emailed from Google, then match them to Index accounts. */
+  private readonly syncing = new Set<string>();
+
+  /**
+   * Keep contacts current without a button: once the last sync is a day old,
+   * read Google again in the background. Contacts removed there go here too.
+   */
+  syncIfStale(userId: string, status: IntroducerStatus): void {
+    const last = status.contacts.lastImportAt;
+    if (!status.google.contactsScope || !last || Date.now() - Date.parse(last) < SYNC_EVERY_MS) return;
+    void this.importContacts(userId).catch((error) => logger.warn('Background contact sync failed', { userId, error: String(error) }));
+  }
+
+  /**
+   * Read saved contacts and people-you've-emailed from Google, make the stored
+   * list match, and mark who is already on Index. Runs on connect, then daily.
+   */
   async importContacts(userId: string): Promise<ImportOutcome> {
+    if (this.syncing.has(userId)) {
+      const counts = await this.adapter.contactCounts(userId);
+      return { kind: 'ok', total: counts.total, onIndex: counts.onIndex };
+    }
+    this.syncing.add(userId);
+    try {
+      return await this.syncContacts(userId);
+    } finally {
+      this.syncing.delete(userId);
+    }
+  }
+
+  private async syncContacts(userId: string): Promise<ImportOutcome> {
     const status = await this.status(userId);
     if (!status.google.linked) return { kind: 'not_linked' };
     if (!status.google.contactsScope) return { kind: 'missing_scope' };
@@ -185,7 +207,7 @@ export class IntroducerService {
     if ('status' in other) return { kind: 'google_error', status: other.status };
     add(other.people, 'google_other');
 
-    await this.adapter.upsertContacts(userId, [...rows.values()]);
+    await this.adapter.replaceContacts(userId, [...rows.values()]);
     this.invalidatePairs(userId);
     const counts = await this.adapter.contactCounts(userId);
     logger.info('Contacts imported', { userId, total: counts.total, onIndex: counts.onIndex });
@@ -285,46 +307,18 @@ export class IntroducerService {
 
   async introductions(userId: string, opportunityId?: string): Promise<IntroductionProgress[]> {
     const rows = await this.adapter.introductions(userId, opportunityId);
-    const negotiationIds = rows.map((r) => r.negotiationId).filter((id): id is string => !!id);
-    const [turns, events] = await Promise.all([
-      this.adapter.turnMeta(negotiationIds),
-      this.adapter.eventMeta(rows.map((r) => r.opportunityId)),
-    ]);
-
-    return rows.map((row) => {
-      const sideOf = (id: string | null): StepSide => (id === row.a.userId ? 'a' : id === row.b.userId ? 'b' : 'both');
-      const steps: ProgressStep[] = [];
-      for (const e of events.filter((x) => x.opportunityId === row.opportunityId)) {
-        const kind = e.type as ProgressStep['kind'];
-        steps.push({ side: e.type === 'opened' ? 'you' : sideOf(e.actorUserId), kind, at: e.at.toISOString() });
-      }
-      for (const t of turns.filter((x) => x.negotiationId === row.negotiationId)) {
-        steps.push({ side: sideOf(t.seatUserId), kind: 'turn', action: t.action, turn: t.turnIndex + 1, at: t.at.toISOString() });
-      }
-      if (!steps.some((s) => s.kind === 'opened')) {
-        steps.push({ side: 'you', kind: 'opened', at: row.createdAt.toISOString() });
-      }
-      steps.sort((x, y) => x.at.localeCompare(y.at) || (x.kind === 'opened' ? -1 : y.kind === 'opened' ? 1 : 0));
-
-      const phase: IntroductionProgress['phase'] =
-        row.status === 'accepted' ? 'accepted'
-          : row.status === 'rejected' ? 'declined'
-            : row.status === 'expired' ? 'expired'
-              : row.status === 'pending' ? 'agreed'
-                : 'negotiating';
-      const awaiting = row.awaitingUserId === row.a.userId ? 'a' : row.awaitingUserId === row.b.userId ? 'b' : null;
-      return {
-        opportunityId: row.opportunityId,
-        status: row.status,
-        createdAt: row.createdAt.toISOString(),
-        context: row.context,
-        a: row.a,
-        b: row.b,
-        awaiting,
-        phase,
-        steps,
-      };
-    });
+    return rows.map((row) => ({
+      opportunityId: row.opportunityId,
+      createdAt: row.createdAt.toISOString(),
+      context: row.context,
+      a: row.a,
+      b: row.b,
+      phase: row.status === 'accepted' ? 'met'
+        : row.status === 'rejected' ? 'no_fit'
+          : row.status === 'expired' ? 'quiet'
+            : row.status === 'pending' ? 'agreed'
+              : 'talking',
+    }));
   }
 }
 

@@ -23,14 +23,16 @@ const IMPORT_REFUSALS = {
  */
 @Controller('/introducer')
 export class IntroducerController {
-  /** GET /introducer/status — Google link, contacts scope, and import counts. */
+  /** GET /introducer/status — Google link, contacts scope, and contact counts. Starts a daily resync when due. */
   @Get('/status')
   @UseGuards(AuthGuard)
   async status(_req: Request, user: AuthenticatedUser) {
-    return Response.json(await introducerService.status(user.id));
+    const status = await introducerService.status(user.id);
+    introducerService.syncIfStale(user.id, status);
+    return Response.json(status);
   }
 
-  /** POST /introducer/contacts/import — pull Google contacts and match them to Index accounts. */
+  /** POST /introducer/contacts/import — the first sync, right after Google is connected. */
   @Post('/contacts/import')
   @UseGuards(AuthGuard)
   async importContacts(_req: Request, user: AuthenticatedUser) {

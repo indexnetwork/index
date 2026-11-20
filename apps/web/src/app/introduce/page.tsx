@@ -10,7 +10,7 @@ import { useCompact } from "@/hooks/useCompact";
 import { authClient } from "@/lib/auth-client";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
-import { CONTACT_SCOPES, createIntroducerService, type IntroducerStatus, type IntroductionProgress, type PairSuggestion, type ProgressStep } from "@/services/introducer";
+import { CONTACT_SCOPES, createIntroducerService, type IntroducerStatus, type IntroductionProgress, type IntroductionPhase, type PairSuggestion } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
@@ -38,63 +38,35 @@ function since(iso: string): string {
   return `${Math.round(s / 86400)}d`;
 }
 
-const isFinal = (p: IntroductionProgress) => p.phase === "accepted" || p.phase === "declined" || p.phase === "expired";
+const isFinal = (p: IntroductionProgress) => p.phase === "met" || p.phase === "no_fit" || p.phase === "quiet";
 
-const ACTION_WORD: Record<string, string> = { propose: "proposed", counter: "countered", accept: "accepted", decline: "declined" };
+/** The four stops every introduction can pass. Ending early stops the track where it was. */
+const TRACK = ["woken", "talking", "agreed", "met"] as const;
 
-function stepText(step: ProgressStep, p: IntroductionProgress): string {
-  const who = step.side === "a" ? first(p.a.name) : step.side === "b" ? first(p.b.name) : "";
-  switch (step.kind) {
-    case "opened": return "Opened · your intro delivered to both agents";
-    case "turn": return `Turn ${step.turn} · ${who}'s agent ${ACTION_WORD[step.action ?? ""] ?? step.action}`;
-    case "agreed": return "Agents agreed · sent to both people";
-    case "committed": return `${who} said yes`;
-    case "declined": return who ? `${who} declined` : "Declined";
-    case "expired": return "Expired before both said yes";
-  }
-}
+const PHASE_LABEL: Record<IntroductionPhase, string> = {
+  talking: "Agents talking",
+  agreed: "Agents agreed",
+  met: "Met",
+  no_fit: "No fit",
+  quiet: "Went quiet",
+};
 
-/** How far along an introduction is, for the bar. */
-function percent(p: IntroductionProgress): number {
-  if (isFinal(p)) return 100;
-  const turns = p.steps.filter((s) => s.kind === "turn").length;
-  if (p.phase === "agreed") return 75 + 10 * p.steps.filter((s) => s.kind === "committed").length;
-  return Math.min(15 + turns * 12, 70);
-}
-
-/** The line under the agents: who everything is waiting on right now. */
-function waitingOn(p: IntroductionProgress): string {
+function phaseLine(p: IntroductionProgress): string {
   const A = first(p.a.name), B = first(p.b.name);
-  if (p.phase === "accepted") return `${A} and ${B} both said yes. Their chat is open.`;
-  if (p.phase === "declined") return "This one didn't land. Nothing more happens.";
-  if (p.phase === "expired") return "It expired before both said yes.";
-  if (p.phase === "agreed") {
-    const yes = new Set(p.steps.filter((s) => s.kind === "committed").map((s) => s.side));
-    const left = [!yes.has("a") ? A : null, !yes.has("b") ? B : null].filter(Boolean).join(" and ");
-    return `Waiting on ${left}: a person, not the agent.`;
+  switch (p.phase) {
+    case "talking": return "Both agents are awake and talking privately.";
+    case "agreed": return `The agents agreed. Now it's up to ${A} and ${B}.`;
+    case "met": return `${A} and ${B} both said yes. They're connected.`;
+    case "no_fit": return "It wasn't a fit. Nothing more happens.";
+    case "quiet": return "It went quiet before both said yes.";
   }
-  if (p.awaiting) return `Waiting on ${p.awaiting === "a" ? A : B}'s agent.`;
-  return "Waiting for an agent to wake.";
 }
 
-function agentState(p: IntroductionProgress, side: "a" | "b"): { cls: string; text: string; active: boolean } {
-  const name = first(side === "a" ? p.a.name : p.b.name);
-  const committed = p.steps.some((s) => s.kind === "committed" && s.side === side);
-  if (p.phase === "accepted" || committed) return { cls: "ok", text: `${name} said yes`, active: false };
-  if (p.phase === "declined" || p.phase === "expired") return { cls: "off", text: "done", active: false };
-  if (p.phase === "agreed") return { cls: "", text: `handed to ${name}`, active: true };
-  const moved = p.steps.some((s) => s.kind === "turn" && s.side === side);
-  if (p.awaiting === side) return { cls: "think", text: moved ? "working on its turn…" : "waking · takes a turn", active: true };
-  return { cls: moved ? "" : "off", text: moved ? "waiting for the other agent" : "not woken yet", active: false };
-}
-
-function phaseLabel(p: IntroductionProgress): string {
-  const turns = p.steps.filter((s) => s.kind === "turn").length;
-  if (p.phase === "accepted") return "Done · both said yes";
-  if (p.phase === "declined") return "Declined";
-  if (p.phase === "expired") return "Expired";
-  if (p.phase === "agreed") return "Agents agreed";
-  return turns ? `Negotiating · turn ${turns}` : "Waking";
+/** How many stops of the track this introduction lit. */
+function reached(p: IntroductionProgress): number {
+  if (p.phase === "met") return 4;
+  if (p.phase === "agreed") return 3;
+  return 2; // talking, or ended while talking (no fit / quiet)
 }
 
 function ProgressPanel({ runs, activeId, setActiveId, minimized, setMinimized, onDismiss }: {
@@ -105,9 +77,7 @@ function ProgressPanel({ runs, activeId, setActiveId, minimized, setMinimized, o
   setMinimized: (v: boolean) => void;
   onDismiss: (id: string) => void;
 }) {
-  const listRef = useRef<HTMLDivElement>(null);
   const run = runs.find((r) => r.opportunityId === activeId) ?? runs[0];
-  useEffect(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }, [run?.steps.length]);
   if (!run) return null;
   const live = runs.filter((r) => !isFinal(r)).length;
 
@@ -122,53 +92,38 @@ function ProgressPanel({ runs, activeId, setActiveId, minimized, setMinimized, o
 
   const A = first(run.a.name), B = first(run.b.name);
   const done = isFinal(run);
-  const pct = percent(run);
-  const sa = agentState(run, "a"), sb = agentState(run, "b");
-  const barClass = run.phase === "accepted" ? "f" : done ? "x" : "";
+  const lit = reached(run);
+  const ended = run.phase === "no_fit" || run.phase === "quiet";
   return (
     <div className="idk idk-panel" role="status" aria-live="polite">
       <div className="idk-tb">
         <button type="button" className="box" title="Minimize" aria-label="minimize" onClick={() => setMinimized(true)} />
-        <span>{done ? "Introduction done" : "Waking both agents"}</span>
+        <span>{done ? "Introduction done" : "Both agents awake"}</span>
         {runs.length > 1 && <span className="r">{runs.length} RUNNING</span>}
       </div>
       {runs.length > 1 && (
         <div className="idk-tabs">
           {runs.map((r) => (
             <button key={r.opportunityId} type="button" aria-pressed={r.opportunityId === run.opportunityId} onClick={() => setActiveId(r.opportunityId)}>
-              <span className={`d ${r.phase === "accepted" ? "f" : isFinal(r) ? "x" : ""}`} />{first(r.a.name)} ⇄ {first(r.b.name)}
+              <span className={`d ${r.phase === "met" ? "f" : isFinal(r) ? "x" : ""}`} />{first(r.a.name)} ⇄ {first(r.b.name)}
             </button>
           ))}
         </div>
       )}
       <div className="idk-pbody">
         <div className="idk-big">{A} ⇄ {B}</div>
-        <div className="idk-dim" style={{ fontSize: 12 }}>{phaseLabel(run)}</div>
-        <div className={`idk-pb ${barClass}`}><i style={{ width: `${pct}%` }} /></div>
-        <div className="idk-pbl"><span>{run.steps.length} STEPS · STARTED {since(run.createdAt).toUpperCase()} AGO</span><span>{pct}%</span></div>
-        <div className="idk-agents">
-          {([["a", run.a, sa], ["b", run.b, sb]] as const).map(([k, person, s]) => (
-            <div key={k} className={`idk-ag${s.active ? " act" : ""}`}>
-              <span className={`idk-bot ${s.cls}`} />
-              <div><b>{first(person.name)}&apos;s agent</b><small>{s.text}</small></div>
-            </div>
-          ))}
-        </div>
-        <div className="idk-wait">{waitingOn(run)}</div>
-        <div className="idk-list" ref={listRef}>
-          {run.steps.map((s, i) => (
-            <div key={`${s.kind}-${s.at}-${i}`} className={`idk-st${i === run.steps.length - 1 && !done ? " cur" : ""}`}>
-              <span className="ic">✓</span>
-              <span>{stepText(s, run)}{s.kind === "turn" && <span className="idk-faint"> 🔒</span>}</span>
-              <span className="t">{since(s.at)}</span>
-            </div>
-          ))}
-          {!done && (
-            <div className="idk-st todo"><span className="ic">…</span><span>{run.phase === "agreed" ? "Both people decide" : "Next turn"}</span><span className="t" /></div>
-          )}
-        </div>
+        <div className="idk-dim" style={{ fontSize: 12 }}>{PHASE_LABEL[run.phase]} · started {since(run.createdAt)} ago</div>
+        <ol className="idk-track" aria-label="Introduction status">
+          {TRACK.map((stop, i) => {
+            const on = i < lit;
+            const here = i === lit - 1;
+            const cls = on ? (here && ended ? "x" : here && !done ? "cur" : "on") : "";
+            return <li key={stop} className={cls}><i />{here && ended ? PHASE_LABEL[run.phase].toLowerCase() : stop}</li>;
+          })}
+        </ol>
+        <div className="idk-wait">{phaseLine(run)}</div>
         <div className="idk-foot">
-          <span>🔒 What the agents say stays between {A} and {B}.</span>
+          <span>🔒 You see where it ends up, never what the agents say.</span>
           {done && <button type="button" className="idk-btn small" onClick={() => onDismiss(run.opportunityId)}>Dismiss</button>}
         </div>
       </div>
@@ -208,7 +163,7 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
       {run ? (
         <button type="button" className="idk-woke" onClick={() => onShow(run.opportunityId)}>
           <span className={`idk-bot ${isFinal(run) ? "ok" : "think"}`} style={{ width: 14, height: 14 }} />
-          {isFinal(run) ? "DONE" : "IN PROGRESS"} · {phaseLabel(run).toUpperCase()}
+          {isFinal(run) ? "DONE" : "IN PROGRESS"} · {PHASE_LABEL[run.phase].toUpperCase()}
           <span style={{ marginLeft: "auto" }}>SHOW ›</span>
         </button>
       ) : (
@@ -268,7 +223,7 @@ function Setup({ status, importing, error, onConnect, onImport }: {
             <b>Find who you know on Index</b>
             <small>{imported ? `${status.contacts.total} contacts · ${status.contacts.onIndex} on Index` : "Your saved contacts and the people you've emailed."}</small>
           </div>
-          {googleDone && !imported && <button type="button" className="idk-btn go" disabled={importing} onClick={onImport}>{importing ? "Importing…" : "Import ▸"}</button>}
+          {googleDone && !imported && <button type="button" className="idk-btn go" disabled={importing} onClick={onImport}>{importing ? "Reading…" : "Read contacts ▸"}</button>}
         </li>
         <li className="todo">
           <span className="n">3</span>
@@ -393,7 +348,7 @@ export default function IntroducePage() {
           <div className="idk-bar">
             <span>{status.contacts.total} contacts · {status.contacts.onIndex} on Index</span>
             <span className="sp" />
-            <button type="button" className="idk-btn small" disabled={importing} onClick={() => void doImport()}>{importing ? "importing…" : "re-import"}</button>
+            <span className="idk-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt!)} ago`}</span>
             {skips.size > 0 && <button type="button" className="idk-btn small" onClick={() => { setSkips(new Set()); localStorage.removeItem(SKIPS_KEY); }}>show skipped ({skips.size})</button>}
           </div>
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
