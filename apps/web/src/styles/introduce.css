@@ -77,14 +77,13 @@
 .idk-bot.off::before, .idk-bot.off::after { height: 1px; top: 6px; }
 
 /* two columns: pairs ⇄ running */
-.pl-col.idk-wide { max-width: max(var(--pl-width), 1080px); }
 .idk { container-type: inline-size; }
 .idk-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
-@container (min-width: 820px) {
-  .idk-cols { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+@container (min-width: 760px) {
+  .idk-cols { grid-template-columns: minmax(0, 1fr) 260px; align-items: start; }
   .idk-running { position: sticky; top: 12px; }
 }
-@container (max-width: 819px) {
+@container (max-width: 759px) {
   .idk-running { order: -1; }
 }
 .idk-h2 { display: flex; align-items: center; gap: 10px; font: 700 10px var(--idk-mono); letter-spacing: 2px; text-transform: uppercase; margin: 0 0 6px; }

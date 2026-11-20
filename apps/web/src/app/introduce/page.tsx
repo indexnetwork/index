@@ -470,7 +470,7 @@ export default function IntroducePage() {
   if (plain) {
     return (
       <div className="ih-view pl">
-        <div className="pl-col idk-wide">
+        <div className="pl-col">
           <PageHead title="introduce" status={headStatus} />
           <div className="pl-page">{desk}</div>
         </div>
