@@ -116,6 +116,23 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     if (!authLoading && !isAuthenticated) navigate("/");
   }, [authLoading, isAuthenticated, navigate]);
 
+  // First run without a username: prefill a free one made from the confirmed name.
+  const suggestedUsername = useRef("");
+  const suggestFrom = firstRun && user && !user.username ? (firstRun.name || user.name || "").trim() : "";
+  useEffect(() => {
+    if (!suggestFrom) return;
+    let cancelled = false;
+    authService.suggestUsername(suggestFrom)
+      .then((suggestion) => {
+        if (cancelled || !suggestion) return;
+        suggestedUsername.current = suggestion;
+        // Never over what they already typed.
+        setUsername((current) => current || suggestion);
+      })
+      .catch(() => {}); // Only a convenience: the field stays blank.
+    return () => { cancelled = true; };
+  }, [suggestFrom, authService]);
+
   const resetForm = (u: typeof user) => {
     if (!u) return;
     // First run opens on the account record with the lookup filling its blanks.
@@ -123,7 +140,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
       ? assembleFirstRunProfile(u, firstRun.lookup, firstRun.name)
       : { name: u.name || "", intro: u.intro || "", location: u.location || "", socials: (u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })) };
     setName(base.name);
-    setUsername(u.username || "");
+    setUsername(u.username || (firstRun ? suggestedUsername.current : ""));
     setIntro(base.intro);
     setLocation(base.location);
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
