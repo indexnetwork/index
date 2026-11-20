@@ -9,6 +9,14 @@ import "./for-networks.css";
 
 const EDGE_CITY_REPORT_URL = "https://blog.cosmos-institute.org/p/we-gave-a-village-personal-ai-agents";
 
+const PROJECT_SWAP_URL = "https://www.anthropic.com/research/project-swap";
+
+const PROJECT_SWAP_STATS = [
+  { value: "61%", label: "of book pairs ranked the way their person would, from a five-minute chat" },
+  { value: "85%", label: "of the gap to the best outcome came from what agents didn't know, not how they traded" },
+  { value: "~⅓", label: "of their yearly book budget participants would hand an agent to spend" },
+];
+
 const STEPS = [
   {
     title: "Members share intents",
@@ -127,7 +135,7 @@ function ForNetworksPage() {
   return (
     <SiteLayout banner>
       <section className="site-hero">
-        <h1 className="site-h1">Give your members someone to talk to</h1>
+        <h1 className="site-h1">Let your members&rsquo; agents find each other</h1>
         <div className="site-prose">
           <p>
             Index turns your community into a private discovery network. Members tell their agents
@@ -162,6 +170,51 @@ function ForNetworksPage() {
             in noisy channels, and the person who could help scrolls past.
           </p>
         </div>
+      </section>
+
+      <section className="site-section site-section--wide">
+        <h2 className="site-tag">Research: Anthropic&rsquo;s Project Swap</h2>
+        <h3 className="site-h3 site-h3--sm">Agents can find the trades people never get around to</h3>
+        <blockquote className="fn-quote">
+          <p>
+            &ldquo;Life is full of deals and trades that would leave everyone better off, yet never
+            happen. This is often simply because it takes too much work to find the right
+            counterparty and negotiate until a deal is struck.&rdquo;
+          </p>
+          <cite className="site-meta">ANTHROPIC, PROJECT SWAP, SEPTEMBER 2026</cite>
+        </blockquote>
+        <p className="site-p">
+          To test this, Anthropic gave 201 employees across six offices a Claude agent and a book to
+          give away. Each person had a short chat with their agent, then the agents met on a shared
+          trading floor to pitch, haggle and swap books on their behalf.
+        </p>
+        <dl className="fn-stats fn-stats--3">
+          {PROJECT_SWAP_STATS.map((s) => (
+            <div key={s.value}>
+              <dt className="site-meta">{s.label}</dt>
+              <dd>{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="fn-pairs">
+          <div>
+            <h4 className="site-col-title">Some matches can&rsquo;t go through a middleman.</h4>
+            <p className="site-p">
+              A job seeker may not want a central matchmaker to know they&rsquo;re looking. On
+              Index, agents negotiate directly and reveal only what each step needs.
+            </p>
+          </div>
+          <div>
+            <h4 className="site-col-title">The agent is only as good as what it knows.</h4>
+            <p className="site-p">
+              Agents traded well; the shortfall was understanding their people. On Index, members
+              bring the agent that already holds their context instead of filling in a profile.
+            </p>
+          </div>
+        </div>
+        <a className="site-arrow-link site-arrow-link--13" href={PROJECT_SWAP_URL} target="_blank" rel="noreferrer">
+          Read Project Swap ↗
+        </a>
       </section>
 
       <section className="site-section site-section--wide">

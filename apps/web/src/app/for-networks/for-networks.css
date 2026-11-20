@@ -113,3 +113,30 @@
 .fn-cta { padding-bottom: 40px; }
 
 .fn-links { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+
+/* ---------- research ---------- */
+.fn-stats--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 720px) {
+  .fn-stats--3 { grid-template-columns: minmax(0, 1fr); }
+  .fn-stats--3 > div,
+  .fn-stats--3 > div:nth-child(even) { padding: 16px 0; border-left: 0; }
+  .fn-stats--3 > div + div { border-top: 1px solid var(--divider); }
+}
+.fn-quote {
+  margin: 0;
+  padding-left: 20px;
+  border-left: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fn-quote p {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1.4;
+  letter-spacing: -.01em;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.fn-quote cite { font-style: normal; }
