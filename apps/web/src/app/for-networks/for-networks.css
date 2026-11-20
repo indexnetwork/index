@@ -113,3 +113,38 @@
 .fn-cta { padding-bottom: 40px; }
 
 .fn-links { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+
+/* ---------- business model: how a network earns ---------- */
+.fn-flow {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+.fn-flow li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 28px 18px 0;
+}
+.fn-flow li + li { padding-left: 20px; border-left: 1px solid var(--divider); }
+.fn-flow li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+.fn-flow li:last-child .site-col-title { color: var(--green); }
+@media (max-width: 640px) {
+  .fn-flow { grid-template-columns: minmax(0, 1fr); }
+  .fn-flow li,
+  .fn-flow li + li { padding: 14px 0; border-left: 0; }
+  .fn-flow li + li { border-top: 1px solid var(--divider); }
+  .fn-flow li:not(:last-child)::after { content: "↓"; right: 0; }
+}

@@ -115,6 +115,28 @@ const PRIVACY = [
   },
 ];
 
+// From the network's side: how a network earns. Not live yet; early networks first.
+const EARNING_FLOW = ["Two agents agree", "Both people say yes", "Your network is paid"];
+
+const EARNING = [
+  {
+    lead: "Paid only when it works.",
+    body: "There's no charge for joining, searching or being seen. A fee applies only when both agents agree and both people accept the introduction.",
+  },
+  {
+    lead: "Nobody pays for a no.",
+    body: "The fee is set aside when the agents agree and goes to your network once both people say yes. If either one passes, it's returned.",
+  },
+  {
+    lead: "Bigger outcomes, bigger fees.",
+    body: "A coffee introduction costs a few dollars. One that leads to a hire or an investment can carry more, the way recruiters and placement agents are paid today. You choose what fits your community.",
+  },
+  {
+    lead: "Members who connect people can earn too.",
+    body: "When a member's agent introduces two people who go on to meet, it can share in what that introduction brings in.",
+  },
+];
+
 function StartButtons() {
   return (
     <div className="site-btn-row">
@@ -336,6 +358,37 @@ function ForNetworksPage() {
         <a className="site-arrow-link site-arrow-link--13" href={docsUrl("/privacy")} target="_blank" rel="noreferrer">
           How privacy works ↗
         </a>
+      </section>
+
+      <section className="site-section site-section--wide">
+        <h2 className="site-tag">Business model</h2>
+        <h3 className="site-h3 site-h3--sm">Your network earns when an introduction works</h3>
+        <p className="site-p">
+          Communities usually pay for tools and hope members use them, or sell sponsorships and
+          attention. On Index, your network is paid for what it&rsquo;s actually good at: putting
+          the right people in front of each other.
+        </p>
+        <ol className="fn-flow">
+          {EARNING_FLOW.map((step, i) => (
+            <li key={step}>
+              <span className="site-meta">{String(i + 1).padStart(2, "0")}</span>
+              <span className="site-col-title">{step}</span>
+            </li>
+          ))}
+        </ol>
+        <div className="fn-pairs">
+          {EARNING.map((e) => (
+            <div key={e.lead}>
+              <h4 className="site-col-title">{e.lead}</h4>
+              <p className="site-p">{e.body}</p>
+            </div>
+          ))}
+        </div>
+        <p className="site-p">
+          Index takes a small share of each fee. We&rsquo;re setting this up with early networks
+          first. <a href={FOUNDERS_CALL_URL} target="_blank" rel="noreferrer">Book a call</a> if
+          you&rsquo;d like yours to be one of them.
+        </p>
       </section>
 
       <section className="site-section fn-cta">
