@@ -33,15 +33,13 @@ function since(iso: string): string {
 
 const isFinal = (p: IntroductionProgress) => p.phase === "met" || p.phase === "no_fit" || p.phase === "quiet";
 
-/** The four stops every introduction can pass. Ending early stops the track where it was. */
-const TRACK = ["woken", "talking", "agreed", "met"] as const;
-
-const PHASE_LABEL: Record<IntroductionPhase, string> = {
-  talking: "Agents talking",
-  agreed: "Agents agreed",
-  met: "Met",
-  no_fit: "No fit",
-  quiet: "Went quiet",
+/** Each phase as a word and a status square, as on home. */
+const PHASE: Record<IntroductionPhase, { label: string; cls: string }> = {
+  talking: { label: "talking", cls: "talks" },
+  agreed: { label: "agreed", cls: "waiting" },
+  met: { label: "met", cls: "live" },
+  no_fit: { label: "no fit", cls: "paused" },
+  quiet: { label: "went quiet", cls: "paused" },
 };
 
 function phaseLine(p: IntroductionProgress): string {
@@ -55,67 +53,34 @@ function phaseLine(p: IntroductionProgress): string {
   }
 }
 
-/** How many stops of the track this introduction lit. */
-function reached(p: IntroductionProgress): number {
-  if (p.phase === "met") return 4;
-  if (p.phase === "agreed") return 3;
-  return 2; // talking, or ended while talking (no fit / quiet)
-}
-
-/** One introduction you opened, in the running column: where it is, never how. */
-function RunCard({ run, fresh }: { run: IntroductionProgress; fresh: boolean }) {
-  const done = isFinal(run);
-  const lit = reached(run);
-  const ended = run.phase === "no_fit" || run.phase === "quiet";
-  return (
-    <div className={`idk-run${done ? " done" : ""}${fresh ? " fresh" : ""}`}>
-      <div className="idk-run-head">
-        <span className={`idk-bot ${done ? (run.phase === "met" ? "ok" : "off") : "think"}`} style={{ width: 14, height: 14 }} />
-        <b>{first(run.a.name)} ⇄ {first(run.b.name)}</b>
-        <span className="idk-faint">{since(run.createdAt)}</span>
-      </div>
-      <ol className="idk-track" aria-label={`Status: ${PHASE_LABEL[run.phase]}`}>
-        {TRACK.map((stop, i) => {
-          const on = i < lit;
-          const here = i === lit - 1;
-          const cls = on ? (here && ended ? "x" : here && !done ? "cur" : "on") : "";
-          return <li key={stop} className={cls}><i />{here && ended ? PHASE_LABEL[run.phase].toLowerCase() : stop}</li>;
-        })}
-      </ol>
-      <div className="idk-run-line">{phaseLine(run)}</div>
-    </div>
-  );
-}
-
+/** Introductions you opened, one row each: who, where it is, when it started. Never how. */
 function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null }) {
-  const live = runs.filter((r) => !isFinal(r));
-  const done = runs.filter(isFinal);
+  // Live ones first, then finished, newest first within each.
+  const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
   return (
     <aside className="idk-col idk-running" aria-live="polite">
-      <div className="idk-col-head">
-        <span>RUNNING</span>
-        <span className="idk-faint">{live.length + opening.length || ""}</span>
-      </div>
-      {opening.map((p) => (
-        <div key={p.id} className="idk-run">
-          <div className="idk-run-head">
-            <span className="idk-bot think" style={{ width: 14, height: 14 }} />
-            <b>{first(p.member.name)} ⇄ {first(p.contact.name)}</b>
-          </div>
-          <div className="idk-run-line">Looking {first(p.contact.name)} up and seating their agent. This takes a minute or two.</div>
-        </div>
-      ))}
-      {live.map((r) => <RunCard key={r.opportunityId} run={r} fresh={r.opportunityId === freshId} />)}
-      {!live.length && !opening.length && (
-        <div className="idk-run-empty">Nothing running. Wake a pair and its agents show up here.</div>
+      <h2 className="idk-h2">running <span className="n">{opening.length + runs.filter((r) => !isFinal(r)).length || ""}</span></h2>
+      {ordered.length + opening.length === 0 ? (
+        <div className="idk-run-empty">Nothing running. Wake a pair and it shows up here.</div>
+      ) : (
+        <ul className="idk-rows">
+          {opening.map((p) => (
+            <li key={p.id} title={`Looking ${first(p.contact.name)} up and seating their agent. This takes a minute or two.`}>
+              <span className="p">{first(p.member.name)} ⇄ {first(p.contact.name)}</span>
+              <span className="pl-status pending">waking</span>
+              <span className="t">now</span>
+            </li>
+          ))}
+          {ordered.map((r) => (
+            <li key={r.opportunityId} className={`${isFinal(r) ? "done" : ""}${r.opportunityId === freshId ? " fresh" : ""}`} title={phaseLine(r)}>
+              <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
+              <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
+              <span className="t">{since(r.createdAt)}</span>
+            </li>
+          ))}
+        </ul>
       )}
-      {done.length > 0 && (
-        <>
-          <div className="idk-col-head sub"><span>DONE</span><span className="idk-faint">{done.filter((r) => r.phase === "met").length} met · {done.length - done.filter((r) => r.phase === "met").length} not</span></div>
-          {done.map((r) => <RunCard key={r.opportunityId} run={r} fresh={false} />)}
-        </>
-      )}
-      <div className="idk-run-foot">🔒 You see where an introduction ends up, never what the agents say.</div>
+      <div className="idk-run-foot">🔒 You see where each ends up, never what the agents say.</div>
     </aside>
   );
 }
@@ -476,7 +441,7 @@ export default function IntroducePage() {
           ) : (
             <div className="idk-cols">
               <section className="idk-col">
-                <div className="idk-col-head"><span>PAIRS YOU COULD INTRODUCE</span><span className="idk-faint">{waiting.length || ""}</span></div>
+                <h2 className="idk-h2">pairs you could introduce <span className="n">{waiting.length || ""}</span></h2>
                 {proposals === null ? (
                   <p className="idk-dim">loading pairs…</p>
                 ) : waiting.length === 0 ? (

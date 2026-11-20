@@ -46,7 +46,8 @@
 /* pair cards */
 .idk-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; color: var(--idk-ink2); }
 .idk-bar .sp { flex: 1; }
-.idk-card { border: 1px solid #000; padding: 12px; margin-bottom: 12px; background: #fff; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15); }
+.idk-card { padding: 14px 0 16px; margin: 0; background: transparent; border-bottom: 1px dashed var(--idk-line); }
+.idk-card:last-child { border-bottom: 0; }
 .idk-card.done { opacity: 0.6; }
 .idk-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; margin-bottom: 10px; }
 .idk-who { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
@@ -86,18 +87,19 @@
 @container (max-width: 819px) {
   .idk-running { order: -1; }
 }
-.idk-col-head { display: flex; justify-content: space-between; align-items: baseline; font: 700 10.5px var(--idk-mono); letter-spacing: 0.06em; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 2px solid #000; }
-.idk-col-head.sub { margin-top: 16px; border-bottom-width: 1px; }
-.idk-running { border: 1px solid #000; padding: 10px; background: #fff; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15); }
-.idk-run { padding: 8px 0 10px; border-bottom: 1px dashed var(--idk-line); }
-.idk-run:last-of-type { border-bottom: 0; }
-.idk-run.done { opacity: 0.7; }
-.idk-run.fresh { animation: idk-fresh 1.6s ease-out 2; }
+.idk-h2 { display: flex; align-items: center; gap: 10px; font: 700 10px var(--idk-mono); letter-spacing: 2px; text-transform: uppercase; margin: 0 0 6px; }
+.idk-h2::after { content: ""; flex: 1; height: 3px; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.idk-h2 .n { order: 2; font-weight: 500; letter-spacing: 0; color: var(--idk-ink3); }
+.idk-rows { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid #000; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2); background: #fff; }
+.idk-rows li { display: flex; align-items: baseline; gap: 8px; padding: 6px 9px; margin: 0; font-size: 13px; }
+.idk-rows li + li { border-top: 1px solid #000; }
+.idk-rows li.done .p { color: var(--idk-ink3); }
+.idk-rows li.fresh { animation: idk-fresh 1.6s ease-out 2; }
+.idk-rows .p { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idk-rows .t { font: 500 10px var(--idk-mono); color: var(--idk-ink3); min-width: 26px; text-align: right; }
+.idk-rows .pl-status.pending::before { background: #cfe0ff; animation: idk-pulse 1.2s steps(2) infinite; }
 @keyframes idk-fresh { 0% { background: #fff6e8; } 100% { background: transparent; } }
-.idk-run-head { display: flex; align-items: center; gap: 7px; font-size: 13px; }
-.idk-run-head .idk-faint { margin-left: auto; font: 600 10px var(--idk-mono); }
-.idk-run-line { font-size: 12px; color: var(--idk-ink2); }
-.idk-run-empty { font-size: 12px; color: var(--idk-ink3); padding: 8px 0; }
+.idk-run-empty { font-size: 12px; color: var(--idk-ink3); padding: 10px 0; }
 .idk-run-foot { margin-top: 10px; font-size: 11px; color: var(--idk-ink3); }
 .idk-card.opening { opacity: 0.75; }
 .idk-woke { cursor: default; }
@@ -130,19 +132,9 @@
   .idk-clist .tags { grid-column: 2; }
 }
 
-.idk-track { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); margin: 10px 0 8px; padding: 0; }
-.idk-track li { position: relative; margin: 0; padding-top: 18px; text-align: center; font: 600 9px var(--idk-mono); text-transform: uppercase; color: var(--idk-ink3); }
-.idk-track li::before { content: ""; position: absolute; top: 6px; left: 0; right: 0; height: 2px; background: var(--idk-line); }
-.idk-track li:first-child::before { left: 50%; }
-.idk-track li:last-child::before { right: 50%; }
-.idk-track li i { position: absolute; top: 0; left: calc(50% - 7px); width: 14px; height: 14px; border: 2px solid #000; background: #fff; box-sizing: border-box; }
-.idk-track li.on, .idk-track li.cur, .idk-track li.x { color: #000; }
-.idk-track li.on::before, .idk-track li.cur::before { background: #000; }
-.idk-track li.on i { background: var(--idk-org); }
-.idk-track li.cur i { background: var(--idk-org); animation: idk-pulse 1.2s steps(2) infinite; }
-.idk-track li.x i { background: #ccc; }
-@keyframes idk-pulse { 50% { background: #fff; } }
 @media (max-width: 640px) {
   .idk-pair { grid-template-columns: 1fr; }
   .idk-link { display: none; }
 }
+
+@keyframes idk-pulse { 50% { background: #fff; } }
