@@ -382,7 +382,7 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
 
 /** The agent is still out looking: the hand-drawn eye and one plain line. */
 export function DiscoveryLoader() {
-  return <AgentWorking kind="look" size={160}>looking for your people</AgentWorking>;
+  return <AgentWorking kind="look" size={220}>looking for your people</AgentWorking>;
 }
 
 function AgentLabel({ at }: { at?: string }) {

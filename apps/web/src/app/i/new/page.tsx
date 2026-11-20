@@ -270,7 +270,7 @@ function Picks({ suggestions, onCreate, onSkip }: {
 }) {
   const [picked, setPicked] = useState<number[]>([]);
   if (suggestions === "loading") {
-    return <AgentWorking kind="look" size={110}>reading what i found about you</AgentWorking>;
+    return <AgentWorking kind="look" size={150}>reading what i found about you</AgentWorking>;
   }
   const toggle = (i: number) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
   return (
@@ -339,7 +339,7 @@ function truncate(value: string, n: number) {
 
 /** The agent reading what you said: the hand-drawn eye. */
 function FieldGlyph() {
-  return <AgentWorking kind="look" size={110} style={{ marginTop: 12 }} />;
+  return <AgentWorking kind="look" size={150} style={{ marginTop: 12 }} />;
 }
 
 function Calibrating() {

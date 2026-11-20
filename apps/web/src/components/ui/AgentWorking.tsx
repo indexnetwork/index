@@ -22,7 +22,7 @@ export function AgentWorking({ kind, children, size = 120, style }: {
 export function BootSplash() {
   return (
     <div className="boot-splash" role="status" aria-label="loading">
-      <img src="/loading/eye.webp" alt="" width={96} height={96} />
+      <img src="/loading/eye.webp" alt="" width={220} height={220} />
     </div>
   );
 }
