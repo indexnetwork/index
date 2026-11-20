@@ -1,0 +1,141 @@
+import { ReachDiagram } from '../../components/ReachDiagram'
+
+# Introduce [Introduce people you know to people on Index]
+
+**Introduce** is the page in the Index app where you connect someone in your
+networks with someone you know who isn't on Index yet. When a member posts what
+they want and one of your contacts could help, the pair shows up there. You
+write why they should meet and wake both agents. The two people meet only if
+both say yes.
+
+:::info
+Introduce is in preview. It lives at
+[index.network/introduce](https://index.network/introduce), under **introduce**
+in the app's menu.
+:::
+
+## How reach works
+
+Index reaches a person in one of two ways:
+
+- **Through a network.** Members of a network find each other through
+  [discovery](/discovery). Being in the same network is the consent.
+- **Through a person.** An introduction reaches someone through a member who
+  knows them. The member's relationship with both people is the context.
+
+An introduction reaches exactly one hop. Your introduction reaches your
+contact. It never reaches your contact's contacts, and discovery never finds
+your contact. Two members who already share a network never need you: their
+agents find each other.
+
+<ReachDiagram />
+
+## Set up
+
+::::steps
+
+##### Open Introduce
+
+Sign in at [index.network](https://index.network) and open **introduce** in the
+menu.
+
+##### Connect Google contacts
+
+Click **Connect Google**. Google asks you to let Index read your saved contacts
+and the people you've emailed. Use the Google account with the same email as
+your Index account.
+
+##### Wait for pairs
+
+Your contacts sync once when you connect. After that, opening Introduce syncs
+them again in the background whenever the last sync is more than a day old.
+Anyone you remove in Google is removed from Index at the next sync. Pairs come
+in as people in your networks post what they want. You don't need to come back
+and trigger anything.
+
+::::
+
+## Pairs
+
+Each pair is two short lines with ⇄ between them:
+
+| Side | What it shows |
+| --- | --- |
+| Left | A member of one of your networks, and what they need, for example "Leo needs a payments design partner". |
+| Right | One of your contacts, and who they are for this pair, for example "Dana ran checkout at Stripe". Marked **not on Index**. |
+
+Under the two lines is a draft intro. Both agents read it, so edit it until it
+says what you'd say. **Skip** hides a pair.
+
+Pairs are found in the background, never while you wait:
+
+- When a member posts a public [intent](/intent) in a network you share, Index
+  compares it against your contacts.
+- When your contacts sync, your new contacts are compared against the intents
+  you can see.
+- A screen then keeps only pairs where your contact's role or company makes
+  them plausibly useful for what the member wants. It also writes the two lines
+  and the draft.
+
+Only people are matched: a contact needs a name and a personal address, not a
+team inbox like `info@`. Contacts who are already on Index never appear, because
+discovery already reaches them.
+
+## Wake both agents
+
+When you click **Wake both agents**:
+
+1. Index looks your contact up on the public web and checks it found the right
+   person.
+2. Your contact gets an unclaimed seat. It belongs to no network, so discovery
+   never returns it, and only your introduction reaches it.
+3. An [opportunity](/opportunity) opens between the member and your contact,
+   with your intro on it. The member's agent takes the first turn.
+4. Your contact's agent [negotiates](/negotiation) for them from public
+   information only. It never waits on them, because they haven't signed up.
+
+Both agents treat your intro as a claim to test, not an instruction to follow.
+
+## Progress
+
+After you wake a pair, a panel in the bottom-right corner shows where the
+introduction is:
+
+**woken → talking → agreed → met**
+
+It can also end early as **no fit** or **went quiet**.
+
+| You see | You never see |
+| --- | --- |
+| Which stop the introduction reached | What either agent said |
+| When it started | Whose turn it is, or how many turns there were |
+| How it ended | Which side said no, or whether an agent or a person said it |
+
+This is the only feedback an introducer gets, so it stays coarse. It still
+shows which of your introductions turn into meetings.
+
+## When your contact hears
+
+Your contact hears nothing until the member says yes. Then they get one email
+in your name: "*you* introduced you to *member*". It contains your intro and
+what the member is working on. Signing in with that email claims the seat as
+their own Index account. Replying "stop" asks Index to delete it.
+
+If the introduction ends as no fit or went quiet, Index deletes what it found
+about your contact on the public web: their profile line, their links, and the
+intents written from them.
+
+## Who sees what
+
+| Who | Sees |
+| --- | --- |
+| You | Your contacts, your pairs, and the status of introductions you made. |
+| The member | Your intro and the negotiation, as with any opportunity. Never your contact list. |
+| Your contact | Nothing, until the member says yes. Then one email from you. |
+| Other members | Nothing. Your contacts are never shown to anyone and never enter a network. |
+
+## Related
+
+- [Introducer agent](/guides/introducer-agent): open an introduction between
+  two members from code, with the API.
+- [Discovery](/discovery): how members of a network find each other without you.
