@@ -2,21 +2,27 @@ import type { ReactNode } from "react";
 
 import "@/styles/plain.css";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import PageHead from "@/components/intents-home/PageHead";
 import { useCompact } from "@/hooks/useCompact";
 
 /**
- * The box chat pages sit in. Desktop fills the space beside the sidebar,
- * full height, with the conversation list beside the thread, both drawn in
- * the classic look (mono names, black rules, orange scrollbar). Compact keeps
- * its own window, since it has no desktop shell.
+ * The box chat pages sit in. Desktop is a plain page like Home and Intents:
+ * a head, then the conversation list beside the thread in the same centered
+ * body, split by thin grey rules. Compact keeps its own window, since it has
+ * no desktop shell.
  */
 export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClose?: () => void; children: ReactNode }) {
   const compact = useCompact();
   if (!compact) {
     return (
-      <div className={list ? "ih-view ih-chat" : "ih-view ih-chat solo"}>
-        {list && <div className="ih-chat-list">{list}</div>}
-        <div className="ih-chat-pane">{children}</div>
+      <div className="ih-view pl pl-chat-page">
+        <div className="pl-col pl-chat-col">
+          <PageHead title="conversations" centered />
+          <div className={list ? "ih-chat" : "ih-chat solo"}>
+            {list && <div className="ih-chat-list">{list}</div>}
+            <div className="ih-chat-pane">{children}</div>
+          </div>
+        </div>
       </div>
     );
   }
