@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 
 import { STAGE_OF, intentRank, type Entry, type HomeIntent, type Stage } from "@/components/intents-home/stages";
 import { useOpportunities } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import { apiClient } from "@/lib/api";
 import { log } from "@/lib/logger";
@@ -165,11 +166,24 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   }, []);
   const { opportunityStatusMap, opportunityActionLoading, handleOpportunityAction } = useOpportunityActions({ onAccepted });
 
+  // Everyone you already have a chat with. A match with one of them is not
+  // waiting on you: there is nothing left to accept, so it sits with the open chats.
+  const { conversations } = useConversation();
+  const chatPeers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const conv of conversations) {
+      for (const participant of conv.participants ?? []) {
+        if (participant.participantType === "user") ids.add(participant.participantId);
+      }
+    }
+    return ids;
+  }, [conversations]);
+
   const entriesByIntent = useMemo(() => {
     const stageOf = (item: RadarCardItem): Stage | null => {
       // Local actions (accept/pass in this session) override the fetched status.
       const status = (opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status;
-      const bucket = radarBucketForOpportunity(status, item.viewerCommitted);
+      const bucket = radarBucketForOpportunity(status, item.viewerCommitted, chatPeers.has(item.userId || item.peer?.userId || ""));
       return bucket ? STAGE_OF[bucket] : null;
     };
     const out: Record<string, Entry[]> = {};
@@ -180,7 +194,7 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
       });
     }
     return out;
-  }, [intents, radar, opportunityStatusMap]);
+  }, [intents, radar, opportunityStatusMap, chatPeers]);
 
   const activeCount = useCallback(
     (intentId: string) => (entriesByIntent[intentId] ?? []).filter((entry) => entry.stage !== "closed").length,

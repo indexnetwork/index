@@ -13,7 +13,6 @@ import QuestionItem from "@/components/intents-home/QuestionItem";
 import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import type { RadarCardItem } from "@/services/opportunities";
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -94,7 +93,6 @@ const HOME_STATUS_LINE = HOME_STATUS_LINES[Math.floor(Math.random() * HOME_STATU
 export default function HomeDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { conversations } = useConversation();
   const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
   const { setOpen: toggleAgent, log: openLog, setLog } = useAgentWindow();
@@ -176,16 +174,6 @@ export default function HomeDashboard() {
     }
     return out;
   }, [entriesByIntent]);
-
-  const chatPeers = useMemo(() => {
-    const ids = new Set<string>();
-    for (const conv of conversations) {
-      for (const participant of conv.participants ?? []) {
-        if (participant.participantType === "user" && participant.participantId !== user?.id) ids.add(participant.participantId);
-      }
-    }
-    return ids;
-  }, [conversations, user?.id]);
 
   const [searchParams] = useSearchParams();
   const [demoDone, setDemoDone] = useState<Set<string>>(() => new Set());
@@ -318,7 +306,6 @@ export default function HomeDashboard() {
               const lead = person.entries[0];
               const blurb = lead.item.headline || lead.item.mainText || "";
               const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
-              const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
               return (
                 <li key={person.key} {...cardProps(person, "pl-card")}>
                   {/* The person themselves here, not their agent: this is who you'd meet. */}
@@ -330,14 +317,9 @@ export default function HomeDashboard() {
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
                   {blurb && <div className="pl-blurb">{blurb}</div>}
                   <div className="pl-actions">
-                    {hasChat ? (
-                      <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
-                    ) : (
-                      <>
-                        <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                        <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
-                      </>
-                    )}
+                    {/* Someone you already chat with sits in progress, so everyone here is a fresh decision. */}
+                    <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
+                    <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
                   </div>
                   </div>
                 </li>
