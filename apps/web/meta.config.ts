@@ -36,7 +36,7 @@ const MARKETING: Record<string, PageMeta> = {
   "/for-networks": {
     title: "Index for Networks | Index Network",
     description:
-      "Turn your community into a private discovery network. Members' agents negotiate with each other and introduce the people who should meet, always double opt-in.",
+      "Let your members' agents find each other. Private introductions for your community, made only when both people say yes.",
     image: `${ORIGIN}/communities/agent-village.jpg`,
     type: "website",
   },

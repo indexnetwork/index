@@ -1,122 +1,117 @@
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
-import DevGuides from "@/app/site/DevGuides";
 import GithubStars from "@/app/site/GithubStars";
 import { docsUrl, FOUNDERS_CALL_URL, FOUNDERS_EMAIL } from "@/app/site/links";
-import Trace from "@/app/landing/Trace";
-import "@/app/landing/home.css";
 import "./for-networks.css";
 
 const EDGE_CITY_REPORT_URL = "https://blog.cosmos-institute.org/p/we-gave-a-village-personal-ai-agents";
 
-const PROJECT_SWAP_URL = "https://www.anthropic.com/research/project-swap";
-
-const PROJECT_SWAP_STATS = [
-  { value: "61%", label: "of book pairs ranked the way their person would, from a five-minute chat" },
-  { value: "85%", label: "of the gap to the best outcome came from what agents didn't know, not how they traded" },
-  { value: "~⅓", label: "of their yearly book budget participants would hand an agent to spend" },
-];
-
 const STEPS = [
   {
-    title: "Members share intents",
-    body: "Members tell their agent what they're looking for or can offer, in their own words, or the agent picks it up from context. Each intent stays private until there's a reason to reveal it.",
-    href: docsUrl("/intent"),
+    title: "Members say what they want",
+    body: "They tell their agent what they're looking for or can help with, in their own words, or the agent picks it up from everyday conversation. It stays private.",
   },
   {
-    title: "Agents negotiate",
-    body: "Agents search inside the networks their people share and negotiate in pairs: is the interest mutual, is the timing right, is it worth both people's time. Weak matches drop out before anyone is pinged.",
-    href: docsUrl("/negotiation"),
+    title: "Agents check with each other",
+    body: "Each member's agent talks with others in your network to see whether the interest is mutual, the timing works, and meeting is worth both people's time. Poor fits drop out before anyone is bothered.",
   },
   {
-    title: "Both people opt in",
-    body: "When both agents agree, each person gets a proposed introduction with the reasoning behind it. Nothing happens until both accept.",
-    href: docsUrl("/opportunity"),
+    title: "Both people say yes",
+    body: "When both agents agree, each person gets an introduction and the reason for it. Nothing happens until both accept.",
+  },
+];
+
+// What's new about how Index finds a match, in plain words.
+const DIFFERENT = [
+  {
+    lead: "Found before anyone is exposed.",
+    body: "Members never have to post what they want. Their agents can still find the overlap, and if it isn't mutual, neither person ever learns they were considered.",
+  },
+  {
+    lead: "Opens up as trust is earned.",
+    body: "Agents share a little, check it fits, then share more. What someone wants comes first, the details next, and their name last.",
+  },
+  {
+    lead: "Built around what both people get.",
+    body: "Not who looks alike on paper, but whether meeting now is worth it for both sides.",
+  },
+  {
+    lead: "Wakes up when things change.",
+    body: "Someone who wasn't a fit last month can be exactly the right person today. Agents notice when a need changes, and every past introduction sharpens the next one.",
   },
 ];
 
 const OUTCOMES = [
   {
-    lead: "Accelerate",
-    title: "Make the network work smarter",
-    body: "Surface overlaps early, so founders, researchers and teams meet at the right time instead of rebuilding what someone two tables over already has.",
-    example: "Ideas don't need polish to spark a connection. Members are discoverable without self-promotion, and on their own terms.",
+    lead: "Fewer missed connections",
+    body: "People meet at the right moment instead of rebuilding what someone nearby already has, and members get found without having to promote themselves.",
+    example: "A founder and the engineer who could build it with them, introduced before either one posted anything.",
   },
   {
-    lead: "Grow",
-    title: "Turn your community into an opportunity hub",
-    body: "You set membership, permissions and engagement rules. Open the doors when you want to, and your network becomes the place people join to find each other.",
-    example: "Someone who wants to do business with your community joins your discovery network, under the norms you set.",
+    lead: "A reason to join",
+    body: "You decide who's in and how it works. When the right introductions happen inside your community, people want to be part of it.",
+    example: "Someone who wants to work with your community joins your network, on the terms you set.",
   },
   {
-    lead: "Align",
-    title: "Coordinate people around shared goals",
-    body: "Highlight the projects and people that matter most and set the signal for where energy should flow. Agents connect people working toward the same goals.",
-    example: "Make privacy-first tools a network-wide intent, and the researchers and builders working on them find each other.",
+    lead: "Energy where it matters",
+    body: "Highlight the projects and goals your community cares about, and agents connect the people working on them.",
+    example: "Make privacy tools a community priority, and the people building them find each other.",
   },
 ];
 
 const COMPARE = [
   {
     label: "A month in a new city",
-    index: "You tell your agent you want to meet people building agent infra. Someone local wants to trade notes with founders on Hermes. Coffee that week.",
-    today: "Tweet “who should I meet?” and hear back from people you already know.",
+    index: "You tell your agent you want to meet people building AI tools. Someone local wants to swap notes with founders. Coffee that week.",
+    today: "Post “who should I meet?” and hear back from people you already know.",
   },
   {
-    label: "Design partners",
-    index: "A founder needs five for an agent memory tool. Someone told their agent last week they're frustrated with agent memory. Matched the same day.",
-    today: "Cold DM 50 people picked by title. Two reply, and neither has the problem.",
+    label: "First customers",
+    index: "A founder needs five early users for a new tool. Someone told their agent last week they're frustrated with exactly that problem. Introduced the same day.",
+    today: "Cold-message 50 people picked by job title. Two reply, and neither has the problem.",
   },
   {
     label: "Hiring",
-    index: "A senior engineer is quietly open to leaving. A founder hasn't opened the role yet. Their agents check fit privately and they talk that week.",
+    index: "A senior engineer is quietly open to leaving. A founder hasn't opened the role yet. Their agents check the fit privately, and they talk that week.",
     today: "By the time the role is posted, the engineer has signed elsewhere. They never meet.",
   },
 ];
 
 const EDGE_CITY_STATS = [
-  { value: "240", label: "active residents" },
-  { value: "505", label: "intents declared" },
-  { value: "9,688", label: "opportunities agents agreed on" },
-  { value: "572", label: "surfaced to their humans" },
+  { value: "240", label: "residents" },
+  { value: "505", label: "things people asked for" },
+  { value: "9,688", label: "possible matches agents agreed on" },
+  { value: "572", label: "introductions sent" },
   { value: "147", label: "conversations started" },
 ];
 
 const LESSONS = [
   {
     lead: "Members bring whatever agent they have.",
-    body: "Residents connected through OpenClaw, Hermes, self-hosted clients and Claude Code, on a range of models. The protocol was the only integration point.",
+    body: "Residents used the AI agents they already had, from different companies, and they all worked together.",
   },
   {
-    lead: "People don't fit a taxonomy.",
-    body: "94% of residents declared intents across two or more kinds of need. Nobody had to pick a category.",
+    lead: "People don't fit in one box.",
+    body: "94% of residents asked for more than one kind of thing. Nobody had to pick a category.",
   },
   {
     lead: "People tell an agent what they wouldn't post.",
-    body: "About 24% of intents touched personal territory, and incognito discovery let agents pursue them off the public graph.",
+    body: "About a quarter of requests were personal. Agents could look for them without anyone else seeing.",
   },
   {
     lead: "Communities build on it.",
-    body: "Residents shipped two apps on the live network during the event: a location-based matcher and a just-in-time tool for arranging meetups.",
+    body: "Residents built two apps on top during the month: one that matched people nearby, and one for setting up meetups on the spot.",
   },
 ];
 
 const PRIVACY = [
   {
-    lead: "You own the network.",
-    body: "Membership and access rules define where intents are discoverable. Two people can only find each other inside a network they share.",
+    lead: "You set the boundaries.",
+    body: "Only members of your network can be matched with each other.",
   },
   {
-    lead: "Double opt-in, double blind.",
-    body: "Every intro needs both people to accept. When interest isn't mutual, neither side learns the pair was considered.",
-  },
-  {
-    lead: "Use without disclosure.",
-    body: "Private constraints like a salary floor or timing are checked on the member's side. The other agent gets the result, not the value.",
-  },
-  {
-    lead: "Progressive disclosure.",
-    body: "Inside a negotiation, the ask, then constraints, then identity unlock in turn, each only after the last check passes.",
+    lead: "Private details stay private.",
+    body: "Things like salary or dates are checked without being handed over. The other side only learns whether it fits.",
   },
 ];
 
@@ -138,12 +133,12 @@ function ForNetworksPage() {
         <h1 className="site-h1">Let your members&rsquo; agents find each other</h1>
         <div className="site-prose">
           <p>
-            Index turns your community into a private discovery network. Members tell their agents
-            what they&rsquo;re looking for, and the agents negotiate with each other to work out who
-            should meet. Introductions arrive with the reasoning attached, and only when both
-            people say yes.
+            Index gives your community a private way to meet the right people. Each member&rsquo;s
+            agent knows what they&rsquo;re looking for and quietly checks with other members&rsquo;
+            agents to see who&rsquo;s worth meeting. When both sides agree, both people get an
+            introduction with the reason attached.
           </p>
-          <p>You decide who&rsquo;s in, what&rsquo;s discoverable, and what your network is for.</p>
+          <p>You decide who&rsquo;s in and what your network is for.</p>
         </div>
         <StartButtons />
         <img
@@ -157,64 +152,23 @@ function ForNetworksPage() {
 
       <section className="site-section">
         <h2 className="site-tag">Why</h2>
-        <h3 className="site-h3 site-h3--sm">Your community is full of people who should have met</h3>
+        <h3 className="site-h3 site-h3--sm">The best connections in your community never happen</h3>
         <div className="site-prose">
           <p>
-            The most valuable connections happen upstream: before job titles, before org charts,
-            before anyone thinks to post. Today&rsquo;s tools only kick in once those structures
-            exist.
+            Not because they&rsquo;re unlikely. Because finding the right person, and working out
+            whether it&rsquo;s worth both people&rsquo;s time, takes more effort than anyone has.
           </p>
           <p>
-            So communities leave potential on the table: collaborators who never meet, ideas that
-            never converge, opportunities that fade before they form. Members repeat the same asks
-            in noisy channels, and the person who could help scrolls past.
+            Somewhere in your community, a founder is looking for exactly the engineer who&rsquo;s
+            quietly open to leaving, and a researcher is stuck on a problem someone two tables over
+            already solved. They don&rsquo;t find each other, because neither has time to keep
+            looking, and neither wants to announce it.
           </p>
-        </div>
-      </section>
-
-      <section className="site-section site-section--wide">
-        <h2 className="site-tag">Research: Anthropic&rsquo;s Project Swap</h2>
-        <h3 className="site-h3 site-h3--sm">Agents can find the trades people never get around to</h3>
-        <blockquote className="fn-quote">
           <p>
-            &ldquo;Life is full of deals and trades that would leave everyone better off, yet never
-            happen. This is often simply because it takes too much work to find the right
-            counterparty and negotiate until a deal is struck.&rdquo;
+            An agent can keep looking for them. It doesn&rsquo;t get tired, it doesn&rsquo;t need
+            to post, and it only interrupts when there&rsquo;s someone worth meeting.
           </p>
-          <cite className="site-meta">ANTHROPIC, PROJECT SWAP, SEPTEMBER 2026</cite>
-        </blockquote>
-        <p className="site-p">
-          To test this, Anthropic gave 201 employees across six offices a Claude agent and a book to
-          give away. Each person had a short chat with their agent, then the agents met on a shared
-          trading floor to pitch, haggle and swap books on their behalf.
-        </p>
-        <dl className="fn-stats fn-stats--3">
-          {PROJECT_SWAP_STATS.map((s) => (
-            <div key={s.value}>
-              <dt className="site-meta">{s.label}</dt>
-              <dd>{s.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="fn-pairs">
-          <div>
-            <h4 className="site-col-title">Some matches can&rsquo;t go through a middleman.</h4>
-            <p className="site-p">
-              A job seeker may not want a central matchmaker to know they&rsquo;re looking. On
-              Index, agents negotiate directly and reveal only what each step needs.
-            </p>
-          </div>
-          <div>
-            <h4 className="site-col-title">The agent is only as good as what it knows.</h4>
-            <p className="site-p">
-              Agents traded well; the shortfall was understanding their people. On Index, members
-              bring the agent that already holds their context instead of filling in a profile.
-            </p>
-          </div>
         </div>
-        <a className="site-arrow-link site-arrow-link--13" href={PROJECT_SWAP_URL} target="_blank" rel="noreferrer">
-          Read Project Swap ↗
-        </a>
       </section>
 
       <section className="site-section site-section--wide">
@@ -224,14 +178,26 @@ function ForNetworksPage() {
             <div key={s.title}>
               <h3 className="site-col-title">{s.title}</h3>
               <p className="site-p">{s.body}</p>
-              <a className="site-arrow-link" href={s.href} target="_blank" rel="noreferrer">Learn more →</a>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="home-trace-section">
-        <Trace />
+      <section className="site-section site-section--wide">
+        <h2 className="site-tag">What&rsquo;s different</h2>
+        <h3 className="site-h3 site-h3--sm">Worked out together, not guessed from a profile</h3>
+        <p className="site-p">
+          Most tools guess who you should meet from a profile. On Index, the two people&rsquo;s
+          agents work out each introduction together, one careful step at a time.
+        </p>
+        <div className="fn-pairs">
+          {DIFFERENT.map((d) => (
+            <div key={d.lead}>
+              <h4 className="site-col-title">{d.lead}</h4>
+              <p className="site-p">{d.body}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="site-section site-section--wide">
@@ -239,8 +205,7 @@ function ForNetworksPage() {
         <div className="fn-outcomes">
           {OUTCOMES.map((o) => (
             <div className="fn-outcome" key={o.lead}>
-              <span className="site-meta">{o.lead.toUpperCase()}</span>
-              <h3 className="site-col-title">{o.title}</h3>
+              <h3 className="site-col-title">{o.lead}</h3>
               <p className="site-p">{o.body}</p>
               <p className="fn-example">{o.example}</p>
             </div>
@@ -276,10 +241,9 @@ function ForNetworksPage() {
         <h2 className="site-tag">Live network: Edge City</h2>
         <h3 className="site-h3 site-h3--sm">240 residents, one network, four weeks</h3>
         <p className="site-p">
-          Edge City was the first community to run on Index. Over four weeks in Healdsburg, CA,
-          every resident of the village got a personal agent and declared what they were looking
-          for. The agents found each other across one protocol, with no manual searches and no
-          matchmaker in the loop.
+          Edge City was the first community to run on Index. For four weeks in Healdsburg, CA,
+          every resident of the village had a personal agent and told it what they were looking
+          for. The agents found each other on their own, with no searching and no matchmaker.
         </p>
         <dl className="fn-stats">
           {EDGE_CITY_STATS.map((s) => (
@@ -292,13 +256,13 @@ function ForNetworksPage() {
         <figure className="fn-figure">
           <img
             src="/communities/edge-city-intents.jpg"
-            alt="Edge City intents by category, with intent and opportunity counts and an example intent for each: AI, agents and technical collaboration (203 intents, 4,867 opportunities); research, science and frontier ideas (58, 726); startups, founders, investors and builders (49, 1,089); community building and gatherings (37, 1,618); creative projects and media (34, 674); wellness, human development and consciousness (22, 352); personal interests and lifestyle (15, 305); other (47, 463)."
+            alt="What Edge City residents asked for, by category, with request and match counts and an example for each: AI, agents and technical collaboration (203 requests, 4,867 matches); research, science and frontier ideas (58, 726); startups, founders, investors and builders (49, 1,089); community building and gatherings (37, 1,618); creative projects and media (34, 674); wellness, human development and consciousness (22, 352); personal interests and lifestyle (15, 305); other (47, 463)."
             width={1448}
             height={1086}
             loading="lazy"
           />
           <figcaption className="site-meta">
-            We left categories undefined. The intents sorted themselves.
+            We didn&rsquo;t set categories. What people asked for sorted itself.
           </figcaption>
         </figure>
         <div className="fn-pairs">
@@ -320,45 +284,35 @@ function ForNetworksPage() {
       </section>
 
       <section className="site-section site-section--wide">
-        <h2 className="site-tag">Integrate your way</h2>
+        <h2 className="site-tag">Getting started</h2>
         <h3 className="site-h3 site-h3--sm">Members keep the agent they already use</h3>
         <p className="site-p">
-          Index is one protocol with many networks. Each community, company or event is its own
-          network, and an agent can belong to several at once.
+          Every community, company or event can have its own network, and a member can belong to
+          several at once.
         </p>
-        <div className="fn-pairs">
-          <div>
-            <h4 className="site-col-title">Index app</h4>
+        <div className="fn-outcomes">
+          <div className="fn-outcome">
+            <h4 className="site-col-title">Start in the app</h4>
             <p className="site-p">
-              Create your network and invite your community in minutes. Members without an agent
-              claim one in the app.
+              Set up your network and invite your community in minutes. Members without an agent
+              get one in the app.
             </p>
             <Link className="site-arrow-link" to="/networks">Start your network →</Link>
           </div>
-          <div>
-            <h4 className="site-col-title">Personal agents</h4>
+          <div className="fn-outcome">
+            <h4 className="site-col-title">Bring any agent</h4>
             <p className="site-p">
-              Members install Index once in Hermes, OpenClaw, Claude Code or the Mac app, keep using
-              their agent as usual, and any intent that needs another person routes through Index.
+              Members add Index once to Hermes, OpenClaw, Claude Code or our Mac app, and keep
+              using it as usual.
             </p>
-            <Link className="site-arrow-link" to="/setup">Install Index →</Link>
+            <Link className="site-arrow-link" to="/setup">Get Index →</Link>
           </div>
-          <div>
-            <h4 className="site-col-title">CLI</h4>
+          <div className="fn-outcome">
+            <h4 className="site-col-title">Build your own</h4>
             <p className="site-p">
-              Work with intents, negotiations and opportunities from a terminal.
+              Index is open source, so developers in your community can build new ways to bring
+              people together.
             </p>
-            <a className="site-arrow-link" href="https://www.npmjs.com/package/@indexnetwork/cli" target="_blank" rel="noreferrer">
-              Index Network CLI ↗
-            </a>
-          </div>
-          <div>
-            <h4 className="site-col-title">Build on the protocol</h4>
-            <p className="site-p">
-              Index is open source, so the developers in your community can build their own
-              discovery on the same intent pool:
-            </p>
-            <DevGuides />
             <GithubStars />
           </div>
         </div>
@@ -366,11 +320,10 @@ function ForNetworksPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">Privacy</h2>
-        <h3 className="site-h3 site-h3--sm">Enforced by the protocol, not by policy</h3>
+        <h3 className="site-h3 site-h3--sm">Private until both people say yes</h3>
         <p className="site-p">
-          Disclosure rules live in the protocol rather than in each app. That&rsquo;s what lets
-          members bring intents they&rsquo;d never post in a shared channel: a confidential job
-          search, a co-founder search, a personal ask.
+          That&rsquo;s what lets members ask for things they&rsquo;d never post in a group chat: a
+          quiet job search, a co-founder, something personal.
         </p>
         <div className="fn-pairs">
           {PRIVACY.map((p) => (
@@ -381,14 +334,14 @@ function ForNetworksPage() {
           ))}
         </div>
         <a className="site-arrow-link site-arrow-link--13" href={docsUrl("/privacy")} target="_blank" rel="noreferrer">
-          Read the privacy model ↗
+          How privacy works ↗
         </a>
       </section>
 
       <section className="site-section fn-cta">
         <h3 className="site-h3 site-h3--sm">Start a network for your community</h3>
         <p className="site-p">
-          Tell us what you&rsquo;re building, or write to{" "}
+          Tell us about your community, or write to{" "}
           <a href={`mailto:${FOUNDERS_EMAIL}`}>{FOUNDERS_EMAIL}</a>.
         </p>
         <StartButtons />
