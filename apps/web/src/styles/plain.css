@@ -2948,7 +2948,10 @@ button.st-danger-toggle {
 .pl-moving-row > .pl-status {
   flex: none;
 }
-.ih .pl button.pl-moving-more {
+/* "show N more" under any list that stops at its first few */
+button.pl-more,
+.ih .pl button.pl-more {
+  display: inline-block;
   margin-top: 8px;
   padding: 0;
   border: 0;
@@ -2961,8 +2964,9 @@ button.st-danger-toggle {
   text-decoration: underline;
   cursor: pointer;
 }
-.ih .pl button.pl-moving-more:hover:not(:disabled),
-.ih .pl button.pl-moving-more:active:not(:disabled) {
+button.pl-more:hover,
+.ih .pl button.pl-more:hover:not(:disabled),
+.ih .pl button.pl-more:active:not(:disabled) {
   background: #ffff66;
   color: #00e;
   box-shadow: none;

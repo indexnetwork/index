@@ -18,6 +18,7 @@ import { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
 import { getPublicUserProfile } from "@/services/users";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 interface Person {
   key: string;
@@ -253,6 +254,9 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
   const loadingPeople = !radar[selectedId] && !radarFailed[selectedId];
   const peopleFailed = radarFailed[selectedId] && !radar[selectedId];
   const found = sections.matches.length + sections["in progress"].length + sections.closed.length;
+  const matchList = useShowMore(sections.matches);
+  const progressList = useShowMore(sections["in progress"]);
+  const closedList = useShowMore(sections.closed);
   const created = current?.createdAt
     ? ` · since ${new Date(current.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
     : "";
@@ -298,7 +302,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
               <>
                 <h2>waiting on you ({sections.matches.length})</h2>
                 {sections.matches.length > 0 ? (
-                  <ul className="pl-cards">{sections.matches.map(renderCard)}</ul>
+                  <><ul className="pl-cards">{matchList.shown.map(renderCard)}</ul>{matchList.more}</>
                 ) : (
                   <p className="pl-dim">
                     {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
@@ -309,7 +313,8 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
                   <>
                     <hr />
                     <h2>in progress ({sections["in progress"].length})</h2>
-                    <ul className="pl-cards">{sections["in progress"].map(renderCard)}</ul>
+                    <ul className="pl-cards">{progressList.shown.map(renderCard)}</ul>
+                    {progressList.more}
                   </>
                 )}
 
@@ -317,9 +322,10 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
                   <>
                     <hr />
                     <h2>closed ({sections.closed.length})</h2>
+                    {/* Closed stays folded until asked for, then opens like any other list. */}
                     {showClosed
-                      ? <ul className="pl-cards">{sections.closed.map(renderCard)}</ul>
-                      : <p><button type="button" onClick={() => setShowClosed(true)}>show closed</button></p>}
+                      ? <><ul className="pl-cards">{closedList.shown.map(renderCard)}</ul>{closedList.more}</>
+                      : <button type="button" className="pl-more" aria-expanded={false} onClick={() => setShowClosed(true)}>show {sections.closed.length} closed</button>}
                   </>
                 )}
               </>

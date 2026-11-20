@@ -17,12 +17,11 @@ import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import type { RadarCardItem } from "@/services/opportunities";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 /** How often to reread an intent right after an answer, and for how long. */
 const ANSWER_POLL_MS = 3_000;
 const ANSWER_REFRESH_MS = 60_000;
-/** In progress shows this many people before "show N more". */
-const MOVING_SHOWN = 5;
 
 interface Person {
   key: string;
@@ -231,7 +230,10 @@ export default function HomeDashboard() {
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   const moving = [...byStage.talks, ...byStage.chat];
-  const [showAllMoving, setShowAllMoving] = useState(false);
+  // A question opened from a /q/ link stays in view even past the first few.
+  const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup);
+  const waitingList = useShowMore(waitingRows);
+  const movingList = useShowMore(moving);
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
@@ -284,11 +286,14 @@ export default function HomeDashboard() {
         ) : questions.length === 0 ? (
           <p className="pl-dim">none right now.</p>
         ) : (
+          <>
           <ul className="pl-cards pl-q-list">
-            {questions.map((question) => (
+            {questionList.shown.map((question) => (
               <QuestionItem key={question.groupId} question={question} forIntents={forLine(question)} selected={question.groupId === linkedGroup} onAnswer={answerAndRefresh} />
             ))}
           </ul>
+          {questionList.more}
+          </>
         )}
 
         <hr />
@@ -299,8 +304,9 @@ export default function HomeDashboard() {
         ) : waitingRows.length === 0 ? (
           <p className="pl-dim">nobody yet. your agents are still looking.</p>
         ) : (
+          <>
           <ul className="pl-cards">
-            {waitingRows.map(({ person, passed: wasPassed }) => {
+            {waitingList.shown.map(({ person, passed: wasPassed }) => {
               if (wasPassed) {
                 return (
                   <li key={person.key} className="pl-card pl-card-passed">
@@ -338,6 +344,8 @@ export default function HomeDashboard() {
               );
             })}
           </ul>
+          {waitingList.more}
+          </>
         )}
 
         {(moving.length > 0 || refreshingIds.length > 0) && (
@@ -347,7 +355,7 @@ export default function HomeDashboard() {
               in progress ({refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length})
             </h2>
             <ul className="pl-moving">
-              {(showAllMoving ? moving : moving.slice(0, MOVING_SHOWN)).map((person) => {
+              {movingList.shown.map((person) => {
                 const lead = person.entries[0];
                 const talking = lead.stage === "talks";
                 const blurb = lead.item.headline || lead.item.mainText || "";
@@ -366,11 +374,7 @@ export default function HomeDashboard() {
                 );
               })}
             </ul>
-            {moving.length > MOVING_SHOWN && (
-              <button type="button" className="pl-moving-more" onClick={() => setShowAllMoving((v) => !v)}>
-                {showAllMoving ? "show fewer" : `show ${moving.length - MOVING_SHOWN} more`}
-              </button>
-            )}
+            {movingList.more}
           </>
         )}
       </div>,

@@ -18,6 +18,7 @@ import { useBack } from "@/hooks/useBack";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 const logger = log.page.from('networks');
 
@@ -189,6 +190,8 @@ export default function NetworksPage() {
       setRequestModalOpen(true);
     }
   };
+  const reviewList = useShowMore(pendingRequests);
+  const myRequestList = useShowMore(myRequests);
   const openDiscover = () => { setActiveTab('discover'); void loadPublicNetworks(); };
 
   const modals = (
@@ -238,7 +241,7 @@ export default function NetworksPage() {
                 <>
                   <h2>requests to review ({pendingRequests.length})</h2>
                   <ul className="pl-cards">
-                    {pendingRequests.map((r) => (
+                    {reviewList.shown.map((r) => (
                       <li key={r.id} className="pl-card">
                         <div className="pl-card-body">
                           <div className="pl-card-head">
@@ -258,6 +261,7 @@ export default function NetworksPage() {
                       </li>
                     ))}
                   </ul>
+                  {reviewList.more}
                 </>
               )}
 
@@ -265,7 +269,7 @@ export default function NetworksPage() {
                 <>
                   <h2>your requests</h2>
                   <ul className="pl-cards">
-                    {myRequests.map((r) => (
+                    {myRequestList.shown.map((r) => (
                       <li key={r.id} className={r.status === 'needs_changes' ? 'pl-card' : 'pl-card talks'}>
                         <div className="pl-card-body">
                           <div className="pl-card-head">
@@ -287,6 +291,7 @@ export default function NetworksPage() {
                       </li>
                     ))}
                   </ul>
+                  {myRequestList.more}
                 </>
               )}
 
