@@ -10,7 +10,7 @@ import { log } from '../lib/log';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { detectSocialLabel } from '../adapters/database.shared';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
-import { introducerDatabaseAdapter, type ContactCard, type ContactInput, type IntroducerDatabaseAdapter, type IntroductionRow, type MatchCandidate, type SuggestionRow } from '../adapters/introducer.database.adapter';
+import { introducerDatabaseAdapter, type ContactCard, type ContactInput, type IntroducerDatabaseAdapter, type IntroductionRow, type ContactFilter, type ContactListRow, type MatchCandidate, type ProposalRow } from '../adapters/introducer.database.adapter';
 
 const logger = log.service.from('IntroducerService');
 
@@ -83,17 +83,40 @@ export interface IntroducerStatus {
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
-/** A pair on the Intro Desk: a member's need ⇄ one of your contacts who is not on Index. */
-export interface PairSuggestion {
+/**
+ * A proposal on the Intro Desk: an opportunity nobody has opened yet, in the
+ * opportunity format (`detection`, `actors`, `interpretation`, `context`,
+ * `confidence`), plus what the card shows. The contact's actor has
+ * `contactId` and `via` until opening seats them.
+ */
+export interface OpportunityProposalView {
   id: string;
-  status: SuggestionRow['status'];
-  /** Why a wake failed, said to the introducer. */
+  status: ProposalRow['status'];
+  /** Why opening failed, said to the introducer. */
   failure: string | null;
-  networkTitle: string;
+  detection: ProposalRow['detection'];
+  actors: ProposalRow['actors'];
+  interpretation: ProposalRow['interpretation'];
+  context: ProposalRow['context'];
+  confidence: number;
   opportunityId: string | null;
+  networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
   contact: { name: string; line: string; detail: string | null };
+  /** The draft intro, `metadata.introducer.context` once opened. */
   draft: string;
+}
+
+/** A contact in the owner's contacts list. Only the owner ever reads these. */
+export interface ContactView {
+  id: string;
+  name: string;
+  email: string;
+  detail: string | null;
+  source: 'saved' | 'emailed';
+  onIndex: boolean;
+  excluded: boolean;
+  proposals: number;
 }
 
 export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy' } | { kind: 'gone' };
@@ -324,7 +347,7 @@ export class IntroducerService {
       const batch = candidates.slice(i, i + SCREEN_BATCH);
       try {
         const rows = await this.screen(batch);
-        await this.adapter.insertSuggestions(rows);
+        await this.adapter.insertProposals(rows);
         kept += rows.length;
       } catch (error) {
         logger.warn('Pair screen failed', { error: String(error), size: batch.length });
@@ -359,6 +382,7 @@ export class IntroducerService {
           intentId: c.member.intentId,
           contactId: c.contact.id,
           networkId: c.networkId,
+          memberUserId: c.member.userId,
           score: c.score,
           intentLine: clip(p.member, 80),
           contactLine: clip(p.contact, 80),
@@ -395,36 +419,59 @@ export class IntroducerService {
 
   // ─── the desk ──────────────────────────────────────────────────────────────
 
-  async suggestions(userId: string): Promise<PairSuggestion[]> {
-    const rows = await this.adapter.suggestions(userId);
-    return rows.map(toPairSuggestion);
+  async proposals(userId: string): Promise<OpportunityProposalView[]> {
+    const rows = await this.adapter.proposals(userId);
+    return rows.map(toProposalView);
   }
 
   async skip(userId: string, id: string): Promise<boolean> {
-    return this.adapter.claimSuggestion(id, userId, ['open', 'failed'], 'skipped');
+    return this.adapter.claimProposal(id, userId, ['proposed', 'failed'], 'skipped');
+  }
+
+  // ─── contacts list ─────────────────────────────────────────────────────────
+
+  async contacts(userId: string, options: { q?: string; filter: ContactFilter; offset: number }): Promise<{ contacts: ContactView[]; total: number }> {
+    const { rows, total } = await this.adapter.listContacts(userId, { ...options, limit: 50 });
+    return { total, contacts: rows.map(toContactView) };
+  }
+
+  /** Never propose this contact, or allow it again. */
+  async setExcluded(userId: string, contactId: string, excluded: boolean): Promise<boolean> {
+    return this.adapter.setExcluded(userId, contactId, excluded);
+  }
+
+  /**
+   * Delete every imported contact and the proposals made from them. Nothing
+   * syncs again until the member reads their contacts again; introductions
+   * already opened are kept.
+   */
+  async deleteContacts(userId: string): Promise<number> {
+    const deleted = await this.adapter.deleteContacts(userId);
+    logger.info('Contacts deleted by owner', { userId, deleted });
+    return deleted;
   }
 
   /**
    * Wake a pair. Returns at once; the contact is looked up and seated, and
-   * both agents woken, in the background. The desk polls the suggestion.
+   * both agents woken, in the background. The desk polls the proposal.
    */
   async wake(userId: string, id: string, context: string): Promise<WakeOutcome> {
-    const [row] = await this.adapter.suggestions(userId, id);
+    const [row] = await this.adapter.proposals(userId, id);
     if (!row) return { kind: 'not_found' };
     if (!await this.adapter.canIntroduce(userId, row.member.intentId, row.networkId)) {
-      await this.adapter.setSuggestion(id, { status: 'failed', failure: FAILURES.not_visible });
+      await this.adapter.setProposal(id, { status: 'failed', failure: FAILURES.not_visible });
       return { kind: 'gone' };
     }
-    if (!await this.adapter.claimSuggestion(id, userId, ['open', 'failed'], 'waking')) return { kind: 'busy' };
+    if (!await this.adapter.claimProposal(id, userId, ['proposed', 'failed'], 'opening')) return { kind: 'busy' };
     void this.seatAndOpen(userId, row, context).catch(async (error) => {
-      logger.error('Waking an introduction failed', { suggestionId: id, error: String(error) });
-      await this.adapter.setSuggestion(id, { status: 'failed', failure: FAILURES.not_opened });
+      logger.error('Opening a proposal failed', { proposalId: id, error: String(error) });
+      await this.adapter.setProposal(id, { status: 'failed', failure: FAILURES.not_opened });
     });
     return { kind: 'ok' };
   }
 
-  private async seatAndOpen(introducerUserId: string, row: SuggestionRow, context: string): Promise<void> {
-    const fail = (reason: keyof typeof FAILURES) => this.adapter.setSuggestion(row.id, { status: 'failed', failure: FAILURES[reason] });
+  private async seatAndOpen(introducerUserId: string, row: ProposalRow, context: string): Promise<void> {
+    const fail = (reason: keyof typeof FAILURES) => this.adapter.setProposal(row.id, { status: 'failed', failure: FAILURES[reason] });
     const email = row.contact.email;
     const existing = await this.adapter.accountByEmail(email);
     if (existing?.emailVerified && !existing.deleted) return fail('on_index');
@@ -471,11 +518,11 @@ export class IntroducerService {
     }], decideNegotiationOpening);
     const opened = await negotiationDatabaseAdapter.findByPairKey(pairKey);
     if (!opened) return fail('not_opened');
-    await this.adapter.setSuggestion(row.id, { status: 'woken', seatUserId: seat.userId, opportunityId: opened.opportunityId });
-    logger.info('Introduction woken', { suggestionId: row.id, opportunityId: opened.opportunityId });
+    await this.adapter.markOpened(row.id, seat, context, opened.opportunityId);
+    logger.info('Proposal opened', { proposalId: row.id, opportunityId: opened.opportunityId });
   }
 
-  private async addFallbackIntent(seatUserId: string, row: SuggestionRow): Promise<string> {
+  private async addFallbackIntent(seatUserId: string, row: ProposalRow): Promise<string> {
     const payload = fallbackIntent(row);
     const embedding = await this.embedder.generate(payload) as number[];
     return this.adapter.addSeatIntent(seatUserId, payload, embedding);
@@ -524,24 +571,43 @@ export class IntroducerService {
   }
 }
 
-function toPairSuggestion(row: SuggestionRow): PairSuggestion {
+function toProposalView(row: ProposalRow): OpportunityProposalView {
   const detail = [row.contact.title, row.contact.organization].filter(Boolean).join(', ');
   return {
     id: row.id,
     status: row.status,
     failure: row.failure,
-    networkTitle: row.networkTitle,
+    detection: row.detection,
+    actors: row.actors,
+    interpretation: row.interpretation,
+    context: row.context,
+    confidence: row.confidence,
     opportunityId: row.opportunityId,
-    member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.intentLine, intentText: row.member.intentText },
-    contact: { name: contactName(row.contact), line: row.contactLine, detail: detail || null },
+    networkTitle: row.networkTitle,
+    member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.card.member, intentText: row.member.intentText },
+    contact: { name: contactName(row.contact), line: row.card.contact, detail: detail || null },
     draft: row.draft,
   };
 }
 
+function toContactView(row: ContactListRow): ContactView {
+  const detail = [row.title, row.organization].filter(Boolean).join(', ');
+  return {
+    id: row.id,
+    name: contactName(row),
+    email: row.email,
+    detail: detail || null,
+    source: row.source === 'google_contacts' ? 'saved' : 'emailed',
+    onIndex: row.onIndex,
+    excluded: row.excluded,
+    proposals: row.proposals,
+  };
+}
+
 /** When research finds nothing: who they are, as the introducer's card has them. */
-function fallbackIntent(row: SuggestionRow): string {
+function fallbackIntent(row: ProposalRow): string {
   const role = [row.contact.title, row.contact.organization].filter(Boolean).join(' at ');
-  return role ? `${contactName(row.contact)}, ${role}.` : `${contactName(row.contact)} ${row.contactLine}.`;
+  return role ? `${contactName(row.contact)}, ${role}.` : `${contactName(row.contact)} ${row.card.contact}.`;
 }
 
 /** Public profile links research opened; personal sites included. */

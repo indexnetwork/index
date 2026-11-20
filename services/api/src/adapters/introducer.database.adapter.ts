@@ -2,9 +2,9 @@ import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import type { IntroSuggestionStatus } from '../schemas/database.schema';
+import type { OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
 
-const { contacts, users, introSuggestions } = schema;
+const { contacts, users, opportunityProposals } = schema;
 
 export interface ContactInput {
   email: string;
@@ -36,14 +36,19 @@ export interface MatchCandidate {
   contact: ContactCard;
 }
 
-/** A stored suggestion with everything the Intro Desk card shows. */
-export interface SuggestionRow {
+/** A stored proposal, in the opportunity format, with what the Intro Desk card shows. */
+export interface ProposalRow {
   id: string;
-  status: IntroSuggestionStatus;
+  status: OpportunityProposalStatus;
   failure: string | null;
-  score: number;
-  intentLine: string;
-  contactLine: string;
+  confidence: number;
+  detection: Record<string, unknown>;
+  actors: OpportunityProposalActor[];
+  interpretation: Record<string, unknown>;
+  context: Record<string, unknown>;
+  /** The two card lines. */
+  card: { member: string; contact: string };
+  /** The draft intro (`metadata.introducer.context`). */
   draft: string;
   networkId: string;
   networkTitle: string;
@@ -52,6 +57,17 @@ export interface SuggestionRow {
   contact: ContactCard;
   createdAt: Date;
 }
+
+/** A contact as the contacts list shows it to its owner. */
+export interface ContactListRow extends ContactCard {
+  source: string;
+  onIndex: boolean;
+  excluded: boolean;
+  /** Proposals still waiting on the desk for this contact. */
+  proposals: number;
+}
+
+export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded';
 
 export interface IntroductionRow {
   opportunityId: string;
@@ -94,7 +110,7 @@ const LIVE_PUBLIC_INTENT = sql`
 
 /**
  * Storage for the introducer: a member's imported contacts, the introductions
- * the matcher suggests to them, the seats of contacts they introduce, and the
+ * the matcher proposes to them, the seats of contacts they introduce, and the
  * status (never the wording) of the introductions they opened.
  */
 export class IntroducerDatabaseAdapter {
@@ -178,6 +194,7 @@ export class IntroducerDatabaseAdapter {
       .where(and(
         ownerUserId ? eq(contacts.ownerUserId, ownerUserId) : sql`true`,
         isNull(contacts.matchedUserId),
+        isNull(contacts.excludedAt),
         isNull(contacts.embedding),
         // A person: a real name and a personal address, not a team inbox.
         sql`${contacts.name} is not null and position('@' in ${contacts.name}) = 0
@@ -220,10 +237,10 @@ export class IntroducerDatabaseAdapter {
              it.id as intent_id, it.user_id as member_id, it.member_name, it.text,
              1 - (c.embedding <=> it.embedding) as score
       from it
-      join contacts c on c.embedding is not null and c.matched_user_id is null
+      join contacts c on c.embedding is not null and c.matched_user_id is null and c.excluded_at is null
       join introducers intr on intr.user_id = c.owner_user_id
       where not exists (
-        select 1 from intro_suggestions s
+        select 1 from opportunity_proposals s
         where s.introducer_user_id = c.owner_user_id and s.intent_id = it.id and s.contact_id = c.id
       )
       order by c.embedding <=> it.embedding
@@ -264,9 +281,9 @@ export class IntroducerDatabaseAdapter {
       ) x
       where c.owner_user_id = ${ownerUserId}
         and c.id in (${sql.join(contactIds.map((id) => sql`${id}`), sql`, `)})
-        and c.embedding is not null
+        and c.embedding is not null and c.excluded_at is null
         and not exists (
-          select 1 from intro_suggestions s
+          select 1 from opportunity_proposals s
           where s.introducer_user_id = c.owner_user_id and s.intent_id = x.intent_id and s.contact_id = c.id
         )
     `);
@@ -285,76 +302,159 @@ export class IntroducerDatabaseAdapter {
     return rowsOf(result).map((r) => ({ id: String(r.id), createdAt: new Date(String(r.created_at)) }));
   }
 
-  async insertSuggestions(rows: {
-    introducerUserId: string; intentId: string; contactId: string; networkId: string; score: number;
-    intentLine: string; contactLine: string; draft: string;
+  /** Store proposals in the opportunity format; a pair already proposed is left alone. */
+  async insertProposals(rows: {
+    introducerUserId: string; intentId: string; contactId: string; networkId: string; memberUserId: string;
+    score: number; intentLine: string; contactLine: string; draft: string;
   }[]): Promise<void> {
     if (!rows.length) return;
-    await db.insert(introSuggestions).values(rows).onConflictDoNothing();
+    const now = new Date().toISOString();
+    await db.insert(opportunityProposals).values(rows.map((r) => ({
+      introducerUserId: r.introducerUserId,
+      intentId: r.intentId,
+      contactId: r.contactId,
+      networkId: r.networkId,
+      detection: { source: 'introducer' as const, createdBy: 'introducer-matcher', triggeredBy: r.intentId, timestamp: now },
+      actors: [
+        { role: 'party' as const, userId: r.memberUserId, networkId: r.networkId, intent: r.intentId },
+        { role: 'party' as const, contactId: r.contactId, via: r.introducerUserId },
+      ],
+      interpretation: { category: 'introduction', reasoning: `${r.intentLine} ⇄ ${r.contactLine}`, confidence: r.score },
+      context: { networkId: r.networkId },
+      confidence: String(r.score),
+      metadata: { introducer: { userId: r.introducerUserId, context: r.draft }, card: { member: r.intentLine, contact: r.contactLine } },
+    }))).onConflictDoNothing();
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────
 
-  /** The desk: open and in-flight suggestions, best first, plus recent wakes. */
-  async suggestions(introducerUserId: string, id?: string): Promise<SuggestionRow[]> {
+  /** The desk: proposals still to act on (proposed, opening, failed), best first. */
+  async proposals(introducerUserId: string, id?: string): Promise<ProposalRow[]> {
     const result = await db.execute(sql`
-      select s.id, s.status, s.failure, s.score, s.intent_line, s.contact_line, s.draft,
-             s.network_id, n.title as network_title, s.opportunity_id, s.created_at,
+      select p.id, p.status, p.failure, p.confidence, p.detection, p.actors, p.interpretation, p.context, p.metadata,
+             p.network_id, n.title as network_title, p.opportunity_id, p.created_at,
              u.id as member_id, u.name as member_name, u.avatar as member_avatar,
              i.id as intent_id, coalesce(nullif(i.summary, ''), i.payload) as intent_text,
              c.id as contact_id, c.email, c.name, c.organization, c.title
-      from intro_suggestions s
-      join intents i on i.id = s.intent_id
+      from opportunity_proposals p
+      join intents i on i.id = p.intent_id
       join users u on u.id = i.user_id
-      join contacts c on c.id = s.contact_id
-      join networks n on n.id = s.network_id
-      where s.introducer_user_id = ${introducerUserId}
-        ${id ? sql`and s.id = ${id}` : sql`
-        and (s.status in ('open', 'waking', 'failed') or (s.status = 'woken' and s.updated_at > now() - interval '7 days'))
-        and (s.status <> 'open' or (i.archived_at is null and (i.status is null or i.status = 'active') and c.matched_user_id is null))`}
-      order by (s.status = 'open') desc, s.score desc
+      join contacts c on c.id = p.contact_id
+      join networks n on n.id = p.network_id
+      where p.introducer_user_id = ${introducerUserId}
+        ${id ? sql`and p.id = ${id}` : sql`
+        and p.status in ('proposed', 'opening', 'failed')
+        and c.excluded_at is null and c.matched_user_id is null
+        and (p.status <> 'proposed' or (i.archived_at is null and (i.status is null or i.status = 'active')))`}
+      order by (p.status = 'proposed') desc, p.confidence desc
       limit 50
     `);
-    return rowsOf(result).map((r) => ({
-      id: String(r.id),
-      status: String(r.status) as IntroSuggestionStatus,
-      failure: (r.failure as string | null) ?? null,
-      score: Number(r.score),
-      intentLine: String(r.intent_line),
-      contactLine: String(r.contact_line),
-      draft: String(r.draft),
-      networkId: String(r.network_id),
-      networkTitle: String(r.network_title),
-      opportunityId: (r.opportunity_id as string | null) ?? null,
-      createdAt: new Date(String(r.created_at)),
-      member: {
-        userId: String(r.member_id), name: String(r.member_name), avatar: (r.member_avatar as string | null) ?? null,
-        intentId: String(r.intent_id), intentText: String(r.intent_text),
-      },
-      contact: {
-        id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
-        organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
-      },
-    }));
+    return rowsOf(result).map((r) => {
+      const metadata = r.metadata as { introducer: { context: string }; card: { member: string; contact: string } };
+      return {
+        id: String(r.id),
+        status: String(r.status) as OpportunityProposalStatus,
+        failure: (r.failure as string | null) ?? null,
+        confidence: Number(r.confidence),
+        detection: r.detection as Record<string, unknown>,
+        actors: r.actors as OpportunityProposalActor[],
+        interpretation: r.interpretation as Record<string, unknown>,
+        context: r.context as Record<string, unknown>,
+        card: metadata.card,
+        draft: metadata.introducer.context,
+        networkId: String(r.network_id),
+        networkTitle: String(r.network_title),
+        opportunityId: (r.opportunity_id as string | null) ?? null,
+        createdAt: new Date(String(r.created_at)),
+        member: {
+          userId: String(r.member_id), name: String(r.member_name), avatar: (r.member_avatar as string | null) ?? null,
+          intentId: String(r.intent_id), intentText: String(r.intent_text),
+        },
+        contact: {
+          id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
+          organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+        },
+      };
+    });
   }
 
-  async setSuggestion(id: string, patch: Partial<{
-    status: IntroSuggestionStatus; failure: string | null; seatUserId: string; opportunityId: string;
-  }>): Promise<void> {
-    await db.update(introSuggestions).set({ ...patch, updatedAt: new Date() }).where(eq(introSuggestions.id, id));
+  async setProposal(id: string, patch: Partial<{ status: OpportunityProposalStatus; failure: string | null }>): Promise<void> {
+    await db.update(opportunityProposals).set({ ...patch, updatedAt: new Date() }).where(eq(opportunityProposals.id, id));
   }
 
-  /** Move a suggestion from one status to another; false when it was not in `from`. */
-  async claimSuggestion(id: string, introducerUserId: string, from: IntroSuggestionStatus[], to: IntroSuggestionStatus): Promise<boolean> {
-    const rows = await db.update(introSuggestions)
+  /** Opened: the contact's actor gets its seat, the proposal keeps the intro that was sent, and links the opportunity. */
+  async markOpened(id: string, seat: { userId: string; intentId: string }, context: string, opportunityId: string): Promise<void> {
+    await db.execute(sql`
+      update opportunity_proposals set
+        actors = jsonb_set(jsonb_set(actors, '{1,userId}', to_jsonb(${seat.userId}::text)), '{1,intent}', to_jsonb(${seat.intentId}::text)),
+        metadata = jsonb_set(metadata, '{introducer,context}', to_jsonb(${context}::text)),
+        status = 'opened', failure = null, opportunity_id = ${opportunityId}, updated_at = now()
+      where id = ${id}
+    `);
+  }
+
+  /** Move a proposal from one status to another; false when it was not in `from`. */
+  async claimProposal(id: string, introducerUserId: string, from: OpportunityProposalStatus[], to: OpportunityProposalStatus): Promise<boolean> {
+    const rows = await db.update(opportunityProposals)
       .set({ status: to, failure: null, updatedAt: new Date() })
       .where(and(
-        eq(introSuggestions.id, id),
-        eq(introSuggestions.introducerUserId, introducerUserId),
-        inArray(introSuggestions.status, from),
+        eq(opportunityProposals.id, id),
+        eq(opportunityProposals.introducerUserId, introducerUserId),
+        inArray(opportunityProposals.status, from),
       ))
-      .returning({ id: introSuggestions.id });
+      .returning({ id: opportunityProposals.id });
     return rows.length > 0;
+  }
+
+  // ─── contacts list ─────────────────────────────────────────────────────────
+
+  /** The owner's contacts, filtered and searched, with how many proposals each has waiting. */
+  async listContacts(ownerUserId: string, options: { q?: string; filter: ContactFilter; limit: number; offset: number }): Promise<{ rows: ContactListRow[]; total: number }> {
+    const q = options.q?.trim();
+    const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
+    const where = sql`c.owner_user_id = ${ownerUserId}
+      ${like ? sql`and (c.name ilike ${like} or c.email ilike ${like} or c.organization ilike ${like} or c.title ilike ${like})` : sql``}
+      ${options.filter === 'not_on_index' ? sql`and c.matched_user_id is null and c.excluded_at is null`
+        : options.filter === 'on_index' ? sql`and c.matched_user_id is not null`
+          : options.filter === 'excluded' ? sql`and c.excluded_at is not null` : sql``}`;
+    const [count] = rowsOf(await db.execute(sql`select count(*)::int as n from contacts c where ${where}`));
+    const result = await db.execute(sql`
+      select c.id, c.email, c.name, c.organization, c.title, c.source,
+             c.matched_user_id is not null as on_index, c.excluded_at is not null as excluded,
+             (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals
+      from contacts c
+      where ${where}
+      order by proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc
+      limit ${options.limit} offset ${options.offset}
+    `);
+    return {
+      total: Number(count?.n ?? 0),
+      rows: rowsOf(result).map((r) => ({
+        id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
+        organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+        source: String(r.source), onIndex: Boolean(r.on_index), excluded: Boolean(r.excluded), proposals: Number(r.proposals),
+      })),
+    };
+  }
+
+  /** Never suggest this contact (or allow it again). Excluding also takes their waiting proposals off the desk. */
+  async setExcluded(ownerUserId: string, contactId: string, excluded: boolean): Promise<boolean> {
+    const rows = await db.update(contacts)
+      .set({ excludedAt: excluded ? new Date() : null })
+      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId)))
+      .returning({ id: contacts.id });
+    if (!rows.length) return false;
+    if (excluded) {
+      await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: new Date() })
+        .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
+    }
+    return true;
+  }
+
+  /** Delete every contact the owner imported, and the proposals made from them. Opened introductions stay. */
+  async deleteContacts(ownerUserId: string): Promise<number> {
+    const rows = await db.delete(contacts).where(eq(contacts.ownerUserId, ownerUserId)).returning({ id: contacts.id });
+    return rows.length;
   }
 
   /** Whether the introducer can still see this intent in this network. */
@@ -427,14 +527,14 @@ export class IntroducerDatabaseAdapter {
              intro.name as introducer_name, mu.name as member_name,
              coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
-      from intro_suggestions s
+      from opportunity_proposals s
       join opportunities o on o.id = s.opportunity_id
-      join users seat on seat.id = s.seat_user_id and not seat.email_verified and seat.deleted_at is null
+      join users seat on seat.id = s.actors->1->>'userId' and not seat.email_verified and seat.deleted_at is null
       join contacts c on c.id = s.contact_id
       join users intro on intro.id = s.introducer_user_id
       join intents mi on mi.id = s.intent_id
       join users mu on mu.id = mi.user_id
-      where s.status = 'woken'
+      where s.status = 'opened'
         and o.metadata->>'introOutreachAt' is null
         and exists (
           select 1 from opportunity_events e
@@ -469,9 +569,9 @@ export class IntroducerDatabaseAdapter {
   async seatsToScrub(limit: number): Promise<{ opportunityId: string; seatUserId: string }[]> {
     const result = await db.execute(sql`
       select o.id as opportunity_id, seat.id as seat_id
-      from intro_suggestions s
+      from opportunity_proposals s
       join opportunities o on o.id = s.opportunity_id and o.status in ('rejected', 'expired')
-      join users seat on seat.id = s.seat_user_id and not seat.email_verified and seat.deleted_at is null
+      join users seat on seat.id = s.actors->1->>'userId' and not seat.email_verified and seat.deleted_at is null
       where o.metadata->>'introSeatScrubbedAt' is null
         and not exists (
           select 1 from opportunities o2

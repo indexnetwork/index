@@ -10,7 +10,7 @@ import { useCompact } from "@/hooks/useCompact";
 import { authClient } from "@/lib/auth-client";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
-import { CONTACT_SCOPES, createIntroducerService, type IntroducerStatus, type IntroductionProgress, type IntroductionPhase, type PairSuggestion } from "@/services/introducer";
+import { CONTACT_SCOPES, createIntroducerService, type ContactEntry, type ContactFilter, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
@@ -18,6 +18,8 @@ const logger = log.page.from("introduce");
 
 const POLL_MS = 5000;
 const MAX_CONTEXT = 2000;
+
+type Service = ReturnType<typeof createIntroducerService>;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
 
@@ -60,117 +62,105 @@ function reached(p: IntroductionProgress): number {
   return 2; // talking, or ended while talking (no fit / quiet)
 }
 
-function ProgressPanel({ runs, activeId, setActiveId, minimized, setMinimized, onDismiss }: {
-  runs: IntroductionProgress[];
-  activeId: string | null;
-  setActiveId: (id: string) => void;
-  minimized: boolean;
-  setMinimized: (v: boolean) => void;
-  onDismiss: (id: string) => void;
-}) {
-  const run = runs.find((r) => r.opportunityId === activeId) ?? runs[0];
-  if (!run) return null;
-  const live = runs.filter((r) => !isFinal(r)).length;
-
-  if (minimized) {
-    return (
-      <button type="button" className="idk idk-mini" onClick={() => setMinimized(false)}>
-        <span className={`idk-bot ${live ? "think" : "ok"}`} style={{ width: 14, height: 14 }} />
-        {live ? `${live} INTRO${live > 1 ? "S" : ""} IN PROGRESS · OPEN` : "ALL DONE · OPEN"}
-      </button>
-    );
-  }
-
-  const A = first(run.a.name), B = first(run.b.name);
+/** One introduction you opened, in the running column: where it is, never how. */
+function RunCard({ run, fresh }: { run: IntroductionProgress; fresh: boolean }) {
   const done = isFinal(run);
   const lit = reached(run);
   const ended = run.phase === "no_fit" || run.phase === "quiet";
   return (
-    <div className="idk idk-panel" role="status" aria-live="polite">
-      <div className="idk-tb">
-        <button type="button" className="box" title="Minimize" aria-label="minimize" onClick={() => setMinimized(true)} />
-        <span>{done ? "Introduction done" : "Both agents awake"}</span>
-        {runs.length > 1 && <span className="r">{runs.length} RUNNING</span>}
+    <div className={`idk-run${done ? " done" : ""}${fresh ? " fresh" : ""}`}>
+      <div className="idk-run-head">
+        <span className={`idk-bot ${done ? (run.phase === "met" ? "ok" : "off") : "think"}`} style={{ width: 14, height: 14 }} />
+        <b>{first(run.a.name)} ⇄ {first(run.b.name)}</b>
+        <span className="idk-faint">{since(run.createdAt)}</span>
       </div>
-      {runs.length > 1 && (
-        <div className="idk-tabs">
-          {runs.map((r) => (
-            <button key={r.opportunityId} type="button" aria-pressed={r.opportunityId === run.opportunityId} onClick={() => setActiveId(r.opportunityId)}>
-              <span className={`d ${r.phase === "met" ? "f" : isFinal(r) ? "x" : ""}`} />{first(r.a.name)} ⇄ {first(r.b.name)}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="idk-pbody">
-        <div className="idk-big">{A} ⇄ {B}</div>
-        <div className="idk-dim" style={{ fontSize: 12 }}>{PHASE_LABEL[run.phase]} · started {since(run.createdAt)} ago</div>
-        <ol className="idk-track" aria-label="Introduction status">
-          {TRACK.map((stop, i) => {
-            const on = i < lit;
-            const here = i === lit - 1;
-            const cls = on ? (here && ended ? "x" : here && !done ? "cur" : "on") : "";
-            return <li key={stop} className={cls}><i />{here && ended ? PHASE_LABEL[run.phase].toLowerCase() : stop}</li>;
-          })}
-        </ol>
-        <div className="idk-wait">{phaseLine(run)}</div>
-        <div className="idk-foot">
-          <span>🔒 You see where it ends up, never what the agents say.</span>
-          {done && <button type="button" className="idk-btn small" onClick={() => onDismiss(run.opportunityId)}>Dismiss</button>}
-        </div>
-      </div>
+      <ol className="idk-track" aria-label={`Status: ${PHASE_LABEL[run.phase]}`}>
+        {TRACK.map((stop, i) => {
+          const on = i < lit;
+          const here = i === lit - 1;
+          const cls = on ? (here && ended ? "x" : here && !done ? "cur" : "on") : "";
+          return <li key={stop} className={cls}><i />{here && ended ? PHASE_LABEL[run.phase].toLowerCase() : stop}</li>;
+        })}
+      </ol>
+      <div className="idk-run-line">{phaseLine(run)}</div>
     </div>
   );
 }
 
-function PairCard({ pair, run, onWake, onSkip, onShow }: {
-  pair: PairSuggestion;
-  run?: IntroductionProgress;
-  onWake: (pair: PairSuggestion, context: string) => Promise<void>;
-  onSkip: (pair: PairSuggestion) => void;
-  onShow: (id: string) => void;
+function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null }) {
+  const live = runs.filter((r) => !isFinal(r));
+  const done = runs.filter(isFinal);
+  return (
+    <aside className="idk-col idk-running" aria-live="polite">
+      <div className="idk-col-head">
+        <span>RUNNING</span>
+        <span className="idk-faint">{live.length + opening.length || ""}</span>
+      </div>
+      {opening.map((p) => (
+        <div key={p.id} className="idk-run">
+          <div className="idk-run-head">
+            <span className="idk-bot think" style={{ width: 14, height: 14 }} />
+            <b>{first(p.member.name)} ⇄ {first(p.contact.name)}</b>
+          </div>
+          <div className="idk-run-line">Looking {first(p.contact.name)} up and seating their agent. This takes a minute or two.</div>
+        </div>
+      ))}
+      {live.map((r) => <RunCard key={r.opportunityId} run={r} fresh={r.opportunityId === freshId} />)}
+      {!live.length && !opening.length && (
+        <div className="idk-run-empty">Nothing running. Wake a pair and its agents show up here.</div>
+      )}
+      {done.length > 0 && (
+        <>
+          <div className="idk-col-head sub"><span>DONE</span><span className="idk-faint">{done.filter((r) => r.phase === "met").length} met · {done.length - done.filter((r) => r.phase === "met").length} not</span></div>
+          {done.map((r) => <RunCard key={r.opportunityId} run={r} fresh={false} />)}
+        </>
+      )}
+      <div className="idk-run-foot">🔒 You see where an introduction ends up, never what the agents say.</div>
+    </aside>
+  );
+}
+
+function ProposalCard({ proposal, onOpen, onSkip }: {
+  proposal: OpportunityProposal;
+  onOpen: (p: OpportunityProposal, context: string) => Promise<void>;
+  onSkip: (p: OpportunityProposal) => void;
 }) {
-  const [text, setText] = useState(pair.draft);
+  const [text, setText] = useState(proposal.draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const waking = pair.status === "waking" || (pair.status === "woken" && !run);
+  const opening = proposal.status === "opening";
 
   return (
-    <div className={`idk-card${run && isFinal(run) ? " done" : ""}`}>
+    <div className={`idk-card${opening ? " opening" : ""}`}>
       <div className="idk-pair">
         <div className="idk-who">
-          <UserAvatar id={pair.member.userId} name={pair.member.name} avatar={pair.member.avatar} size={30} />
+          <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={pair.member.intentText}><b>{first(pair.member.name)}</b> {pair.member.line}</div>
-            <small>{pair.networkTitle}</small>
+            <div className="idk-line" title={proposal.member.intentText}><b>{first(proposal.member.name)}</b> {proposal.member.line}</div>
+            <small>{proposal.networkTitle}</small>
           </div>
         </div>
         <div className="idk-link">⇄</div>
         <div className="idk-who">
-          <span className="idk-ghost" aria-hidden>{first(pair.contact.name).slice(0, 1).toUpperCase()}</span>
+          <span className="idk-ghost" aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={pair.contact.detail ?? undefined}><b>{first(pair.contact.name)}</b> {pair.contact.line}</div>
+            <div className="idk-line" title={proposal.contact.detail ?? undefined}><b>{first(proposal.contact.name)}</b> {proposal.contact.line}</div>
             <small>your contact<span className="idk-tag dash">not on Index</span></small>
           </div>
         </div>
       </div>
-      {run ? (
-        <button type="button" className="idk-woke" onClick={() => onShow(run.opportunityId)}>
-          <span className={`idk-bot ${isFinal(run) ? "ok" : "think"}`} style={{ width: 14, height: 14 }} />
-          {isFinal(run) ? "DONE" : "IN PROGRESS"} · {PHASE_LABEL[run.phase].toUpperCase()}
-          <span style={{ marginLeft: "auto" }}>SHOW ›</span>
-        </button>
-      ) : waking ? (
+      {opening ? (
         <div className="idk-woke" role="status">
           <span className="idk-bot think" style={{ width: 14, height: 14 }} />
-          WAKING · LOOKING UP {first(pair.contact.name).toUpperCase()} AND SEATING THEIR AGENT
+          WAKING · SEE RUNNING
         </div>
       ) : (
         <>
-          <label className="idk-label" htmlFor={`intro-${pair.id}`}>
+          <label className="idk-label" htmlFor={`intro-${proposal.id}`}>
             <span>YOUR INTRO · BOTH AGENTS READ THIS</span>
             <span>{text.length} / {MAX_CONTEXT}</span>
           </label>
-          <textarea id={`intro-${pair.id}`} value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
+          <textarea id={`intro-${proposal.id}`} value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
           <div className="idk-row">
             <button
               type="button"
@@ -179,16 +169,123 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
               onClick={() => {
                 setBusy(true);
                 setError(null);
-                onWake(pair, text.trim())
+                onOpen(proposal, text.trim())
                   .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't wake the agents"))
                   .finally(() => setBusy(false));
               }}
-            >{busy ? "Waking…" : pair.status === "failed" ? "Try again ▸" : "Wake both agents ▸"}</button>
-            <button type="button" className="idk-btn small" disabled={busy} onClick={() => onSkip(pair)}>Skip</button>
+            >{busy ? "Waking…" : proposal.status === "failed" ? "Try again ▸" : "Wake both agents ▸"}</button>
+            <button type="button" className="idk-btn small" disabled={busy} onClick={() => onSkip(proposal)}>Skip</button>
           </div>
-          {(error ?? pair.failure) && <div className="idk-error">{error ?? pair.failure}</div>}
+          {(error ?? proposal.failure) && <div className="idk-error">{error ?? proposal.failure}</div>}
         </>
       )}
+    </div>
+  );
+}
+
+const FILTERS: { key: ContactFilter; label: string }[] = [
+  { key: "all", label: "all" },
+  { key: "not_on_index", label: "not on Index" },
+  { key: "on_index", label: "on Index" },
+  { key: "excluded", label: "never suggest" },
+];
+
+/** Your imported contacts: search, see who's on Index, and say who never to suggest. */
+function Contacts({ service, status, onDeleted }: { service: Service; status: IntroducerStatus; onDeleted: () => void }) {
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<ContactFilter>("all");
+  const [rows, setRows] = useState<ContactEntry[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async (offset: number) => {
+    try {
+      const res = await service.contacts(q, filter, offset);
+      setTotal(res.total);
+      setRows((prev) => (offset === 0 ? res.contacts : [...(prev ?? []), ...res.contacts]));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't load contacts");
+    }
+  }, [service, q, filter]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void load(0), q ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [load, q]);
+
+  const toggle = async (c: ContactEntry) => {
+    const excluded = !c.excluded;
+    setRows((all) => all?.map((r) => (r.id === c.id ? { ...r, excluded, proposals: excluded ? 0 : r.proposals } : r)) ?? all);
+    try {
+      await service.setExcluded(c.id, excluded);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save");
+      void load(0);
+    }
+  };
+
+  const deleteAll = async () => {
+    if (!window.confirm(`Delete all ${status.contacts.total} contacts from Index? Pairs made from them go too. Introductions you already opened stay. You can read your contacts again later.`)) return;
+    setDeleting(true);
+    try {
+      await service.deleteContacts();
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't delete");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="idk-contacts">
+      <div className="idk-contacts-tools">
+        <input type="search" placeholder="Search name, company, email" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search contacts" />
+        <div className="idk-chips" role="tablist" aria-label="Filter contacts">
+          {FILTERS.map((f) => (
+            <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>
+          ))}
+        </div>
+      </div>
+      {error && <div className="idk-error">{error}</div>}
+      {rows === null ? (
+        <p className="idk-dim">loading contacts…</p>
+      ) : rows.length === 0 ? (
+        <div className="idk-empty">{q ? "No contact matches that." : filter === "excluded" ? "Nobody is on your never-suggest list." : "No contacts here."}</div>
+      ) : (
+        <>
+          <div className="idk-faint" style={{ fontSize: 11, margin: "0 0 6px" }}>{total} {total === 1 ? "contact" : "contacts"}</div>
+          <ul className="idk-clist">
+            {rows.map((c) => (
+              <li key={c.id} className={c.excluded ? "excluded" : ""}>
+                <span className="idk-ghost" aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
+                <div className="who">
+                  <b>{c.name}</b>
+                  <small>{c.detail ?? c.email}</small>
+                  {c.detail && <small className="idk-faint">{c.email}</small>}
+                </div>
+                <div className="tags">
+                  {c.onIndex ? <span className="idk-tag">on Index</span> : <span className="idk-tag dash">not on Index</span>}
+                  <span className="idk-faint">{c.source}</span>
+                  {c.proposals > 0 && <span className="idk-faint">{c.proposals} pair{c.proposals === 1 ? "" : "s"}</span>}
+                </div>
+                {!c.onIndex && (
+                  <button type="button" className="idk-btn small" onClick={() => void toggle(c)} aria-pressed={c.excluded}>
+                    {c.excluded ? "allow" : "never suggest"}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {rows.length < total && (
+            <button type="button" className="idk-btn small" style={{ marginTop: 10 }} onClick={() => void load(rows.length)}>show more</button>
+          )}
+        </>
+      )}
+      <div className="idk-contacts-foot">
+        <span>Synced from Google {status.contacts.lastImportAt ? `${since(status.contacts.lastImportAt)} ago` : "never"}. Only you see this list.</span>
+        <button type="button" className="idk-btn small danger" disabled={deleting} onClick={() => void deleteAll()}>{deleting ? "deleting…" : "Delete all contacts"}</button>
+      </div>
     </div>
   );
 }
@@ -243,18 +340,17 @@ export default function IntroducePage() {
   const compact = useCompact();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "contacts" ? "contacts" : "pairs";
 
   const [status, setStatus] = useState<IntroducerStatus | null>(null);
-  const [pairs, setPairs] = useState<PairSuggestion[] | null>(null);
+  const [proposals, setProposals] = useState<OpportunityProposal[] | null>(null);
   const [runs, setRuns] = useState<IntroductionProgress[]>([]);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [minimized, setMinimized] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [freshId, setFreshId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(params.get("error") ? "Google didn't connect. Use the Google account with the same email as your Index account." : null);
   const autoImported = useRef(false);
-  // Finished introductions stay on the panel for a week after they opened.
-  const [recentCutoff] = useState(() => Date.now() - 7 * 86400_000);
+  // Proposals opened from this page; when one's agents are up, it lights up in the running column.
+  const openingHere = useRef(new Set<string>());
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -264,10 +360,26 @@ export default function IntroducePage() {
     }
   }, [service]);
 
+  const refreshProposals = useCallback(async () => {
+    try {
+      const next = await service.proposals();
+      setProposals(next);
+      for (const id of [...openingHere.current]) {
+        if (next.some((p) => p.id === id && p.status === "opening")) continue;
+        openingHere.current.delete(id);
+        const runsNow = await service.introductions();
+        setRuns(runsNow);
+        setFreshId(runsNow[0]?.opportunityId ?? null);
+      }
+    } catch (err) {
+      logger.warn("proposals failed", { error: String(err) });
+    }
+  }, [service]);
+
   const load = useCallback(async () => {
     const s = await service.status();
     setStatus(s);
-    if (s.contacts.lastImportAt) setPairs(await service.pairs());
+    if (s.contacts.lastImportAt) setProposals(await service.proposals());
     await refreshRuns();
   }, [service, refreshRuns]);
 
@@ -289,7 +401,7 @@ export default function IntroducePage() {
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
   }, [load, isAuthenticated]);
 
-  // Back from Google with the contacts scope: import straight away, once.
+  // Back from Google with the contacts scope: read contacts straight away, once.
   useEffect(() => {
     if (!status || autoImported.current || params.get("connected") !== "1") return;
     autoImported.current = true;
@@ -297,14 +409,17 @@ export default function IntroducePage() {
     if (status.google.contactsScope) void doImport();
   }, [status, params, setParams, doImport]);
 
-  // While anything is still moving, keep the panel fresh.
-  const visibleRuns = runs.filter((r) => !dismissed.has(r.opportunityId) && (!isFinal(r) || new Date(r.createdAt).getTime() > recentCutoff));
-  const anyLive = visibleRuns.some((r) => !isFinal(r));
+  // Keep the page fresh while anything is moving: proposals being opened, agents talking.
+  const opening = (proposals ?? []).filter((p) => p.status === "opening");
+  const anyLive = opening.length > 0 || runs.some((r) => !isFinal(r));
   useEffect(() => {
     if (!anyLive) return;
-    const t = setInterval(() => void refreshRuns(), POLL_MS);
+    const t = setInterval(() => {
+      if (opening.length) void refreshProposals();
+      void refreshRuns();
+    }, POLL_MS);
     return () => clearInterval(t);
-  }, [anyLive, refreshRuns]);
+  }, [anyLive, opening.length, refreshProposals, refreshRuns]);
 
   const connect = () => {
     void authClient.linkSocial({
@@ -315,47 +430,24 @@ export default function IntroducePage() {
     });
   };
 
-  // Pairs you woke from this page; when one's agents are up, its progress opens.
-  const wakingHere = useRef(new Set<string>());
-  const refreshPairs = useCallback(async () => {
-    try {
-      const next = await service.pairs();
-      setPairs(next);
-      const woke = next.find((p) => wakingHere.current.has(p.id) && p.status !== "waking");
-      if (woke) {
-        wakingHere.current.delete(woke.id);
-        if (woke.opportunityId) {
-          setActiveId(woke.opportunityId);
-          setMinimized(false);
-        }
-      }
-    } catch (err) {
-      logger.warn("pairs failed", { error: String(err) });
-    }
-  }, [service]);
-
-  const wake = async (pair: PairSuggestion, context: string) => {
-    await service.wake(pair.id, context);
-    wakingHere.current.add(pair.id);
-    setPairs((all) => all?.map((p) => (p.id === pair.id ? { ...p, status: "waking", failure: null } : p)) ?? all);
+  const open = async (proposal: OpportunityProposal, context: string) => {
+    await service.open(proposal.id, context);
+    openingHere.current.add(proposal.id);
+    setProposals((all) => all?.map((p) => (p.id === proposal.id ? { ...p, status: "opening", failure: null } : p)) ?? all);
   };
 
-  const skip = (pair: PairSuggestion) => {
-    setPairs((all) => all?.filter((p) => p.id !== pair.id) ?? all);
-    service.skip(pair.id).catch((err: unknown) => logger.warn("skip failed", { error: String(err) }));
+  const skip = (proposal: OpportunityProposal) => {
+    setProposals((all) => all?.filter((p) => p.id !== proposal.id) ?? all);
+    service.skip(proposal.id).catch((err: unknown) => logger.warn("skip failed", { error: String(err) }));
   };
 
-  // A woken pair stays on the desk with its progress.
-  const runFor = (pair: PairSuggestion) => (pair.opportunityId ? runs.find((r) => r.opportunityId === pair.opportunityId) : undefined);
-  const shown = pairs ?? [];
+  const setView = (next: "pairs" | "contacts") => setParams((p) => {
+    if (next === "contacts") p.set("view", "contacts");
+    else p.delete("view");
+    return p;
+  }, { replace: true });
 
-  // Seating a contact takes up to a few minutes: watch it, then open its progress.
-  const wakingIds = shown.filter((p) => p.status === "waking").map((p) => p.id).join(",");
-  useEffect(() => {
-    if (!wakingIds) return;
-    const t = setInterval(() => void refreshPairs().then(refreshRuns), POLL_MS);
-    return () => clearInterval(t);
-  }, [wakingIds, refreshPairs, refreshRuns]);
+  const waiting = (proposals ?? []).filter((p) => p.status !== "opening");
   const ready = !!status?.contacts.lastImportAt;
 
   const desk = (
@@ -367,45 +459,56 @@ export default function IntroducePage() {
       ) : (
         <>
           <div className="idk-bar">
-            <span>{status.contacts.total} contacts · {status.contacts.total - status.contacts.onIndex} not on Index</span>
+            <div className="idk-views" role="tablist" aria-label="Introduce">
+              <button type="button" role="tab" aria-selected={view === "pairs"} onClick={() => setView("pairs")}>pairs</button>
+              <button type="button" role="tab" aria-selected={view === "contacts"} onClick={() => setView("contacts")}>contacts</button>
+            </div>
             <span className="sp" />
+            <span>{status.contacts.total} contacts · {status.contacts.total - status.contacts.onIndex} not on Index</span>
             <span className="idk-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt!)} ago`}</span>
           </div>
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
-          {pairs === null ? (
-            <p className="idk-dim">loading pairs…</p>
-          ) : shown.length === 0 ? (
-            <div className="idk-empty">
-              No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.
-            </div>
+          {view === "contacts" ? (
+            <Contacts
+              service={service}
+              status={status}
+              onDeleted={() => { setView("pairs"); setProposals(null); void load(); }}
+            />
           ) : (
-            shown.map((pair) => (
-              <PairCard key={pair.id} pair={pair} run={runFor(pair)} onWake={wake} onSkip={skip} onShow={(id) => { setActiveId(id); setMinimized(false); }} />
-            ))
+            <div className="idk-cols">
+              <section className="idk-col">
+                <div className="idk-col-head"><span>PAIRS YOU COULD INTRODUCE</span><span className="idk-faint">{waiting.length || ""}</span></div>
+                {proposals === null ? (
+                  <p className="idk-dim">loading pairs…</p>
+                ) : waiting.length === 0 ? (
+                  <div className="idk-empty">
+                    No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.
+                  </div>
+                ) : (
+                  waiting.map((p) => <ProposalCard key={p.id} proposal={p} onOpen={open} onSkip={skip} />)
+                )}
+              </section>
+              <Running runs={runs} opening={opening} freshId={freshId} />
+            </div>
           )}
         </>
       )}
-      <ProgressPanel
-        runs={visibleRuns}
-        activeId={activeId}
-        setActiveId={setActiveId}
-        minimized={minimized}
-        setMinimized={setMinimized}
-        onDismiss={(id) => setDismissed((d) => new Set(d).add(id))}
-      />
     </div>
   );
 
   // Signed out: sign in first, then come back here.
   if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
-  const count = shown.filter((p) => p.status === "open" || p.status === "failed").length;
+  const count = waiting.length;
+  const headStatus = !ready ? "connect your contacts to start"
+    : view === "contacts" ? `${status?.contacts.total ?? 0} contacts, private to you`
+      : `${count} pair${count === 1 ? "" : "s"} you could introduce`;
 
   if (plain) {
     return (
       <div className="ih-view pl">
-        <div className="pl-col">
-          <PageHead title="introduce" status={ready ? `${count} pair${count === 1 ? "" : "s"} you could introduce` : "connect your contacts to start"} />
+        <div className="pl-col idk-wide">
+          <PageHead title="introduce" status={headStatus} />
           <div className="pl-page">{desk}</div>
         </div>
       </div>
@@ -413,7 +516,7 @@ export default function IntroducePage() {
   }
 
   return (
-    <Stage width={760} height="min(880px, calc(100vh - 96px))">
+    <Stage width={1040} height="min(880px, calc(100vh - 96px))">
       <Window title="introduce" onClose={compact ? undefined : () => navigate("/")} style={{ height: "100%" }}>
         <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
           {desk}

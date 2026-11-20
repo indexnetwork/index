@@ -141,6 +141,8 @@ export const contacts = pgTable('contacts', {
   source: text('source').notNull(),
   matchedUserId: text('matched_user_id').references(() => users.id, { onDelete: 'set null' }),
   embedding: vector('embedding', { dimensions: 2000 }),
+  /** Set when the owner said never to suggest this contact. */
+  excludedAt: timestamp('excluded_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -151,42 +153,53 @@ export const contacts = pgTable('contacts', {
 
 export type Contact = typeof contacts.$inferSelect;
 
-export type IntroSuggestionStatus = 'open' | 'skipped' | 'waking' | 'woken' | 'failed';
+export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed';
 
 /**
- * A pair the introducer matcher found for one member: someone's public intent
- * in a network the member shares, and one of the member's contacts who is not
- * on Index. Written in the background when the intent appears or the contacts
- * sync; the Intro Desk only reads them. Waking one seats the contact through
- * the member (never through a network) and records the opportunity.
+ * An opportunity nobody has opened yet, in the opportunity's own format:
+ * `detection`, `actors`, `interpretation`, `context`, `confidence` and
+ * `metadata.introducer` mean what they mean on `opportunities`. It lives here
+ * because an opportunity row is born negotiating with two seats, and a
+ * proposal's second party (the introducer's contact) has no seat yet: its
+ * actor carries `contactId` and `via`, not a `userId`. Opening a proposal
+ * seats the contact and writes the real opportunity, linked by
+ * `opportunityId`. Only the introducer ever reads a proposal.
  */
-export const introSuggestions = pgTable('intro_suggestions', {
+export const opportunityProposals = pgTable('opportunity_proposals', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   introducerUserId: text('introducer_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
   contactId: text('contact_id').notNull().references(() => contacts.id, { onDelete: 'cascade' }),
-  /** The network where the introducer sees the intent. */
   networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  score: doublePrecision('score').notNull(),
-  /** Completes "<member first name> …": what they need. */
-  intentLine: text('intent_line').notNull(),
-  /** Completes "<contact first name> …": who they are, for this pair. */
-  contactLine: text('contact_line').notNull(),
-  /** A starting intro the introducer edits before waking. */
-  draft: text('draft').notNull(),
-  status: text('status').$type<IntroSuggestionStatus>().notNull().default('open'),
-  /** Why a wake failed, in the introducer's terms. */
+  detection: jsonb('detection').$type<OpportunityDetection>().notNull(),
+  actors: jsonb('actors').$type<OpportunityProposalActor[]>().notNull(),
+  interpretation: jsonb('interpretation').$type<OpportunityInterpretation>().notNull(),
+  context: jsonb('context').$type<OpportunityContext>().notNull(),
+  confidence: numeric('confidence').notNull(),
+  /** `introducer: { userId, context }` (the draft intro) and `card: { member, contact }` (the two lines). */
+  metadata: jsonb('metadata').$type<OpportunityProposalMetadata>().notNull(),
+  status: text('status').$type<OpportunityProposalStatus>().notNull().default('proposed'),
+  /** Why opening failed, in the introducer's terms. */
   failure: text('failure'),
-  seatUserId: text('seat_user_id').references(() => users.id, { onDelete: 'set null' }),
   opportunityId: text('opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  pairUnique: uniqueIndex('intro_suggestions_pair_unique').on(table.introducerUserId, table.intentId, table.contactId),
-  introducerStatusIdx: index('intro_suggestions_introducer_status_idx').on(table.introducerUserId, table.status),
+  pairUnique: uniqueIndex('opportunity_proposals_pair_unique').on(table.introducerUserId, table.intentId, table.contactId),
+  introducerStatusIdx: index('opportunity_proposals_introducer_status_idx').on(table.introducerUserId, table.status),
 }));
 
-export type IntroSuggestion = typeof introSuggestions.$inferSelect;
+/** A proposal's party: a member seated in a network, or a contact reached `via` the introducer. */
+export type OpportunityProposalActor =
+  | { role: 'party'; userId: string; networkId: string; intent: string }
+  | { role: 'party'; contactId: string; via: string; userId?: string; intent?: string };
+
+export interface OpportunityProposalMetadata {
+  introducer: { userId: string; context: string };
+  card: { member: string; contact: string };
+}
+
+export type OpportunityProposal = typeof opportunityProposals.$inferSelect;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)

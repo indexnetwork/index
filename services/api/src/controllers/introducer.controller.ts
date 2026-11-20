@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { introducerService } from '../services/introducer.service';
-import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
@@ -10,11 +10,17 @@ const logger = log.controller.from('introducer');
 
 type RouteParams = Record<string, string>;
 
-const WAKE_BODY = z.object({ context: z.string().trim().min(1).max(2000) });
+const OPEN_BODY = z.object({ context: z.string().trim().min(1).max(2000) });
 
-const WAKE_REFUSALS = {
+const CONTACTS_QUERY = z.object({
+  q: z.string().max(100).optional(),
+  filter: z.enum(['all', 'not_on_index', 'on_index', 'excluded']).default('all'),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+});
+
+const OPEN_REFUSALS = {
   not_found: { status: 404, error: 'Not found' },
-  busy: { status: 409, error: 'Already woken' },
+  busy: { status: 409, error: 'Already opened' },
   gone: { status: 409, error: "That intent isn't public in a network you share any more" },
 } as const;
 
@@ -53,15 +59,18 @@ export class IntroducerController {
     return Response.json({ total: result.total, onIndex: result.onIndex });
   }
 
-  /** GET /introducer/pairs — stored suggestions: a member's need ⇄ one of your contacts not on Index. */
-  @Get('/pairs')
+  /**
+   * GET /introducer/proposals — opportunities nobody has opened yet, in the
+   * opportunity format: a member's need ⇄ one of your contacts not on Index.
+   */
+  @Get('/proposals')
   @UseGuards(AuthGuard)
-  async pairs(_req: Request, user: AuthenticatedUser) {
-    return Response.json({ pairs: await introducerService.suggestions(user.id) });
+  async proposals(_req: Request, user: AuthenticatedUser) {
+    return Response.json({ proposals: await introducerService.proposals(user.id) });
   }
 
-  /** POST /introducer/pairs/:id/skip — hide a suggestion. */
-  @Post('/pairs/:id/skip')
+  /** POST /introducer/proposals/:id/skip — take a proposal off the desk. */
+  @Post('/proposals/:id/skip')
   @UseGuards(AuthGuard)
   async skip(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = z.string().uuid().safeParse(params?.id);
@@ -71,20 +80,47 @@ export class IntroducerController {
   }
 
   /**
-   * POST /introducer/pairs/:id/wake — `{ context }`. Seats the contact through
-   * you and wakes both agents in the background; poll GET /introducer/pairs.
+   * POST /introducer/proposals/:id/open — `{ context }`. Seats the contact
+   * through you and wakes both agents in the background; poll the proposals.
    */
-  @Post('/pairs/:id/wake')
+  @Post('/proposals/:id/open')
   @UseGuards(AuthGuard)
-  async wake(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async open(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = z.string().uuid().safeParse(params?.id);
     if (!id.success) return Response.json({ error: 'Invalid id' }, { status: 400 });
-    const body = WAKE_BODY.safeParse(await req.json().catch(() => null));
+    const body = OPEN_BODY.safeParse(await req.json().catch(() => null));
     if (!body.success) return Response.json({ error: 'Write an intro of up to 2000 characters' }, { status: 400 });
     const outcome = await introducerService.wake(user.id, id.data, body.data.context.trim());
     if (outcome.kind === 'ok') return Response.json({ ok: true }, { status: 202 });
-    const refusal = WAKE_REFUSALS[outcome.kind];
+    const refusal = OPEN_REFUSALS[outcome.kind];
     return Response.json({ error: refusal.error }, { status: refusal.status });
+  }
+
+  /** GET /introducer/contacts?q=&filter=&offset= — your imported contacts, 50 at a time. */
+  @Get('/contacts')
+  @UseGuards(AuthGuard)
+  async contacts(req: Request, user: AuthenticatedUser) {
+    const query = CONTACTS_QUERY.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+    if (!query.success) return Response.json({ error: 'Invalid query' }, { status: 400 });
+    return Response.json(await introducerService.contacts(user.id, query.data));
+  }
+
+  /** POST /introducer/contacts/:id/exclude — `{ excluded }`: never propose this contact, or allow it again. */
+  @Post('/contacts/:id/exclude')
+  @UseGuards(AuthGuard)
+  async exclude(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = z.string().uuid().safeParse(params?.id);
+    const body = z.object({ excluded: z.boolean() }).safeParse(await req.json().catch(() => null));
+    if (!id.success || !body.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+    if (!await introducerService.setExcluded(user.id, id.data, body.data.excluded)) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ ok: true });
+  }
+
+  /** DELETE /introducer/contacts — delete every imported contact and the proposals made from them. */
+  @Delete('/contacts')
+  @UseGuards(AuthGuard)
+  async deleteContacts(_req: Request, user: AuthenticatedUser) {
+    return Response.json({ deleted: await introducerService.deleteContacts(user.id) });
   }
 
   /** GET /introducer/introductions — introductions the member opened, with progress. */
