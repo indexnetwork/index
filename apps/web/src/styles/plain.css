@@ -1443,6 +1443,14 @@
   flex-direction: row;
   background: #fff;
   color: #000;
+  /* The same body as every plain page: Home's 880px column less its 28px
+     padding each side, centered, with black edges like the list divider. */
+  width: 100%;
+  max-width: calc(880px - 56px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  border-left: 2px solid #000;
+  border-right: 2px solid #000;
 }
 .ih .ih-chat.solo {
   grid-template-columns: minmax(0, 1fr);
