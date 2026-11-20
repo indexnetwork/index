@@ -259,15 +259,14 @@ function Contacts({ service, status, onDeleted }: { service: Service; status: In
             {rows.map((c) => (
               <li key={c.id} className={c.excluded ? "excluded" : ""}>
                 <span className="idk-ghost" aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
-                <div className="who">
+                <div className="who" title={c.source === "saved" ? "Saved in your Google contacts" : "Someone you've emailed (Google's \"Other contacts\")"}>
                   <b>{c.name}</b>
                   <small>{c.detail ?? c.email}</small>
                   {c.detail && <small className="idk-faint">{c.email}</small>}
                 </div>
                 <div className="tags">
-                  {c.onIndex ? <span className="idk-tag">on Index</span> : <span className="idk-tag dash">not on Index</span>}
-                  <span className="idk-faint">{c.source}</span>
-                  {c.proposals > 0 && <span className="idk-faint">{c.proposals} pair{c.proposals === 1 ? "" : "s"}</span>}
+                  {c.onIndex && <span className="idk-tag">on Index</span>}
+                  {c.proposals > 0 && <span className="idk-faint">{c.proposals} pair{c.proposals === 1 ? "" : "s"} waiting</span>}
                 </div>
                 {!c.onIndex && (
                   <button type="button" className="idk-btn small" onClick={() => void toggle(c)} aria-pressed={c.excluded}>
