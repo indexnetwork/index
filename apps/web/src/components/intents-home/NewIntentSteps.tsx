@@ -132,7 +132,7 @@ export function Recovery({ fields, feedback, onSubmit }: { fields: RecoveryField
             <div key={field.id} className="pl-ni-field">
               <div className="pl-ni-label">{field.label}</div>
               {/* Answers as on Home's questions: radios for one answer, checkboxes for several; the last one is a line to write in. */}
-              <div className="pl-q-options">
+              <div className="pl-q-options pl-chips">
                 {field.options?.map((option) => (
                   <label key={option.label}>
                     <input type={type} name={`ni-${field.id}`} checked={(picked[field.id] ?? []).includes(option.label)} onChange={() => toggle(field, option.label)} /> {option.label}

@@ -276,7 +276,7 @@ function Picks({ suggestions, onCreate, onSkip }: {
   return (
     <AgentSays>
       {PICKS_PROMPT}
-      <div className="pl-q-options">
+      <div className="pl-q-options pl-chips">
         {suggestions.map((s, i) => (
           <label key={s.text}>
             <input type="checkbox" checked={picked.includes(i)} onChange={() => toggle(i)} /> {s.text}

@@ -2972,3 +2972,74 @@ button.pl-more:hover,
   box-shadow: none;
   transform: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Answers as chips, wrapping in a row. Pick one: a pill with a round dot.
+   Pick several: a square-cornered chip with a box. The picked chip turns
+   orange-tinted with a black edge. "something else" is a chip you type in.
+   --------------------------------------------------------------------------- */
+.pl-q-options.pl-chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pl-chips > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px 11px 3px 8px;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.1s ease, background-color 0.1s ease;
+}
+.pl-chips > label:has(input[type="radio"]) {
+  border-radius: 999px;
+}
+.pl-chips > label:has(input[type="checkbox"]) {
+  border-radius: 3px;
+}
+.pl-chips > label:hover {
+  border-color: #000;
+}
+.pl-chips > label:has(input:checked) {
+  border-color: #000;
+  background: #fff1dc;
+  box-shadow: inset 0 0 0 1px #000;
+}
+.pl-chips > label:focus-within {
+  outline: 2px solid #ff8a00;
+  outline-offset: 1px;
+}
+.pl-chips input[type="radio"],
+.pl-chips input[type="checkbox"] {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #ff8a00;
+}
+.ih .pl .pl-q-options.pl-chips .pl-ni-else input[type="text"],
+.ih .pl .pl-q-options.pl-chips .pl-ni-else input[type="text"]:focus {
+  width: 150px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 400 13px "IBM Plex Sans", sans-serif;
+}
+/* a question with no options keeps its answer box, full width */
+.pl-q-options.pl-chips > input[type="text"]:only-child {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+}
+/* chips sit tight under the question, and send follows close behind */
+.pl-q-options.pl-chips + .pl-actions {
+  margin-top: 8px;
+}
