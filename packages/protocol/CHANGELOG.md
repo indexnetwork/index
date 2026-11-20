@@ -16,6 +16,7 @@
 - `OpportunityCard` gains `priorOpportunity` (an earlier accepted opportunity, or a pending one the viewer already said yes to) and `peerChat` (the viewer's existing direct chat with the counterpart), two separate facts. The card presenter gets the prior opportunity and no longer words a known contact as new. Types `PriorOpportunity` and `PeerChat` are exported.
 - `OpportunityCardsDatabase` and `OpportunityControllerDatabase` require `findPriorOpportunities(viewerId, peerIds, excludeOpportunityIds?)` and `findPeerChats(viewerId, peerIds)`, both batched and read-only.
 - `OpportunityDetection.source` gains `'introducer'`, stamped on opportunities a third party opens.
+- `OpportunityActor.via`: a participant reached through the member who introduced them, with no network. `OpportunityActor.networkId` is now optional; an actor carries one of the two. This is how an introduction reaches someone outside Index: one hop through a person, never through a network.
 - Protocol agent requests to OpenRouter carry `HTTP-Referer` and `X-Title` headers, so their spend is attributed apart from the hosted agent's, and a `trace` and `metadata` (`service: "protocol"`, `operation`) named by the agent key (for example `intentInferrer` or `chat`).
 
 ### Fixed

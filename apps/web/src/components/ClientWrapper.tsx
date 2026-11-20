@@ -14,7 +14,7 @@ import UsernamePrompt from "@/components/UsernamePrompt";
 import AppFrame from "@/components/intents-home/AppFrame";
 import { IntentsDataProvider } from "@/contexts/IntentsDataContext";
 
-const appRoutes = ['/', '/i', '/intents', '/u', '/networks', '/chat', '/negotiations', '/settings', '/profile', '/agents', '/onboarding'];
+const appRoutes = ['/', '/i', '/intents', '/u', '/networks', '/chat', '/negotiations', '/settings', '/profile', '/agents', '/onboarding', '/introduce'];
 // /l is the chrome-free web invite join.
 const bareRoutes = ['/', '/l', '/login', '/download', '/setup', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/communities', '/for-networks', '/cli-auth', '/s', '/mcp'];
 

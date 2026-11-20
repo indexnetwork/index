@@ -18,7 +18,7 @@ import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 
-type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
+type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
 function railKey(pathname: string, search: string, me?: string, username?: string | null): RailKey {
@@ -31,6 +31,7 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
     const tab = new URLSearchParams(search).get("tab");
     return tab === "profile" ? "profile" : "settings";
   }
+  if (pathname.startsWith("/introduce")) return "introduce";
   if (pathname.startsWith("/networks")) return "networks";
   if (pathname.startsWith("/agents")) return "settings";
   if (pathname.startsWith("/negotiations")) return "settings";
@@ -77,6 +78,7 @@ function AppRail({ here }: { here: RailKey }) {
         </ul>
         {item("intents", "intents", "/intents", waiting)}
         {item("chat", "conversations", "/chat", unread)}
+        {item("introduce", "introduce", "/introduce")}
 
         <div className="ih-foot">
           <ConnectAgent />

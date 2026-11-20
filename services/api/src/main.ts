@@ -25,6 +25,7 @@ import { ConversationController } from './controllers/conversation.controller';
 import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { PersonalAgentController } from './controllers/personal-agent.controller';
+import { IntroducerController } from './controllers/introducer.controller';
 import { ConversationService } from './services/conversation.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -36,10 +37,12 @@ import { auth } from './lib/betterauth/auth.instance';
 import { API_URL, WEB_APP_URL } from './lib/betterauth/betterauth';
 // Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
+import { introducerCron } from './crons/introducer.cron';
 import { startMessageEmails } from './lib/email/message-email.job';
 import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
 
 opportunityExpirationCron.start();
+introducerCron.start();
 startMessageEmails();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -104,6 +107,7 @@ controllerInstances.set(ConversationController, new ConversationController(conve
 controllerInstances.set(EventsController, new EventsController(conversationService));
 controllerInstances.set(PersonalAgentController, new PersonalAgentController(conversationService));
 controllerInstances.set(AgentController, new AgentController());
+controllerInstances.set(IntroducerController, new IntroducerController());
 controllerInstances.set(DebugController, new DebugController());
 controllerInstances.set(DocsController, new DocsController());
 controllerInstances.set(ScrapeController, new ScrapeController());
@@ -233,6 +237,9 @@ Bun.serve({
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
       '/api/auth/update-user',
       '/api/auth/token', '/api/auth/jwks',
+      // Linking Google with extra scopes (the Intro Desk's contacts access).
+      // Its OAuth return lands on /api/auth/callback like a sign-in.
+      '/api/auth/link-social',
       // API key mint/list/delete — the plugin owns them; session-only because
       // `enableSessionForAPIKeys` is off.
       '/api/auth/api-key/',

@@ -52,6 +52,7 @@ export default defineConfig({
     {
       text: 'Use',
       items: [
+        { text: 'Introduce', link: '/use/introduce' },
         { text: 'macOS', link: '/use/mac' },
         { text: 'Hermes', link: '/use/hermes' },
         { text: 'MCP', link: '/use/mcp' },

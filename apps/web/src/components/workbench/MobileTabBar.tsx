@@ -101,6 +101,7 @@ function YouSheet({ pendingJoins, onClose, onInvite }: { pendingJoins: number; o
   }, [onClose]);
 
   const rows: Array<{ label: string; to?: string; action?: () => void; badge?: number }> = [
+    { label: "introduce", to: "/introduce" },
     { label: "networks", to: "/networks", badge: pendingJoins },
     { label: "profile", to: "/profile" },
     { label: "settings", to: "/settings" },

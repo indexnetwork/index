@@ -674,9 +674,12 @@ export class OpportunityDatabaseAdapter {
       // participant on another network. Anchors are the discovery-time
       // networks stamped on the row — deliberately not the intent's *current*
       // network assignment, which can change after discovery.
+      // A participant anchored `via` an introducer is in no network by design
+      // (an introduction to someone outside Index), so membership cannot
+      // anchor them; the introducer's own membership already scoped the pair.
       conditions.push(sql`NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS participant
-        WHERE NOT EXISTS (
+        WHERE NOT (participant ? 'via') AND NOT EXISTS (
           SELECT 1
           FROM jsonb_array_elements(${opportunities.actors}) AS anchor
           JOIN ${schema.networkMembers} nm
