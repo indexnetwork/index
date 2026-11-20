@@ -634,7 +634,8 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Per-intent counts of opportunities awaiting the viewer. The query also
+   * Per-intent counts of opportunities awaiting the viewer: pending, not yet
+   * accepted by them, and with no chat already open between the two. The query also
    * returns one deduplicated total across every requested intent. Every
    * requested ID is present in the returned map (zero when it has none).
    */
@@ -665,6 +666,18 @@ export class IntentDatabaseAdapter {
             WHERE committed.opportunity_id = ${schema.opportunities.id}
               AND committed.type = 'committed'
               AND committed.actor_user_id = ${userId}
+          )
+          -- A match with someone the owner already chats with awaits nothing.
+          AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${schema.opportunities.actors}) AS peer
+            JOIN conversation_participants mine
+              ON mine.participant_id = ${userId} AND mine.participant_type = 'user'
+            JOIN conversation_participants theirs
+              ON theirs.conversation_id = mine.conversation_id
+             AND theirs.participant_id = peer->>'userId'
+             AND theirs.participant_type = 'user'
+            WHERE peer->>'userId' <> ${userId}
           )
           AND (
             ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id

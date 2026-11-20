@@ -1,0 +1,150 @@
+/* for-networks — landing page for community organizers; shared pieces live in site.css */
+
+.fn-hero-img {
+  width: 100%;
+  margin-top: 12px;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+}
+
+/* ---------- for organizers ---------- */
+.fn-outcomes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 32px;
+}
+.fn-outcome { display: flex; flex-direction: column; gap: 10px; }
+.fn-example {
+  margin: 4px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--card-border);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--body);
+  text-wrap: pretty;
+}
+
+/* ---------- with index / today ---------- */
+.fn-compare { display: flex; flex-direction: column; }
+.fn-compare-row {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--divider);
+}
+.fn-compare-head { padding: 0 0 10px; border-top: 0; }
+.fn-compare-label { font-size: 18px; }
+.fn-compare-row .site-p { font-size: 14px; line-height: 1.65; }
+.fn-compare-today { color: var(--muted); }
+.fn-compare-tag { display: none; }
+.fn-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .fn-compare-head { display: none; }
+  .fn-compare-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .fn-compare-tag { display: block; margin-bottom: 2px; }
+}
+
+/* ---------- edge city ---------- */
+.fn-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+.fn-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 18px 16px 18px 0;
+}
+.fn-stats > div + div { padding-left: 16px; border-left: 1px solid var(--divider); }
+.fn-stats dd {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.fn-stats dt { line-height: 1.4; }
+
+@media (max-width: 720px) {
+  .fn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fn-stats > div,
+  .fn-stats > div + div { padding: 16px 0; border-left: 0; }
+  .fn-stats > div:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--divider); }
+  .fn-stats > div:nth-child(n + 3) { border-top: 1px solid var(--divider); }
+}
+
+.fn-figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.fn-figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
+
+/* Two-up lead + body pairs: lessons, integrations, privacy. */
+.fn-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 28px 40px;
+}
+.fn-pairs > div { display: flex; flex-direction: column; gap: 8px; }
+.fn-pairs .site-guides { margin: 0; }
+
+/* Closing call to action. */
+.fn-cta { padding-bottom: 40px; }
+
+.fn-links { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+
+/* ---------- business model: how a network earns ---------- */
+.fn-flow {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+.fn-flow li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 28px 18px 0;
+}
+.fn-flow li + li { padding-left: 20px; border-left: 1px solid var(--divider); }
+.fn-flow li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+.fn-flow li:last-child .site-col-title { color: var(--green); }
+@media (max-width: 640px) {
+  .fn-flow { grid-template-columns: minmax(0, 1fr); }
+  .fn-flow li,
+  .fn-flow li + li { padding: 14px 0; border-left: 0; }
+  .fn-flow li + li { border-top: 1px solid var(--divider); }
+  .fn-flow li:not(:last-child)::after { content: "↓"; right: 0; }
+}

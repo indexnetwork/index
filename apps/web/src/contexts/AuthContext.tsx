@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const publicPrefixes = [
       '/l', '/blog', '/pages', '/about', '/hermes',
       '/login', '/s/', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download', '/setup',
-      '/9db20a5fbe', '/communities',
+      '/9db20a5fbe', '/communities', '/for-networks',
     ];
     // Profile and network links at the root (index.network/<handle>) are public too.
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p)) || isHandlePath(pathname);

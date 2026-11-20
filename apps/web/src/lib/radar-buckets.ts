@@ -18,13 +18,19 @@ const EMPTY_RADAR: Record<Exclude<RadarBucket, "all">, string> = {
   closed: "nothing closed.",
 };
 
-/** Assign an opportunity to a radar stage. Not a fit (rejected) and missed (expired) share Closed. */
+/**
+ * Assign an opportunity to a radar stage. Not a fit (rejected) and missed (expired) share Closed.
+ *
+ * A pending match with someone the viewer already chats with is not awaiting
+ * them: there is nothing left to accept, so it sits with the open chats.
+ */
 export function radarBucketForOpportunity(
   status: OpportunityLifecycleStatus | undefined,
   viewerCommitted = false,
+  hasChat = false,
 ): Exclude<RadarBucket, "all"> | null {
   if (status === "rejected" || status === "expired") return "closed";
-  if (status === "pending" && viewerCommitted) return "accepted";
+  if (status === "pending" && (viewerCommitted || hasChat)) return "accepted";
   if (status === "pending") return "awaiting you";
   if (status === "accepted") return "accepted";
   return "negotiating";

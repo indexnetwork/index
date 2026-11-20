@@ -360,14 +360,25 @@ function IntentDetail() {
     setRefining(false);
   }, [refining, refineText, submitRefine]);
 
+  const chatPeers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const conv of conversations) {
+      for (const participant of conv.participants ?? []) {
+        if (participant.participantType === "user" && participant.participantId !== user?.id) ids.add(participant.participantId);
+      }
+    }
+    return ids;
+  }, [conversations, user?.id]);
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
+    // A match with someone you already chat with is not awaiting you.
     (item: RadarCardItem) =>
       radarBucketForOpportunity(
         (opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status,
         item.viewerCommitted,
+        chatPeers.has(item.userId || item.peer?.userId || ""),
       ),
-    [opportunityStatusMap],
+    [opportunityStatusMap, chatPeers],
   );
 
   const bucketCounts = useMemo(() => {
@@ -395,15 +406,6 @@ function IntentDetail() {
     }).sort((a, b) => radarActivityMs(b) - radarActivityMs(a)),
     [opportunities, bucketOf, selectedBucket],
   );
-  const chatPeers = useMemo(() => {
-    const ids = new Set<string>();
-    for (const conv of conversations) {
-      for (const participant of conv.participants ?? []) {
-        if (participant.participantType === "user" && participant.participantId !== user?.id) ids.add(participant.participantId);
-      }
-    }
-    return ids;
-  }, [conversations, user?.id]);
   const openPerson = opportunities.find((item) => item.opportunityId === openPersonId) ?? null;
   const title = (intent?.payload?.trim() || intent?.summary?.trim() || "");
   const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
