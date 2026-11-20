@@ -114,7 +114,7 @@ export default function ChatSidebar({ showEmpty = true }: {
               <button
                 key={chat.groupId}
                 type="button"
-                className="wb-link-row"
+                className="wb-link-row pl-row"
                 aria-current={chat.peerUserId === activePeerId ? "page" : undefined}
                 onClick={() => {
                   const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
@@ -125,21 +125,21 @@ export default function ChatSidebar({ showEmpty = true }: {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "auto minmax(0, 1fr) auto",
-                  gap: 10,
                   alignItems: "center",
                   width: "100%",
                   textAlign: "left",
-                  padding: "10px 12px",
+                  gap: 12,
+                  padding: "12px 16px",
                   border: "none",
-                  borderBottom: "1px solid var(--ink-4)",
+                  borderBottom: "1px solid var(--pl-line, #e6e6e6)",
                 }}
               >
-                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={32} />
+                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={36} />
                 <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
                   <span style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, fontWeight: 600, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
                     {chat.lastMessage && (
-                      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
+                      <span style={{ flex: "0 0 auto", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#8a8578" }}>{formatConversationTime(chat.sortTimestamp)}</span>
                     )}
                   </span>
                   {(() => {
@@ -149,11 +149,11 @@ export default function ChatSidebar({ showEmpty = true }: {
                     });
                     if (preview.kind === "empty") {
                       return (
-                        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{`${preview.text.toLowerCase()}.`}</span>
+                        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#8a8578" }}>{`${preview.text.toLowerCase()}.`}</span>
                       );
                     }
                     return (
-                      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
+                      <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#555", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
                     );
                   })()}
                 </span>
@@ -161,7 +161,6 @@ export default function ChatSidebar({ showEmpty = true }: {
                   {chat.showUnreadCount && (
                     <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, background: "#FF8A00", color: "#000", border: "1px solid #000", padding: "0 6px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
                   )}
-                  <span aria-hidden="true" className="wb-row-chevron">›</span>
                 </span>
               </button>
             ))}

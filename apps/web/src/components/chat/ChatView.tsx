@@ -294,7 +294,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     return (
       <div className="pl pl-agent pl-dm">
         <div className="pl-dm-head">
-          <Link to={`/u/${userId}`} className="pl-dm-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={28} /></Link>
+          <Link to={`/u/${userId}`} className="pl-dm-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={36} /></Link>
           <div className="pl-dm-who">
             <Link to={`/u/${userId}`} className="pl-dm-name">{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (

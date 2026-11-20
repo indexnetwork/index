@@ -1422,35 +1422,35 @@
   font-size: 14px;
 }
 
-/* chat: the classic look (as on main) in the full-height layout beside the sidebar.
-   The old tokens are set back here only, so the rest of the app keeps its own. */
+/* conversations: a plain page like Home and Intents. The head, then the list
+   beside the thread in the same centered body, split by thin grey rules. The
+   page itself doesn't scroll; the list and the thread do. */
+.ih .pl.pl-chat-page {
+  overflow: hidden;
+}
+.pl-col.pl-chat-col {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .ih .ih-chat {
-  --amiga-bg: #0055aa;
-  --amiga-fg: #000000;
-  --amiga-accent: #ff8a00;
   --ink: #000000;
-  --ink-2: #5a5548;
+  --ink-2: #555555;
   --ink-3: #8a8578;
-  --ink-4: #b5af9f;
-  --amiga-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --amiga-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
-  --mac-sans: var(--amiga-sans);
-  --mac-mono: var(--amiga-mono);
+  --ink-4: #e6e6e6;
+  --mac-sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mac-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
-  flex-direction: row;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  margin: 4px 28px 24px;
+  border: 1px solid var(--pl-line);
+  border-radius: 2px;
   background: #fff;
   color: #000;
-  /* The same body as every plain page: Home's 880px column less its 28px
-     padding each side, centered, with black edges like the list divider. */
-  width: 100%;
-  max-width: calc(880px - 56px);
-  margin: 0 auto;
-  box-sizing: border-box;
-  border-left: 2px solid #000;
-  border-right: 2px solid #000;
+  overflow: hidden;
 }
 .ih .ih-chat.solo {
   grid-template-columns: minmax(0, 1fr);
@@ -1458,7 +1458,7 @@
 .ih .ih-chat-list {
   min-height: 0;
   overflow: hidden;
-  border-right: 2px solid #000;
+  border-right: 1px solid var(--pl-line);
 }
 .ih .ih-chat-pane {
   min-width: 0;
@@ -1473,49 +1473,38 @@
   text-underline-offset: 2px;
 }
 
-/* conversation rows: mono names, black rules, a chevron; the open one gets a black edge bar */
-.ih .ih-chat .wb-link-row {
+/* conversation rows, like Home's cards: a grey hover, the open one grey with a black edge */
+.ih .pl .ih-chat button.pl-row {
   background: #fff;
   color: #000;
   cursor: pointer;
 }
-.ih .ih-chat .wb-link-row[aria-current="page"] {
-  box-shadow: inset 4px 0 0 #000;
+.ih .pl .ih-chat button.pl-row[aria-current="page"],
+.ih .pl .ih-chat button.pl-row[aria-current="page"]:hover {
+  background: #f2f2f2;
+  box-shadow: inset 3px 0 0 #000;
 }
-.ih .ih-chat .wb-link-row:focus-visible {
-  background: #e3edf8;
-  outline: 2px solid var(--amiga-bg);
+.ih .pl .ih-chat button.pl-row:focus-visible {
+  outline: 2px solid #000;
   outline-offset: -2px;
 }
-.ih .ih-chat .wb-link-row:active {
-  background: #cfe0f3;
-}
-@media (hover: hover) {
-  .ih .ih-chat .wb-link-row:hover { background: #e3edf8; }
-  .ih .ih-chat .wb-link-row:hover .wb-row-chevron { color: var(--amiga-bg); }
-}
-.ih .ih-chat .wb-row-chevron {
-  flex: 0 0 auto;
-  width: 14px;
-  text-align: center;
-  font-family: var(--mac-mono);
-  font-size: 14px;
-  line-height: 1;
+.ih .pl .ih-chat button.pl-row:hover:not([aria-current="page"]) {
+  background: #fafafa;
 }
 
-/* the orange scrollbar */
+/* a thin grey scrollbar */
 .ih .ih-chat .mac-scroll::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-  background: #fff;
+  width: 6px;
+  height: 6px;
+  background: transparent;
 }
 .ih .ih-chat .mac-scroll::-webkit-scrollbar-track {
-  background: #fff;
+  background: transparent;
 }
 .ih .ih-chat .mac-scroll::-webkit-scrollbar-thumb {
-  background: var(--amiga-accent);
+  background: #d6d6d6;
   border: 0;
-  border-radius: 0;
+  border-radius: 3px;
   min-height: 28px;
 }
 
@@ -1667,16 +1656,19 @@
   padding: 10px 14px;
 }
 
-/* a chat with a person: more room around the thread */
+/* a chat with a person: more room around the thread, on white like the rest of the page */
 .pl-dm .pl-dm-head {
-  padding: 12px 28px;
+  padding: 12px 24px;
+  border-bottom-color: var(--pl-line);
 }
 .pl-dm .pl-agent-log {
-  padding: 24px 28px;
+  padding: 24px;
   gap: 14px;
+  background: #fff;
 }
 .pl-dm .pl-agent-compose {
-  padding: 12px 28px 16px;
+  padding: 12px 24px 16px;
+  border-top-color: var(--pl-line);
 }
 
 /* profile: the classic look (as on main), full height beside the sidebar.
