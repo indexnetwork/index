@@ -125,7 +125,9 @@ export const userSocials = pgTable('user_socials', {
 /**
  * People a member knows, imported from their Google contacts. Private to the
  * owner: only the owner's own introductions read them. `matchedUserId` is set
- * when the contact's email belongs to an Index account.
+ * when the contact's email belongs to an Index account. `embedding` is the
+ * contact's card (name, title, company, email domain); it is cleared whenever
+ * the card changes and rebuilt by the introducer matcher.
  */
 export const contacts = pgTable('contacts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -138,14 +140,53 @@ export const contacts = pgTable('contacts', {
   /** 'google_contacts' (saved) or 'google_other' (people you've emailed). */
   source: text('source').notNull(),
   matchedUserId: text('matched_user_id').references(() => users.id, { onDelete: 'set null' }),
+  embedding: vector('embedding', { dimensions: 2000 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   ownerEmailUnique: uniqueIndex('contacts_owner_email_unique').on(table.ownerUserId, table.email),
   matchedIdx: index('contacts_matched_user_idx').on(table.matchedUserId),
+  embeddingIdx: index('contacts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
 }));
 
 export type Contact = typeof contacts.$inferSelect;
+
+export type IntroSuggestionStatus = 'open' | 'skipped' | 'waking' | 'woken' | 'failed';
+
+/**
+ * A pair the introducer matcher found for one member: someone's public intent
+ * in a network the member shares, and one of the member's contacts who is not
+ * on Index. Written in the background when the intent appears or the contacts
+ * sync; the Intro Desk only reads them. Waking one seats the contact through
+ * the member (never through a network) and records the opportunity.
+ */
+export const introSuggestions = pgTable('intro_suggestions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  introducerUserId: text('introducer_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  contactId: text('contact_id').notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  /** The network where the introducer sees the intent. */
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  score: doublePrecision('score').notNull(),
+  /** Completes "<member first name> …": what they need. */
+  intentLine: text('intent_line').notNull(),
+  /** Completes "<contact first name> …": who they are, for this pair. */
+  contactLine: text('contact_line').notNull(),
+  /** A starting intro the introducer edits before waking. */
+  draft: text('draft').notNull(),
+  status: text('status').$type<IntroSuggestionStatus>().notNull().default('open'),
+  /** Why a wake failed, in the introducer's terms. */
+  failure: text('failure'),
+  seatUserId: text('seat_user_id').references(() => users.id, { onDelete: 'set null' }),
+  opportunityId: text('opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairUnique: uniqueIndex('intro_suggestions_pair_unique').on(table.introducerUserId, table.intentId, table.contactId),
+  introducerStatusIdx: index('intro_suggestions_introducer_status_idx').on(table.introducerUserId, table.status),
+}));
+
+export type IntroSuggestion = typeof introSuggestions.$inferSelect;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)

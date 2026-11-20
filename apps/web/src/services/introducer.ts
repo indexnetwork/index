@@ -5,24 +5,16 @@ export interface IntroducerStatus {
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
-export interface PairSide {
-  userId: string;
-  name: string;
-  avatar: string | null;
-  intentId: string;
-  intentText: string;
-  isContact: boolean;
-  /** One short line completing "<first name> …": what they need or bring. */
-  line: string;
-}
-
+/** A pair on the Intro Desk: a member's need ⇄ one of your contacts who is not on Index. */
 export interface PairSuggestion {
-  key: string;
-  networkId: string;
+  id: string;
+  status: 'open' | 'skipped' | 'waking' | 'woken' | 'failed';
+  /** Why a wake failed, in plain words. */
+  failure: string | null;
   networkTitle: string;
-  score: number;
-  a: PairSide;
-  b: PairSide;
+  opportunityId: string | null;
+  member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
+  contact: { name: string; line: string; detail: string | null };
   draft: string;
 }
 
@@ -59,11 +51,7 @@ export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedA
   importContacts: () => api.post<{ total: number; onIndex: number }>('/introducer/contacts/import'),
   pairs: () => api.get<{ pairs: PairSuggestion[] }>('/introducer/pairs').then((r) => r.pairs),
   introductions: () => api.get<{ introductions: IntroductionProgress[] }>('/introducer/introductions').then((r) => r.introductions),
-  /** Wake both agents: opens the opportunity through the existing introducer path. */
-  wake: (pair: PairSuggestion, context: string) =>
-    api.post<{ opportunityId: string }>('/opportunities', {
-      networkId: pair.networkId,
-      intents: [pair.a.intentId, pair.b.intentId],
-      context,
-    }),
+  skip: (id: string) => api.post<{ ok: true }>(`/introducer/pairs/${id}/skip`),
+  /** Wake both agents: the contact is seated through you and both agents start, in the background. */
+  wake: (id: string, context: string) => api.post<{ ok: true }>(`/introducer/pairs/${id}/wake`, { context }),
 });

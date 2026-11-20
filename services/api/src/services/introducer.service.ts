@@ -1,10 +1,18 @@
 import { createModel, type Model } from '@indexnetwork/agent';
+import { decideNegotiationOpening, pairKeyOf } from '@indexnetwork/protocol';
 import { generateText, jsonSchema, Output } from 'ai';
-import { auth } from '../lib/betterauth/auth.instance';
-import { log } from '../lib/log';
-import { introducerDatabaseAdapter, type ContactInput, type IntroducerDatabaseAdapter, type IntroductionRow, type PairCandidate } from '../adapters/introducer.database.adapter';
 
-const logger = log.service.from('introducer');
+import { auth } from '../lib/betterauth/auth.instance';
+import { executeSendEmail } from '../lib/email/transport.helper';
+import { escapeHtml } from '../lib/escapeHtml';
+import { researchPerson } from '../lib/introducer/research';
+import { log } from '../lib/log';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { detectSocialLabel } from '../adapters/database.shared';
+import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
+import { introducerDatabaseAdapter, type ContactCard, type ContactInput, type IntroducerDatabaseAdapter, type IntroductionRow, type MatchCandidate, type SuggestionRow } from '../adapters/introducer.database.adapter';
+
+const logger = log.service.from('IntroducerService');
 
 /** Read access to saved contacts and to "other contacts" (people you've emailed). */
 export const CONTACT_SCOPES = [
@@ -15,13 +23,19 @@ export const CONTACT_SCOPES = [
 const PEOPLE_API = 'https://people.googleapis.com/v1';
 /** Google caps a page at 1000; 10 pages per source is plenty for a preview. */
 const MAX_PAGES = 10;
-/** Candidates the screen reads; it keeps the ones that genuinely fit. */
-const CANDIDATE_LIMIT = 40;
-const PAIR_LIMIT = 15;
-/** Screened pairs per member, reused across page loads for a while. */
-const PAIRS_TTL_MS = 10 * 60_000;
 /** Contacts are re-read from Google in the background once the last sync is this old. */
 const SYNC_EVERY_MS = 24 * 60 * 60_000;
+/** Below this cosine similarity a card and an intent are not worth a screen. */
+const MATCH_FLOOR = 0.2;
+/** Contacts read per new intent, across everyone who can introduce it. */
+const PER_INTENT = 24;
+/** Intents read per newly synced contact. */
+const PER_CONTACT = 3;
+/** Pairs one screen call judges. */
+const SCREEN_BATCH = 15;
+const EMBED_BATCH = 64;
+const INTRODUCER_REASONING = 'Opened by a third party who knows the second person; that person is not on Index.';
+const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
 
 let screenModel: Model | null = null;
 function introModel(): Model {
@@ -33,11 +47,8 @@ function introModel(): Model {
 }
 
 interface ScreenResult {
-  pairs: { i: number; intro: string; a: string; b: string }[];
+  pairs: { i: number; member: string; contact: string; intro: string }[];
 }
-
-/** Each side's one-liner on the card, completing "<first name> …". */
-const SIDE_LINE = 'A verb phrase of at most 6 words that completes "<first name> …" with what this person needs or brings to this pair, e.g. "needs a payments design partner" or "runs checkout at a fintech". Lowercase, no period.';
 
 const screenSchema = jsonSchema<ScreenResult>({
   type: 'object',
@@ -48,11 +59,11 @@ const screenSchema = jsonSchema<ScreenResult>({
         type: 'object',
         properties: {
           i: { type: 'integer', description: 'The pair number from the list.' },
-          intro: { type: 'string', description: "Two short sentences in the introducer's voice to both people, first names, saying concretely why they should talk. No flattery, no emoji." },
-          a: { type: 'string', description: `First person of the pair. ${SIDE_LINE}` },
-          b: { type: 'string', description: `Second person of the pair. ${SIDE_LINE}` },
+          member: { type: 'string', description: 'At most 6 words completing "<member first name> …" with what they need, e.g. "needs a payments design partner". Lowercase, no period.' },
+          contact: { type: 'string', description: 'At most 6 words completing "<contact first name> …" with who they are for this pair, from their card only, e.g. "runs checkout at Stripe". Lowercase, no period.' },
+          intro: { type: 'string', description: "Two short sentences in the introducer's voice to both people, first names, saying concretely why they should talk. Claim nothing about the contact beyond their card. No flattery, no emoji." },
         },
-        required: ['i', 'intro', 'a', 'b'],
+        required: ['i', 'member', 'contact', 'intro'],
         additionalProperties: false,
       },
     },
@@ -72,17 +83,20 @@ export interface IntroducerStatus {
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
-/** A pair as the Intro Desk shows it. */
+/** A pair on the Intro Desk: a member's need ⇄ one of your contacts who is not on Index. */
 export interface PairSuggestion {
-  key: string;
-  networkId: string;
+  id: string;
+  status: SuggestionRow['status'];
+  /** Why a wake failed, said to the introducer. */
+  failure: string | null;
   networkTitle: string;
-  score: number;
-  a: PairCandidate['a'] & { line: string };
-  b: PairCandidate['b'] & { line: string };
-  /** A starting intro the member edits before waking both agents. */
+  opportunityId: string | null;
+  member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
+  contact: { name: string; line: string; detail: string | null };
   draft: string;
 }
+
+export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy' } | { kind: 'gone' };
 
 /**
  * What an introducer learns about an introduction: where it ended up, never
@@ -106,23 +120,48 @@ interface GooglePerson {
   organizations?: { name?: string; title?: string }[];
 }
 
+const FAILURES = {
+  on_index: 'They joined Index since; their agent can find this on its own.',
+  opted_out: 'They asked Index not to contact them.',
+  not_visible: "That intent isn't public in a network you share any more.",
+  not_opened: "The agents couldn't be woken. Try again.",
+} as const;
+
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
 }
 
-/** Short enough for a one-line "wants" in the draft. */
-function clip(text: string, max = 140): string {
+function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
 
+function contactName(card: ContactCard): string {
+  return card.name?.trim() || card.email.split('@')[0]!;
+}
+
+/** The card the matcher embeds and the screen reads: name, role, company, work domain. */
+function cardText(card: ContactCard): string {
+  const domain = card.email.split('@')[1] ?? '';
+  const role = [card.title, card.organization].filter(Boolean).join(', ');
+  return [contactName(card), role || null, domain ? `(${domain})` : null].filter(Boolean).join(' — ');
+}
+
 /**
- * The introducer: a member imports who they know, sees pairs of other people
- * whose intents fit, and wakes both agents with their own intro. Progress is
- * the introduction's phase only; the negotiation stays between its two seats.
+ * The introducer. A member's Google contacts are matched, in the background,
+ * against public intents in the networks they share; the member picks a pair
+ * on the Intro Desk and wakes it. The contact is reached through the member,
+ * one hop, never through a network: their seat is in no network, discovery
+ * never returns it, and nobody but the introducer can reach them. Progress is
+ * the introduction's phase only.
  */
 export class IntroducerService {
+  private readonly embedder = new EmbedderAdapter();
+  private readonly syncing = new Set<string>();
+
   constructor(private readonly adapter: IntroducerDatabaseAdapter = introducerDatabaseAdapter) {}
+
+  // ─── contacts ──────────────────────────────────────────────────────────────
 
   async status(userId: string): Promise<IntroducerStatus> {
     const [scope, counts] = await Promise.all([
@@ -143,8 +182,6 @@ export class IntroducerService {
     };
   }
 
-  private readonly syncing = new Set<string>();
-
   /**
    * Keep contacts current without a button: once the last sync is a day old,
    * read Google again in the background. Contacts removed there go here too.
@@ -158,6 +195,7 @@ export class IntroducerService {
   /**
    * Read saved contacts and people-you've-emailed from Google, make the stored
    * list match, and mark who is already on Index. Runs on connect, then daily.
+   * Matching the new contacts continues in the background.
    */
   async importContacts(userId: string): Promise<ImportOutcome> {
     if (this.syncing.has(userId)) {
@@ -166,7 +204,11 @@ export class IntroducerService {
     }
     this.syncing.add(userId);
     try {
-      return await this.syncContacts(userId);
+      const outcome = await this.syncContacts(userId);
+      if (outcome.kind === 'ok') {
+        void this.matchContacts(userId).catch((error) => logger.warn('Matching new contacts failed', { userId, error: String(error) }));
+      }
+      return outcome;
     } finally {
       this.syncing.delete(userId);
     }
@@ -213,9 +255,8 @@ export class IntroducerService {
     add(other.people, 'google_other');
 
     await this.adapter.replaceContacts(userId, [...rows.values()]);
-    this.invalidatePairs(userId);
     const counts = await this.adapter.contactCounts(userId);
-    logger.info('Contacts imported', { userId, total: counts.total, onIndex: counts.onIndex });
+    logger.info('Contacts synced', { userId, total: counts.total, onIndex: counts.onIndex });
     return { kind: 'ok', total: counts.total, onIndex: counts.onIndex };
   }
 
@@ -242,73 +283,229 @@ export class IntroducerService {
     return { people };
   }
 
-  private readonly pairCache = new Map<string, { at: number; pairs: PairSuggestion[] }>();
+  // ─── matching (background) ─────────────────────────────────────────────────
 
-  /** Forget a member's screened pairs, e.g. after a fresh import. */
-  invalidatePairs(userId: string): void {
-    this.pairCache.delete(userId);
-  }
-
-  /**
-   * Pairs the member could introduce, contacts first. Similar intents are not
-   * the same as a reason to meet, so a model screens the closest candidates
-   * for pairs where one person can help the other, and drafts the intro.
-   * Without a model it falls back to the closest pairs and a plain draft.
-   */
-  async pairs(userId: string): Promise<PairSuggestion[]> {
-    const cached = this.pairCache.get(userId);
-    if (cached && Date.now() - cached.at < PAIRS_TTL_MS) return cached.pairs;
-
-    const candidates = await this.adapter.pairCandidates(userId, CANDIDATE_LIMIT);
-    const toPair = (c: PairCandidate, draft: string, lines?: { a: string; b: string }): PairSuggestion => ({
-      key: `${c.a.intentId}:${c.b.intentId}`,
-      networkId: c.networkId,
-      networkTitle: c.networkTitle,
-      score: c.score,
-      a: { ...c.a, line: lines?.a.trim() || `wants ${clip(c.a.intentText, 60)}` },
-      b: { ...c.b, line: lines?.b.trim() || `wants ${clip(c.b.intentText, 60)}` },
-      draft,
-    });
-    const plainDraft = (c: PairCandidate) =>
-      `${firstName(c.a.name)}, ${firstName(c.b.name)}: I think you two should talk. ${firstName(c.a.name)} is after "${clip(c.a.intentText, 90)}", and ${firstName(c.b.name)} is after "${clip(c.b.intentText, 90)}".`;
-
-    let pairs: PairSuggestion[];
-    try {
-      pairs = candidates.length ? await this.screen(candidates, toPair) : [];
-    } catch (error) {
-      logger.warn('Pair screen failed; using closest pairs', { userId, error: String(error) });
-      pairs = candidates.slice(0, PAIR_LIMIT).map((c) => toPair(c, plainDraft(c)));
+  /** Embed contact cards that have none yet. @returns The ids embedded. */
+  async embedContacts(limit: number, ownerUserId?: string): Promise<string[]> {
+    const done: string[] = [];
+    while (done.length < limit) {
+      const cards = await this.adapter.contactsToEmbed(Math.min(EMBED_BATCH, limit - done.length), ownerUserId);
+      if (!cards.length) break;
+      const vectors = await this.embedder.generate(cards.map(cardText)) as number[][];
+      await this.adapter.setContactEmbeddings(cards.map((card, i) => ({ id: card.id, embedding: vectors[i]! })));
+      done.push(...cards.map((c) => c.id));
+      if (cards.length < EMBED_BATCH) break;
     }
-    this.pairCache.set(userId, { at: Date.now(), pairs });
-    return pairs;
+    return done;
   }
 
-  private async screen(
-    candidates: PairCandidate[],
-    toPair: (c: PairCandidate, draft: string, lines?: { a: string; b: string }) => PairSuggestion,
-  ): Promise<PairSuggestion[]> {
-    const list = candidates.map((c, i) =>
-      `${i}. ${firstName(c.a.name)} wants: ${clip(c.a.intentText, 300)}\n   ${firstName(c.b.name)} wants: ${clip(c.b.intentText, 300)}`).join('\n');
+  /** After a sync: embed this member's new cards and match them to intents they can see. */
+  async matchContacts(userId: string): Promise<number> {
+    const ids = await this.embedContacts(5000, userId);
+    let kept = 0;
+    for (let i = 0; i < ids.length; i += 200) {
+      const candidates = await this.adapter.candidatesForContacts(userId, ids.slice(i, i + 200), PER_CONTACT);
+      kept += await this.screenAndStore(candidates);
+    }
+    if (ids.length) logger.info('Matched new contacts', { userId, embedded: ids.length, kept });
+    return kept;
+  }
+
+  /** A new public intent: find who, among the members who can see it, knows someone for it. */
+  async matchIntent(intentId: string): Promise<number> {
+    const candidates = await this.adapter.candidatesForIntent(intentId, PER_INTENT);
+    return this.screenAndStore(candidates);
+  }
+
+  private async screenAndStore(all: MatchCandidate[]): Promise<number> {
+    const candidates = all.filter((c) => c.score >= MATCH_FLOOR);
+    let kept = 0;
+    for (let i = 0; i < candidates.length; i += SCREEN_BATCH) {
+      const batch = candidates.slice(i, i + SCREEN_BATCH);
+      try {
+        const rows = await this.screen(batch);
+        await this.adapter.insertSuggestions(rows);
+        kept += rows.length;
+      } catch (error) {
+        logger.warn('Pair screen failed', { error: String(error), size: batch.length });
+      }
+    }
+    return kept;
+  }
+
+  private async screen(batch: MatchCandidate[]) {
+    const list = batch.map((c, i) =>
+      `${i}. ${firstName(c.member.name)} wants: ${clip(c.member.intentText, 300)}\n   Contact: ${cardText(c.contact)}`).join('\n');
     const { output } = await generateText({
       model: introModel(),
       output: Output.object({ schema: screenSchema }),
       prompt: [
-        'You help someone decide which two people they know to introduce to each other.',
-        'Each numbered pair below is two people and what each wants right now.',
-        'Keep a pair only when meeting would plausibly move at least one of them toward what they want:',
-        'one can offer what the other is looking for, or they want to build or do the same specific thing together.',
-        'Drop pairs that merely share a topic, both want the same scarce thing (two people both raising, both job hunting, both traveling), or are vague.',
-        `Return at most ${PAIR_LIMIT}, strongest first. For each, write the intro the introducer will send to both people, and one short line per person for the card.`,
+        'Someone is deciding which people from their address book to introduce to members of their network.',
+        'Each numbered item is a member and what they want, then one of the introducer\'s contacts as their address book has them: name, role, company, email domain.',
+        'Keep an item only when the contact\'s role or company makes them plausibly useful for what the member wants: they could offer it, decide on it, or build it with them.',
+        'Drop items where the card is too thin to tell, the fit is only a shared topic, or the contact would want the same scarce thing as the member.',
+        'For each kept item write the two short lines and the intro.',
         '',
         list,
       ].join('\n'),
     });
     const seen = new Set<number>();
     return (output?.pairs ?? [])
-      .filter((p) => p.i >= 0 && p.i < candidates.length && !seen.has(p.i) && seen.add(p.i))
-      .slice(0, PAIR_LIMIT)
-      .map((p) => toPair(candidates[p.i]!, p.intro.trim(), { a: p.a, b: p.b }));
+      .filter((p) => p.i >= 0 && p.i < batch.length && !seen.has(p.i) && seen.add(p.i))
+      .map((p) => {
+        const c = batch[p.i]!;
+        return {
+          introducerUserId: c.introducerUserId,
+          intentId: c.member.intentId,
+          contactId: c.contact.id,
+          networkId: c.networkId,
+          score: c.score,
+          intentLine: clip(p.member, 80),
+          contactLine: clip(p.contact, 80),
+          draft: clip(p.intro, 1000),
+        };
+      });
   }
+
+  private sweepCursor = new Date(Date.now() - 60 * 60_000);
+  private sweeping = false;
+
+  /**
+   * The background pass, every few minutes: embed contact cards still
+   * missing one, match public intents created since the last pass, email
+   * contacts a member said yes to, and forget seats whose introduction ended.
+   * Every step is idempotent, so a missed or repeated pass is harmless.
+   */
+  async sweep(): Promise<void> {
+    if (this.sweeping) return;
+    this.sweeping = true;
+    try {
+      await this.embedContacts(500);
+      const fresh = await this.adapter.publicIntentsSince(this.sweepCursor, 100);
+      for (const intent of fresh) {
+        await this.matchIntent(intent.id).catch((error) => logger.warn('Matching an intent failed', { intentId: intent.id, error: String(error) }));
+        this.sweepCursor = intent.createdAt;
+      }
+      await this.outreach();
+      await this.scrubEnded();
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  // ─── the desk ──────────────────────────────────────────────────────────────
+
+  async suggestions(userId: string): Promise<PairSuggestion[]> {
+    const rows = await this.adapter.suggestions(userId);
+    return rows.map(toPairSuggestion);
+  }
+
+  async skip(userId: string, id: string): Promise<boolean> {
+    return this.adapter.claimSuggestion(id, userId, ['open', 'failed'], 'skipped');
+  }
+
+  /**
+   * Wake a pair. Returns at once; the contact is looked up and seated, and
+   * both agents woken, in the background. The desk polls the suggestion.
+   */
+  async wake(userId: string, id: string, context: string): Promise<WakeOutcome> {
+    const [row] = await this.adapter.suggestions(userId, id);
+    if (!row) return { kind: 'not_found' };
+    if (!await this.adapter.canIntroduce(userId, row.member.intentId, row.networkId)) {
+      await this.adapter.setSuggestion(id, { status: 'failed', failure: FAILURES.not_visible });
+      return { kind: 'gone' };
+    }
+    if (!await this.adapter.claimSuggestion(id, userId, ['open', 'failed'], 'waking')) return { kind: 'busy' };
+    void this.seatAndOpen(userId, row, context).catch(async (error) => {
+      logger.error('Waking an introduction failed', { suggestionId: id, error: String(error) });
+      await this.adapter.setSuggestion(id, { status: 'failed', failure: FAILURES.not_opened });
+    });
+    return { kind: 'ok' };
+  }
+
+  private async seatAndOpen(introducerUserId: string, row: SuggestionRow, context: string): Promise<void> {
+    const fail = (reason: keyof typeof FAILURES) => this.adapter.setSuggestion(row.id, { status: 'failed', failure: FAILURES[reason] });
+    const email = row.contact.email;
+    const existing = await this.adapter.accountByEmail(email);
+    if (existing?.emailVerified && !existing.deleted) return fail('on_index');
+    if (existing?.deleted) return fail('opted_out');
+
+    let seat: { userId: string; intentId: string };
+    if (existing) {
+      // Already seated by an earlier introduction or by Ghost: reuse it.
+      const intentId = await this.adapter.closestSeatIntent(existing.id, row.member.intentId)
+        ?? await this.addFallbackIntent(existing.id, row);
+      seat = { userId: existing.id, intentId };
+    } else {
+      const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
+      const name = contactName(row.contact);
+      const payloads = research?.intents.map((t) => t.trim()).filter(Boolean).slice(0, 3) ?? [];
+      if (!payloads.length) payloads.push(fallbackIntent(row));
+      const vectors = await this.embedder.generate(payloads) as number[][];
+      const created = await this.adapter.createSeat({
+        email,
+        name,
+        intro: research?.headline?.trim() || [row.contact.title, row.contact.organization].filter(Boolean).join(', ') || null,
+        socials: profileLinks(research?.socials ?? []),
+        intents: payloads.map((payload, i) => ({ payload, embedding: vectors[i]! })),
+      });
+      if (!created) return fail('not_opened');
+      const intentId = await this.adapter.closestSeatIntent(created.userId, row.member.intentId) ?? created.intentIds[0]!;
+      seat = { userId: created.userId, intentId };
+    }
+
+    const pairKey = pairKeyOf(`via:${introducerUserId}`, row.member.intentId, seat.intentId);
+    await negotiationDatabaseAdapter.openCounterparties([{
+      pairKey,
+      networkId: row.networkId,
+      intentA: row.member.intentId,
+      intentB: seat.intentId,
+      userA: row.member.userId,
+      userB: seat.userId,
+      score: 100,
+      reasoning: INTRODUCER_REASONING,
+      evidence: [],
+      detection: { source: 'introducer', createdBy: introducerUserId },
+      introducer: { userId: introducerUserId, context },
+      via: introducerUserId,
+    }], decideNegotiationOpening);
+    const opened = await negotiationDatabaseAdapter.findByPairKey(pairKey);
+    if (!opened) return fail('not_opened');
+    await this.adapter.setSuggestion(row.id, { status: 'woken', seatUserId: seat.userId, opportunityId: opened.opportunityId });
+    logger.info('Introduction woken', { suggestionId: row.id, opportunityId: opened.opportunityId });
+  }
+
+  private async addFallbackIntent(seatUserId: string, row: SuggestionRow): Promise<string> {
+    const payload = fallbackIntent(row);
+    const embedding = await this.embedder.generate(payload) as number[];
+    return this.adapter.addSeatIntent(seatUserId, payload, embedding);
+  }
+
+  // ─── after the agents ──────────────────────────────────────────────────────
+
+  /** The member said yes: tell the contact, as the introducer, once. */
+  private async outreach(): Promise<void> {
+    for (const row of await this.adapter.outreachDue(20)) {
+      try {
+        const result = await executeSendEmail({ to: row.email, ...introEmail(row), userId: row.seatUserId }) as { skipped?: boolean };
+        if (result.skipped) continue;
+        await this.adapter.markOpportunity(row.opportunityId, 'introOutreachAt');
+        logger.info('Introduced contact emailed', { opportunityId: row.opportunityId });
+      } catch (error) {
+        logger.error('Introduction email failed', { opportunityId: row.opportunityId, error: String(error) });
+      }
+    }
+  }
+
+  /** No fit or went quiet: forget what research said about the contact. */
+  private async scrubEnded(): Promise<void> {
+    for (const row of await this.adapter.seatsToScrub(50)) {
+      await this.adapter.scrubSeat(row.seatUserId);
+      await this.adapter.markOpportunity(row.opportunityId, 'introSeatScrubbedAt');
+    }
+  }
+
+  // ─── progress ──────────────────────────────────────────────────────────────
 
   async introductions(userId: string, opportunityId?: string): Promise<IntroductionProgress[]> {
     const rows = await this.adapter.introductions(userId, opportunityId);
@@ -325,6 +522,72 @@ export class IntroducerService {
               : 'talking',
     }));
   }
+}
+
+function toPairSuggestion(row: SuggestionRow): PairSuggestion {
+  const detail = [row.contact.title, row.contact.organization].filter(Boolean).join(', ');
+  return {
+    id: row.id,
+    status: row.status,
+    failure: row.failure,
+    networkTitle: row.networkTitle,
+    opportunityId: row.opportunityId,
+    member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.intentLine, intentText: row.member.intentText },
+    contact: { name: contactName(row.contact), line: row.contactLine, detail: detail || null },
+    draft: row.draft,
+  };
+}
+
+/** When research finds nothing: who they are, as the introducer's card has them. */
+function fallbackIntent(row: SuggestionRow): string {
+  const role = [row.contact.title, row.contact.organization].filter(Boolean).join(' at ');
+  return role ? `${contactName(row.contact)}, ${role}.` : `${contactName(row.contact)} ${row.contactLine}.`;
+}
+
+/** Public profile links research opened; personal sites included. */
+function profileLinks(urls: string[]): { label: string; value: string }[] {
+  const seen = new Set<string>();
+  const rows: { label: string; value: string }[] = [];
+  for (const raw of urls) {
+    const value = raw.trim();
+    if (!/^https?:\/\//i.test(value)) continue;
+    const label = detectSocialLabel(value);
+    const key = label === 'custom' ? value : label;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ label, value });
+  }
+  return rows;
+}
+
+/** The first email the contact gets: from the person who introduced them, after the member said yes. */
+function introEmail(row: { introducerName: string; memberName: string; memberIntent: string; context: string; contactName: string | null }) {
+  const oneLine = (s: string) => s.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 120);
+  const intro = oneLine(row.introducerName);
+  const member = oneLine(row.memberName);
+  const hello = row.contactName ? `Hi ${firstName(row.contactName)},` : 'Hi,';
+  const url = escapeHtml(WEB_APP_URL);
+  const contextHtml = row.context ? `<blockquote style="margin: 12px 0; padding-left: 12px; border-left: 3px solid #ddd;">${escapeHtml(row.context)}</blockquote>` : '';
+  return {
+    subject: `${intro} introduced you to ${member}`,
+    html: `<div style="font-family: Arial, sans-serif;">
+  <p>${escapeHtml(hello)}</p>
+  <p><strong>${escapeHtml(intro)}</strong> thinks you should meet <strong>${escapeHtml(member)}</strong>, and ${escapeHtml(firstName(member))} said yes.</p>
+  ${contextHtml}
+  <p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(clip(row.memberIntent, 300))}</p>
+  <p>Sign in with this email to see it and reply: <a href="${url}">${url}</a></p>
+  <p style="color: #666; font-size: 12px;">Not interested? Reply "stop" and Index will delete it and never contact you again.</p>
+</div>`,
+    text: `${hello}
+
+${intro} thinks you should meet ${member}, and ${firstName(member)} said yes.
+${row.context ? `\n"${row.context}"\n` : ''}
+${firstName(member)} is working on: ${clip(row.memberIntent, 300)}
+
+Sign in with this email to see it and reply: ${WEB_APP_URL}
+
+Not interested? Reply "stop" and Index will delete it and never contact you again.`,
+  };
 }
 
 export const introducerService = new IntroducerService();

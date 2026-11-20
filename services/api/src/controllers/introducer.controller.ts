@@ -10,6 +10,14 @@ const logger = log.controller.from('introducer');
 
 type RouteParams = Record<string, string>;
 
+const WAKE_BODY = z.object({ context: z.string().trim().min(1).max(2000) });
+
+const WAKE_REFUSALS = {
+  not_found: { status: 404, error: 'Not found' },
+  busy: { status: 409, error: 'Already woken' },
+  gone: { status: 409, error: "That intent isn't public in a network you share any more" },
+} as const;
+
 const IMPORT_REFUSALS = {
   not_linked: { status: 409, error: 'Connect a Google account first' },
   missing_scope: { status: 409, error: 'Allow Index to read your Google contacts first' },
@@ -18,8 +26,8 @@ const IMPORT_REFUSALS = {
 
 /**
  * IntroducerController: the Intro Desk. A member connects Google contacts,
- * sees pairs of people they could introduce, and follows the introductions
- * they opened. Opening one goes through POST /opportunities.
+ * sees which of them fit what people in their networks want, wakes a pair,
+ * and follows the introductions they opened (status only).
  */
 @Controller('/introducer')
 export class IntroducerController {
@@ -45,11 +53,38 @@ export class IntroducerController {
     return Response.json({ total: result.total, onIndex: result.onIndex });
   }
 
-  /** GET /introducer/pairs — people the member could introduce to each other. */
+  /** GET /introducer/pairs — stored suggestions: a member's need ⇄ one of your contacts not on Index. */
   @Get('/pairs')
   @UseGuards(AuthGuard)
   async pairs(_req: Request, user: AuthenticatedUser) {
-    return Response.json({ pairs: await introducerService.pairs(user.id) });
+    return Response.json({ pairs: await introducerService.suggestions(user.id) });
+  }
+
+  /** POST /introducer/pairs/:id/skip — hide a suggestion. */
+  @Post('/pairs/:id/skip')
+  @UseGuards(AuthGuard)
+  async skip(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = z.string().uuid().safeParse(params?.id);
+    if (!id.success) return Response.json({ error: 'Invalid id' }, { status: 400 });
+    if (!await introducerService.skip(user.id, id.data)) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ ok: true });
+  }
+
+  /**
+   * POST /introducer/pairs/:id/wake — `{ context }`. Seats the contact through
+   * you and wakes both agents in the background; poll GET /introducer/pairs.
+   */
+  @Post('/pairs/:id/wake')
+  @UseGuards(AuthGuard)
+  async wake(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = z.string().uuid().safeParse(params?.id);
+    if (!id.success) return Response.json({ error: 'Invalid id' }, { status: 400 });
+    const body = WAKE_BODY.safeParse(await req.json().catch(() => null));
+    if (!body.success) return Response.json({ error: 'Write an intro of up to 2000 characters' }, { status: 400 });
+    const outcome = await introducerService.wake(user.id, id.data, body.data.context.trim());
+    if (outcome.kind === 'ok') return Response.json({ ok: true }, { status: 202 });
+    const refusal = WAKE_REFUSALS[outcome.kind];
+    return Response.json({ error: refusal.error }, { status: refusal.status });
   }
 
   /** GET /introducer/introductions — introductions the member opened, with progress. */

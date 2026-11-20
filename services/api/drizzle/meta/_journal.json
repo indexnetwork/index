@@ -155,6 +155,13 @@
       "when": 1795052470801,
       "tag": "0021_introducer_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795141945332,
+      "tag": "0022_introducer_suggestions",
+      "breakpoints": true
     }
   ]
 }

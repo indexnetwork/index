@@ -16,19 +16,10 @@ import "@/styles/introduce.css";
 
 const logger = log.page.from("introduce");
 
-const SKIPS_KEY = "index.introSkips";
 const POLL_MS = 5000;
 const MAX_CONTEXT = 2000;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
-
-function loadSkips(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(SKIPS_KEY) || "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
 
 function since(iso: string): string {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -141,33 +132,45 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
   const [text, setText] = useState(pair.draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const side = (s: PairSuggestion["a"]) => (
-    <div className="idk-who">
-      <UserAvatar id={s.userId} name={s.name} avatar={s.avatar} size={30} />
-      <div style={{ minWidth: 0 }}>
-        <div className="idk-line" title={s.intentText}><b>{first(s.name)}</b> {s.line}</div>
-        <small>{pair.networkTitle}{s.isContact && <span className="idk-tag">your contact</span>}</small>
-      </div>
-    </div>
-  );
+  const waking = pair.status === "waking" || (pair.status === "woken" && !run);
 
   return (
     <div className={`idk-card${run && isFinal(run) ? " done" : ""}`}>
-      <div className="idk-pair">{side(pair.a)}<div className="idk-link">⇄</div>{side(pair.b)}</div>
+      <div className="idk-pair">
+        <div className="idk-who">
+          <UserAvatar id={pair.member.userId} name={pair.member.name} avatar={pair.member.avatar} size={30} />
+          <div style={{ minWidth: 0 }}>
+            <div className="idk-line" title={pair.member.intentText}><b>{first(pair.member.name)}</b> {pair.member.line}</div>
+            <small>{pair.networkTitle}</small>
+          </div>
+        </div>
+        <div className="idk-link">⇄</div>
+        <div className="idk-who">
+          <span className="idk-ghost" aria-hidden>{first(pair.contact.name).slice(0, 1).toUpperCase()}</span>
+          <div style={{ minWidth: 0 }}>
+            <div className="idk-line" title={pair.contact.detail ?? undefined}><b>{first(pair.contact.name)}</b> {pair.contact.line}</div>
+            <small>your contact<span className="idk-tag dash">not on Index</span></small>
+          </div>
+        </div>
+      </div>
       {run ? (
         <button type="button" className="idk-woke" onClick={() => onShow(run.opportunityId)}>
           <span className={`idk-bot ${isFinal(run) ? "ok" : "think"}`} style={{ width: 14, height: 14 }} />
           {isFinal(run) ? "DONE" : "IN PROGRESS"} · {PHASE_LABEL[run.phase].toUpperCase()}
           <span style={{ marginLeft: "auto" }}>SHOW ›</span>
         </button>
+      ) : waking ? (
+        <div className="idk-woke" role="status">
+          <span className="idk-bot think" style={{ width: 14, height: 14 }} />
+          WAKING · LOOKING UP {first(pair.contact.name).toUpperCase()} AND SEATING THEIR AGENT
+        </div>
       ) : (
         <>
-          <label className="idk-label" htmlFor={`intro-${pair.key}`}>
+          <label className="idk-label" htmlFor={`intro-${pair.id}`}>
             <span>YOUR INTRO · BOTH AGENTS READ THIS</span>
             <span>{text.length} / {MAX_CONTEXT}</span>
           </label>
-          <textarea id={`intro-${pair.key}`} value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
+          <textarea id={`intro-${pair.id}`} value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
           <div className="idk-row">
             <button
               type="button"
@@ -180,10 +183,10 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
                   .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't wake the agents"))
                   .finally(() => setBusy(false));
               }}
-            >{busy ? "Waking…" : "Wake both agents ▸"}</button>
+            >{busy ? "Waking…" : pair.status === "failed" ? "Try again ▸" : "Wake both agents ▸"}</button>
             <button type="button" className="idk-btn small" disabled={busy} onClick={() => onSkip(pair)}>Skip</button>
           </div>
-          {error && <div className="idk-error">{error}</div>}
+          {(error ?? pair.failure) && <div className="idk-error">{error ?? pair.failure}</div>}
         </>
       )}
     </div>
@@ -201,8 +204,8 @@ function Setup({ status, importing, error, onConnect, onImport }: {
   const imported = status.contacts.lastImportAt !== null;
   return (
     <div className="idk-setup">
-      <p><b>Introduce people you know.</b> You pick two people, write why they should meet, and wake both of their agents. The agents talk it over, and the two people meet only if both say yes.</p>
-      <p className="idk-dim">Index reads your Google contacts to find which people you know are on Index, then suggests pairs whose intents fit.</p>
+      <p><b>Introduce people you know to people on Index.</b> When someone in your networks wants something one of your contacts could help with, you see the pair here. You write why they should meet and wake both agents. They meet only if both say yes.</p>
+      <p className="idk-dim">Your contacts are reached only through you: never through a network, and never passed on.</p>
       <ol className="idk-steps">
         <li className={googleDone ? "done" : ""}>
           <span className="n">{googleDone ? "✓" : "1"}</span>
@@ -215,18 +218,18 @@ function Setup({ status, importing, error, onConnect, onImport }: {
         <li className={imported ? "done" : googleDone ? "" : "todo"}>
           <span className="n">{imported ? "✓" : "2"}</span>
           <div>
-            <b>Find who you know on Index</b>
-            <small>{imported ? `${status.contacts.total} contacts · ${status.contacts.onIndex} on Index` : "Your saved contacts and the people you've emailed."}</small>
+            <b>Read your contacts</b>
+            <small>{imported ? `${status.contacts.total} contacts · ${status.contacts.total - status.contacts.onIndex} not on Index` : "Your saved contacts and the people you've emailed."}</small>
           </div>
           {googleDone && !imported && <button type="button" className="idk-btn go" disabled={importing} onClick={onImport}>{importing ? "Reading…" : "Read contacts ▸"}</button>}
         </li>
         <li className="todo">
           <span className="n">3</span>
-          <div><b>Wake two agents</b><small>Pairs show up here once your contacts are in.</small></div>
+          <div><b>Wake two agents</b><small>Pairs appear as people in your networks post what they want.</small></div>
           <span />
         </li>
       </ol>
-      <div className="idk-note">Your contacts stay private to you. Nobody sees them, and nobody is contacted unless you wake their agent.</div>
+      <div className="idk-note">Your contacts stay private to you. Nobody else sees them. A contact hears from Index only after you wake the pair and the other person says yes, and then the email comes from you.</div>
       {error && <div className="idk-error">{error}</div>}
     </div>
   );
@@ -244,7 +247,6 @@ export default function IntroducePage() {
   const [status, setStatus] = useState<IntroducerStatus | null>(null);
   const [pairs, setPairs] = useState<PairSuggestion[] | null>(null);
   const [runs, setRuns] = useState<IntroductionProgress[]>([]);
-  const [skips, setSkips] = useState<Set<string>>(loadSkips);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [minimized, setMinimized] = useState(true);
@@ -313,23 +315,47 @@ export default function IntroducePage() {
     });
   };
 
+  // Pairs you woke from this page; when one's agents are up, its progress opens.
+  const wakingHere = useRef(new Set<string>());
+  const refreshPairs = useCallback(async () => {
+    try {
+      const next = await service.pairs();
+      setPairs(next);
+      const woke = next.find((p) => wakingHere.current.has(p.id) && p.status !== "waking");
+      if (woke) {
+        wakingHere.current.delete(woke.id);
+        if (woke.opportunityId) {
+          setActiveId(woke.opportunityId);
+          setMinimized(false);
+        }
+      }
+    } catch (err) {
+      logger.warn("pairs failed", { error: String(err) });
+    }
+  }, [service]);
+
   const wake = async (pair: PairSuggestion, context: string) => {
-    const { opportunityId } = await service.wake(pair, context);
-    await refreshRuns();
-    setActiveId(opportunityId);
-    setMinimized(false);
+    await service.wake(pair.id, context);
+    wakingHere.current.add(pair.id);
+    setPairs((all) => all?.map((p) => (p.id === pair.id ? { ...p, status: "waking", failure: null } : p)) ?? all);
   };
 
   const skip = (pair: PairSuggestion) => {
-    const next = new Set(skips).add(pair.key);
-    setSkips(next);
-    localStorage.setItem(SKIPS_KEY, JSON.stringify([...next]));
+    setPairs((all) => all?.filter((p) => p.id !== pair.id) ?? all);
+    service.skip(pair.id).catch((err: unknown) => logger.warn("skip failed", { error: String(err) }));
   };
 
-  // A pair you already woke stays on the desk with its progress; match by the two people.
-  const runFor = (pair: PairSuggestion) => runs.find((r) =>
-    (r.a.userId === pair.a.userId && r.b.userId === pair.b.userId) || (r.a.userId === pair.b.userId && r.b.userId === pair.a.userId));
-  const shown = (pairs ?? []).filter((p) => !skips.has(p.key));
+  // A woken pair stays on the desk with its progress.
+  const runFor = (pair: PairSuggestion) => (pair.opportunityId ? runs.find((r) => r.opportunityId === pair.opportunityId) : undefined);
+  const shown = pairs ?? [];
+
+  // Seating a contact takes up to a few minutes: watch it, then open its progress.
+  const wakingIds = shown.filter((p) => p.status === "waking").map((p) => p.id).join(",");
+  useEffect(() => {
+    if (!wakingIds) return;
+    const t = setInterval(() => void refreshPairs().then(refreshRuns), POLL_MS);
+    return () => clearInterval(t);
+  }, [wakingIds, refreshPairs, refreshRuns]);
   const ready = !!status?.contacts.lastImportAt;
 
   const desk = (
@@ -341,22 +367,20 @@ export default function IntroducePage() {
       ) : (
         <>
           <div className="idk-bar">
-            <span>{status.contacts.total} contacts · {status.contacts.onIndex} on Index</span>
+            <span>{status.contacts.total} contacts · {status.contacts.total - status.contacts.onIndex} not on Index</span>
             <span className="sp" />
             <span className="idk-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt!)} ago`}</span>
-            {skips.size > 0 && <button type="button" className="idk-btn small" onClick={() => { setSkips(new Set()); localStorage.removeItem(SKIPS_KEY); }}>show skipped ({skips.size})</button>}
           </div>
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
           {pairs === null ? (
-            <p className="idk-dim">finding pairs…</p>
+            <p className="idk-dim">loading pairs…</p>
           ) : shown.length === 0 ? (
             <div className="idk-empty">
-              No pairs right now. Pairs show up when people you know have public intents in networks you share
-              {status.contacts.onIndex === 0 ? ". None of your contacts are on Index yet." : "."}
+              No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.
             </div>
           ) : (
             shown.map((pair) => (
-              <PairCard key={pair.key} pair={pair} run={runFor(pair)} onWake={wake} onSkip={skip} onShow={(id) => { setActiveId(id); setMinimized(false); }} />
+              <PairCard key={pair.id} pair={pair} run={runFor(pair)} onWake={wake} onSkip={skip} onShow={(id) => { setActiveId(id); setMinimized(false); }} />
             ))
           )}
         </>
@@ -375,7 +399,7 @@ export default function IntroducePage() {
   // Signed out: sign in first, then come back here.
   if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
-  const count = shown.filter((p) => !runFor(p)).length;
+  const count = shown.filter((p) => p.status === "open" || p.status === "failed").length;
 
   if (plain) {
     return (

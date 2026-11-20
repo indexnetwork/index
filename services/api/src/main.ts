@@ -37,10 +37,12 @@ import { auth } from './lib/betterauth/auth.instance';
 import { API_URL, WEB_APP_URL } from './lib/betterauth/betterauth';
 // Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
+import { introducerCron } from './crons/introducer.cron';
 import { startMessageEmails } from './lib/email/message-email.job';
 import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
 
 opportunityExpirationCron.start();
+introducerCron.start();
 startMessageEmails();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
