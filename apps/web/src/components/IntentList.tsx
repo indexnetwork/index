@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { intentStatus, intentTitle } from "@/lib/intent-display";
 import { QCount } from "@/components/workbench/Workbench";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 interface BaseIntent {
   id: string;
@@ -61,7 +62,7 @@ export default function IntentList<T extends BaseIntent>({
   }, [intents]);
 
   if (isLoading && sortedIntents.length === 0) {
-    return <EmptyState tone="loading" align={shelf ? "start" : "center"} className={className} />;
+    return <div className={className}><Placeholder.Rows count={shelf ? 2 : 4} avatar={false} label="loading intents" /></div>;
   }
 
   if (loadError && sortedIntents.length === 0) {

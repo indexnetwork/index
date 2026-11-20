@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const emptyBox = { borderColor: "var(--wb-hairline)", padding: "18px 16px" } as const;
 const countNum = { fontWeight: 500, color: "var(--ink)" } as const;
@@ -80,7 +81,7 @@ export default function NegotiationsPage() {
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
         {events.length === 0 ? (
           threads.length === 0 && negotiationsStatus === "loading" ? (
-            <EmptyState tone="loading" align="start" framed style={emptyBox} />
+            <Placeholder.Thread label="loading the agent log" />
           ) : threads.length === 0 && negotiationsStatus === "error" ? (
             <EmptyState
               tone="error"

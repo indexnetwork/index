@@ -439,12 +439,6 @@
 .pl-agent-compose textarea:focus {
   background: #fffbe6;
 }
-.pl-blink {
-  animation: pl-blink 1s steps(1) infinite;
-}
-@keyframes pl-blink {
-  50% { opacity: 0; }
-}
 @media (max-width: 1100px) {
   .pl-wrap {
     flex-direction: column;
@@ -2453,14 +2447,6 @@
   letter-spacing: 1.5px;
   color: #5a5548;
 }
-.pl-live-sq {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  background: #ff8a00;
-  border: 1px solid #000;
-  animation: mac-blink 1.2s steps(2) infinite;
-}
 .pl-intent-since {
   color: #8a8578;
 }
@@ -2913,4 +2899,147 @@ button.st-danger-toggle {
 }
 .pl-cards > li.pl-card.pl-card-passed b {
   color: #000;
+}
+
+/* ---------------------------------------------------------------------------
+   Home "in progress": one line per person. Nothing is asked of you here, so
+   no buttons; the row opens the match beside Home.
+   --------------------------------------------------------------------------- */
+.pl-moving {
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+}
+.pl-moving > li.pl-moving-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: inset 0 -1px 0 var(--pl-line, #e6e6e6);
+  transition: background-color 0.12s ease;
+}
+.pl-moving > li.pl-moving-row:first-child {
+  box-shadow: inset 0 1px 0 var(--pl-line, #e6e6e6), inset 0 -1px 0 var(--pl-line, #e6e6e6);
+}
+.pl-moving > li.pl-moving-row.pl-card-open {
+  cursor: pointer;
+}
+.pl-moving > li.pl-moving-row.pl-card-open:hover {
+  background: #fafafa;
+}
+.pl-moving > li.pl-moving-row.pl-card-open.on {
+  background: #f2f2f2;
+  box-shadow: inset 3px 0 0 #000;
+}
+.pl-moving-row > b {
+  white-space: nowrap;
+}
+.pl-moving-blurb {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #5a5548;
+}
+.pl-moving-row > .pl-status {
+  flex: none;
+}
+/* "show N more" under any list that stops at its first few */
+button.pl-more,
+.ih .pl button.pl-more {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  font: 400 13px "IBM Plex Sans", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #00e;
+  text-decoration: underline;
+  cursor: pointer;
+}
+button.pl-more:hover,
+.ih .pl button.pl-more:hover:not(:disabled),
+.ih .pl button.pl-more:active:not(:disabled) {
+  background: #ffff66;
+  color: #00e;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Answers as chips, wrapping in a row. Pick one: a pill with a round dot.
+   Pick several: a square-cornered chip with a box. The picked chip turns
+   orange-tinted with a black edge. "something else" is a chip you type in.
+   --------------------------------------------------------------------------- */
+.pl-q-options.pl-chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pl-chips > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px 11px 3px 8px;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.1s ease, background-color 0.1s ease;
+}
+.pl-chips > label:has(input[type="radio"]) {
+  border-radius: 999px;
+}
+.pl-chips > label:has(input[type="checkbox"]) {
+  border-radius: 3px;
+}
+.pl-chips > label:hover {
+  border-color: #000;
+}
+.pl-chips > label:has(input:checked) {
+  border-color: #000;
+  background: #fff1dc;
+  box-shadow: inset 0 0 0 1px #000;
+}
+.pl-chips > label:focus-within {
+  outline: 2px solid #ff8a00;
+  outline-offset: 1px;
+}
+.pl-chips input[type="radio"],
+.pl-chips input[type="checkbox"] {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #ff8a00;
+}
+.ih .pl .pl-q-options.pl-chips .pl-ni-else input[type="text"],
+.ih .pl .pl-q-options.pl-chips .pl-ni-else input[type="text"]:focus {
+  width: 150px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 400 13px "IBM Plex Sans", sans-serif;
+}
+/* a question with no options keeps its answer box, full width */
+.pl-q-options.pl-chips > input[type="text"]:only-child {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+}
+/* chips sit tight under the question, and send follows close behind */
+.pl-q-options.pl-chips + .pl-actions {
+  margin-top: 8px;
 }

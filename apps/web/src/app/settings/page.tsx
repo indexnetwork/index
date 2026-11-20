@@ -20,6 +20,7 @@ import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visible
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { assembleFirstRunProfile, lookupFoundNothing, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 // The profile editor lives at /profile/edit; settings is the account panes only.
 const SETTINGS_TABS = ["agents", "notifications", "access", "advanced"] as const;
@@ -224,9 +225,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
   if (authLoading) {
     return (
-      <>
-        <p style={{ padding: 24, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
-      </>
+      <Placeholder.Form fields={3} label="loading settings" style={{ padding: 24, maxWidth: 480 }} />
     );
   }
 
@@ -342,8 +341,8 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                   <div className="st-well">
                     <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} />
                   </div>
-                  <button type="button" disabled={deleteConfirmationText !== user?.email || isDeletingAccount} onClick={() => void handleDeleteAccount()} className="wb-btn danger" style={{ justifySelf: "end" }}>
-                    {isDeletingAccount ? "deleting…" : "delete"}
+                  <button aria-busy={isDeletingAccount} type="button" disabled={deleteConfirmationText !== user?.email || isDeletingAccount} onClick={() => void handleDeleteAccount()} className="wb-btn danger" style={{ justifySelf: "end" }}>
+                    {isDeletingAccount ? "deleting" : "delete"}
                   </button>
                 </div>
               )}
@@ -391,7 +390,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
   // Only the profile and notifications panes have anything to save.
   const savable = activeTab === "profile" || activeTab === "notifications";
-  const saveLabel = saving ? "saving…" : firstRun ? "looks good →" : "save changes";
+  const saveLabel = saving ? "saving" : firstRun ? "looks good →" : "save changes";
 
   // Signed in on desktop: the plain page, like Home, Intents and Networks.
   if (plain) {
@@ -418,7 +417,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
             {savable && (
               <div className="st-actions">
                 <button type="button" onClick={() => resetForm(user)} disabled={saving || !isDirty} className="wb-btn">cancel</button>
-                <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || !isDirty} className="wb-btn primary">{saveLabel}</button>
+                <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || !isDirty} aria-busy={saving} className="wb-btn primary">{saveLabel}</button>
               </div>
             )}
           </div>
@@ -465,7 +464,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
           ) : (
             <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
           )}
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} className="wb-btn primary">{saveLabel}</button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} aria-busy={saving} className="wb-btn primary">{saveLabel}</button>
         </div>
       </Window>
     </Stage>

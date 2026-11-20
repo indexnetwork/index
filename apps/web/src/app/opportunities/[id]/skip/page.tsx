@@ -55,7 +55,11 @@ export default function SkipOpportunityPage() {
     );
   }
 
-  return <StatusPage bar="opportunity" title="Skipping…" />;
+  return (
+    <StatusPage bar="opportunity" title="Skip this opportunity">
+      <button type="button" className="site-btn" disabled aria-busy="true">Skipping</button>
+    </StatusPage>
+  );
 }
 
 export const Component = SkipOpportunityPage;

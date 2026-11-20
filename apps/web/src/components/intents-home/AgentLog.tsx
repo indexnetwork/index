@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { NegotiationDetail } from "@/services/negotiations";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /** One match's read-only agent-to-agent thread, as plain speaker/text lines. */
 export default function AgentLog({ opportunityId, name }: { opportunityId: string; name: string }) {
@@ -33,7 +34,7 @@ export default function AgentLog({ opportunityId, name }: { opportunityId: strin
   return (
     <div className="ih-log" data-testid="agent-log">
       {failed && !detail && <div className="ih-log-note">couldn&apos;t load this agent log.</div>}
-      {!detail && !failed && <div className="ih-log-note">loading…</div>}
+      {!detail && !failed && <Placeholder.Thread label="loading the agent log" />}
       {detail && detail.turns.length === 0 && <div className="ih-log-note">no turns yet.</div>}
       {detail?.turns.map((turn) => (
         <div key={turn.turnIndex} className="ih-log-line">

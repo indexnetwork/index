@@ -233,7 +233,7 @@ export default function SettingsTab({
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button type="button" disabled={!hasSettingsChanged || busy} onClick={resetSettings} className="wb-btn">cancel</button>
-        <button type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? "saving…" : "save"}</button>
+        <button aria-busy={busy && isSavingSettings} type="button" disabled={!hasSettingsChanged || !title.trim() || busy} onClick={() => void handleSaveSettings()} className="wb-btn primary">{busy && isSavingSettings ? "saving" : "save"}</button>
       </div>
 
       <div style={{ borderTop: "1px solid var(--wb-hairline)", paddingTop: 14 }}>

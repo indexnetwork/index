@@ -10,6 +10,8 @@ import { useNewIntentFlow } from "@/components/intents-home/useNewIntentFlow";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { formatChatClock } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { useIndexingToast } from "@/components/intents-home/useIndexingToast";
 
 /** "start a new intent" runs the intents page's new intent flow right here in the chat; the rest go to the agent. */
 const NEW_INTENT = "start a new intent";
@@ -46,9 +48,11 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
   const [draft, setDraft] = useState("");
   const { intents } = useIntentsData();
   // The server writes the agent's "started …" line into the chat once the intent exists.
-  const flow = useNewIntentFlow(({ id, asked }) => {
+  const showIndexing = useIndexingToast(() => onChanged(["archive_intent"]));
+  const flow = useNewIntentFlow(({ id, text, asked }) => {
     void recordIntent(id, asked);
     onChanged(["create_intent"]);
+    showIndexing({ id, text });
   });
   const flowWaits = flow.active && flow.stage === "opening";
   const endRef = useRef<HTMLDivElement>(null);
@@ -89,7 +93,7 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
 
       <div className="pl-agent-log">
         {!loaded ? (
-          <p className="pl-dim pl-small">loading…</p>
+          <Placeholder.Thread label="loading this chat" />
         ) : loadFailed && !messages.length ? (
           <p className="pl-dim pl-small">couldn&apos;t load this chat. <button type="button" onClick={() => void retry()}>try again</button></p>
         ) : messages.length === 0 && !flow.active ? (
@@ -139,7 +143,7 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
         {sending && (
           <div className="pl-agent-line">
             <MyAgentAvatar size={22} />
-            <div className="pl-agent-bubble pl-dim">working on it<span className="pl-blink">_</span></div>
+            <Placeholder.Reply who="working on it" />
           </div>
         )}
         {error && <p className="pl-agent-error">{error}</p>}

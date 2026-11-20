@@ -11,6 +11,8 @@ import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 const logger = log.ui.from('NetworkOverviewPanel');
 
@@ -130,6 +132,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   };
 
   const visible = intents.filter((intent) => !hiddenIds.includes(intent.id));
+  const visibleList = useShowMore(visible);
 
   const leaveDialog = showLeaveConfirmation && (
     <ConfirmWindow
@@ -154,7 +157,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           </div>
         )}
         {overviewLoading ? (
-          <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+          <Placeholder.Rows count={3} avatar={false} label="loading intents" />
         ) : overviewFailed && visible.length === 0 ? (
           <div className="pl-profile-empty">
             <p>couldn&apos;t load your intents in this network.</p>
@@ -167,7 +170,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           </div>
         ) : (
           <ul className="pl-rows pl-netdetail-intents">
-            {visible.map((intent) => {
+            {visibleList.shown.map((intent) => {
               const text = intent.payload?.trim() || intent.summary?.trim() || "untitled intent";
               const date = intent.createdAt ? new Date(intent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
               return (
@@ -184,6 +187,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
             })}
           </ul>
         )}
+        {visibleList.more}
         {leaveDialog}
       </>
     );
@@ -222,7 +226,7 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           );
         })}
       </div>
-      {overviewLoading && <EmptyState tone="loading" />}
+      {overviewLoading && <Placeholder.Rows count={3} avatar={false} label="loading intents" />}
       {!overviewLoading && overviewFailed && visible.length === 0 && (
         <EmptyState
           tone="error"

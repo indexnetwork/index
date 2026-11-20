@@ -10,6 +10,7 @@ import { useOpportunities, useUsers } from "@/contexts/APIContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { resolveSocials } from "@/lib/socials";
 import type { OpportunityDetailResponse } from "@/services/opportunities";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /** What the window shows about the person, from their profile. */
 interface Who {
@@ -116,7 +117,7 @@ export default function MatchWindow() {
         {(who?.intro || (!who && match.userId)) && (
           <section>
             <h3 className="ih-match-label">bio</h3>
-            {who?.intro ? <p className="profile-bio">{who.intro}</p> : <div className="profile-dim">loading…</div>}
+            {who?.intro ? <p className="profile-bio">{who.intro}</p> : <Placeholder.Text lines={3} label="loading bio" />}
           </section>
         )}
 
@@ -152,7 +153,7 @@ export default function MatchWindow() {
       <div className="ih-match-foot">
         {stage === "awaiting" && (
           <>
-            <button type="button" className="wb-btn primary small" disabled={busy} onClick={() => act("accepted")}>{busy ? "sending…" : "accept"}</button>
+            <button aria-busy={busy} type="button" className="wb-btn primary small" disabled={busy} onClick={() => act("accepted")}>{busy ? "accepting" : "accept"}</button>
             <button type="button" className="wb-btn small" disabled={busy} onClick={() => act("rejected")}>pass</button>
           </>
         )}

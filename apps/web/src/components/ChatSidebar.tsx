@@ -7,6 +7,7 @@ import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useCompact } from '@/hooks/useCompact';
+import { Placeholder } from "@/components/ui/Placeholder";
 
 interface RecentChat {
   groupId: string;
@@ -85,20 +86,8 @@ export default function ChatSidebar({ showEmpty = true }: {
       };
     }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
-  const renderSkeleton = () => (
-    /* Cold cache — conversation-row skeletons while the first fetch lands. */
-    <div className="space-y-1" data-testid="chat-sidebar-skeleton" aria-hidden="true">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2 animate-pulse">
-          <div className="h-7 w-7 bg-gray-200 shrink-0" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="h-3.5 w-2/3 rounded bg-gray-200" />
-            <div className="h-3 w-11/12 rounded bg-gray-200" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  /* Cold cache: conversation-row placeholders while the first fetch lands. */
+  const renderSkeleton = () => <Placeholder.Rows count={8} label="loading conversations" />;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

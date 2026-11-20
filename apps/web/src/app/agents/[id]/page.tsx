@@ -8,6 +8,7 @@ import type { Agent } from "@/services/agents";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("agents/[id]");
 
@@ -89,7 +90,7 @@ export default function AgentDetailPage() {
         <Window title="agents" onClose={() => navigate("/agents")}>
           <div style={{ padding: 28 }}>
             {authLoading || !isAuthenticated || loading ? (
-              <EmptyState tone="loading" />
+              <Placeholder.Window rows={3} label="loading this agent" />
             ) : failed ? (
               <EmptyState
                 tone="error"

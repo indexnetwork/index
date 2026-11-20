@@ -13,6 +13,7 @@ import { useBack, atHistoryEntry } from "@/hooks/useBack";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import type { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 /** Each stage's status chip, in Home's colors. */
 const OPP_CHIP: Record<NonNullable<ReturnType<typeof radarBucketForOpportunity>>, string> = {
@@ -57,6 +58,8 @@ export default function PlainProfile({
   const [editing, setEditing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const networkList = useShowMore(networks);
+  const matchList = useShowMore(matches, (o) => o.opportunityId === openId);
   // Back to wherever they came from (a card, a question, a chat); home when opened fresh.
   const back = useBack("/");
   const fresh = atHistoryEntry();
@@ -140,7 +143,7 @@ export default function PlainProfile({
             {/* The same tiles as the networks page: a colored initial, the name, how many people. */}
             {networks.length > 0 && (
               <ul className="pl-nets">
-                {networks.map((network, index) => (
+                {networkList.shown.map((network, index) => (
                   <li key={network.id}>
                     <Link to={`/networks/${network.id}`} className="pl-net">
                       <span className={`pl-net-mark c${index % 4}`} aria-hidden>{network.title.trim().charAt(0).toUpperCase() || "#"}</span>
@@ -153,6 +156,7 @@ export default function PlainProfile({
                 ))}
               </ul>
             )}
+            {networkList.more}
           </section>
         )}
 
@@ -164,7 +168,7 @@ export default function PlainProfile({
               pair them and they&apos;ll keep talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over.
               {pairError && <div className="profile-dim">no intents to pair in a network you share.</div>}
               <div style={{ marginTop: 10 }}>
-                <button type="button" className="wb-btn primary small" disabled={pairing} onClick={onPair}>{pairing ? "pairing…" : "pair agents"}</button>
+                <button aria-busy={pairing} type="button" className="wb-btn primary small" disabled={pairing} onClick={onPair}>{pairing ? "pairing" : "pair agents"}</button>
               </div>
             </div>
           </section>
@@ -175,7 +179,7 @@ export default function PlainProfile({
             <h3 className="profile-label">opportunities</h3>
             {/* One line each, between thin rules like Home; a line opens to the agents' conversation. */}
             <div className="profile-opps">
-              {matches.map((o) => {
+              {matchList.shown.map((o) => {
                 const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted) ?? "negotiating";
                 const open = openId === o.opportunityId;
                 const toggle = () => setOpenId(open ? null : o.opportunityId);
@@ -198,6 +202,7 @@ export default function PlainProfile({
                 );
               })}
             </div>
+            {matchList.more}
           </section>
         )}
 

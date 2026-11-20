@@ -1,6 +1,7 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
+import { AgentWorking } from "@/components/ui/AgentWorking";
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
@@ -310,14 +311,14 @@ export function NegoThreadRow({ th, active, onPick }: { th: NegotiationSummary; 
 
 export { negoResult };
 
-export function IntentAction({ label, active = false, onClick, danger = false }: {
-  label: string; active?: boolean; onClick: () => void; danger?: boolean;
+export function IntentAction({ label, active = false, onClick, danger = false, busy = false }: {
+  label: string; active?: boolean; onClick: () => void; danger?: boolean; busy?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
   const edge = danger ? "var(--ink-warn)" : "var(--wb-control)";
   return (
-    <button type="button" onClick={onClick}
+    <button type="button" onClick={onClick} aria-busy={busy}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         fontFamily: "var(--mac-sans)", fontSize: 11, fontWeight: 500,
@@ -379,16 +380,9 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
   );
 }
 
-/** The radar while the agent is still out looking: the same eye and line as the Mac app. */
+/** The agent is still out looking: the hand-drawn eye and one plain line. */
 export function DiscoveryLoader() {
-  return (
-    <div style={{ padding: "16px 30px 30px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <img src="/loading-eye.gif" alt="searching" style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
-      <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 400, color: "var(--ink-2)", margin: 0 }}>
-        hold on, looking for your people
-      </div>
-    </div>
-  );
+  return <AgentWorking kind="look" size={220}>looking for your people</AgentWorking>;
 }
 
 function AgentLabel({ at }: { at?: string }) {

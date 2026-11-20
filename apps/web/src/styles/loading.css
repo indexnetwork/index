@@ -1,0 +1,144 @@
+/*
+ * Loading states for the whole web app. One family, five uses:
+ *   Placeholder.*   data is loading: draw the shape of what's coming (dither + stepped sweep)
+ *   [aria-busy]     a button was pressed: same button, stripes move inside it
+ *   AgentWorking    the agent is on a long job: hand-drawn eye (looking) or leaf (making)
+ *   BootSplash      before auth resolves: the eye on white
+ *   .live-sq        a status, not loading: the orange square
+ * Placeholders wait 250ms before they appear so fast loads never flash.
+ */
+
+/* ---------- placeholder ---------- */
+
+@keyframes ph-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ph-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.ph {
+  animation: ph-appear 1ms linear 250ms both;
+}
+
+/* One dithered block. 1-bit checker, a white band steps across it. */
+.ph-d {
+  position: relative;
+  overflow: hidden;
+  background-color: #fff;
+  background-image: conic-gradient(#dddcd6 25%, #fff 0 50%, #dddcd6 0 75%, #fff 0);
+  background-size: 4px 4px;
+}
+.ph-d::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0 35%, rgba(255, 255, 255, 0.85) 35% 65%, transparent 65%);
+  transform: translateX(-100%);
+  animation: ph-sweep 1.6s steps(8) infinite;
+}
+
+.ph-col { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.ph-row { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.ph-line { height: 8px; }
+.ph-title { height: 13px; }
+.ph-av { flex: none; border: 1px solid #e3e3e0; }
+
+.ph-rows { display: flex; flex-direction: column; width: 100%; }
+.ph-rows > .ph-row { padding: 9px 0; border-top: 1px solid #ecebe6; }
+.ph-rows > .ph-row:first-child { border-top: 0; }
+
+.ph-card { display: flex; flex-direction: column; gap: 9px; width: 100%; padding: 12px; border: 1px solid #000; background: #fff; box-sizing: border-box; }
+.ph-chip { width: 52px; height: 20px; flex: none; border: 1px solid #e3e3e0; }
+
+.ph-text { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+.ph-thread { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.ph-bubble { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid #000; background: #fff; max-width: 78%; box-sizing: border-box; }
+.ph-bubble.me { align-self: flex-end; background: #000; }
+.ph-bubble.me .ph-d { background-color: #000; background-image: conic-gradient(#555 25%, #000 0 50%, #555 0 75%, #000 0); }
+.ph-bubble.me .ph-d::after { background: linear-gradient(90deg, transparent 0 35%, rgba(0, 0, 0, 0.8) 35% 65%, transparent 65%); }
+.ph-who { font: 500 10px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.06em; text-transform: uppercase; color: #8f8f88; }
+
+.ph-window { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.ph-rule { height: 1px; background: #e3e3e0; }
+
+.ph-form { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.ph-field { display: flex; flex-direction: column; gap: 6px; }
+.ph-input { height: 26px; border: 1px solid #000; box-shadow: inset 1px 1px 0 #888; }
+
+.ph-count { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; }
+
+/* ---------- pending buttons ---------- */
+
+@keyframes busy-stripes {
+  to { background-position: 11.31px 0; }
+}
+button[aria-busy="true"],
+a[aria-busy="true"] {
+  position: relative;
+  overflow: hidden;
+  cursor: progress;
+}
+button[aria-busy="true"]::after,
+a[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.55) 0 4px, transparent 4px 8px);
+  background-size: 11.31px 11.31px;
+  mix-blend-mode: difference;
+  opacity: 0.35;
+  animation: busy-stripes 0.6s steps(4) infinite;
+}
+
+/* ---------- agent working + boot ---------- */
+
+.agent-working {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 24px 28px;
+  font-family: var(--mac-sans, "IBM Plex Sans", sans-serif);
+  font-size: 13px;
+  color: var(--ink-2, #5a5548);
+  text-align: center;
+}
+.agent-working img,
+.boot-splash img {
+  display: block;
+  mix-blend-mode: multiply;
+  object-fit: cover;
+}
+.boot-splash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #fff;
+}
+
+/* ---------- live ---------- */
+
+@keyframes live-sq {
+  50% { opacity: 0.35; }
+}
+.live-sq {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: #ff8a00;
+  border: 1px solid #000;
+  animation: live-sq 1.2s steps(2) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-d::after { display: none; }
+  button[aria-busy="true"]::after,
+  a[aria-busy="true"]::after { animation: none; }
+  .live-sq { animation: none; }
+}

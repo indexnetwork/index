@@ -16,6 +16,7 @@ import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from('networks/[id]');
 
@@ -190,7 +191,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
             {network && !isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
           </div>
           {loading ? (
-            <p className="pl-dim">loading<span className="pl-blink">_</span></p>
+            <Placeholder.Window rows={4} label="loading this network" />
           ) : notFound ? (
             <div className="pl-profile-empty">
               <p>this network doesn&apos;t exist, or you don&apos;t have access to it.</p>
@@ -247,7 +248,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
       {loading ? (
-        <EmptyState tone="loading" style={{ padding: "64px 24px" }} />
+        <Placeholder.Window rows={5} label="loading this network" style={{ padding: "28px 24px" }} />
       ) : notFound ? (
         <EmptyState
           style={{ padding: "64px 24px" }}

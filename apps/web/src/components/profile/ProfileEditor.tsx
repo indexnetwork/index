@@ -126,7 +126,7 @@ export default function ProfileEditor<T>({ onSaved, onCancel }: {
 
       <div className="pl-edit-actions">
         <button type="button" onClick={onCancel} disabled={saving}>cancel</button>
-        <button type="submit" className="go" disabled={saving || !name.trim() || !!fileError}>{saving ? "saving…" : "save"}</button>
+        <button aria-busy={saving} type="submit" className="go" disabled={saving || !name.trim() || !!fileError}>{saving ? "saving" : "save"}</button>
       </div>
     </form>
   );

@@ -26,6 +26,7 @@ import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useBack } from "@/hooks/useBack";
 import { clearPendingPair, readPendingPair, rememberPendingPair } from "@/lib/pending-pair";
 import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("u/[id]");
 
@@ -223,7 +224,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
       <ProfileFrame width={480} onClose={back}>
           <div style={{ padding: "36px 24px" }}>
             {authLoading || isLoading ? (
-              <EmptyState tone="loading" />
+              <Placeholder.Window rows={3} label="loading this profile" />
             ) : error === "failed" ? (
               <EmptyState
                 tone="error"
@@ -321,7 +322,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
                     {pairError && <div>no discoverable intents in a shared network.</div>}
                   </>
                 }
-                action={{ label: pairing ? "pairing…" : "pair agents", onClick: pair, primary: true, large: true }}
+                action={{ label: pairing ? "pairing" : "pair agents", onClick: pair, primary: true, large: true, busy: pairing }}
               />
             </div>
           )}

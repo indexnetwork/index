@@ -13,9 +13,10 @@ import QuestionItem from "@/components/intents-home/QuestionItem";
 import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import type { RadarCardItem } from "@/services/opportunities";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 /** How often to reread an intent right after an answer, and for how long. */
 const ANSWER_POLL_MS = 3_000;
@@ -92,7 +93,6 @@ const HOME_STATUS_LINE = HOME_STATUS_LINES[Math.floor(Math.random() * HOME_STATU
 export default function HomeDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { conversations } = useConversation();
   const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
   const { setOpen: toggleAgent, log: openLog, setLog } = useAgentWindow();
@@ -175,16 +175,6 @@ export default function HomeDashboard() {
     return out;
   }, [entriesByIntent]);
 
-  const chatPeers = useMemo(() => {
-    const ids = new Set<string>();
-    for (const conv of conversations) {
-      for (const participant of conv.participants ?? []) {
-        if (participant.participantType === "user" && participant.participantId !== user?.id) ids.add(participant.participantId);
-      }
-    }
-    return ids;
-  }, [conversations, user?.id]);
-
   const [searchParams] = useSearchParams();
   const [demoDone, setDemoDone] = useState<Set<string>>(() => new Set());
   const showDemo = import.meta.env.DEV && demoOn(searchParams.get("demo"));
@@ -228,6 +218,10 @@ export default function HomeDashboard() {
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   const moving = [...byStage.talks, ...byStage.chat];
+  // A question opened from a /q/ link stays in view even past the first few.
+  const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup);
+  const waitingList = useShowMore(waitingRows);
+  const movingList = useShowMore(moving);
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
@@ -276,27 +270,31 @@ export default function HomeDashboard() {
         <h2 id="questions">questions from your agents {questionsLoaded && `(${questions.length})`}</h2>
         {staleLink && <p className="pl-dim">that question was already answered.</p>}
         {!questionsLoaded ? (
-          <p className="pl-dim">loading…</p>
+          <Placeholder.Rows count={2} avatar={false} label="loading questions" />
         ) : questions.length === 0 ? (
           <p className="pl-dim">none right now.</p>
         ) : (
+          <>
           <ul className="pl-cards pl-q-list">
-            {questions.map((question) => (
+            {questionList.shown.map((question) => (
               <QuestionItem key={question.groupId} question={question} forIntents={forLine(question)} selected={question.groupId === linkedGroup} onAnswer={answerAndRefresh} />
             ))}
           </ul>
+          {questionList.more}
+          </>
         )}
 
         <hr />
 
         <h2 id="waiting">waiting on you {!loadingPeople && `(${waitingCount})`}</h2>
         {loadingPeople && !waitingRows.length ? (
-          <p className="pl-dim">loading…</p>
+          <Placeholder.Rows count={3} label="loading people" />
         ) : waitingRows.length === 0 ? (
           <p className="pl-dim">nobody yet. your agents are still looking.</p>
         ) : (
+          <>
           <ul className="pl-cards">
-            {waitingRows.map(({ person, passed: wasPassed }) => {
+            {waitingList.shown.map(({ person, passed: wasPassed }) => {
               if (wasPassed) {
                 return (
                   <li key={person.key} className="pl-card pl-card-passed">
@@ -308,7 +306,6 @@ export default function HomeDashboard() {
               const lead = person.entries[0];
               const blurb = lead.item.headline || lead.item.mainText || "";
               const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
-              const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
               return (
                 <li key={person.key} {...cardProps(person, "pl-card")}>
                   {/* The person themselves here, not their agent: this is who you'd meet. */}
@@ -320,63 +317,46 @@ export default function HomeDashboard() {
                   {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
                   {blurb && <div className="pl-blurb">{blurb}</div>}
                   <div className="pl-actions">
-                    {hasChat ? (
-                      <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
-                    ) : (
-                      <>
-                        <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                        <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
-                      </>
-                    )}
+                    {/* Someone you already chat with sits in progress, so everyone here is a fresh decision. */}
+                    <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
+                    <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
                   </div>
                   </div>
                 </li>
               );
             })}
           </ul>
+          {waitingList.more}
+          </>
         )}
 
         {(moving.length > 0 || refreshingIds.length > 0) && (
           <>
             <hr />
             <h2 id="progress">
-              in progress ({moving.length})
-              {refreshingIds.length > 0 && <span className="pl-dim"> updating<span className="pl-blink">_</span></span>}
+              in progress ({refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length})
             </h2>
-            <ul className="pl-cards">
-              {moving.map((person) => {
+            <ul className="pl-moving">
+              {movingList.shown.map((person) => {
                 const lead = person.entries[0];
                 const talking = lead.stage === "talks";
                 const blurb = lead.item.headline || lead.item.mainText || "";
+                const { className, onClick } = cardProps(person, "pl-moving-row");
                 return (
-                  <li key={person.key} {...cardProps(person, talking ? "pl-card talks" : "pl-card live")}>
+                  <li key={person.key} className={className} onClick={onClick}>
                     {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={36} /></Link>
-                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={36} />}
-                    <div className="pl-card-body">
-                      <div className="pl-card-head">
-                        <span>
-                          <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                        </span>
-                        <span className={`pl-status ${talking ? "talks" : "chat"}`}>
-                          {talking ? "agents talking" : person.notOnIndex ? "not on index yet" : "chat open"}
-                        </span>
-                      </div>
-                      {blurb && <div className="pl-blurb">{blurb}</div>}
-                      <div className="pl-actions">
-                        {talking ? (
-                          <button type="button" onClick={() => openMatch(person)}>read the log</button>
-                        ) : person.notOnIndex ? (
-                          <button type="button" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
-                        ) : (
-                          person.userId && <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
-                        )}
-                      </div>
-                    </div>
+                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={22} /></Link>
+                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={22} />}
+                    <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
+                    <span className="pl-moving-blurb">{blurb}</span>
+                    <span className={`pl-status ${talking ? "talks" : "chat"}`}>
+                      {talking ? "talking" : person.notOnIndex ? "not on index" : "chat"}
+                    </span>
                   </li>
                 );
               })}
             </ul>
+            {movingList.more}
           </>
         )}
       </div>,

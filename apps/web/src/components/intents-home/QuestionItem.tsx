@@ -62,7 +62,7 @@ function AskerFace({ question, size }: { question: AgentQuestion; size: number }
 
 /**
  * One question from an agent, drawn like an opportunity row: the asker's face
- * on the left, who's asking, the question, its answers as radios, and the
+ * on the left, who's asking, the question, its answers as chips, and the
  * card's small send button.
  */
 export default function QuestionItem({ question, forIntents, selected, onAnswer }: {
@@ -95,7 +95,7 @@ export default function QuestionItem({ question, forIntents, selected, onAnswer 
           {forIntents && <div className="pl-q-row-for">{forIntents}</div>}
         </div>
         <div className="pl-blurb pl-q-row-text">{question.question}</div>
-        <div className="pl-q-options">
+        <div className="pl-q-options pl-chips">
           {options.map((option) => (
             <label key={option}>
               <input type="radio" name={name} checked={choice === option} onChange={() => setChoice(option)} /> {option}
@@ -114,8 +114,8 @@ export default function QuestionItem({ question, forIntents, selected, onAnswer 
           )}
         </div>
         <div className="pl-actions">
-          <button type="submit" className="go" disabled={!text || sending || skipping}>{sending ? "sending…" : "send answer"}</button>
-          <button type="button" className="pl-skip" disabled={sending || skipping} onClick={() => void skip()}>{skipping ? "skipping…" : "skip"}</button>
+          <button aria-busy={sending} type="submit" className="go" disabled={!text || sending || skipping}>{sending ? "sending" : "send answer"}</button>
+          <button aria-busy={skipping} type="button" className="pl-skip" disabled={sending || skipping} onClick={() => void skip()}>{skipping ? "skipping" : "skip"}</button>
         </div>
       </form>
     </li>

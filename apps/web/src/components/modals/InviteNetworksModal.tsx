@@ -7,6 +7,7 @@ import { resolveNetworkImageSrc } from "@/lib/network-image";
 import { log } from "@/lib/logger";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.ui.from("InviteNetworksModal");
 
@@ -88,7 +89,7 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
           ))}
           {!invitable.length && (
             loading ? (
-              <EmptyState tone="loading" style={{ padding: "48px 12px" }} />
+              <Placeholder.Rows count={4} label="loading networks" style={{ padding: 12 }} />
             ) : error && networks.length === 0 ? (
               <EmptyState
                 tone="error"

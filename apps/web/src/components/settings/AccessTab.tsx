@@ -11,6 +11,7 @@ import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCompact } from "@/hooks/useCompact";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.ui.from('AccessTab');
 const MEMBERS_PAGE_SIZE = 10;
@@ -303,8 +304,8 @@ export default function AccessTab({
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e6e6e6", borderRadius: 2, background: "#f7f7f5" }}>
           <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "no invitation link yet."}</code>
           {!shareUrl && (
-            <button type="button" className="wb-btn small" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()}>
-              {isRegeneratingLink ? "creating…" : "create link"}
+            <button aria-busy={isRegeneratingLink} type="button" className="wb-btn small" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()}>
+              {isRegeneratingLink ? "creating" : "create link"}
             </button>
           )}
           {shareUrl && (
@@ -319,7 +320,7 @@ export default function AccessTab({
             <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#8A0000" }}>The current link stops working immediately. Regenerate?</p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)}>cancel</button>
-              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} className="danger">{isRegeneratingLink ? "regenerating…" : "regenerate"}</button>
+              <button aria-busy={isRegeneratingLink} type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} className="danger">{isRegeneratingLink ? "regenerating" : "regenerate"}</button>
             </div>
           </div>
         )}
@@ -377,7 +378,7 @@ export default function AccessTab({
         </div>
 
         <div style={{ marginTop: 12, display: "grid", gap: 2 }}>
-          {isMembersLoading && members.length === 0 && <EmptyState tone="loading" align="start" message="loading members…" />}
+          {isMembersLoading && members.length === 0 && <Placeholder.Rows count={3} label="loading members" />}
           {!isMembersLoading && membersFailed && members.length === 0 && (
             <EmptyState
               tone="error"

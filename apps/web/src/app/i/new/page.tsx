@@ -14,6 +14,9 @@ import { createFailureReason, intentService, type IntentSuggestion, type Prepare
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { AgentWorking } from "@/components/ui/AgentWorking";
+import { useIndexingToast } from "@/components/intents-home/useIndexingToast";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
@@ -40,6 +43,7 @@ export default function NewIntentPage() {
   const { isAuthenticated, user, refetchUser } = useAuthContext();
   // Read once: creating the picks finishes onboarding, but the flow keeps its three steps.
   const [onboarding] = useState(() => awaitsFirstIntent(user));
+  const showIndexing = useIndexingToast();
   const { suggestions, examples } = useSuggestions(onboarding);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [chosenStage, setStage] = useState<Stage>(onboarding ? "picks" : "opening");
@@ -114,6 +118,7 @@ export default function NewIntentPage() {
         void onboardingService.complete(created.intentId).then(() => refetchUser()).catch(() => {});
       }
       // Onboarding ends on the home page, where the new intents' updates come in.
+      if (!onboarding) showIndexing({ id: created.intentId, text: description });
       navigate(onboarding ? "/" : `/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
@@ -158,7 +163,7 @@ export default function NewIntentPage() {
               </div>
             ))}
             {thinking ? (
-              <AgentSays><span className="pl-dim">reading that<span className="pl-blink">_</span></span></AgentSays>
+              <AgentSays><span className="pl-dim">reading that</span><Placeholder.Text lines={2} label="reading that" style={{ width: 220, marginTop: 6 }} /></AgentSays>
             ) : stage === "retry" ? (
               <AgentSays>
                 couldn&apos;t reach your agent.
@@ -265,13 +270,13 @@ function Picks({ suggestions, onCreate, onSkip }: {
 }) {
   const [picked, setPicked] = useState<number[]>([]);
   if (suggestions === "loading") {
-    return <AgentSays><span className="pl-dim">reading what i found about you<span className="pl-blink">_</span></span></AgentSays>;
+    return <AgentWorking kind="look" size={150}>reading what i found about you</AgentWorking>;
   }
   const toggle = (i: number) => setPicked((current) => current.includes(i) ? current.filter((x) => x !== i) : [...current, i]);
   return (
     <AgentSays>
       {PICKS_PROMPT}
-      <div className="pl-q-options">
+      <div className="pl-q-options pl-chips">
         {suggestions.map((s, i) => (
           <label key={s.text}>
             <input type="checkbox" checked={picked.includes(i)} onChange={() => toggle(i)} /> {s.text}
@@ -332,33 +337,18 @@ function truncate(value: string, n: number) {
   return value.length > n ? `${value.slice(0, n - 1)}…` : value;
 }
 
+/** The agent reading what you said: the hand-drawn eye. */
 function FieldGlyph() {
-  return (
-    <div style={{ position: "relative", height: 150, marginTop: 12 }}>
-      <div style={{ position: "absolute", left: "50%", top: "50%", width: 8, height: 8, marginLeft: -4, marginTop: -4, background: "var(--wb-live)" }} />
-      {[36, 56, 78].map((r, i) => (
-        <div key={r} style={{
-          position: "absolute", left: "50%", top: "50%",
-          width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r,
-          border: "1px dashed #ccc", borderRadius: 999,
-          animation: `mac-orbit ${22 + i * 8}s linear infinite`,
-        }}>
-          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 5, height: 5, borderRadius: "50%", background: "var(--ink-3)" }} />
-        </div>
-      ))}
-    </div>
-  );
+  return <AgentWorking kind="look" size={150} style={{ marginTop: 12 }} />;
 }
 
 function Calibrating() {
   return (
-    // No frame, title or name: just the striped bar and the lines.
+    // No frame, title or name: just the leaf and the lines.
     <div className="pl-calibrating" style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
       <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto", flex: "none", border: "none" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
-          <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
-            <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
-          </div>
+          <AgentWorking kind="grow" size={120} style={{ padding: "0 0 14px" }} />
           {CALIBRATING_LINES.map((line, i) => (
             <div key={line} className="fade-up" style={{
               animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 15,

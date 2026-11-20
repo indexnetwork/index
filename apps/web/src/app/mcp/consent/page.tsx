@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { decideMcpConsent, getMcpConsentDetails, type McpConsentDetails } from '@/lib/auth-client';
 import { SiteSignInPage, SiteSignInPanel } from '@/components/SiteSignIn';
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const consentCode = new URLSearchParams(window.location.search).get('consent_code');
 
@@ -50,7 +51,7 @@ function McpConsentPage() {
               <button type="button" className="site-btn" disabled={submitting} onClick={() => decide(true)}>Approve</button>
             </div>
           </>
-        ) : !error ? <p className="site-p">Checking authorization request…</p> : null}
+        ) : !error ? <Placeholder.Text lines={3} title label="checking authorization request" /> : null}
         {error && !client && <p role="alert" className="signin-error">{error}</p>}
         {error && !client && (
           // Nothing to retry here: a fresh request has to come from the MCP client.

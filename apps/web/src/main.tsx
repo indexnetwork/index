@@ -7,6 +7,7 @@ import { router } from "@/routes";
 
 import "./app/globals.css";
 import "./styles/workbench.css";
+import "./styles/loading.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

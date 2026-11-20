@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useParams, useLocation } from "react-router";
-import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -13,6 +12,7 @@ import { useBack } from "@/hooks/useBack";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("u/[id]/chat");
 
@@ -80,8 +80,8 @@ export default function ChatPage() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-[#aaa]" />
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px" }}>
+        <Placeholder.Thread label="loading this chat" />
       </div>
     );
   }

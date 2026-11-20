@@ -187,16 +187,6 @@
   font: 700 10px "IBM Plex Sans", sans-serif;
   color: #000;
 }
-/* a count being refreshed, e.g. "in progress" right after you answer a question */
-.ih-blink {
-  animation: ih-blink 1s steps(1) infinite;
-}
-@keyframes ih-blink {
-  50% { opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ih-blink { animation: none; }
-}
 .ih-menu {
   margin-top: auto;
   padding-top: 10px;

@@ -17,6 +17,7 @@ import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
@@ -70,7 +71,7 @@ function AppRail({ here }: { here: RailKey }) {
                 <button type="button" className="ih-sub-link" onClick={() => { if (here !== "home") navigate("/"); jumpTo(section.id); }}>
                   <span className="ih-nav-label">{section.label}</span>
                   {section.loading
-                    ? <span className="ih-sub-n ih-sub-loading" aria-label="loading">{section.count ? `${section.count} ` : ""}<span className="ih-blink">…</span></span>
+                    ? <span className="ih-sub-n ih-sub-loading"><Placeholder.Count /></span>
                     : !!section.count && <span className="ih-sub-n">{section.count}</span>}
                 </button>
               </li>

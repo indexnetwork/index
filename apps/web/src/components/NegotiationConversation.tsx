@@ -5,6 +5,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import type { NegotiationDetail } from "@/services/negotiations";
 import { formatChatClock } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /** Expand one Radar match's read-only A2A thread without affecting its runtime. */
 export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle }: {
@@ -55,7 +56,7 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
     onScroll={() => { const pane = history.current; if (pane) follow.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80; }}
     style={{ minHeight: 0, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
     {error && <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>couldn&apos;t load this agent log.</p>}
-    {!detail && !error && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>loading…</p>}
+    {!detail && !error && <Placeholder.Thread label="loading the agent log" />}
     {detail && detail.turns.length === 0 && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-3)", textAlign: "center" }}>no turns yet.</p>}
     {detail?.turns.map((turn) => {
       const own = turn.seatUserId === user?.id;

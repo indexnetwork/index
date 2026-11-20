@@ -15,6 +15,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { useBack } from "@/hooks/useBack";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("handle");
 
@@ -56,7 +57,7 @@ export default function HandlePage() {
           <div style={{ padding: "36px 24px" }}>
             {state === "failed"
               ? <EmptyState tone="error" message="couldn't load this page." action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }} />
-              : <EmptyState tone="loading" />}
+              : <Placeholder.Window rows={3} label="loading this page" />}
           </div>
         </Window>
       </Stage>
@@ -100,7 +101,7 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
     return (
       <Stage width={480}>
         <Window title={network.title} onClose={back}>
-          <div style={{ padding: "36px 24px" }}><EmptyState tone="loading" /></div>
+          <div style={{ padding: "36px 24px" }}><Placeholder.Window rows={4} label="loading this network" /></div>
         </Window>
       </Stage>
     );
@@ -145,8 +146,8 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
                 <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{preview.prompt}</p>
               )}
               <div>
-                <button type="button" className="wb-btn primary" disabled={joining} onClick={() => void join()}>
-                  {joining ? "joining…" : "join network"}
+                <button aria-busy={joining} type="button" className="wb-btn primary" disabled={joining} onClick={() => void join()}>
+                  {joining ? "joining" : "join network"}
                 </button>
               </div>
             </>

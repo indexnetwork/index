@@ -26,6 +26,7 @@ import { DiscoveryLoader, MatchCard, NotOnIndexTag, PipelineFunnel, IntentAction
 import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (status === "paused") return status;
@@ -475,7 +476,7 @@ function IntentDetail() {
       borderBottom: "1px solid var(--wb-hairline)", background: "#fff", transition: "padding 180ms ease, min-height 180ms ease",
     }}>
       {intentLoading ? (
-        <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>loading…</p>
+        <Placeholder.Text lines={1} title label="loading this intent" style={{ maxWidth: 420 }} />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -494,7 +495,8 @@ function IntentDetail() {
               />
               <IntentAction
                 danger
-                label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
+                label={archiving ? "archiving" : archiveArmed ? "archive · confirm" : "archive"}
+                busy={archiving}
                 active={archiveArmed || archiving}
                 onClick={clickArchive}
               />
@@ -545,7 +547,7 @@ function IntentDetail() {
           action={{ label: "try again", onClick: () => void loadOpportunities() }}
         />
       ) : opportunitiesLoading && opportunities.length === 0 ? (
-        <div data-testid="radar-skeleton"><EmptyState tone="loading" style={{ padding: 28 }} /></div>
+        <div data-testid="radar-skeleton" style={{ padding: 16, display: "grid", gap: 10 }}><Placeholder.Card label="loading matches" /><Placeholder.Card label="loading matches" /></div>
       ) : discovering ? (
         <div data-testid="radar-discovering"><DiscoveryLoader /></div>
       ) : visibleOpportunities.length === 0 ? (
@@ -620,7 +622,7 @@ function IntentDetail() {
           <Window title="intent" onClose={back}>
             <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
               {intentLoading ? (
-                <EmptyState tone="loading" />
+                <Placeholder.Window rows={4} label="loading this intent" style={{ alignSelf: "start" }} />
               ) : intentMissing ? (
                 <EmptyState message="this intent doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
               ) : intentFailed ? (
@@ -940,7 +942,7 @@ function PersonPane({
         {bucket === "closed" && item.status === "expired" && <SummarySection label="why it closed">an intent was archived.</SummarySection>}
         {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
-            ? <EmptyState tone="loading" align="start" />
+            ? <Placeholder.Text lines={3} label="loading their profile" />
             : <EmptyState align="start" message="nothing recorded yet." />
         )}
       </div>
