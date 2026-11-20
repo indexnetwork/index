@@ -141,13 +141,12 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
   const [text, setText] = useState(pair.draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const A = first(pair.a.name), B = first(pair.b.name);
 
   const side = (s: PairSuggestion["a"]) => (
     <div className="idk-who">
       <UserAvatar id={s.userId} name={s.name} avatar={s.avatar} size={30} />
       <div style={{ minWidth: 0 }}>
-        <b title={s.name}>{s.name}</b>
+        <div className="idk-line" title={s.intentText}><b>{first(s.name)}</b> {s.line}</div>
         <small>{pair.networkTitle}{s.isContact && <span className="idk-tag">your contact</span>}</small>
       </div>
     </div>
@@ -156,10 +155,6 @@ function PairCard({ pair, run, onWake, onSkip, onShow }: {
   return (
     <div className={`idk-card${run && isFinal(run) ? " done" : ""}`}>
       <div className="idk-pair">{side(pair.a)}<div className="idk-link">⇄</div>{side(pair.b)}</div>
-      <div className="idk-ask">
-        <div><b>{A}</b> wants: {pair.a.intentText}</div>
-        <div><b>{B}</b> wants: {pair.b.intentText}</div>
-      </div>
       {run ? (
         <button type="button" className="idk-woke" onClick={() => onShow(run.opportunityId)}>
           <span className={`idk-bot ${isFinal(run) ? "ok" : "think"}`} style={{ width: 14, height: 14 }} />

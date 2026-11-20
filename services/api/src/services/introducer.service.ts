@@ -33,8 +33,11 @@ function introModel(): Model {
 }
 
 interface ScreenResult {
-  pairs: { i: number; intro: string }[];
+  pairs: { i: number; intro: string; a: string; b: string }[];
 }
+
+/** Each side's one-liner on the card, completing "<first name> …". */
+const SIDE_LINE = 'A verb phrase of at most 6 words that completes "<first name> …" with what this person needs or brings to this pair, e.g. "needs a payments design partner" or "runs checkout at a fintech". Lowercase, no period.';
 
 const screenSchema = jsonSchema<ScreenResult>({
   type: 'object',
@@ -46,8 +49,10 @@ const screenSchema = jsonSchema<ScreenResult>({
         properties: {
           i: { type: 'integer', description: 'The pair number from the list.' },
           intro: { type: 'string', description: "Two short sentences in the introducer's voice to both people, first names, saying concretely why they should talk. No flattery, no emoji." },
+          a: { type: 'string', description: `First person of the pair. ${SIDE_LINE}` },
+          b: { type: 'string', description: `Second person of the pair. ${SIDE_LINE}` },
         },
-        required: ['i', 'intro'],
+        required: ['i', 'intro', 'a', 'b'],
         additionalProperties: false,
       },
     },
@@ -73,8 +78,8 @@ export interface PairSuggestion {
   networkId: string;
   networkTitle: string;
   score: number;
-  a: PairCandidate['a'];
-  b: PairCandidate['b'];
+  a: PairCandidate['a'] & { line: string };
+  b: PairCandidate['b'] & { line: string };
   /** A starting intro the member edits before waking both agents. */
   draft: string;
 }
@@ -255,13 +260,13 @@ export class IntroducerService {
     if (cached && Date.now() - cached.at < PAIRS_TTL_MS) return cached.pairs;
 
     const candidates = await this.adapter.pairCandidates(userId, CANDIDATE_LIMIT);
-    const toPair = (c: PairCandidate, draft: string): PairSuggestion => ({
+    const toPair = (c: PairCandidate, draft: string, lines?: { a: string; b: string }): PairSuggestion => ({
       key: `${c.a.intentId}:${c.b.intentId}`,
       networkId: c.networkId,
       networkTitle: c.networkTitle,
       score: c.score,
-      a: c.a,
-      b: c.b,
+      a: { ...c.a, line: lines?.a.trim() || `wants ${clip(c.a.intentText, 60)}` },
+      b: { ...c.b, line: lines?.b.trim() || `wants ${clip(c.b.intentText, 60)}` },
       draft,
     });
     const plainDraft = (c: PairCandidate) =>
@@ -280,7 +285,7 @@ export class IntroducerService {
 
   private async screen(
     candidates: PairCandidate[],
-    toPair: (c: PairCandidate, draft: string) => PairSuggestion,
+    toPair: (c: PairCandidate, draft: string, lines?: { a: string; b: string }) => PairSuggestion,
   ): Promise<PairSuggestion[]> {
     const list = candidates.map((c, i) =>
       `${i}. ${firstName(c.a.name)} wants: ${clip(c.a.intentText, 300)}\n   ${firstName(c.b.name)} wants: ${clip(c.b.intentText, 300)}`).join('\n');
@@ -293,7 +298,7 @@ export class IntroducerService {
         'Keep a pair only when meeting would plausibly move at least one of them toward what they want:',
         'one can offer what the other is looking for, or they want to build or do the same specific thing together.',
         'Drop pairs that merely share a topic, both want the same scarce thing (two people both raising, both job hunting, both traveling), or are vague.',
-        `Return at most ${PAIR_LIMIT}, strongest first. For each, write the intro the introducer will send to both people.`,
+        `Return at most ${PAIR_LIMIT}, strongest first. For each, write the intro the introducer will send to both people, and one short line per person for the card.`,
         '',
         list,
       ].join('\n'),
@@ -302,7 +307,7 @@ export class IntroducerService {
     return (output?.pairs ?? [])
       .filter((p) => p.i >= 0 && p.i < candidates.length && !seen.has(p.i) && seen.add(p.i))
       .slice(0, PAIR_LIMIT)
-      .map((p) => toPair(candidates[p.i]!, p.intro.trim()));
+      .map((p) => toPair(candidates[p.i]!, p.intro.trim(), { a: p.a, b: p.b }));
   }
 
   async introductions(userId: string, opportunityId?: string): Promise<IntroductionProgress[]> {

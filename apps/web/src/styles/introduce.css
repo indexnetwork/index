@@ -48,14 +48,13 @@
 .idk-bar .sp { flex: 1; }
 .idk-card { border: 1px solid #000; padding: 12px; margin-bottom: 12px; background: #fff; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15); }
 .idk-card.done { opacity: 0.6; }
-.idk-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
-.idk-who { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.idk-who b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idk-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; margin-bottom: 10px; }
+.idk-who { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.idk-line { font-size: 13px; line-height: 1.35; }
+.idk-line b { font-weight: 700; }
 .idk-who small { display: block; font-size: 11px; color: var(--idk-ink2); }
-.idk-link { font: 700 14px var(--idk-mono); }
+.idk-link { font: 700 18px var(--idk-mono); align-self: center; }
 .idk-tag { display: inline-block; font: 600 9.5px var(--idk-mono); padding: 0 4px; border: 1px solid #000; text-transform: uppercase; background: #fff6e8; margin-left: 4px; }
-.idk-ask { font-size: 12.5px; padding: 6px 8px; background: #f4f2ec; border-left: 3px solid #000; margin: 6px 0 8px; }
-.idk-ask div + div { margin-top: 3px; }
 .idk-label { font: 600 10px var(--idk-mono); color: var(--idk-ink2); display: flex; justify-content: space-between; margin-bottom: 3px; letter-spacing: 0.04em; }
 .idk textarea { width: 100%; box-sizing: border-box; font: 12.5px/1.45 "IBM Plex Sans", system-ui, sans-serif; border: 1px solid #000; padding: 6px 8px; resize: vertical; min-height: 56px; background: #fff; color: #000; outline: none; }
 .idk textarea:focus { background: #fffbe6; }

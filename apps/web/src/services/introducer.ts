@@ -12,6 +12,8 @@ export interface PairSide {
   intentId: string;
   intentText: string;
   isContact: boolean;
+  /** One short line completing "<first name> …": what they need or bring. */
+  line: string;
 }
 
 export interface PairSuggestion {
