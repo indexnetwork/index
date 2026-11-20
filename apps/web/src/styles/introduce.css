@@ -59,8 +59,8 @@
 .idk-link { font: 700 18px var(--idk-mono); align-self: center; }
 .idk-tag { display: inline-block; font: 600 9.5px var(--idk-mono); padding: 0 4px; border: 1px solid #000; text-transform: uppercase; background: #fff6e8; margin-left: 4px; }
 .idk-label { font: 600 10px var(--idk-mono); color: var(--idk-ink2); display: flex; justify-content: space-between; margin-bottom: 3px; letter-spacing: 0.04em; }
-.idk textarea { width: 100%; box-sizing: border-box; font: 12.5px/1.45 "IBM Plex Sans", system-ui, sans-serif; border: 1px solid #000; padding: 6px 8px; resize: vertical; min-height: 56px; background: #fff; color: #000; outline: none; }
-.idk textarea:focus { background: #fffbe6; }
+.idk textarea { width: 100%; box-sizing: border-box; font: 12.5px/1.45 "IBM Plex Sans", system-ui, sans-serif; border: 1px solid var(--idk-line); border-radius: 2px; padding: 6px 8px; resize: vertical; min-height: 56px; background: #fff; color: #000; outline: none; }
+.idk textarea:focus { background: #fffbe6; border-color: var(--idk-ink3); }
 .idk-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .idk-woke { display: flex; gap: 8px; align-items: center; font: 600 10.5px var(--idk-mono); border: 1px dashed #000; padding: 6px 8px; background: #fff6e8; cursor: pointer; width: 100%; text-align: left; color: #000; }
 .idk-empty { border: 1px dashed var(--idk-line); padding: 18px; color: var(--idk-ink2); font-size: 13px; }
@@ -90,9 +90,9 @@
 .idk-h2 { display: flex; align-items: center; gap: 10px; font: 700 10px var(--idk-mono); letter-spacing: 2px; text-transform: uppercase; margin: 0 0 6px; }
 .idk-h2::after { content: ""; flex: 1; height: 3px; border-top: 1px solid #000; border-bottom: 1px solid #000; }
 .idk-h2 .n { order: 2; font-weight: 500; letter-spacing: 0; color: var(--idk-ink3); }
-.idk-rows { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid #000; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2); background: #fff; }
-.idk-rows li { display: flex; align-items: baseline; gap: 8px; padding: 6px 9px; margin: 0; font-size: 13px; }
-.idk-rows li + li { border-top: 1px solid #000; }
+.idk-rows { list-style: none; margin: 4px 0 0; padding: 0; }
+.idk-rows li { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; margin: 0; font-size: 13px; }
+.idk-rows li + li { border-top: 1px dashed var(--idk-line); }
 .idk-rows li.done .p { color: var(--idk-ink3); }
 .idk-rows li.fresh { animation: idk-fresh 1.6s ease-out 2; }
 .idk-rows .p { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
