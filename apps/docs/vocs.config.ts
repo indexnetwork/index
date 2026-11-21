@@ -2,7 +2,8 @@ import { defineConfig } from 'vocs/config'
 
 export default defineConfig({
   title: 'Index Network',
-  baseUrl: 'https://docs.index.network',
+  // Vocs makes internal links absolute against this, so previews must set their own.
+  baseUrl: process.env.DOCS_BASE_URL ?? 'https://docs.index.network',
   description: 'A private, intent-driven social discovery protocol.',
   iconUrl: '/favicon.svg',
   ogImageUrl: 'https://docs.index.network/og.png?v=4',
@@ -38,6 +39,7 @@ export default defineConfig({
         },
         { text: 'Discovery', link: '/discovery' },
         { text: 'Privacy', link: '/privacy' },
+        { text: 'Nostr (preview)', link: '/nostr' },
       ],
     },
     {
@@ -57,6 +59,7 @@ export default defineConfig({
         { text: 'Hermes', link: '/use/hermes' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'CLI', link: '/use/cli' },
+        { text: 'Buzz (preview)', link: '/use/buzz' },
       ],
     },
     {
@@ -76,6 +79,7 @@ export default defineConfig({
         },
         { text: 'Client', link: '/integrate/client' },
         { text: 'Host', link: '/integrate/host' },
+        { text: 'Nostr (preview)', link: '/integrate/nostr' },
         { text: 'Stability', link: '/integrate/stability' },
       ],
     },

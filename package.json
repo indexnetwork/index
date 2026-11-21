@@ -12,7 +12,10 @@
     "packages/hermes-plugin",
     "packages/agent",
     "packages/agent-tui",
-    "packages/client"
+    "packages/client",
+    "packages/nostr",
+    "services/nostr",
+    "apps/nostr"
   ],
   "scripts": {
     "postinstall": "git config core.hooksPath scripts/hooks || true",
