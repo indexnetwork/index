@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type AnchorHTMLAttributes } from "react";
 import ReactMarkdown from "react-markdown";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import remarkGfm from "remark-gfm";
 
 import NewIntentSteps from "@/components/intents-home/NewIntentSteps";
@@ -46,6 +46,7 @@ function AgentLink({ href = "", children, ...rest }: AnchorHTMLAttributes<HTMLAn
 export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: (tools: string[]) => void; onClose?: () => void }) {
   const { messages, loaded, loadFailed, sending, error, send, newChat, recordIntent, retry } = usePersonalAgentChat(onChanged);
   const [draft, setDraft] = useState("");
+  const navigate = useNavigate();
   const { intents } = useIntentsData();
   // The server writes the agent's "started …" line into the chat once the intent exists.
   const showIndexing = useIndexingToast(() => onChanged(["archive_intent"]));
@@ -127,7 +128,13 @@ export default function PersonalAgentPanel({ onChanged, onClose }: { onChanged: 
                       : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>;
                   })() : <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: AgentLink }}>{message.text}</ReactMarkdown>}
                 </div>
-                {message.changed?.length ? <div className="pl-agent-done">✓ {message.changed.map((name) => name.replace(/_/g, " ")).join(", ")}</div> : null}
+                {/* "create intent" is left out: the button below already says an intent was started. */}
+                {message.changed?.some((name) => name !== "create_intent") ? <div className="pl-agent-done">✓ {message.changed.filter((name) => name !== "create_intent").map((name) => name.replace(/_/g, " ")).join(", ")}</div> : null}
+                {message.intentCreated && (
+                  <div className="pl-agent-go">
+                    <button type="button" onClick={() => navigate(`/i/${message.intentCreated}`)}>open intent ›</button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

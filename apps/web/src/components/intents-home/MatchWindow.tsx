@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import AgentLog from "@/components/intents-home/AgentLog";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
-import type { Entry } from "@/components/intents-home/stages";
+import { personKey, type Entry } from "@/components/intents-home/stages";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import UserAvatar from "@/components/UserAvatar";
 import { useOpportunities, useUsers } from "@/contexts/APIContext";
@@ -25,7 +25,8 @@ interface Who {
  */
 export default function MatchWindow() {
   const navigate = useNavigate();
-  const { log: match, setLog } = useAgentWindow();
+  const onHome = useLocation().pathname === "/";
+  const { log: match, setLog, decide } = useAgentWindow();
   const { entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   const users = useUsers();
   const opportunities = useOpportunities();
@@ -82,14 +83,21 @@ export default function MatchWindow() {
   const busy = entries.some((entry) => opportunityActionLoading[entry.item.opportunityId]);
 
   const act = (action: "accepted" | "rejected") => {
+    // Home leaves a line where they were, whichever side the decision came from.
+    const key = match.personKey ?? (lead ? personKey(lead.item) : null);
+    if (key) decide(key, action);
     if (demo) { setLog(null); return; }
-    for (const entry of entries.filter((e) => e.stage === "awaiting")) {
-      if (opportunityActionLoading[entry.item.opportunityId]) continue;
-      void handleOpportunityAction(entry.item.opportunityId, action, match.userId, {
-        notOnIndex: match.notOnIndex,
-        scope: { intentId: entry.intentId },
-      }).then(() => loadRadar(entry.intentId));
-    }
+    // On Home, accepting opens the chat at once, in this window's place; the accept finishes behind it.
+    const chatting = onHome && action === "accepted" && !!match.userId && !match.notOnIndex;
+    if (chatting) setLog({ ...match, view: "chat" });
+    const pending = entries.filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId]);
+    void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, match.userId, {
+      notOnIndex: match.notOnIndex,
+      scope: { intentId: entry.intentId },
+    }).then((ok) => { void loadRadar(entry.intentId); return ok; }))).then((results) => {
+      // It didn't go through: back to the match, with the error already shown.
+      if (results.includes(false)) { if (key) decide(key, null); if (chatting) setLog(match); }
+    });
     if (action === "rejected") setLog(null);
   };
 

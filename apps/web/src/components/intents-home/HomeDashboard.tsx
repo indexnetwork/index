@@ -5,7 +5,7 @@ import "@/styles/intents-home.css";
 import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
 import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
-import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
+import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { focusedGroup, intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
@@ -95,7 +95,7 @@ export default function HomeDashboard() {
   const { user } = useAuthContext();
   const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
-  const { setOpen: toggleAgent, log: openLog, setLog } = useAgentWindow();
+  const { setOpen: toggleAgent, log: openLog, setLog, decisions, decide } = useAgentWindow();
   const withAgent = (page: ReactNode) => (
     <div className="ih-view pl">
       <div className="pl-col">
@@ -176,44 +176,73 @@ export default function HomeDashboard() {
   }, [entriesByIntent]);
 
   const [searchParams] = useSearchParams();
-  const [demoDone, setDemoDone] = useState<Set<string>>(() => new Set());
   const showDemo = import.meta.env.DEV && demoOn(searchParams.get("demo"));
   const awaiting = useMemo(
     () => showDemo
-      ? [...byStage.awaiting, ...demoPeople(intents.map((intent) => intent.id)).filter((person) => !demoDone.has(person.key))]
+      ? [...byStage.awaiting, ...demoPeople(intents.map((intent) => intent.id))]
       : byStage.awaiting,
-    [showDemo, byStage.awaiting, intents, demoDone],
+    [showDemo, byStage.awaiting, intents],
   );
 
-  // People you passed on stay in their spot as a one-line note until the page reloads, like LinkedIn's "invitation ignored".
-  const [passed, setPassed] = useState<Map<string, { person: Person; at: number }>>(() => new Map());
+  // People you accepted or passed on stay in their spot as a one-line note until the page
+  // reloads, like LinkedIn's "invitation ignored". The decision itself lives with the
+  // window on the right (it can be made there too); this keeps who it was and where.
+  const [pinned, setPinned] = useState<Map<string, { person: Person; at: number } | null>>(() => new Map());
   const waitingRows = useMemo(() => {
-    const rows = awaiting.filter((person) => !passed.has(person.key)).map((person) => ({ person, passed: false }));
-    [...passed.values()]
+    const rows: Array<{ person: Person; decision: Decision | null }> = awaiting
+      .filter((person) => !(decisions[person.key] && pinned.get(person.key)))
+      .map((person) => ({ person, decision: null }));
+    [...pinned.entries()]
+      .flatMap(([key, pin]) => (pin && decisions[key] ? [{ ...pin, decision: decisions[key] }] : []))
       .sort((a, b) => a.at - b.at)
-      .forEach(({ person, at }) => rows.splice(Math.min(at, rows.length), 0, { person, passed: true }));
+      .forEach(({ person, at, decision }) => rows.splice(Math.min(at, rows.length), 0, { person, decision }));
     return rows;
-  }, [awaiting, passed]);
-  const waitingCount = waitingRows.filter((row) => !row.passed).length;
+  }, [awaiting, pinned, decisions]);
+  // A new decision pins the person at the row they are on right now. Someone
+  // no longer in the list (decided before this page opened) gets no line.
+  const unpinned = Object.keys(decisions).filter((key) => !pinned.has(key));
+  if (unpinned.length) {
+    const next = new Map(pinned);
+    for (const key of unpinned) {
+      const at = waitingRows.findIndex((row) => row.person.key === key);
+      next.set(key, at < 0 ? null : { person: waitingRows[at].person, at });
+    }
+    setPinned(next);
+  }
+  const waitingCount = waitingRows.filter((row) => !row.decision).length;
 
-  const act = (person: Person, action: "accepted" | "rejected") => {
-    if (action === "rejected") {
-      const at = waitingRows.findIndex((row) => row.person.key === person.key);
-      setPassed((prev) => new Map(prev).set(person.key, { person, at: at < 0 ? 0 : at }));
-    }
-    // A sample match only leaves the list; nothing is sent.
-    if (person.key.startsWith("demo-")) {
-      setDemoDone((prev) => new Set(prev).add(person.key));
-      return;
-    }
+  // The chat with someone you accepted opens beside Home, where their match was.
+  const openChat = (person: Person) => {
+    const lead = person.entries[0];
+    setLog({
+      opportunityId: lead.item.opportunityId,
+      intentId: lead.intentId,
+      personKey: person.key,
+      name: person.name,
+      userId: person.userId,
+      avatar: person.avatar,
+      notOnIndex: person.notOnIndex,
+      entries: person.entries,
+      view: "chat",
+    });
+  };
+
+  const act = (person: Person, action: Decision) => {
+    decide(person.key, action);
+    // A sample match only leaves a line; nothing is sent.
+    if (person.key.startsWith("demo-")) return;
+    // Accepting opens the chat at once; the accept itself finishes behind it.
+    const chatting = action === "accepted" && !!person.userId && !person.notOnIndex;
+    if (chatting) openChat(person);
     // A decision applies to every intent where they are waiting on you.
-    for (const entry of person.entries.filter((e) => e.stage === "awaiting")) {
-      if (opportunityActionLoading[entry.item.opportunityId]) continue;
-      void handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
-        notOnIndex: person.notOnIndex,
-        scope: { intentId: entry.intentId },
-      }).then(() => loadRadar(entry.intentId));
-    }
+    const pending = person.entries.filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId]);
+    void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
+      notOnIndex: person.notOnIndex,
+      scope: { intentId: entry.intentId },
+    }).then((ok) => { void loadRadar(entry.intentId); return ok; }))).then((results) => {
+      // It didn't go through: the error is already shown, so give the card back.
+      if (results.includes(false)) { decide(person.key, null); if (chatting) setLog(null); }
+    });
   };
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
@@ -234,6 +263,7 @@ export default function HomeDashboard() {
     setLog({
       opportunityId: lead.item.opportunityId,
       intentId: lead.intentId,
+      personKey: person.key,
       name: person.name,
       userId: person.userId,
       avatar: person.avatar,
@@ -294,12 +324,20 @@ export default function HomeDashboard() {
         ) : (
           <>
           <ul className="pl-cards">
-            {waitingList.shown.map(({ person, passed: wasPassed }) => {
-              if (wasPassed) {
+            {waitingList.shown.map(({ person, decision }) => {
+              if (decision) {
+                const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
+                const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
                 return (
-                  <li key={person.key} className="pl-card pl-card-passed">
+                  <li key={person.key} className={`pl-card pl-card-passed${chatOpen ? " on" : ""}`}>
                     <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
-                    <div className="pl-card-body">you passed on <b>{person.name}</b>.</div>
+                    <div className="pl-card-body">
+                      {decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.
+                    </div>
+                    {canChat && !chatOpen && <button type="button" onClick={() => openChat(person)}>open chat</button>}
+                    {decision === "accepted" && person.notOnIndex && !person.key.startsWith("demo-") && (
+                      <button type="button" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
+                    )}
                   </li>
                 );
               }

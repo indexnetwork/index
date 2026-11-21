@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
-import { AGENT_OPEN_KEY, AgentWindowContext, readAgentOpen, type OpenLog } from "@/components/intents-home/agentWindowContext";
+import { AGENT_OPEN_KEY, AgentWindowContext, readAgentOpen, type Decision, type OpenLog } from "@/components/intents-home/agentWindowContext";
 
 /** Keeps the agent window's open state for the desktop shell (remembered per viewer) and the open log. */
 export function AgentWindowProvider({ children }: { children: ReactNode }) {
@@ -11,6 +11,15 @@ export function AgentWindowProvider({ children }: { children: ReactNode }) {
   }, []);
   // A conversation log opened from Home sits where the agent window goes, until closed.
   const [log, setLog] = useState<OpenLog | null>(null);
-  const value = useMemo(() => ({ open, setOpen, log, setLog }), [open, setOpen, log]);
+  // Accepts and passes made this visit, so Home can leave a line where the person was.
+  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const decide = useCallback((personKey: string, decision: Decision | null) => {
+    setDecisions((prev) => {
+      const next = { ...prev };
+      if (decision) next[personKey] = decision; else delete next[personKey];
+      return next;
+    });
+  }, []);
+  const value = useMemo(() => ({ open, setOpen, log, setLog, decisions, decide }), [open, setOpen, log, decisions, decide]);
   return <AgentWindowContext.Provider value={value}>{children}</AgentWindowContext.Provider>;
 }

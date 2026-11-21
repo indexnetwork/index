@@ -408,6 +408,10 @@
   font: 500 10px "JetBrains Mono", ui-monospace, monospace;
   color: #1f7a1f;
 }
+/* under "started <intent>": the way to that intent's page */
+.pl-agent-go {
+  margin-top: 8px;
+}
 .pl-agent-suggest {
   display: flex;
   flex-wrap: wrap;
@@ -2892,13 +2896,34 @@ button.st-danger-toggle {
   color: #000;
 }
 
-/* Home: a person you just passed on, left in place as one quiet line. */
+/* Home: a person you just accepted or passed on, left in place as one quiet line. */
 .pl-cards > li.pl-card.pl-card-passed {
   align-items: center;
   color: #555;
 }
 .pl-cards > li.pl-card.pl-card-passed b {
   color: #000;
+}
+/* Their chat is open on the right. */
+.pl-cards > li.pl-card.pl-card-passed.on {
+  background: #f0f0ed;
+}
+
+/* Home: the chat with someone you just accepted, in the agent window's place. */
+.ih-chatwin {
+  position: relative;
+}
+.ih .ih-chatwin .pl-dm {
+  font-family: "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.ih .ih-chatwin .pl-dm-head {
+  padding-right: 48px;
+}
+.ih .ih-chatwin > button.pl-win-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 
 /* ---------------------------------------------------------------------------
