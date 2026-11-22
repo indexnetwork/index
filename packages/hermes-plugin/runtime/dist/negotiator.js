@@ -37087,6 +37087,7 @@ async function summarize(input2) {
 var WAKE_STEPS = 8;
 var SEARCH_QUERIES = 5;
 var OPEN_LIMIT = 30;
+var MIN_NEGOTIATIONS = 5;
 var PAUSED_PROMPT = "An opportunity marked paused is still in talks, but nobody has the turn: its last round ended on a decline or a full round. Resume it with resume_negotiation only when your principal's unanswered message bears on that pair: a new fact, a changed or widened requirement, an instruction about this person. Its brief carries what is new, and its negotiator takes the first turn of a new round. A message that changes nothing about the pair is not a reason to try again: leave it paused.";
 var WAKE_PROMPT = [
   "You think for your principal about one intent, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
@@ -37167,6 +37168,13 @@ async function reach(client, intent, queries, since, keep) {
   const started = new Set(negotiations.map((negotiation) => negotiation.counterparty.intentId));
   const ranked = [...found.values()].filter((counterparty) => !started.has(counterparty.intentId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT);
   const kept = keep ? await Promise.all(ranked.map(keep)) : ranked.map(() => true);
+  let shortfall = since ? 0 : MIN_NEGOTIATIONS - negotiations.length - kept.filter(Boolean).length;
+  for (let i = 0;i < ranked.length && shortfall > 0; i++) {
+    if (kept[i])
+      continue;
+    kept[i] = true;
+    shortfall--;
+  }
   const picks = ranked.filter((_, i) => kept[i]).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
   if (!picks.length)
     return { found: found.size, picked: 0, opened: [] };
@@ -37184,6 +37192,8 @@ async function wake(input2) {
   const asking = new Set;
   let noted = false;
   let unpersisted;
+  let discovered = false;
+  const screen = { user, intent, principalConversation: input2.principalConversation, model: input2.model, ...input2.decide ? { decide: input2.decide } : {}, ...input2.now ? { now: input2.now } : {}, ...input2.signal ? { signal: input2.signal } : {} };
   async function verdict(opportunityId, status) {
     if (!unansweredMessage)
       throw new Error("No unanswered direct message from your principal.");
@@ -37465,14 +37475,14 @@ async function wake(input2) {
         } catch (cause) {
           unpersisted ??= cause;
         }
-        const report = async (discovered, reached) => {
+        const report = async (discovered2, reached) => {
           try {
-            await input2.onProgress?.(JSON.stringify({ plan, queries, discovered, reached }));
+            await input2.onProgress?.(JSON.stringify({ plan, queries, discovered: discovered2, reached }));
           } catch (cause) {
             unpersisted ??= cause;
           }
         };
-        const screen = { user, intent, principalConversation: input2.principalConversation, model: input2.model, ...input2.decide ? { decide: input2.decide } : {}, ...input2.now ? { now: input2.now } : {}, ...input2.signal ? { signal: input2.signal } : {} };
+        discovered = true;
         const { found, picked, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
         await report(found, opened.length);
         if (!picked) {
@@ -37517,6 +37527,19 @@ ${MORNING}` : WAKE_PROMPT,
     }),
     tools
   });
+  if (!unpersisted && !discovered && input2.reason !== "morning" && !opportunities.length) {
+    const queries = [intent.statement];
+    const { found, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
+    if (found) {
+      try {
+        await input2.onProgress?.(JSON.stringify({ plan: "Discovering and reaching out to people who fit this intent.", queries, discovered: found, reached: opened.length }));
+      } catch (cause) {
+        unpersisted ??= cause;
+      }
+    }
+    if (opened.length)
+      input2.onOpened?.(opened);
+  }
   for (let pass = 0, before = Infinity;!unpersisted && pass < STALL_PASSES; pass++) {
     const due = new Set(owed());
     if (!due.size || due.size >= before)
