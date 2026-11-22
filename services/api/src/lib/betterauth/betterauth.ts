@@ -4,6 +4,7 @@ import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/pl
 import { apiKey } from "@better-auth/api-key";
 
 import { edgeCity } from "./edge-city.plugin";
+import { BOUND_LINK_PARAM, bindLinkToBrowser, browserKeyHashFrom, mayRedeemLink, otherBrowserRedirect } from "./magic-link-browser";
 import { mcpConsentSecurity } from "./mcp-consent.plugin";
 
 export const API_URL =
@@ -12,6 +13,9 @@ export const API_URL =
 export const JWT_AUDIENCE = API_URL;
 
 export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
+
+/** Seconds an emailed sign-in link stays valid. */
+const MAGIC_LINK_EXPIRES_IN = 600;
 
 /** In production, only REVIEWER_EMAIL (the plugin-directory test account) may use a password. */
 const REVIEWER_EMAIL = process.env.REVIEWER_EMAIL?.trim().toLowerCase();
@@ -128,6 +132,12 @@ export function createAuth(deps: AuthDeps) {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        // A bound email link is spent only by the browser that asked for it,
+        // so a mail scanner clicking it leaves the token for the recipient.
+        if (ctx.path === "/magic-link/verify") {
+          if (!(await mayRedeemLink(ctx))) throw ctx.redirect(otherBrowserRedirect(ctx, WEB_APP_URL));
+          return;
+        }
         if (process.env.NODE_ENV !== 'production') return;
         if (ctx.path !== "/sign-in/email" && ctx.path !== "/sign-up/email") return;
         if (String(ctx.body?.email ?? '').trim().toLowerCase() !== REVIEWER_EMAIL) {
@@ -162,10 +172,17 @@ export function createAuth(deps: AuthDeps) {
     trustedOrigins: getTrustedOrigins,
     plugins: [
       magicLink({
-        sendMagicLink: async ({ email, url }) => {
+        sendMagicLink: async ({ email, url, token, metadata }, ctx) => {
+          const browserKeyHash = browserKeyHashFrom(metadata);
+          if (browserKeyHash && ctx) {
+            await bindLinkToBrowser(ctx, token, browserKeyHash, MAGIC_LINK_EXPIRES_IN);
+            const bound = new URL(url);
+            bound.searchParams.set(BOUND_LINK_PARAM, "1");
+            url = bound.toString();
+          }
           await sendMagicLinkEmail(email, url);
         },
-        expiresIn: 600,
+        expiresIn: MAGIC_LINK_EXPIRES_IN,
       }),
       bearer(),
       // A key names a user and nothing else. `enableSessionForAPIKeys` stays at

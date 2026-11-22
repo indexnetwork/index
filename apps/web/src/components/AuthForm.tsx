@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { ensureLandingFonts } from '@/app/landing/fonts';
 import { protocolOrigin } from '@/lib/protocol-origin';
+import { signInBrowserKeyHash } from '@/lib/sign-in-browser-key';
 import './AuthModal.css';
 
 const PROTOCOL_BASE = protocolOrigin();
@@ -97,9 +98,11 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
     setError(null);
 
     try {
+      const browserKeyHash = await signInBrowserKeyHash();
       const { error: magicLinkError } = await authClient.signIn.magicLink({
         email,
         callbackURL: resolvedCallbackURL,
+        ...(browserKeyHash ? { metadata: { browserKeyHash } } : {}),
       });
       if (magicLinkError) {
         setError(magicLinkError.message || 'Failed to send sign-in link');

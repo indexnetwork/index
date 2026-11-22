@@ -43,6 +43,9 @@ function LoginPage() {
       {['INVALID_TOKEN', 'EXPIRED_TOKEN'].includes(new URLSearchParams(window.location.search).get('error') || '') && (
         <p className="site-p" role="alert">This sign-in link has expired or has already been used. Request a new link below.</p>
       )}
+      {new URLSearchParams(window.location.search).get('error') === 'OTHER_BROWSER' && (
+        <p className="site-p" role="alert">This sign-in link was requested in another browser. Open it there, or request a new link below to sign in here.</p>
+      )}
       <SiteSignInCard
         bar="Sign in"
         sentTo={linkSentTo}
