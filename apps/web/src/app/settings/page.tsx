@@ -44,6 +44,10 @@ function isSettingsTab(v: string | null): v is SettingsTab {
 export interface FirstRunReview {
   lookup: PublicProfileLookup | null;
   name: string;
+  /** Stepped back to after confirming: the form shows the saved profile. */
+  returning?: boolean;
+  /** Back to the step before (the name). */
+  onBack?: () => void;
   onDone: () => void;
 }
 
@@ -452,13 +456,16 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
         style={{ height: "100%" }}
       >
         {firstRun && (
-          <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "1px solid var(--wb-hairline)", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", flex: "0 0 auto" }}>
-            {lookupFoundNothing(firstRun.lookup)
+          <div style={{ padding: compact ? "12px 16px" : "14px 24px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink)", flex: "0 0 auto" }}>
+            {firstRun.returning
+              ? "here's your profile. change anything you like."
+              : lookupFoundNothing(firstRun.lookup)
               ? "i couldn't find anything public about you, so fill this in yourself. it's what your agent works from."
               : "here's what i pulled together. make sure it's right."}
           </div>
         )}
-        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
+        {/* First run: the form takes only the height it needs, so the buttons sit under it and not at the foot of the screen. */}
+        <div className="mac-scroll" style={{ flex: firstRun && !compact ? "0 1 auto" : 1, minHeight: 0, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
           {!profileOnly && (
             <div style={{ marginBottom: 18 }}>
               <SettingsTabs />
@@ -467,17 +474,19 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
           {body}
         </div>
         <div style={{
-          borderTop: "1px solid var(--wb-hairline)", padding: "11px 24px",
-          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
+          borderTop: firstRun ? "none" : "1px solid var(--wb-hairline)", padding: "11px 24px",
+          // First run: the main button on the left, as on every onboarding card.
+          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: firstRun ? 14 : 10,
+          flexDirection: firstRun ? "row-reverse" : "row",
           flex: "0 0 auto", background: "#fff",
         }}>
-          {/* First run, as on the Mac: reset restores the prefill, sign out
-              leaves without committing, "looks good" is the only commit. */}
+          {/* First run, as on the Mac: reset restores the prefill, back
+              returns to the name, "looks good" is the only commit. Sign out is in the page corner. */}
           {firstRun && isDirty && (
-            <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn" style={{ marginRight: "auto" }}>reset</button>
+            <button type="button" onClick={() => resetForm(user)} disabled={saving} className="wb-btn">reset</button>
           )}
           {firstRun ? (
-            <button type="button" onClick={() => void signOut()} disabled={saving} className="pl-plain-btn st-link">sign out</button>
+            firstRun.onBack && <button type="button" onClick={firstRun.onBack} disabled={saving} className="pl-plain-btn st-link">‹ back</button>
           ) : (
             <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
           )}
@@ -602,8 +611,8 @@ function MacField({ label, value, onChange, disabled, required, prefix, placehol
       <div className="st-label">
         {label}{required && <span style={{ color: "#8a8578", marginLeft: 4 }}>*</span>}
       </div>
-      <div className={disabled ? "st-well off" : "st-well"}>
-        {prefix && <span>{prefix}</span>}
+      <div className={`st-well${disabled ? " off" : ""}${prefix ? " st-prefixed" : ""}`}>
+        {prefix && <span className="st-prefix">{prefix}</span>}
         <input value={value} placeholder={placeholder} disabled={disabled} onChange={(e) => onChange?.(e.target.value)} />
       </div>
     </div>

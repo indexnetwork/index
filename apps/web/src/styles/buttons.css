@@ -191,3 +191,37 @@
   box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
   transform: translate(1px, 1px);
 }
+
+/* First run (/onboarding) sits outside the app frame, so it gets the same button here. */
+.wb-onboarding:not(#_) .wb-btn {
+  height: auto;
+  min-height: 0;
+  padding: 3px 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 rgba(0, 0, 0, 0.25);
+  font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  transform: none;
+  cursor: pointer;
+}
+.wb-onboarding:not(#_) .wb-btn:hover:not(:disabled) { background: #fff6e8; color: #000; }
+.wb-onboarding:not(#_) .wb-btn.primary {
+  background: #ff8a00;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #ffd7a0, inset -1px -1px 0 #8a4500, 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.wb-onboarding:not(#_) .wb-btn.primary:hover:not(:disabled) { background: #ff9d2b; }
+.wb-onboarding:not(#_) .wb-btn:active:not(:disabled) {
+  background: #f0f0f0;
+  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+  transform: translate(1px, 1px);
+}
+.wb-onboarding:not(#_) .wb-btn.primary:active:not(:disabled) {
+  background: #f08000;
+  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+}
+.wb-onboarding:not(#_) .wb-btn:disabled { opacity: 0.45; cursor: default; }

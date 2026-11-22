@@ -2195,6 +2195,40 @@
 .pl-new-page {
   overflow-y: auto;
 }
+/* First run: the last onboarding step, a white card on the blue desktop like the steps before it. */
+.ih.ih-first {
+  background-color: #0055aa;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+.ih.ih-first .ih-main {
+  background: transparent;
+}
+.pl-new-first {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.pl-new-first > .pl-new-page {
+  flex: 0 1 auto;
+  width: 100%;
+  max-width: 720px;
+  max-height: 100%;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+}
+.pl-new-first .pl-new-chat {
+  padding-bottom: 28px;
+}
+/* The main button sits on the left on every onboarding card. */
+.ih:not(#_) .pl-new-first .pl-open-box button.go {
+  align-self: flex-start;
+}
+.pl-new-first .pl-calibrating .amiga-window {
+  border: 2px solid #000 !important;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+}
 .pl-new-chat {
   display: flex;
   flex-direction: column;
@@ -2715,7 +2749,11 @@
 .st-well.off {
   background: #f7f7f5;
 }
+/* The .workbench pair covers the form outside the app frame (first run), where
+   the shell's boxed-input rule would otherwise draw a second border in the well. */
 .st-well :is(input, textarea, select),
+.workbench:not(#_) .st-well :is(input, textarea, select),
+.workbench:not(#_) .st-well :is(input, textarea, select):focus,
 .ih:not(#_) .pl .st-well :is(input, textarea, select),
 .ih:not(#_) .pl .st-well :is(input, textarea, select):focus {
   display: block;
@@ -2756,6 +2794,7 @@
   white-space: nowrap;
 }
 .ih:not(#_) .pl .st-well.st-prefixed > input,
+.workbench:not(#_) .st-well.st-prefixed > input,
 .st-well.st-prefixed > input {
   flex: 1;
   padding: 8px 10px;

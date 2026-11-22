@@ -7,6 +7,7 @@ import PageHead from "@/components/intents-home/PageHead";
 import { AgentSays, Recovery, YouSaid } from "@/components/intents-home/NewIntentSteps";
 import { OpenAgentLines } from "@/components/intents-home/openAgentLines";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useRefetchIntents } from "@/contexts/IntentsDataContext";
 import { CALIBRATING_LINES } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Window } from "@/components/workbench/Workbench";
@@ -40,10 +41,12 @@ export default function NewIntentPage() {
   const navigate = useNavigate();
   const compact = useCompact();
   useVisualViewport();
-  const { isAuthenticated, user, refetchUser } = useAuthContext();
+  const { isAuthenticated, user, refetchUser, signOut } = useAuthContext();
   // Read once: creating the picks finishes onboarding, but the flow keeps its three steps.
   const [onboarding] = useState(() => awaitsFirstIntent(user));
   const showIndexing = useIndexingToast();
+  // The app loaded its intent list before these existed: reload it, or home still reads as empty.
+  const refetchIntents = useRefetchIntents();
   const { suggestions, examples } = useSuggestions(onboarding);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [chosenStage, setStage] = useState<Stage>(onboarding ? "picks" : "opening");
@@ -90,6 +93,7 @@ export default function NewIntentPage() {
     const saved = picked.filter((_, i) => results[i].status === "fulfilled");
     // The first intent after the profile review finishes onboarding, as on the Mac.
     if (ids[0]) void onboardingService.complete(ids[0]).then(() => refetchUser()).catch(() => {});
+    if (ids.length) refetchIntents();
     const failed = picked.length - ids.length;
     setPicksNote(failed ? `couldn't save ${failed === 1 ? "one of those" : `${failed} of those`}. write it below if you still want it.` : "");
     setCreatedIds(ids);
@@ -113,6 +117,7 @@ export default function NewIntentPage() {
     setCreating(true);
     try {
       const created = await intentService.create(description, receipt);
+      refetchIntents();
       // The first intent after the profile review finishes onboarding, as on the Mac.
       if (awaitsFirstIntent(user)) {
         void onboardingService.complete(created.intentId).then(() => refetchUser()).catch(() => {});
@@ -135,16 +140,26 @@ export default function NewIntentPage() {
   const stepCount = steps.length + 1;
   const settingUp = creating || (thinking && recoveryUsed);
 
-  if (settingUp) return <div className="pl-new"><Calibrating /></div>;
+  // First run on a desktop: the last onboarding step, a card on the blue desktop with
+  // no rail, no side panel and nowhere to go back to yet.
+  const card = onboarding && !compact;
+  const rootClass = card ? "pl-new pl-new-first" : "pl-new";
+  const signOutLink = card && <button type="button" className="wb-onboarding-out" onClick={() => void signOut()}>sign out</button>;
+
+  if (settingUp) return <div className={rootClass}>{signOutLink}<Calibrating /></div>;
 
   return (
     // Drawn like the intent page: the flow as a chat in the page column, and what the agent
     // is picking up in production's warming up panel on the right.
-    <div className="pl-new">
+    <div className={rootClass}>
+      {signOutLink}
       <div className="ih-view pl pl-new-page">
         <div className="pl-col">
           <PageHead
-            back={{ label: "intents", onClick: () => navigate("/intents") }}
+            // First run steps back to how-it-works, until an intent exists and onboarding is over.
+            back={!card ? { label: "intents", onClick: () => navigate("/intents") }
+              : createdIds.length ? undefined
+              : { label: "back", onClick: () => navigate("/onboarding", { state: { step: "how" } }) }}
             title="new intent"
             status={<span className="pl-new-steps">step {stepIdx} of {stepCount}
               <span className="pl-new-bar" aria-hidden>
@@ -152,7 +167,8 @@ export default function NewIntentPage() {
               </span>
             </span>}
           >
-            <button type="button" onClick={() => navigate("/")}>close</button>
+            {/* First run can be put off: home opens without an intent, and this step comes back at "new intent". */}
+            <button type="button" onClick={() => navigate("/")}>{card ? "i'll do it later" : "close"}</button>
           </PageHead>
           <OpenAgentLines.Provider value>
           <div className="pl-page pl-new-chat">
@@ -206,7 +222,7 @@ export default function NewIntentPage() {
         </div>
       </div>
       {/* The live preview is a side panel, as on production; a phone has no side. */}
-      {!compact && (
+      {!compact && !card && (
         <Window title="warming up" style={{ flex: "none", width: "clamp(420px, 34vw, 600px)", borderTop: "none", borderRight: "none", borderBottom: "none", borderLeft: "1px solid #e6e6e6" }}>
           <FieldPreview turns={turns} refining={stepIdx === stepCount} />
         </Window>

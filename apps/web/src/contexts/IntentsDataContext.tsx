@@ -210,6 +210,12 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   return <IntentsDataContext.Provider value={value}>{children}</IntentsDataContext.Provider>;
 }
 
+/** Reload the intent list, where there is one: a phone's pages sit outside the provider. */
+export function useRefetchIntents(): () => void {
+  const value = useContext(IntentsDataContext);
+  return useCallback(() => { void value?.fetchIntents(); }, [value]);
+}
+
 export function useIntentsData(): IntentsData {
   const value = useContext(IntentsDataContext);
   if (!value) throw new Error("useIntentsData must be used within IntentsDataProvider");

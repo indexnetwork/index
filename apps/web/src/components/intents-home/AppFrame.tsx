@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router";
 import "@/styles/intents-home.css";
 import "@/styles/buttons.css";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { awaitsFirstIntent } from "@/services/onboarding";
 import UserAvatar from "@/components/UserAvatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
@@ -235,11 +236,19 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   // An intent's page (not the new-intent flow) has its agent on the right.
   const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
   const withRight = pathname === "/" || (!!intentId && intentId !== "new");
+  // The first intent is the last onboarding step: no rail, and the page is a card on the
+  // blue desktop like the steps before it. Creating the picks finishes onboarding
+  // mid-flow, so the choice holds until the page changes.
+  const awaiting = pathname === "/i/new" && awaitsFirstIntent(user);
+  const [firstIntent, setFirstIntent] = useState(false);
+  if (awaiting && !firstIntent) setFirstIntent(true);
+  if (pathname !== "/i/new" && firstIntent) setFirstIntent(false);
+  const bare = awaiting || firstIntent;
   return (
     <HomeSectionsProvider>
       <AgentWindowProvider>
-        <div className="ih">
-          <AppRail here={here} />
+        <div className={bare ? "ih ih-first" : "ih"}>
+          {!bare && <AppRail here={here} />}
           <main className="ih-main">
             <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
           </main>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 
 import { ProfileSettings } from "@/app/settings/page";
 import { Btn, Stage, Window } from "@/components/workbench/Workbench";
@@ -24,7 +24,12 @@ const HOW_STEPS = [
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading, signOut } = useAuthContext();
-  const [step, setStep] = useState<Step>("name");
+  // Coming back from the first intent (the step after these) lands on how-it-works.
+  const cameBack = (useLocation().state as { step?: Step } | null)?.step === "how";
+  const [step, setStep] = useState<Step>(cameBack ? "how" : "name");
+  // Once the review is confirmed, going back shows the saved profile, not the lookup's note.
+  const [confirmed, setConfirmed] = useState(cameBack);
+  const [moved, setMoved] = useState(cameBack);
   const [name, setName] = useState("");
   const [lookup, setLookup] = useState<PublicProfileLookup | null>(null);
 
@@ -45,26 +50,31 @@ export default function OnboardingPage() {
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login?next=/onboarding" replace />;
   // Already confirmed (another tab, the Mac app): nothing to set up here.
-  if (step === "name" && user && !needsOnboarding(user)) return <Navigate to="/" replace />;
+  // Not when they stepped back here themselves.
+  if (step === "name" && !moved && user && !needsOnboarding(user)) return <Navigate to="/" replace />;
 
-  if (step === "looking-up") return <LookingUp />;
+  const onSignOut = () => void signOut();
 
-  if (step === "how") return <HowItWorks onDone={() => navigate("/i/new", { replace: true })} onSignOut={() => void signOut()} />;
-
-  if (step === "review") {
-    return (
-      <ProfileSettings
-        firstRun={{ lookup, name, onDone: () => setStep("how") }}
+  let body;
+  if (step === "looking-up") body = <LookingUp />;
+  else if (step === "how") body = <HowItWorks onDone={() => navigate("/i/new", { replace: true })} onBack={() => setStep("review")} onSignOut={onSignOut} />;
+  else if (step === "review") body = <ProfileSettings firstRun={{ lookup, name, returning: confirmed, onBack: () => setStep("name"), onDone: () => { setConfirmed(true); setStep("how"); } }} />;
+  else {
+    body = (
+      <AskName
+        initialName={name || user?.name || ""}
+        onSubmit={(typed) => { setName(typed); setMoved(true); setStep("looking-up"); }}
+        onSignOut={onSignOut}
       />
     );
   }
 
+  // The steps carry no title bar here, so the way out sits in the corner of the page instead.
   return (
-    <AskName
-      initialName={user?.name || ""}
-      onSubmit={(confirmed) => { setName(confirmed); setStep("looking-up"); }}
-      onSignOut={() => void signOut()}
-    />
+    <>
+      <button type="button" className="wb-onboarding-out" onClick={onSignOut}>sign out</button>
+      {body}
+    </>
   );
 }
 
@@ -104,17 +114,8 @@ function AskName({ initialName, onSubmit, onSignOut }: {
               outline: "none", fontFamily: "var(--mac-sans)", fontSize: 16, color: "var(--ink)",
             }}
           />
-          <div style={{ marginTop: 22, display: "grid" }}>
+          <div style={{ marginTop: 22, display: "flex" }}>
             <Btn primary type="submit" disabled={!ready}>continue →</Btn>
-          </div>
-          <div style={{ marginTop: 20, textAlign: "center" }}>
-            <button
-              type="button"
-              onClick={onSignOut}
-              style={{ fontFamily: "var(--mac-sans)", fontSize: 12, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}
-            >
-              sign out
-            </button>
           </div>
         </form>
       </Window>
@@ -122,7 +123,7 @@ function AskName({ initialName, onSubmit, onSignOut }: {
   );
 }
 
-function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () => void }) {
+function HowItWorks({ onDone, onBack, onSignOut }: { onDone: () => void; onBack: () => void; onSignOut: () => void }) {
   return (
     <Stage width={960}>
       <Window title="how this works" onClose={onSignOut} style={{ height: "auto" }}>
@@ -142,8 +143,9 @@ function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ marginTop: 32, display: "flex", alignItems: "center", gap: 14 }}>
             <Btn primary onClick={onDone}>got it →</Btn>
+            <button type="button" className="st-link" onClick={onBack}>‹ back</button>
           </div>
         </div>
       </Window>
@@ -156,11 +158,6 @@ function LookingUp() {
     <Stage width={420}>
       <Window title="looking you up" style={{ height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }} role="status" aria-live="polite">
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
-            <span className="wb-live" style={{ width: 9, height: 9 }} />
-            <span style={{ fontFamily: "var(--mac-sans)", letterSpacing: "0.1em", fontSize: 11, textTransform: "uppercase", color: "var(--ink-2)" }}>index</span>
-          </div>
-          <div style={{ height: 2, borderRadius: 2, overflow: "hidden", margin: "0 auto 18px", background: "var(--wb-selected)" }} />
           {LOOKUP_LINES.map((line, i) => (
             <div key={line} className="fade-up" style={{
               animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 14,
