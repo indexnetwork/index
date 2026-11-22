@@ -1517,18 +1517,6 @@
   font-family: "IBM Plex Sans", sans-serif;
   color: #000;
 }
-.pl-dm-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e6e6e6;
-  background: #fff;
-}
-.pl-dm-face {
-  display: flex;
-}
 .pl-dm-who {
   min-width: 0;
   display: grid;
@@ -1596,75 +1584,266 @@
   max-width: 75%;
 }
 
-/* "accepted ..." marks in a chat with a person: a small centered chip, not a full-width bar */
-.pl-dm .opp-divider {
-  margin: 4px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+/* A chat with a person. Who they are is the head: their profile at full size when you
+   arrive, shrinking into a name bar as the thread scrolls (--p runs 0 to 1, set by
+   ChatView). Why you're talking is the history under it. */
+.pl-dm {
+  position: relative;
 }
-.ih .pl.pl-dm .opp-divider > button {
-  width: auto;
-  max-width: 100%;
-  height: auto;
-  min-height: 24px;
-  padding: 3px 10px;
-  border: 1px solid var(--pl-line, #e6e6e6);
-  border-radius: 2px;
+.pl-dmh {
+  --p: 0;
+  flex: none;
+  position: sticky;
+  /* Sticking is measured from inside the thread's padding, so this is its top edge. */
+  top: -24px;
+  margin: -24px -24px 0;
+  z-index: 2;
   background: #fff;
-  box-shadow: none;
-  transform: none;
-  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  border-bottom: 1px solid var(--pl-line, #e6e6e6);
+  padding: calc(24px - 14px * var(--p)) 52px calc(16px - 6px * var(--p)) 24px;
+}
+.pl-dmh.small {
+  box-shadow: 0 8px 14px -12px rgba(0, 0, 0, 0.35);
+}
+/* Full or small, nothing between: --p is 0 or 1 and the change is eased here. */
+.pl-dmh,
+.pl-dmh-row,
+.pl-dmh-face,
+.pl-dmh .pl-dm-who,
+.pl .pl-dmh a.pl-dm-name,
+.pl-dmh .pl-dm-sub,
+.pl-dmh-more,
+.pl-dmh > button.pl-dmh-x {
+  transition: all 0.24s cubic-bezier(0.3, 0, 0.2, 1);
+}
+/* The details go first when it shrinks and come last when it opens, so text is
+   never seen being squeezed while the box closes over it. */
+.pl-dmh-more {
+  transition: max-height 0.24s cubic-bezier(0.3, 0, 0.2, 1), opacity 0.16s ease 0.08s;
+}
+.pl-dmh.small .pl-dmh-more {
+  transition: max-height 0.24s cubic-bezier(0.3, 0, 0.2, 1), opacity 0.1s ease;
+}
+.pl-dmh .pl-dm-sub {
+  transition: opacity 0.12s ease;
+}
+.pl-dmh.small .pl-dm-sub {
+  transition: opacity 0.16s ease 0.14s;
+}
+.pl-dmh.measuring,
+.pl-dmh.measuring * {
+  transition: none !important;
+}
+.pl-dmh:not(.small) .pl-dmh-row {
+  cursor: default;
+}
+.ih .pl .pl-dmh > button.pl-dmh-x {
+  position: absolute;
+  top: calc(12px - 2px * var(--p));
+  right: 12px;
+}
+/* Full size it reads like their profile: photo, then name, then where they are,
+   their links and bio. Scrolled, it is one line: small photo, name, when the chat started. */
+.pl-dmh-row {
+  position: relative;
+  min-height: calc(72px - 40px * var(--p));
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.pl-dmh-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: calc(72px - 40px * var(--p));
+  height: calc(72px - 40px * var(--p));
+}
+.pl-dmh-face > div,
+.pl-dmh-face > div > div,
+.pl-dmh-face img,
+.pl-dmh-face svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+.pl-dmh .pl-dm-who {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  column-gap: 10px;
+  padding-top: calc(86px * (1 - var(--p)));
+  padding-left: calc(42px * var(--p));
+}
+.pl .pl-dmh a.pl-dm-name {
+  flex: none;
+  max-width: 100%;
+  font: 600 calc(20px - 6px * var(--p))/1.2 var(--amiga-title, "IBM Plex Sans", sans-serif);
+}
+/* Beside the name, and only once the head is small: it fades in as it shrinks. */
+.pl-dmh .pl-dm-sub {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 11px;
+  opacity: calc(var(--p) * 2 - 1);
+}
+.pl-dmh-more {
+  overflow: hidden;
+}
+.pl-dmh-loc {
+  margin-top: 4px;
+  font: 400 12px var(--amiga-sans, "IBM Plex Sans", sans-serif);
+  color: #666;
+}
+.pl-dmh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.pl a.pl-dmh-soc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--wb-control, #cfcfcf);
+  border-radius: 2px;
+  font: 400 12px var(--amiga-sans, "IBM Plex Sans", sans-serif);
+  color: #000;
+  text-decoration: none;
+}
+.pl a.pl-dmh-soc svg {
+  width: 14px;
+  height: 14px;
+}
+.pl a.pl-dmh-soc:hover {
+  background: #f4f4f4;
+}
+.pl .pl-dmh-bio {
+  margin: 12px 0 0;
+  font: 400 13px/1.5 var(--mac-sans, "IBM Plex Sans", sans-serif);
+  color: #111;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+/* What you were matched on, listed like the opportunities on their profile page. */
+.pl-dmh-opps {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-top: 16px;
+}
+.pl .pl-dmh-opps h3 {
+  margin: 0 0 2px;
+  font: 500 11px var(--amiga-sans, "IBM Plex Sans", sans-serif);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: #555;
 }
-.ih .pl.pl-dm .opp-divider > button:hover:not(:disabled) {
-  background: #fffbe6;
-  color: #000;
+.pl-dmh-opp {
+  justify-self: stretch;
+  border: 1px solid var(--pl-line, #e6e6e6);
+  border-radius: 3px;
+  background: #fff;
+  overflow: hidden;
 }
-.ih .pl.pl-dm .opp-divider > button[aria-expanded="true"] {
+.ih .pl .pl-dmh-opp > button.pl-row {
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 0;
   background: #fff;
   box-shadow: none;
+  font: 400 13px/1.45 var(--mac-sans, "IBM Plex Sans", sans-serif);
+  color: #000;
+  text-align: left;
+  cursor: pointer;
 }
-.pl-dm .opp-divider > button > span.flex-1 {
-  display: none;
+.ih .pl .pl-dmh-opp.on > button.pl-row,
+.ih .pl .pl-dmh-opp > button.pl-row:hover {
+  background: #f4f4f4;
 }
-.pl-dm .opp-divider > button > span:not(.flex-1) {
+.pl-dmh-opp-t {
+  flex: 1;
   min-width: 0;
 }
-.pl-dm .opp-divider > button > span > span:first-of-type {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* a message's time, beside its bubble */
-.pl-dm-clock {
+.pl-dmh-opp-s,
+.pl-dmh-opp-c {
   flex: none;
-  align-self: flex-start;
-  margin-top: 8px;
-  font: 400 10px "JetBrains Mono", ui-monospace, monospace;
-  color: #8a8578;
+  font-size: 11px;
+  color: #777;
   white-space: nowrap;
 }
-
-/* the summary under an "accepted ..." chip: wider, and drawn like a chat bubble */
-.pl-dm .opp-divider > div[id] {
-  width: 100%;
-  max-width: 640px;
-  box-sizing: border-box;
+.pl-dmh-opp-b {
+  padding: 10px 12px;
+  border-top: 1px solid var(--pl-line, #e6e6e6);
 }
-.pl-dm .opp-divider > div[id] > div {
-  background: #fff;
-  border: 1px solid var(--pl-line, #e6e6e6);
-  border-radius: 2px;
-  padding: 10px 14px;
+.pl-dmh-opp-b .pl-ev {
+  font-size: 13px;
+}
+.pl-dmh-bio.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ih .pl .pl-dmh-more > button.pl-more {
+  display: block;
+  height: auto;
+  margin-top: 2px;
+  padding: 0;
+  line-height: 1.4;
+  vertical-align: baseline;
+}
+
+/* Why you two are talking, where it came up: one sentence each, and the day
+   the match was made in small type. A later match sits further down the thread. */
+.pl-ev {
+  padding: 2px 0 2px 13px;
+  border-left: 2px solid #ff8a00;
+  font: 400 14.5px/1.55 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.pl-ev p {
+  margin: 0;
+}
+.pl-ev p + p {
+  margin-top: 4px;
+}
+.pl-ev-d {
+  margin-top: 6px;
+  font: 400 10px/1.4 "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+}
+.pl-dm-hi {
+  margin: 0;
+}
+
+/* messages: light boxes, yours in black, with who and when inside */
+.pl-dm .pl-agent-bubble {
+  padding: 8px 11px;
+  border-color: var(--pl-edge, #cfcfcf);
+  border-radius: 3px;
+  box-shadow: none;
+  font-size: 14px;
+}
+.pl-dm .pl-agent-bubble.mine {
+  background: #000;
+  border-color: #000;
+  color: #fff;
+}
+.pl-dm .pl-agent-meta {
+  font-weight: 500;
+  font-size: 10.5px;
+  color: inherit;
+  opacity: 0.6;
 }
 
 /* a chat with a person: more room around the thread, on white like the rest of the page */
-.pl-dm .pl-dm-head {
-  padding: 12px 24px;
-  border-bottom-color: var(--pl-line);
-}
 .pl-dm .pl-agent-log {
   padding: 24px;
   gap: 14px;
@@ -1673,6 +1852,15 @@
 .pl-dm .pl-agent-compose {
   padding: 12px 24px 16px;
   border-top-color: var(--pl-line);
+}
+/* Before there is a chat to write in, the composer's place holds accept and pass. */
+.pl-dm .pl-agent-compose.pl-dm-decide {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pl-dm-log {
+  padding-top: 12px;
+  border-top: 1px solid var(--pl-line, #e6e6e6);
 }
 
 /* profile: the classic look (as on main), full height beside the sidebar.
@@ -2955,14 +3143,6 @@ button.st-danger-toggle {
 .ih .ih-chatwin .pl-dm {
   font-family: "IBM Plex Sans", sans-serif;
   color: #000;
-}
-.ih .ih-chatwin .pl-dm-head {
-  padding-right: 48px;
-}
-.ih .ih-chatwin > button.pl-win-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
 }
 
 /* ---------------------------------------------------------------------------

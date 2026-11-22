@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
+import ChatView from "@/components/chat/ChatView";
 import AgentLog from "@/components/intents-home/AgentLog";
+import { InAppFrameContext } from "@/components/intents-home/appFrameContext";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { personKey, type Entry } from "@/components/intents-home/stages";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
@@ -9,7 +11,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { useOpportunities, useUsers } from "@/contexts/APIContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { resolveSocials } from "@/lib/socials";
-import type { OpportunityDetailResponse } from "@/services/opportunities";
+import type { ChatContextOpportunity, OpportunityDetailResponse } from "@/services/opportunities";
 import { Placeholder } from "@/components/ui/Placeholder";
 
 /** What the window shows about the person, from their profile. */
@@ -46,7 +48,6 @@ export default function MatchWindow() {
   }, [match, entriesByIntent]);
   const lead = entries.find((entry) => entry.item.opportunityId === match?.opportunityId) ?? entries[0];
   const stage = lead?.stage ?? "talks";
-  const demo = match?.opportunityId.startsWith("demo-") ?? false;
 
   useEffect(() => {
     if (!match?.userId) return;
@@ -57,12 +58,12 @@ export default function MatchWindow() {
   }, [match?.userId, users]);
 
   useEffect(() => {
-    if (!match || demo) return;
+    if (!match) return;
     const id = match.opportunityId;
     let active = true;
     opportunities.getOpportunity(id).then((res) => { if (active) setDetailFor({ id, detail: res }); }).catch(() => {});
     return () => { active = false; };
-  }, [match, demo, opportunities]);
+  }, [match, opportunities]);
 
   const who = whoFor && whoFor.id === match?.userId ? whoFor.who : null;
   const detail = detailFor && detailFor.id === match?.opportunityId ? detailFor.detail : null;
@@ -86,7 +87,6 @@ export default function MatchWindow() {
     // Home leaves a line where they were, whichever side the decision came from.
     const key = match.personKey ?? (lead ? personKey(lead.item) : null);
     if (key) decide(key, action);
-    if (demo) { setLog(null); return; }
     // On Home, accepting opens the chat at once, in this window's place; the accept finishes behind it.
     const chatting = onHome && action === "accepted" && !!match.userId && !match.notOnIndex;
     if (chatting) setLog({ ...match, view: "chat" });
@@ -103,9 +103,69 @@ export default function MatchWindow() {
 
   // One paragraph on why: the longest account there is, else the headline.
   const surfaced = why[0] || headline;
-  const canLog = !demo && (stage === "talks" || stage === "awaiting" || stage === "chat");
+  const canLog = stage === "talks" || stage === "awaiting" || stage === "chat";
 
-  // Drawn like the classic profile window (as on main): who they are first, then why.
+  // Someone on Index opens as the chat with them, whatever stage the match is at:
+  // their profile at the top, why you were matched in the thread, and under it
+  // accept and pass until there is a chat to write in.
+  if (match.userId && !match.notOnIndex) {
+    const chatOpen = stage === "chat" || match.view === "chat";
+    const context: ChatContextOpportunity[] = entries.map((entry) => ({
+      opportunityId: entry.item.opportunityId,
+      headline: entry.item.headline ?? "",
+      personalizedSummary: (entry.item.opportunityId === lead?.item.opportunityId ? surfaced : "")
+        || entry.item.personalizedSummary || entry.item.mainText || entry.item.headline || "",
+      narratorRemark: "",
+      peerName: match.name,
+      peerAvatar: match.avatar ?? null,
+      acceptedAt: entry.item.createdAt ?? entry.item.updatedAt ?? null,
+      foundAt: entry.item.createdAt ?? null,
+      status: entry.item.status ?? "pending",
+    })).filter((card) => card.personalizedSummary && card.acceptedAt);
+    const logButton = canLog && (
+      <button type="button" aria-pressed={showLog} onClick={() => {
+        const next = !showLog;
+        setShowLog(next);
+        if (next) setTimeout(() => document.getElementById("ih-match-log")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      }}>agent log {showLog ? "▾" : "›"}</button>
+    );
+    const footer = chatOpen ? undefined : stage === "awaiting" ? (
+      <>
+        <button aria-busy={busy} type="button" className="go" disabled={busy} onClick={() => act("accepted")}>{busy ? "accepting" : "accept"}</button>
+        <button type="button" disabled={busy} onClick={() => act("rejected")}>pass</button>
+        {logButton}
+      </>
+    ) : (
+      <>
+        <span className="pl-dim pl-small">{stage === "closed" ? "this one is closed." : `your agent and ${first}'s agent are still talking.`}</span>
+        {logButton}
+      </>
+    );
+    return (
+      <section className="ih-agentwin ih-chatwin" aria-label={`you and ${first}`}>
+        <InAppFrameContext.Provider value>
+          <ChatView
+            key={match.userId}
+            userId={match.userId}
+            userName={match.name}
+            userAvatar={match.avatar ?? undefined}
+            onClose={() => setLog(null)}
+            fallbackContext={context}
+            contextKey={`${chatOpen}:${busy}:${stage}`}
+            footer={footer}
+            threadExtra={!chatOpen && showLog && canLog ? (
+              <section id="ih-match-log" className="pl-dm-log">
+                <h3 className="ih-match-label">my agent and {first}&apos;s agent</h3>
+                <AgentLog key={match.opportunityId} opportunityId={match.opportunityId} name={match.name} />
+              </section>
+            ) : undefined}
+          />
+        </InAppFrameContext.Provider>
+      </section>
+    );
+  }
+
+  // Someone not on Index yet has no chat: the classic profile window, who they are first, then why.
   return (
     <section className="ih-agentwin ih-matchwin ih-classic ih-profile" aria-label={`you and ${first}`}>
       <div className="profile-header ih-match-top">

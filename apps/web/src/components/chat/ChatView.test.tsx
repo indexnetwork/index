@@ -10,13 +10,14 @@ const mocks = vi.hoisted(() => ({
 const messages = new Map<string, ConversationMessage[]>();
 const conversations: { id: string; participants: { participantId: string; participantType: string }[] }[] = [];
 vi.mock('@/contexts/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 'me' } }) }));
-vi.mock('@/contexts/APIContext', () => ({ useOpportunities: () => mocks }));
+const users = { getUserProfile: vi.fn().mockResolvedValue({ id: 'peer', name: 'Peer' }) };
+vi.mock('@/contexts/APIContext', () => ({ useOpportunities: () => mocks, useUsers: () => users }));
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({ ...mocks, messages, conversations, sessionHistory: new Map() }),
 }));
 vi.mock('@/components/UserAvatar', () => ({ default: () => null }));
-vi.mock('./OpportunityDivider', () => ({
-  default: ({ opportunities }: { opportunities: ChatContextOpportunity[] }) => <div>{opportunities[0].headline}</div>,
+vi.mock('./OpportunityEvent', () => ({
+  default: ({ opportunity }: { opportunity: ChatContextOpportunity }) => <div>{opportunity.headline}</div>,
 }));
 import ChatView from './ChatView';
 beforeEach(() => {

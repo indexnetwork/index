@@ -14,7 +14,6 @@ import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
-import type { RadarCardItem } from "@/services/opportunities";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { useShowMore } from "@/components/ui/ShowMore";
 
@@ -30,49 +29,6 @@ interface Person {
   notOnIndex: boolean;
   /** Every intent this person shows up in, best stage first. */
   entries: Entry[];
-}
-
-/** Dev-only sample matches for trying the page (`?demo=off` hides them). Never in a production build. */
-const DEMO_MATCHES: Array<{ name: string; headline: string }> = [
-  { name: "Ada Lovelace", headline: "Writes the first programs for agent runtimes and wants a design partner for the inbox." },
-  { name: "Grace Hopper", headline: "Leads a compiler team that is adding intent routing; looking for people building agent UIs." },
-  { name: "Alan Kay", headline: "Prototyping personal computing for agents, and keen to compare notes on matchmaking." },
-  { name: "Radia Perlman", headline: "Designs protocols for agent-to-agent negotiation and is raising a small angel round." },
-];
-
-/** Dev only: the samples show by default. `?demo=off` hides them and `?demo` brings them back; the choice sticks. */
-function demoOn(param: string | null): boolean {
-  const KEY = "index.dev.hideDemoMatches";
-  try {
-    if (param === "off" || param === "0") localStorage.setItem(KEY, "1");
-    else if (param !== null) localStorage.removeItem(KEY);
-    return localStorage.getItem(KEY) !== "1";
-  } catch {
-    return param !== "off" && param !== "0";
-  }
-}
-
-/** How many of your intents each sample shares, so one, two and many all show up. */
-const DEMO_SHARED = [1, 2, 4, 5];
-
-function demoPeople(intentIds: string[]): Person[] {
-  const ids = intentIds.length ? intentIds : ["demo"];
-  return DEMO_MATCHES.map((match, i) => {
-    const shared = Math.min(DEMO_SHARED[i % DEMO_SHARED.length], ids.length);
-    const entries: Entry[] = Array.from({ length: shared }, (_, j) => ({
-      intentId: ids[(i + j) % ids.length],
-      stage: "awaiting" as const,
-      item: {
-        opportunityId: `demo-${i}-${j}`,
-        status: "pending",
-        peer: { userId: "", name: match.name, avatar: null, emailVerified: true },
-        name: match.name,
-        headline: match.headline,
-        mainText: match.headline,
-      } as unknown as RadarCardItem,
-    }));
-    return { key: `demo-${i}`, name: match.name, notOnIndex: false, entries };
-  });
 }
 
 /** The line after the greeting; one is picked per page load. */
@@ -175,14 +131,7 @@ export default function HomeDashboard() {
     return out;
   }, [entriesByIntent]);
 
-  const [searchParams] = useSearchParams();
-  const showDemo = import.meta.env.DEV && demoOn(searchParams.get("demo"));
-  const awaiting = useMemo(
-    () => showDemo
-      ? [...byStage.awaiting, ...demoPeople(intents.map((intent) => intent.id))]
-      : byStage.awaiting,
-    [showDemo, byStage.awaiting, intents],
-  );
+  const awaiting = byStage.awaiting;
 
   // People you accepted or passed on stay in their spot as a one-line note until the page
   // reloads, like LinkedIn's "invitation ignored". The decision itself lives with the
@@ -229,8 +178,6 @@ export default function HomeDashboard() {
 
   const act = (person: Person, action: Decision) => {
     decide(person.key, action);
-    // A sample match only leaves a line; nothing is sent.
-    if (person.key.startsWith("demo-")) return;
     // Accepting opens the chat at once; the accept itself finishes behind it.
     const chatting = action === "accepted" && !!person.userId && !person.notOnIndex;
     if (chatting) openChat(person);
@@ -335,7 +282,7 @@ export default function HomeDashboard() {
                       {decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.
                     </div>
                     {canChat && !chatOpen && <button type="button" onClick={() => openChat(person)}>open chat</button>}
-                    {decision === "accepted" && person.notOnIndex && !person.key.startsWith("demo-") && (
+                    {decision === "accepted" && person.notOnIndex && (
                       <button type="button" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
                     )}
                   </li>

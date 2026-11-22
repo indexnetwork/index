@@ -1,3 +1,4 @@
+import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Link } from 'react-router';
@@ -7,10 +8,12 @@ import remarkGfm from 'remark-gfm';
 import { formatChatClock, formatChatDayLabel, formatChatTime } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { useOpportunities } from '@/contexts/APIContext';
+import { useOpportunities, useUsers } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
-import OpportunityDivider from './OpportunityDivider';
+import OpportunityEvent from './OpportunityEvent';
+import { resolveSocials } from '@/lib/socials';
+import type { SocialEntry } from '@/lib/socials';
 import { log } from '@/lib/logger';
 import { useInAppFrame } from '@/components/intents-home/appFrameContext';
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -34,6 +37,21 @@ interface ChatViewProps {
   embedded?: boolean;
   /** Match write-up shown above the thread, the way the desktop chat opens. */
   opener?: { headline?: string; detail?: string };
+  /** Why these two were matched, shown in the thread until the chat has context of its own (nobody accepted yet). */
+  fallbackContext?: ChatContextOpportunity[];
+  /** Changes when the match with this person changes (an accept went through), so its context is read again. */
+  contextKey?: string;
+  /** Shown at the end of the thread, under the messages. */
+  threadExtra?: React.ReactNode;
+  /** Takes the composer's place while there is no chat to write in yet: accept and pass, say. */
+  footer?: React.ReactNode;
+}
+
+/** What the chat's head shows of the other person, beyond their name and photo. */
+interface PeerProfile {
+  intro?: string | null;
+  location?: string | null;
+  socials?: SocialEntry[] | null;
 }
 
 function normText(value: string) {
@@ -51,9 +69,10 @@ function conversationIdForPeer(
   )?.id ?? null;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
+  const usersService = useUsers();
   const {
     messages: allMessages,
     conversations,
@@ -79,7 +98,11 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const [showMenu, setShowMenu] = useState(false);
   const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
   const [acceptedOpportunitiesLoading, setAcceptedOpportunitiesLoading] = useState(true);
+  const [peer, setPeer] = useState<PeerProfile | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  const headMoreRef = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const inFrame = useInAppFrame();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -99,6 +122,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     setShowMenu(false);
     setAcceptedOpportunities([]);
     setAcceptedOpportunitiesLoading(true);
+    setPeer(null);
     hasAutoSentRef.current = false;
     hasFiredFirstMessageRef.current = false;
   }
@@ -137,7 +161,17 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     return () => {
       controller.abort();
     };
-  }, [userId, opportunitiesService]);
+  }, [userId, opportunitiesService, contextKey]);
+
+  // Who they are, for the head of the chat. The name and photo are already here, so a failed read just leaves those.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    usersService.getUserProfile(userId)
+      .then((profile) => { if (!cancelled) setPeer(profile as PeerProfile); })
+      .catch((err: unknown) => { if (!cancelled) logger.error('Failed to load chat peer', { error: err }); });
+    return () => { cancelled = true; };
+  }, [userId, usersService]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -281,9 +315,96 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   }, [showMenu]);
 
   const timeline = useMemo(
-    () => buildChatTimeline(messages, acceptedOpportunities),
-    [messages, acceptedOpportunities],
+    () => buildChatTimeline(messages, acceptedOpportunities.length ? acceptedOpportunities : fallbackContext ?? []),
+    [messages, acceptedOpportunities, fallbackContext],
   );
+  // Each match's intent, as this viewer sees it, and which match the chat opened on.
+  const hasContext = timeline.some((item) => item.type === 'opportunity');
+  const renderOpportunities = (opportunities: ChatContextOpportunity[]) => opportunities.map((opportunity) => (
+    <OpportunityEvent
+      key={`opp-${opportunity.opportunityId}`}
+      opportunity={opportunity}
+    />
+  ));
+  // What the two of you were matched on, newest first, listed under their profile.
+  const headOpportunities = useMemo(() => {
+    const fromChat = acceptedOpportunities.length > 0;
+    const when = (o: ChatContextOpportunity) => Date.parse(o.foundAt ?? o.acceptedAt ?? "") || 0;
+    return [...(fromChat ? acceptedOpportunities : fallbackContext ?? [])]
+      .sort((a, b) => when(b) - when(a))
+      .map((opportunity) => ({
+        opportunity,
+        status: opportunity.status === "accepted" ? "accepted"
+          : opportunity.status === "pending" ? (fromChat ? "accepted" : "awaiting you")
+          : opportunity.status === "rejected" ? "not a fit"
+          : opportunity.status === "expired" ? "missed"
+          : "in progress",
+      }));
+  }, [acceptedOpportunities, fallbackContext]);
+  const [allOpportunities, setAllOpportunities] = useState(false);
+  const [openOpportunityId, setOpenOpportunityId] = useState<string | null>(null);
+  const shownOpportunities = allOpportunities ? headOpportunities : headOpportunities.slice(0, 2);
+  const peerIntro = peer?.intro?.trim() ?? "";
+  const peerLocation = peer?.location?.trim() ?? "";
+  const peerSocials = useMemo(() => resolveSocials(peer?.socials), [peer?.socials]);
+  const hasHeadMore = Boolean(peerIntro || peerLocation || peerSocials.length || headOpportunities.length);
+  const [bioOpen, setBioOpen] = useState(false);
+
+  // The head is their full profile at the top of the thread. Scroll down and it
+  // becomes a one-line bar (photo, name, close) in a single step, never part way;
+  // scroll back to the top, or press the bar, and the profile is back.
+  const hasThreadExtra = threadExtra != null && threadExtra !== false;
+  const hasFooter = footer != null;
+  useEffect(() => {
+    const head = headRef.current, more = headMoreRef.current, thread = logRef.current;
+    if (!head || !thread) return;
+    let full = 0, small = 0, moreFull = 0;
+    const set = (on: boolean) => {
+      head.style.setProperty("--p", on ? "1" : "0");
+      head.classList.toggle("small", on);
+      if (more) {
+        more.style.maxHeight = on ? "0px" : `${moreFull}px`;
+        more.style.opacity = on ? "0" : "1";
+      }
+      // The bar keeps the room the profile had, so the thread under it never jumps
+      // and the scroll position means the same thing in both states.
+      head.style.marginBottom = on ? `${Math.max(0, full - small)}px` : "0px";
+    };
+    const wanted = () => thread.scrollTop > (head.classList.contains("small") ? 2 : 8);
+    const measure = () => {
+      const was = head.classList.contains("small");
+      head.classList.add("measuring");
+      head.style.marginBottom = "0px";
+      head.style.setProperty("--p", "1");
+      if (more) more.style.maxHeight = "0px";
+      small = head.offsetHeight;
+      head.style.setProperty("--p", "0");
+      if (more) more.style.maxHeight = "none";
+      full = head.offsetHeight;
+      moreFull = more?.scrollHeight ?? 0;
+      // Whatever the state should be now is set without animating: only a scroll animates it.
+      set(was);
+      set(wanted());
+      void head.offsetHeight;
+      head.classList.remove("measuring");
+    };
+    const onScroll = () => {
+      const on = wanted();
+      if (on !== head.classList.contains("small")) set(on);
+    };
+    const row = head.querySelector<HTMLElement>(".pl-dmh-row");
+    const onRow = (event: MouseEvent) => {
+      if ((event.target as HTMLElement).closest("a") || !head.classList.contains("small")) return;
+      thread.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    thread.addEventListener("scroll", onScroll, { passive: true });
+    row?.addEventListener("click", onRow);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(thread);
+    measure();
+    return () => { thread.removeEventListener("scroll", onScroll); row?.removeEventListener("click", onRow); observer?.disconnect(); };
+  }, [timeline, hasHeadMore, peerIntro, bioOpen, messagesLoading, acceptedOpportunitiesLoading, conversationId, hasThreadExtra, hasFooter, headOpportunities, allOpportunities, openOpportunityId]);
+
   const openerHeadline = opener?.headline?.trim() ?? "";
   const openerBody = opener?.detail?.trim() || openerHeadline;
   const showOpenerHeadline = Boolean(openerHeadline && openerBody && normText(openerHeadline) !== normText(openerBody));
@@ -293,21 +414,63 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     const linkOut = { a: ({ href, children }: { href?: string; children?: React.ReactNode }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> };
     return (
       <div className="pl pl-agent pl-dm">
-        <div className="pl-dm-head">
-          <Link to={`/u/${userId}`} className="pl-dm-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={36} /></Link>
-          <div className="pl-dm-who">
-            <Link to={`/u/${userId}`} className="pl-dm-name">{userName}</Link>
-            {(conversationSummary?.createdAt || latestVia) && (
-              <div className="pl-dm-sub">
-                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
-                {conversationSummary?.createdAt && latestVia ? " · " : ""}
-                {latestVia ? <Link to={`/i/${latestVia.intentId}`}>{latestVia.title}</Link> : null}
+        <div className="pl-agent-log pl-dm-tl" ref={logRef}>
+          {/* Who they are is the head; why you're talking is the history under it. */}
+          <div className="pl-dmh" ref={headRef}>
+            <button type="button" className="pl-win-close pl-dmh-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>
+            <div className="pl-dmh-row">
+              <Link to={`/u/${userId}`} className="pl-dmh-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={72} /></Link>
+              <div className="pl-dm-who">
+                <Link to={`/u/${userId}`} className="pl-dm-name">{userName}</Link>
+                  {/* Only in the small bar: at full size the profile stands alone. */}
+                {conversationSummary?.createdAt && (
+                  <div className="pl-dm-sub">chat started {formatChatDayLabel(conversationSummary.createdAt)}</div>
+                )}
+              </div>
+            </div>
+            {hasHeadMore && (
+              <div className="pl-dmh-more" ref={headMoreRef}>
+                {peerLocation && <div className="pl-dmh-loc">{peerLocation}</div>}
+                {peerSocials.length > 0 && (
+                  <div className="pl-dmh-meta">
+                    {peerSocials.map((social) => (
+                      <a key={social.href} className="pl-dmh-soc" href={social.href} target="_blank" rel="noopener noreferrer">
+                        {SOCIAL_ICONS[social.platform]}
+                        <span>{social.handle}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {peerIntro && <p className={bioOpen ? "pl-dmh-bio" : "pl-dmh-bio clamp"}>{peerIntro}</p>}
+                {peerIntro.length > 120 && (
+                  <button type="button" className="pl-more" onClick={() => setBioOpen((open) => !open)}>{bioOpen ? "less" : "more"}</button>
+                )}
+                {shownOpportunities.length > 0 && (
+                  <div className="pl-dmh-opps">
+                    <h3>opportunities</h3>
+                    {shownOpportunities.map(({ opportunity, status }) => {
+                      const open = openOpportunityId === opportunity.opportunityId;
+                      return (
+                        <div key={opportunity.opportunityId} className={open ? "pl-dmh-opp on" : "pl-dmh-opp"}>
+                          <button type="button" className="pl-row" aria-expanded={open} onClick={() => setOpenOpportunityId(open ? null : opportunity.opportunityId)}>
+                            <span className="pl-dmh-opp-t">{opportunity.headline || opportunity.personalizedSummary}</span>
+                            <span className="pl-dmh-opp-s">{status}</span>
+                            <span className="pl-dmh-opp-c">{open ? "▾" : "›"}</span>
+                          </button>
+                          {open && <div className="pl-dmh-opp-b"><OpportunityEvent opportunity={opportunity} /></div>}
+                        </div>
+                      );
+                    })}
+                    {headOpportunities.length > 2 && (
+                      <button type="button" className="pl-more" onClick={() => setAllOpportunities((all) => !all)}>
+                        {allOpportunities ? "see less" : `see more (${headOpportunities.length - 2})`}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
-
-        <div className="pl-agent-log">
           {history?.hasPreviousSession && conversationId && history.loadingPrevious && <Placeholder.Thread label="loading earlier messages" />}
           {openerBody && (
             <div className="pl-dm-opener">
@@ -317,16 +480,14 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           )}
           {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
             <Placeholder.Thread label="loading messages" />
-          ) : messages.length === 0 && via.length > 0 && !openerBody ? (
+          ) : !footer && messages.length === 0 && via.length > 0 && !openerBody ? (
             <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
-          ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
+          ) : !footer && messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading ? (
             <p className="pl-dim pl-small">no messages yet. say hello.</p>
           ) : null}
 
           {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
-            if (item.type === 'opportunity') {
-              return <OpportunityDivider key={`opp-${item.opportunities[0].opportunityId}`} opportunities={item.opportunities} defaultExpanded={messages.length === 0} />;
-            }
+            if (item.type === 'opportunity') return null;
             const message = item.message;
             const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
             const isOwn = message.senderId === user?.id;
@@ -339,35 +500,35 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             return (
               <div key={message.id} className="pl-dm-item">
                 {day && day !== prevDay && <div className="pl-dm-day"><span>{day}</span></div>}
-                {/* The time sits outside the bubble, on the side away from the edge. */}
                 <div className={isOwn ? "pl-agent-line mine" : "pl-agent-line"}>
-                  {isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
                   <div className={isOwn ? "pl-agent-bubble mine" : "pl-agent-bubble"}>
-                    <div className="pl-agent-meta">{isOwn ? "you" : userName.split(" ")[0]}</div>
+                    <div className="pl-agent-meta">{isOwn ? "you" : userName.split(" ")[0]}{clock && <> · <time>{clock}</time></>}</div>
                     <div className="pl-agent-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={linkOut}>{content}</ReactMarkdown></div>
                   </div>
-                  {!isOwn && clock && <time className="pl-dm-clock">{clock}</time>}
                 </div>
               </div>
             );
           })}
+          {threadExtra}
           <div ref={messagesEndRef} />
         </div>
 
-        <form className="pl-agent-compose" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
-          <textarea
-            ref={inputRef}
-            rows={2}
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            onKeyDown={handleKeyPress}
-            placeholder={`write to ${userName.split(" ")[0]}…`}
-            disabled={sending}
-            autoFocus
-            aria-label={`Message ${userName}`}
-          />
-          <button type="submit" className="go" disabled={!messageText.trim() || sending}>send</button>
-        </form>
+        {footer ? <div className="pl-agent-compose pl-dm-decide">{footer}</div> : (
+          <form className="pl-agent-compose" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+            <textarea
+              ref={inputRef}
+              rows={2}
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder={`write to ${userName.split(" ")[0]}…`}
+              disabled={sending}
+              autoFocus
+              aria-label={`Message ${userName}`}
+            />
+            <button type="submit" className="go" disabled={!messageText.trim() || sending}>send</button>
+          </form>
+        )}
       </div>
     );
   }
@@ -381,7 +542,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             <Link to={`/u/${userId}`} style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600, color: "#000", textDecoration: "none" }}>{userName}</Link>
             {(conversationSummary?.createdAt || latestVia) && (
               <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
+                {conversationSummary?.createdAt ? `chat started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
                 {conversationSummary?.createdAt && latestVia ? " · " : ""}
                 {latestVia ? <Link to={`/i/${latestVia.intentId}`} style={{ color: "inherit", textDecoration: "none" }}>{latestVia.title}</Link> : null}
               </div>
@@ -396,7 +557,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             {history?.hasPreviousSession && conversationId && history.loadingPrevious && (
               <Placeholder.Thread label="loading earlier messages" />
             )}
-            {openerBody && (
+            {openerBody && !hasContext && (
               <div style={{ border: "1px solid var(--ink-4)", background: "#FBFAF7", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
                 {showOpenerHeadline && (
                   <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5, fontWeight: 600, color: "#000", lineHeight: 1.35, letterSpacing: -0.1 }}>{openerHeadline}</span>
@@ -413,15 +574,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             ) : null}
 
             {timeline.map((item, index) => {
-                if (item.type === 'opportunity') {
-                  return (
-                    <OpportunityDivider
-                      key={`opp-${item.opportunities[0].opportunityId}`}
-                      opportunities={item.opportunities}
-                      defaultExpanded={messages.length === 0}
-                    />
-                  );
-                }
+                if (item.type === 'opportunity') return renderOpportunities(item.opportunities);
 
                 const message = item.message;
                 const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;

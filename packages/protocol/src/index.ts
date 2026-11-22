@@ -134,6 +134,7 @@ export {
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
+  buildApiChatContextCacheKey,
   buildOpportunityCardCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
 export type {

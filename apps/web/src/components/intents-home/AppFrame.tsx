@@ -19,7 +19,6 @@ import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { Placeholder } from "@/components/ui/Placeholder";
-import ChatView from "@/components/chat/ChatView";
 
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
@@ -185,22 +184,6 @@ function IntentAgentWindow({ intentId }: { intentId: string }) {
   );
 }
 
-/** Beside Home: the chat with someone you just accepted, in the agent window's place. */
-function ChatWindow() {
-  const { log: chat, setLog } = useAgentWindow();
-  if (!chat?.userId) return null;
-  const close = () => setLog(null);
-  return (
-    <section className="ih-agentwin ih-chatwin" aria-label={`chat with ${chat.name}`}>
-      {/* Drawn like the chat on the conversations page, which is the in-frame look. */}
-      <InAppFrameContext.Provider value>
-        <ChatView key={chat.userId} userId={chat.userId} userName={chat.name} userAvatar={chat.avatar ?? undefined} onClose={close} />
-      </InAppFrameContext.Provider>
-      <button type="button" className="pl-win-close" aria-label="close (esc)" title="close (esc)" onClick={close}>×</button>
-    </section>
-  );
-}
-
 /**
  * Beside Home or an intent: an open match takes the agent window's place
  * until it's closed. On an intent page the agent there is that intent's.
@@ -223,7 +206,6 @@ function RightWindow({ intentId }: { intentId?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [log, setLog, open, setOpen, intentId]);
-  if (log?.view === "chat" && log.userId) return <ChatWindow />;
   if (log) return <MatchWindow />;
   return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
 }
