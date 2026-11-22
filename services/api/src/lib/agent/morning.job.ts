@@ -11,6 +11,7 @@ import { ConversationService } from '../../services/conversation.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { appLink } from '../app-link';
 import { MAX_WAITING, morningBriefTemplate } from '../email/templates';
+import { replyAddress } from '../email/reply-address';
 import { executeSendEmail } from '../email/transport.helper';
 import { log } from '../log';
 import { clipOpening, fallbackOpening, morningChatText, writeOpening, type Morning, type MorningGroup } from '../personal-agent/morning';
@@ -86,6 +87,7 @@ export async function composeMorningEmail(userId: string, name: string, since: D
   const email = morningBriefTemplate({
     viewerId: userId, name, talked: owed.talked, opening, waiting, connected,
     questions: groups.map((group) => ({ text: group.question, url: group.url })), appUrl: WEB_APP_URL,
+    replyable: replyAddress(userId) !== null,
   });
   if (!email) return null;
   const morning: Morning = { name, opening, waiting: waiting.slice(0, MAX_WAITING), groups };
@@ -119,7 +121,9 @@ async function sendMorningEmails(logger: ReturnType<typeof log.agent.from>): Pro
       try {
         const composed = await composeMorningEmail(claim.id, claim.name, claim.since);
         if (!composed) continue;
-        await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', kind: 'morning_brief', userId: claim.id, ...composed.email });
+        // A reply reaches the owner's personal agent when replies are on; otherwise the team inbox.
+        const replyTo = replyAddress(claim.id) ?? undefined;
+        await executeSendEmail({ to: claim.email, from: 'Your agent <updates@agent.index.network>', kind: 'morning_brief', userId: claim.id, replyTo, ...composed.email });
         await recordMorning(claim.id, composed.morning);
       } catch (error) {
         logger.error(describeFailure('Morning email failed', error), {

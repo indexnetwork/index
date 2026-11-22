@@ -29,6 +29,8 @@ export const executeSendEmail = async (options: {
   kind?: EmailKind;
   /** The recipient's user id, sent as a Resend tag so opens and clicks can be counted per user. */
   userId?: string;
+  /** Where replies go. Defaults to the team inbox, hello@index.network. */
+  replyTo?: string;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
@@ -87,7 +89,7 @@ ${options.html}
     const result = await resend!.emails.send({
       from: options.from ?? 'Index Network <updates@agent.index.network>',
       to: recipient,
-      replyTo: 'hello@index.network',
+      replyTo: options.replyTo ?? 'hello@index.network',
       subject: options.subject,
       html: options.html,
       text: options.text,
