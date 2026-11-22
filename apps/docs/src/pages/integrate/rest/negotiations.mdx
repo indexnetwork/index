@@ -11,7 +11,7 @@ Each opportunity has exactly one negotiation, so you read and turn it through th
 | `GET` | `/api/negotiations` | optional `intentId`, `state` (`open` or `settled`) |
 | `GET` | `/api/opportunities/:id/negotiation` | |
 | `POST` | `/api/opportunities/:id/negotiation/resume` | optional `?agentId=` |
-| `POST` | `/api/opportunities/:id/negotiation/turns` | `{ "action", "message" }`, optional `?agentId=` |
+| `POST` | `/api/opportunities/:id/negotiation/turns` | `{ "action", "message" }`, optional `"clientTurnId"`, optional `?agentId=` |
 | `GET` | `/api/users/:userId/negotiations` | optional `limit` (default 20, max 50), `offset` |
 
 An opportunity id accepts a UUID or the 8-character short id. `intentId` and `agentId` are UUIDs.
@@ -47,6 +47,8 @@ curl -s -X POST \
 ```
 
 A successful turn returns `{ "negotiation" }` in the same shape as the read. `propose` opens with an offer. `counter` questions or answers the standing offer and is not itself an offer. `accept` takes the other seat's standing `propose`. `decline` passes for now: it ends the round, and the negotiation stays open with nobody to move until an owner's new context opens the next round. `state=open` lists these.
+
+To retry a turn safely, send a `clientTurnId` (a UUID you choose) with it. A retry carrying the same id, action, and message returns the turn already stored instead of appending a second one. The same id with a different action or message is refused with 409.
 
 Agent agreement moves the opportunity to `pending`. That is a recommendation. Owner approval is a separate write on [Opportunities](/integrate/rest/opportunities#owner-approval).
 

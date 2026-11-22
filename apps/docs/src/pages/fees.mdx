@@ -1,0 +1,107 @@
+# Fees (planned) [Agents pay at the steps where something is decided]
+
+:::warning
+Fees are planned and not charged today. The amounts on this page are
+illustrative. Each [network](/network) will set its own prices.
+:::
+
+Value is concentrated at one event, the mutual yes, so that is where most of
+the price sits. Nobody pays to be found or listed. The fees follow the life of
+an [opportunity](/opportunity): two are charged for what the agents decide,
+and two for what the people decide.
+
+## The four fees
+
+| Fee | Charged when | Example |
+| --- | --- | --- |
+| Negotiation fee | The sender's agent opens a [negotiation](/negotiation) with another agent | $0.01 |
+| Opportunity fee | Both agents agree and the opportunity moves to `pending`, before either person sees it | $0.05 |
+| Request fee | The sender accepts: single opt-in | $0.30 |
+| Outcome fee | The counterparty also accepts: double opt-in, and the opportunity is `accepted` | $3.00 |
+
+The **sender** is the person whose intent started the search. The
+**counterparty** is the person on the other side.
+
+- **The sender pays.** All four fees are paid by the sender's agent. The
+  counterparty never pays and never earns.
+- **The network earns.** Every fee goes to the network the two people share,
+  since that is the group the match came from.
+- **Each fee stands alone.** Each one is a new payment made at the moment its
+  step happens. Nothing is held in advance for a later step, and nothing is
+  refunded if a later step doesn't happen. A negotiation that ends without
+  agreement still cost its negotiation fee, and a request the counterparty
+  declines still cost its request fee.
+
+The agent fees price agent attention. A new intent opens several negotiations
+at once, so the negotiation fee is the highest-volume fee. It stays low enough
+that normal use barely notices it, while an agent that opens negotiations it
+doesn't need pays for each one.
+
+## Example
+
+Maya, an account executive, tells her agent she wants to meet platform leads
+at fintechs who are replacing their monitoring. In a fintech operators network
+they both belong to, her agent opens five negotiations. One of them, with
+Jon's agent, ends in agreement. Maya accepts, and later Jon accepts.
+
+| Step | Fee | Network earns |
+| --- | --- | --- |
+| 5 negotiations opened | 5 × $0.01 | $0.05 |
+| Agents agree on Jon | $0.05 | $0.10 |
+| Maya accepts | $0.30 | $0.40 |
+| Jon accepts | $3.00 | $3.40 |
+
+If Jon had passed, the network would have earned $0.40, and Maya would have
+paid nothing more. Jon pays nothing either way.
+
+## Why the agent pays
+
+The payments are made by the agent, not by the person. The amounts are small
+and frequent. The negotiation and opportunity fees are triggered by agents
+alone, with no person involved, and the outcome fee is triggered by someone
+else's decision, at a time the payer doesn't choose. Asking the person to
+approve each one would undo the point of having an agent.
+
+Instead, the person sets a spending limit once, for example $20 a week, and
+the agent pays within it. The agent holds a key that can only pay network
+fees, up to that limit, and that expires. The person's own account stays
+separate. If the agent can't cover the outcome fee, the chat waits until it
+is paid.
+
+## Settlement
+
+The fees are planned to settle over [MPP](https://mpp.dev), the Machine
+Payments Protocol: an open standard for payments between machines over HTTP.
+A service that needs to be paid answers with HTTP `402` and a challenge that
+states the price. The paying agent sends back a signed credential, and the
+service replies with a receipt.
+
+| Need | MPP feature |
+| --- | --- |
+| One fixed payment per decision | A charge, for the opportunity, request, and outcome fees |
+| Per-negotiation micro-fees | A session: one deposit, a signed voucher per negotiation, settled in batches, unused deposit refunded |
+| The agent acts within a budget | Spend controls: a delegated key with a limit per period, allowed recipients, and an expiry |
+| Match each payment to its opportunity | A receipt reference set to the opportunity id |
+| Fees in dollars, from any wallet or card | Stablecoins, cards, and Lightning on one endpoint |
+| People never see transaction fees | Fee sponsorship: Index pays the transaction fees underneath |
+| Know which agent is paying | The identity extension: networks accept fees only from known agents |
+
+An MPP endpoint can also accept x402 payments, so agents built for x402 can
+pay the same fees.
+
+The four fees need no escrow. Each is paid when its step happens, so nothing
+has to be locked up in advance.
+
+## Bounties
+
+A bounty is money someone adds to an intent to reach a kind of person sooner,
+such as "heads of platform at fintechs, intros by December 15". Each
+opportunity that reaches double opt-in pays out to the network whose agent
+found it, and whatever is unspent goes back to the poster when the bounty
+expires.
+
+A group bounty pays for forming a group, such as a founding team, and releases
+only when every member accepts. See [group formation](/guides/group-formation).
+
+Unlike the four fees, a bounty's payee isn't known in advance, so bounties
+need a small escrow contract alongside MPP.

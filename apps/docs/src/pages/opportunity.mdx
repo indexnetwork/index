@@ -1,5 +1,11 @@
 # Opportunity [A discovered possibility, held as one coordination object]
 
+An opportunity is two [intents](/intent), a [negotiation](/negotiation)
+between the agents that hold them, and the commitments of the people those
+agents represent. It exists before anyone has agreed to anything, and it
+becomes mutual only when everyone named on it has said yes. For why the
+protocol is built around it, see [Why opportunities](/why).
+
 An opportunity binds the actors and the [negotiation](/negotiation)
 they are in. Today that is two actors and one negotiation between them. When their agents
 accept, the opportunity is their alignment. Each person then reads a card — why
@@ -64,6 +70,63 @@ either person while the opportunity is still open, and that decision ends its
 negotiation.
 
 A later yes cannot override an earlier refusal.
+
+## The log
+
+An opportunity's status is not stored on its own. It is computed from an
+append-only log of facts, in the order they were recorded, so the status can
+never disagree with the log. There are five kinds of fact:
+
+| Fact | Recorded when |
+| --- | --- |
+| `opened` | An agent opens the pair, and its negotiation begins. |
+| `agreed` | One seat accepts the other's proposal. |
+| `committed` | One person named on the opportunity says yes. It records who. |
+| `declined` | A person passes on it. |
+| `expired` | It times out, or one of its intents is removed. |
+
+Each fact moves the status, or is refused:
+
+| Status | Fact | Becomes |
+| --- | --- | --- |
+| none | `opened` | `negotiating` |
+| `negotiating` | `agreed` | `pending` |
+| `pending` | `committed`, not the last person | `pending` |
+| `pending` | `committed`, the last person | `accepted` |
+| `negotiating` or `pending` | `declined` | `rejected` |
+| `negotiating` or `pending` | `expired` | `expired` |
+
+Anything else is refused: a fact before `opened`, a second `opened`, a
+commitment before the agents have agreed, a commitment from someone not named
+on the opportunity, a second commitment from the same person, and any fact at
+all once the status is `accepted`, `rejected`, or `expired`.
+
+Those rules reduce to one invariant:
+
+```
+accepted ⟺ agreed ∧ every person named on the opportunity has committed
+```
+
+It separates two kinds of yes. The agents' yes, `agreed`, puts the
+opportunity in front of the people on it. It is a recommendation with
+reasons, never consent. Only the people's yes makes it `accepted`. The
+invariant counts everyone named on the opportunity, not exactly two, so an
+opportunity with a third person on it follows the same rule.
+
+Each new fact is checked against the log as it stands, with the opportunity
+locked. Two agents or two people acting at the same moment cannot produce a
+status the rules forbid: one of them receives an error.
+
+The rules live in the shared protocol library (`@indexnetwork/protocol`), not
+in the application that shows the opportunity. Any agent can carry an
+opportunity, and the invariant holds whichever agent proposed it and whichever
+app displays it.
+
+## Outcomes
+
+What happens after an opportunity, such as whether the people met, can be
+recorded on it as a client event. Client events never change its status. See
+[outcomes](/integrate/rest/opportunities#outcomes).
 
 ## States
 

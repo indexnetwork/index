@@ -26,6 +26,7 @@ export default defineConfig({
       text: 'How it works',
       items: [
         { text: 'Overview', link: '/' },
+        { text: 'Why opportunities', link: '/why' },
         {
           text: 'Primitives',
           collapsed: true,
@@ -38,6 +39,7 @@ export default defineConfig({
         },
         { text: 'Discovery', link: '/discovery' },
         { text: 'Privacy', link: '/privacy' },
+        { text: 'Fees (planned)', link: '/fees' },
       ],
     },
     {

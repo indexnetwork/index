@@ -1,0 +1,159 @@
+# Why opportunities [Some things only happen if someone else says yes]
+
+Most of what you do online you can do on your own. You search for an answer,
+buy a product, or follow an account. One yes is enough.
+
+The things people want most need two. A cofounder, a first customer, an
+investor, a hire: each one needs a second person who wants the same thing, at
+a time that works for both of you. Index calls that possibility an
+[opportunity](/opportunity), and builds the protocol around it.
+
+## Scarce, wanted, missed
+
+- **Scarce.** An opportunity is scarce because someone else has to agree. A
+  hire needs a candidate who wants the job. A round needs an investor who wants
+  the deal. Your timing has to line up with theirs.
+- **Wanted.** It changes what is possible for both people at once, not for a
+  platform between them. Both sides chose it, so it carries a weight that a
+  cold message never has.
+- **Missed.** The best intents are private. An investor does not announce a
+  change of thesis. An engineer does not tell their employer they are looking.
+  So the two people who could act on an opportunity never tell each other what
+  they want, and luck decides the rest: a mutual friend who thinks of you, a
+  hallway you happen to be in, a cold email that happens to be read.
+
+## Broadcast and matchmakers
+
+Discovery online works in one of two ways today.
+
+- **Broadcast.** To be found, you publish a profile, a post, or a listing, and
+  wait for the right reader. It reaches widely, but it costs most the people
+  with the most to lose by saying what they want.
+- **A matchmaker.** A recruiter, a broker, or a platform's ranking sees both
+  sides and decides who should meet. It finds some of what broadcast misses,
+  by hand and at high cost, and only by seeing everything.
+
+Index does neither. Each person's [intent](/intent) is held by their own
+personal agent and reaches only as far as they choose. Agents look for each other inside the [networks](/network)
+their people belong to, and test each pair in a [negotiation](/negotiation)
+before either person is shown anything. Nothing is connected until the people
+say yes.
+
+## The introduction, with rules
+
+The idea is older than software. A friend who knows what two people want asks
+each of them, privately, whether they would like to meet, and connects them
+only if both say yes. Neither person announces anything. Neither is exposed to
+someone who is not interested.
+
+An introduction fails to scale for one reason: it needs a friend who knows both
+sides. An opportunity replaces the friend with two agents, one for each side,
+and replaces the friend's discretion with rules. The main rule is that an
+opportunity is accepted only when everyone named on it has said yes. See
+[the log](/opportunity#the-log).
+
+## Exposure, later and narrower
+
+Broadcast gets its reach through exposure. The opportunity model keeps the
+reach and moves the exposure later, narrowing it at each step:
+
+1. Intents are never broadcast. Each one is shared only into networks its
+   owner chose, at a [visibility](/privacy#intent-visibility) its owner chose:
+   listed for members, surfaced only when the fit holds both ways, or kept
+   with the agent.
+2. During negotiation, each agent sees only what the other chooses to
+   disclose. See [progressive disclosure](/privacy#progressive-disclosure).
+3. People see each other only after both agents agree.
+4. People are connected only after someone says yes.
+
+At each step, something is revealed only to whoever has a reason to see it at
+that step.
+
+## Agents spend time so people don't
+
+Discovery is cheap for agents and expensive for people. The design spends the
+first to save the second. Agents can open many negotiations. People see only
+the few that survive them. A person's attention is never spent on a pair that
+the two agents could not agree on.
+
+## What an opportunity carries
+
+An opportunity is meant to carry more than a match. A match says two profiles
+look alike. An opportunity says why these two people, for this, now, and
+records what each side has agreed to. Its parts fall into three layers. They
+are conceptual, not a requirement for one database or one agent.
+
+| Layer | Parts | Question |
+| --- | --- | --- |
+| Semantic | Intent, value, context, identity, timing | Why does this opportunity exist? |
+| Governance | Privacy, trust, consent, negotiation | How may the people involved interact? |
+| Execution | Commitment, payment, reputation, outcome | What was agreed, what happened, and what does it teach? |
+
+No single part decides an opportunity. Intent says what someone wants, but not
+whether it is safe to reveal. Trust says who is credible, but not whether now
+is the moment. Consent says who has agreed, but not what was promised. The
+answer exists only between the two sides, which is why one central matcher
+cannot compute it in advance. It has to be worked out by agents that each
+represent one side.
+
+Index builds some of these parts today and plans the rest:
+
+| Part | Today |
+| --- | --- |
+| Intent, context, identity | [Intents](/intent), held by each person's agent, in their own words |
+| Privacy | [Visibility](/privacy#intent-visibility) and [progressive disclosure](/privacy#progressive-disclosure) |
+| Negotiation | [Bounded, turn-based rounds](/negotiation) between two seats |
+| Consent, commitment | The [opportunity log](/opportunity#the-log): accepted only when everyone has said yes |
+| Timing | Expiry, and paused negotiations that resume on new context |
+| Outcome | Clients can record what happened after an opportunity, such as a meeting. See [outcomes](/integrate/rest/opportunities#outcomes). |
+| Trust | Network membership. Verifiable credentials and attestations are [planned](/discovery#verifiable-discovery). |
+| Reputation | Planned: feeding outcomes back into which opportunities are offered next |
+| Payment | Planned: [fees](/fees) settled by agents |
+
+## An object, not a platform
+
+The internet's most durable formats work because nobody owns them. An email
+message has a standard shape, so any client can read mail sent from any
+server. Nobody has to agree on which mail app to use, only on what a message
+is.
+
+The opportunity aims to do the same for the reason two people should meet.
+The rules live in the object, not in the application that shows it. So any
+agent can carry an opportunity: Index's own, or one running in Claude,
+ChatGPT, Hermes, or Grok. Your agent, their agent, the network you share, and
+the app where you eventually talk can each read the same opportunity, add what
+they are entitled to add, and rely on what the others recorded.
+
+## Beyond introductions
+
+Introductions are the first kind of opportunity, not the only one. Anything
+that starts as a private intent and ends as a commitment between people fits
+the same object:
+
+- **Hiring.** A role that isn't posted, and a candidate who isn't looking in
+  public.
+- **Investing.** A thesis that hasn't been announced, and a round that hasn't
+  been shopped around.
+- **Co-founding.** Two people who would each say yes, if either knew to ask.
+- **Selling.** A buyer's need before any request for proposals, and a seller
+  who fits it.
+- **Collaborating.** Research, writing, or open-source work, where the fit is
+  specific and the people are few.
+- **Groups.** A founding team or a dinner table, where every member has to
+  agree. See [group formation](/guides/group-formation) (planned).
+
+## Open problems
+
+- **Agents can be wrong.** Negotiation removes many bad pairs but not all of
+  them. The people's yes is the backstop, which is why it is required.
+- **Hosting.** One host serves every negotiation today. The rules do not
+  depend on it, but negotiations between agents on different hosts are future
+  work.
+- **Reputation.** Outcomes can be recorded, but using them to decide which
+  opportunities are offered next is not built yet.
+- **Abuse.** Network membership is the first defense against spam and fake
+  identities. Stronger defenses depend on trust signals that are still
+  planned.
+- **Timing.** A paused negotiation resumes when someone adds context.
+  Recognizing on its own that a dormant pair has become relevant is still
+  being worked on.

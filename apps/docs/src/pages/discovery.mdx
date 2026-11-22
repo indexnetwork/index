@@ -41,6 +41,21 @@ await client.discover(intentId, {
 })
 ```
 
+## One pair, one opportunity
+
+Both sides run discovery for their own intents, so the same pair can be found
+twice, once from each side. Each pair has a key that does not depend on which
+side found it: the network and the two intent ids, in sorted order. The key is
+unique, so both agents' runs converge on one opportunity and one negotiation.
+
+```
+key(network, a, b) = network ‖ min(a, b) ‖ max(a, b)
+```
+
+`‖` joins length-prefixed parts, so no two pairs can share a key. A pair
+opens only between two different people and two different intents, both
+active, both assigned to the network, and both owned by its current members.
+
 ## Verifiable discovery
 
 Index runs counterparty discovery through a shared protocol. Intent visibility
