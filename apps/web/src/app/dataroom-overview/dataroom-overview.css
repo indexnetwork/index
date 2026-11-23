@@ -54,6 +54,10 @@
 .dro .tbl td{padding:14px 16px 14px 0;vertical-align:top;border-bottom:1px solid #eee;color:#222;}
 .dro .tbl td:first-child{font-weight:600;color:var(--ink);width:140px;}
 .dro .tbl td:last-child{color:#666;padding-right:0;}
+.dro .tbl table.num td:first-child{width:220px;}
+.dro .tbl table.num td:not(:first-child){font-variant-numeric:tabular-nums;color:#222;}
+.dro .dek + .dek{margin-top:8px;}
+.dro .chart + p{margin-top:1.4em;}
 
 .dro .timeline{list-style:none;margin:1.2em 0 0;padding:0 0 0 22px;border-left:2px solid var(--line);}
 .dro .timeline li{position:relative;margin-top:1em;}
