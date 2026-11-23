@@ -8,8 +8,10 @@ import { formatChatClock } from "@/lib/utils";
 import { Placeholder } from "@/components/ui/Placeholder";
 
 /** Expand one Radar match's read-only A2A thread without affecting its runtime. */
-export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle }: {
+export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle, look }: {
   intentId?: string; opportunityId: string; expanded: boolean; onToggle(): void;
+  /** "turns": just the turns, each a small label over a plain box (yours on the warm fill), for the person pane. */
+  look?: "turns";
 }) {
   const { user } = useAuthContext();
   const service = useNegotiations();
@@ -51,6 +53,25 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
   const theirId = detail?.counterparty.userId || match?.counterparty?.userId;
 
   if (!expanded) return null;
+
+  if (look === "turns") {
+    return <>
+      {error && <p role="alert" className="sv-dimp">couldn&apos;t load this agent log.</p>}
+      {!detail && !error && <Placeholder.Thread label="loading the agent log" />}
+      {detail && detail.turns.length === 0 && <p className="sv-dimp">no turns yet.</p>}
+      {detail?.turns.map((turn) => {
+        const own = turn.seatUserId === user?.id;
+        return (
+          <div key={turn.turnIndex} className={own ? "sv-turn own" : "sv-turn"}>
+            <span className="tl">
+              {own ? "your agent" : theirId ? <Link to={`/u/${theirId}`} title="view profile">{first}&apos;s agent</Link> : `${first}'s agent`} · {turn.action}
+            </span>
+            <div className="tm">{turn.message}</div>
+          </div>
+        );
+      })}
+    </>;
+  }
 
   return <div data-testid="negotiation-conversation" id={`a2a-${opportunityId}`} className="mac-scroll" ref={history}
     onScroll={() => { const pane = history.current; if (pane) follow.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80; }}

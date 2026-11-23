@@ -59,12 +59,14 @@ function useProfile(userId?: string): Profile | null {
  * opportunity between you two; chat is the conversation in a warm box joined
  * to its composer.
  */
-export function PersonPane({ person, tab, onTab, chatOff, onClose, summary, foot, chat }: {
+export function PersonPane({ person, tab, onTab, chatOff, chatCount, onClose, summary, foot, chat }: {
   person: PanePerson;
   tab: PersonTab;
   onTab: (tab: PersonTab) => void;
-  /** Why chat can't open yet; the tab shows but stays off. */
+  /** Chat isn't open yet: what the chat tab says instead, above the foot. */
   chatOff?: string;
+  /** Messages so far, beside "chat". */
+  chatCount?: number;
   onClose?: () => void;
   summary: ReactNode;
   foot?: ReactNode;
@@ -72,7 +74,7 @@ export function PersonPane({ person, tab, onTab, chatOff, onClose, summary, foot
 }) {
   const profile = useProfile(person.userId);
   const first = person.name.split(" ")[0];
-  const showChat = tab === "chat" && !chatOff;
+  const showChat = tab === "chat";
   // Once opened, the chat stays mounted behind summary, so a half-typed message survives the switch.
   const [chatOpened, setChatOpened] = useState(showChat);
   if (showChat && !chatOpened) setChatOpened(true);
@@ -99,16 +101,23 @@ export function PersonPane({ person, tab, onTab, chatOff, onClose, summary, foot
         {onClose && <button type="button" className="sv-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>}
         <div className="sv-tabs" role="tablist" aria-label={`${first}: summary or chat`}>
           <button type="button" role="tab" data-sv-key="tab-summary" aria-current={!showChat} onClick={() => onTab("summary")}>summary</button>
-          <button type="button" role="tab" data-sv-key="tab-chat" aria-current={showChat} aria-disabled={!!chatOff} title={chatOff} onClick={() => { if (!chatOff) onTab("chat"); }}>chat</button>
-          <span className="sp" />
-          {chatOff && <span className="why">{chatOff}</span>}
+          <button type="button" role="tab" data-sv-key="tab-chat" aria-current={showChat} onClick={() => onTab("chat")}>
+            chat{!!chatCount && <span className="n">{chatCount}</span>}
+          </button>
         </div>
       </header>
 
       {chatOpened && !chatOff && <div className="sv-chat" role="tabpanel" hidden={!showChat}>{chat}</div>}
+      {showChat && chatOff && (
+        // Not open yet: the same warm box, saying when it opens, with accept and pass as its foot.
+        <div className="sv-chat" role="tabpanel">
+          <div className="sv-well"><div className="sv-wait">{chatOff}</div></div>
+          {foot && <div className="sv-wellbar">{foot}</div>}
+        </div>
+      )}
       {!showChat && (
         <>
-          <div className="sv-body" role="tabpanel">{summary}</div>
+          <div className="sv-body sv-sum" role="tabpanel">{summary}</div>
           {foot && <div className="sv-bar">{foot}</div>}
         </>
       )}
@@ -212,17 +221,17 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
               <div key={item.opportunityId} className={`sv-orow${isOpen ? " open" : ""}`}>
                 <button type="button" className="sv-orh" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : item.opportunityId)}>
                   <span className="sv-oh">{headline}</span>
-                  <span className={`sv-status ${status.cls}`}>{status.label}</span>
+                  <span className="sv-os">{status.cls === "talks" && <span className="sv-dot" />}{status.label}</span>
                   <span className="sv-oc">{isOpen ? "▾" : "›"}</span>
                 </button>
                 {isOpen && (
                   <div className="sv-olog">
-                    <div className="sv-via">
+                    <div className="sv-alh">
                       {item.opportunityId === focusId && intentTitle ? <>for <Link to={`/i/${intentId}`}>{intentTitle}</Link></> : item.mutualIntentsLabel}
                       {item.createdAt && ` · ${shortDate(item.createdAt)}`}
                     </div>
-                    {reason && <p>{reason}</p>}
-                    <NegotiationConversation opportunityId={item.opportunityId} expanded onToggle={() => setOpen(null)} />
+                    {reason && <p className="sv-owhy">{reason}</p>}
+                    <NegotiationConversation opportunityId={item.opportunityId} expanded onToggle={() => setOpen(null)} look="turns" />
                   </div>
                 )}
               </div>

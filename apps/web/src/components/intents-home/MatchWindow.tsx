@@ -62,11 +62,12 @@ export default function MatchWindow() {
 
   // Chat opens once you've said yes (or the chat already exists); before that the tab says why not.
   const accepted = stage === "chat" || (key ? decisions[key] === "accepted" : false);
-  const chatOff = match.notOnIndex || !match.userId ? "not on index yet"
-    : accepted ? undefined
-    : stage === "awaiting" ? "accept to open a chat"
-    : "opens when you both accept";
-  const tab: PersonTab = match.view === "chat" && !chatOff ? "chat" : "summary";
+  const chatOff = accepted && match.userId && !match.notOnIndex ? undefined
+    : stage === "awaiting" ? `accept below and your chat with ${first} starts right here.`
+    : match.notOnIndex || !match.userId ? `${first} isn't on index yet. the chat opens here once they join.`
+    : stage === "closed" ? "this one is closed."
+    : "opens here once you both accept.";
+  const tab: PersonTab = match.view === "chat" ? "chat" : "summary";
   const setTab = (next: PersonTab) => setLog({ ...match, view: next === "chat" ? "chat" : undefined });
   const close = () => setLog(null);
 
@@ -98,7 +99,7 @@ export default function MatchWindow() {
   ) : stage === "chat" && match.notOnIndex && lead ? (
     <button type="button" className="sv-btn" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
   ) : stage === "talks" ? (
-    <span className="note">your agent and {first}&apos;s agent are still talking. chat opens here once you both accept.</span>
+    <span className="note">your agents are still talking. chat opens here once you both accept.</span>
   ) : stage === "closed" ? (
     <span className="note">this one is closed.</span>
   ) : undefined;

@@ -213,8 +213,34 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-agent .pl-agent-log { flex: 1; min-height: 0; overflow: auto; }
 
 /* ---------- outside the layout: the rail's hint, the jump box, keys, undo ---------- */
-.ih-rail .ih-nav:hover, .ih-rail .ih-nav.on { background: #f3f2ee; }
-.ih-rail.sv-focus .ih-nav:hover, .ih-rail.sv-focus .ih-nav.on { background: #e6e5df; }
+/* the rail, as in the prototype: mono, plain rows, the home tree, connect, the menu, you */
+.ih.ih .ih-rail { width: 210px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; }
+.ih .ih-rail .ih-brand { padding: 16px 20px 18px; font: 500 17px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0; }
+.ih .ih-rail .ih-rail-body { padding: 0 10px 16px; gap: 0; }
+.ih .ih-rail .ih-nav { justify-content: space-between; padding: 8px 10px; border: 0; border-radius: 2px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; color: #000; background: none; box-shadow: none; }
+.ih .ih-rail .ih-nav.on { font-weight: 700; box-shadow: none; }
+.ih .ih-rail .ih-nav:hover, .ih .ih-rail .ih-nav.on { background: #f3f2ee; }
+.ih .ih-rail.sv-focus .ih-nav:hover, .ih .ih-rail.sv-focus .ih-nav.on { background: #e6e5df; }
+.ih .ih-rail .ih-nav-label { flex: none; }
+.ih .ih-rail .ih-badge, .ih .ih-rail .ih-nav.on .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; font: 700 11px/1.45 "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ih .ih-rail .ih-sub { margin: 2px 0 10px 22px; padding: 0 0 0 12px; border-left: 1px dotted #cfcfcf; }
+.ih .ih-rail .ih-sub-link { justify-content: space-between; gap: 8px; padding: 3px 0; border: 0; background: none; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #000; text-align: left; }
+.ih .ih-rail .ih-sub-link::before { content: none; }
+.ih .ih-rail .ih-sub-link .ih-nav-label { text-decoration: underline; text-decoration-color: #cfcfcf; text-underline-offset: 3px; }
+.ih .ih-rail .ih-sub-link:hover { background: none; }
+.ih .ih-rail .ih-sub-link:hover .ih-nav-label { font-weight: 700; text-decoration: none; }
+.ih .ih-rail .ih-sub-n { font: 700 12px "JetBrains Mono", ui-monospace, monospace; color: #000; }
+.ih .ih-rail .ih-foot { gap: 0; padding-top: 10px; }
+.ih .ih-rail .ca-strip { justify-content: space-between; margin: 0 0 14px; padding: 9px 12px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 2px 2px 0 #000; }
+.ih .ih-rail .ca-strip:hover { background: #f3f2ee; }
+.ih .ih-rail .ca-strip-label { flex: none; font: 600 13px "IBM Plex Sans", sans-serif; }
+.ih .ih-rail .ca-strip-go { font: 600 13px "IBM Plex Sans", sans-serif; color: #000; }
+.ih .ih-rail .ih-foot .ih-menu { border-top: 0; padding-top: 0; gap: 0; }
+.ih .ih-rail .ih-account { margin-top: 8px; padding-top: 12px; border-top: 1px solid #e6e6e6; }
+.ih .ih-rail .ih-account-btn { padding: 0 6px; gap: 8px; }
+.ih .ih-rail .ih-account-btn:hover, .ih .ih-rail .ih-account-btn.open { background: none; }
+.ih .ih-rail .ih-account-name { font: 600 13px "IBM Plex Sans", sans-serif; }
+.ih .ih-rail .ih-account-sub, .ih .ih-rail .ih-account-more { display: none; }
 .ih .sv-jumpbtn { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 0 0 10px; padding: 7px 10px; border: 1px dashed #cfcfcf; background: #fff; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #555; cursor: pointer; border-radius: 2px; }
 .ih .sv-jumpbtn:hover { border-color: #000; color: #000; }
 .sv-jumpbtn kbd, .sv-hrow kbd { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; border: 1px solid #cfcfcf; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; background: #fff; color: #000; white-space: nowrap; }
@@ -287,7 +313,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* introduce: pairs on the left, the running list (or a picked pair) on the right */
 .sv-pairav { position: relative; flex: none; }
 .sv-pairav > * { position: absolute; top: 0; }
-.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); border-radius: 50%; }
+.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); }
 .sv-ghost { right: 0; display: grid; place-items: center; border: 1px dashed var(--sv-ink); border-radius: 50%; background: var(--sv-paper); color: var(--sv-ink); font-family: var(--sv-mono); font-weight: 700; box-sizing: border-box; }
 .sv-faint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-body.sv-idk { padding-top: 14px; }
@@ -309,3 +335,49 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-dim-note { font-size: 12.5px; color: var(--sv-ink2); margin-bottom: 8px; }
 .sv-idk-sent { font-size: 13px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--sv-well-line); background: var(--sv-well); border-radius: 2px; white-space: pre-wrap; }
 .sv-idk .idk-run-foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--sv-edge); }
+
+/* ---------- the pane, matched to the prototype ---------- */
+/* summary: 24px down to "bio", a wider gap before "opportunities" */
+.sv-body.sv-sum { padding: 14px 22px 26px; }
+.sv-sum > .sv-h4:first-child { margin-top: 10px; }
+.sv-sum > h4.sv-h4:nth-of-type(4) { margin-top: 30px; }
+.sv-soc { padding: 6px 10px; }
+.sv-os { font: 400 11px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-dot { display: inline-block; width: 8px; height: 8px; border: 1px solid var(--sv-ink); background: var(--sv-talks); margin-right: 4px; vertical-align: 0; animation: sv-blink 1.4s ease-in-out infinite; }
+.sv-alh { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-alh a { color: inherit; text-decoration: underline; }
+.sv-body p.sv-owhy { margin: 0 0 2px; font-size: 14px; line-height: 1.5; }
+.sv-turn { display: grid; gap: 4px; }
+.sv-turn .tl { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); letter-spacing: 0.06em; }
+.sv-turn .tl a { color: inherit; text-decoration: none; }
+.sv-turn .tm { border: 1px solid var(--sv-line); border-radius: 3px; padding: 8px 11px; font-size: 13.5px; line-height: 1.45; background: var(--sv-paper); white-space: pre-wrap; word-break: break-word; }
+.sv-turn.own .tm { background: var(--sv-well); }
+
+/* the chat tab before it opens: the warm box says when, accept and pass are its foot */
+.sv-well { flex: 1 0 auto; padding: 14px 16px 16px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0; }
+.sv-wait { border: 1px dashed var(--sv-edge); border-radius: 3px; padding: 14px; color: var(--sv-ink2); font-size: 13.5px; text-align: center; background: var(--sv-paper); }
+.sv-wellbar { flex: none; display: flex; gap: 10px; align-items: center; padding: 10px 16px 14px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-top: 1px dashed var(--sv-well-line); border-radius: 0 0 4px 4px; }
+.sv-wellbar .hint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-wellbar .note { color: var(--sv-ink2); font-size: 13px; }
+.sv-wellbar:has(> .note:only-child) { color: var(--sv-ink2); font-size: 13px; }
+
+/* the conversation inside the well, drawn like the prototype's messages */
+.sv .sv-chat .pl-agent-log { display: flex; flex-direction: column; gap: 12px; }
+.sv .sv-chat .pl-dm-item { display: flex; flex-direction: column; gap: 12px; }
+.sv .sv-chat .pl-agent-line { display: flex; justify-content: flex-start; margin: 0; padding: 0; }
+.sv .sv-chat .pl-agent-line.mine { justify-content: flex-end; }
+.sv .sv-chat .pl-agent-bubble { max-width: 78%; margin: 0; border: 1px solid var(--sv-edge); padding: 8px 11px; border-radius: 3px; font: 400 14px/1.45 var(--sv-sans); background: var(--sv-paper); color: var(--sv-ink); box-shadow: none; }
+.sv .sv-chat .pl-agent-bubble.mine { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv .sv-chat .pl-agent-meta { font: 500 10.5px var(--sv-mono); opacity: 0.6; margin: 0 0 2px; color: inherit; letter-spacing: 0; text-transform: none; }
+.sv .sv-chat .pl-agent-md, .sv .sv-chat .pl-agent-md p { margin: 0; font: inherit; color: inherit; }
+.sv .sv-chat .pl-agent-md p + p { margin-top: 6px; }
+.sv .sv-chat .pl-agent-md a { color: inherit; text-decoration: underline; }
+.sv .sv-chat .pl-dm-day { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); text-transform: none; letter-spacing: 0; }
+.sv .sv-chat .pl-dm-day::before, .sv .sv-chat .pl-dm-day::after { content: ""; flex: 1; height: 1px; background: var(--sv-line); }
+.sv .sv-chat .pl-dm-day span { background: none; padding: 0; border: 0; }
+.sv .sv-chat .pl-agent-log > p.pl-dim { margin: 8px auto; text-align: center; color: var(--sv-dim); font-size: 13px; max-width: 280px; line-height: 1.5; }
+.sv .sv-chat form.pl-agent-compose { align-items: center; }
+.sv .sv-chat form.pl-agent-compose textarea { flex: 1; resize: none; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 8px 10px; font: 400 14px var(--sv-sans); height: 40px; min-height: 40px; outline: none; background: var(--sv-paper); box-shadow: none; }
+.sv .sv-chat form.pl-agent-compose textarea:focus { border-color: var(--sv-ink); }
+.sv .sv-chat form.pl-agent-compose button[type="submit"] { font: 700 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-orange); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; }
+.sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { opacity: 0.4; box-shadow: none; }

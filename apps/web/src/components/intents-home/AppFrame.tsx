@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/buttons.css";
+import "@/styles/split.css";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { awaitsFirstIntent } from "@/services/onboarding";
 import UserAvatar from "@/components/UserAvatar";
