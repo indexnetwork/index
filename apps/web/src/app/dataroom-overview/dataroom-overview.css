@@ -163,22 +163,3 @@
 .dro .post footer{margin-top:10px;font-size:12.5px;color:#888;}
 .dro .post cite{font-style:normal;font-weight:600;color:#333;}
 
-/* The Index Discover view inside Hermes, rebuilt as HTML. */
-.dro .hx{border:1px solid #e1e1dc;border-radius:10px;overflow:hidden;font-family:'Public Sans', system-ui, sans-serif;background:#fff;}
-.dro .hx-bar{display:flex;align-items:center;gap:6px;padding:9px 12px;background:#f4f4f1;border-bottom:1px solid #e6e6e2;font-size:11.5px;color:#888;}
-.dro .hx-bar i{width:9px;height:9px;border-radius:50%;background:#d8d8d3;display:block;}
-.dro .hx-bar span{margin-left:8px;}
-.dro .hx-head{padding:18px 18px 14px;border-bottom:1px solid #eee;}
-.dro .hx-head strong{display:block;font-family:'JetBrains Mono', ui-monospace, Menlo, monospace;font-size:15px;color:#111;}
-.dro .hx-head span{display:block;font-size:12.5px;color:#777;margin-top:6px;}
-.dro .hx-cols{display:grid;grid-template-columns:3fr 2fr;gap:14px;padding:14px 18px 18px;}
-.dro .hx-lbl{font-family:'JetBrains Mono', ui-monospace, Menlo, monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:8px;}
-.dro .hx ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
-.dro .hx li{border:1px solid #ececE8;border-radius:6px;padding:8px 10px;font-size:12.5px;line-height:1.45;color:#222;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
-.dro .hx-int li{flex-direction:column;}
-.dro .hx em{font-style:normal;font-family:'JetBrains Mono', ui-monospace, Menlo, monospace;font-size:10.5px;padding:1px 6px;border-radius:3px;background:#f1f1ee;color:#666;white-space:nowrap;}
-.dro .hx em.live{background:#e4efe8;color:#207a4c;}
-.dro .hx em.paused{background:#fbf0e3;color:#a8692b;}
-.dro .hx-net b{display:block;font-weight:600;}
-.dro .hx-net small{display:block;color:#888;font-size:11.5px;}
-@media (max-width:640px){ .dro .hx-cols{grid-template-columns:1fr;} }
