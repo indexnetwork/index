@@ -82,8 +82,9 @@ export const router = createBrowserRouter([
       },
       {
         // Unlisted: reachable only via the token in the path, linked from nowhere.
+        // The old contents page is gone; its link was shared, so it opens the overview.
         path: "/9db20a5fbe",
-        lazy: lazyRoute("/9db20a5fbe", () => import("@/app/dataroom/page")),
+        element: <Navigate to="/9db20a5fbe/overview" replace />,
       },
       {
         path: "/9db20a5fbe/demo",
