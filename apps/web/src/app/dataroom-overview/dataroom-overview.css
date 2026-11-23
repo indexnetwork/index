@@ -71,8 +71,6 @@
 
 /* Visuals from the seed deck. */
 .dro figure img{display:block;width:100%;height:auto;}
-.dro figure.wide{margin-left:-110px;margin-right:-110px;}
-.dro figure.wide figcaption{padding:0 110px;}
 .dro figure.side{float:right;width:170px;margin:4px 0 12px 28px;}
 .dro .tbl + figcaption,.dro figure .tbl{clear:both;}
 .dro h2{clear:both;}
@@ -89,10 +87,6 @@
 .dro .wnames span{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#3a3a37;}
 .dro .wall figcaption{margin:8px 0 10px;}
 @media (max-width:560px){ .dro .wrow{grid-template-columns:1fr;gap:8px;} .dro .wnames span{font-size:14px;} }
-@media (max-width:1000px){
-  .dro figure.wide{margin-left:0;margin-right:0;}
-  .dro figure.wide figcaption{padding:0;}
-}
 @media (max-width:560px){
   .dro figure.side{float:none;width:150px;margin:1.5em auto 0;}
 }
