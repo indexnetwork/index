@@ -78,6 +78,8 @@
 .dro h2{clear:both;}
 .dro figure svg{display:block;width:100%;height:auto;}
 .dro .bm .bm-narrow{display:none;}
+.dro .fees .fee-narrow{display:none;}
+@media (max-width:640px){ .dro .fees .fee-wide{display:none;} .dro .fees .fee-narrow{display:block;max-width:360px;} }
 @media (max-width:640px){ .dro .bm .bm-wide{display:none;} .dro .bm .bm-narrow{display:block;max-width:360px;} }
 .dro .wall{font-family:'Public Sans', system-ui, sans-serif;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0 4px;}
 .dro .wrow{display:grid;grid-template-columns:150px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid #f0f0ec;}
