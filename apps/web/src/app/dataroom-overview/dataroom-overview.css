@@ -63,11 +63,7 @@
 .dro .timeline li{position:relative;margin-top:1em;}
 .dro .timeline li:first-child{margin-top:0;}
 .dro .timeline li::before{content:'';position:absolute;left:-29px;top:.55em;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #bbb;}
-.dro .timeline:not(.eras) li:nth-child(-n+2)::before{background:var(--accent);border-color:var(--accent);}
-.dro .eras{margin-top:1.4em;}
-.dro .eras li{margin-top:.5em;}
-.dro .eras li.now::before{background:var(--accent);border-color:var(--accent);}
-.dro .eras li.now strong{color:var(--accent);}
+.dro .timeline li:nth-child(-n+2)::before{background:var(--accent);border-color:var(--accent);}
 
 .dro .foot{font-family:'Public Sans', system-ui, sans-serif;}
 
