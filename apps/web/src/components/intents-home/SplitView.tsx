@@ -57,3 +57,38 @@ export function ListHead({ id, children }: { id?: string; children: ReactNode })
 export function Blank({ children }: { children: ReactNode }) {
   return <div className="sv-blank">{children}</div>;
 }
+
+/**
+ * A page on its own: one centred column (title, actions, an optional line
+ * under it, then the content) that scrolls as a whole. Home, the intents list
+ * and an intent use it; the agent sits beside it on the right (see AppFrame).
+ * `fill` gives the column the full height instead, for a pane with its own
+ * scroll and footer, like writing a new intent.
+ */
+export function PageView({ title, actions, sub, seg, fill = false, children }: {
+  title?: ReactNode;
+  actions?: ReactNode;
+  /** A line under the title, e.g. an intent's status. */
+  sub?: ReactNode;
+  seg?: ReactNode;
+  fill?: boolean;
+  children: ReactNode;
+}) {
+  const zone = useZone();
+  return (
+    <div className="sv sv-page">
+      <div className={`sv-page-scroll${zone === "list" ? " sv-focus" : ""}`} data-zone="list" data-sv-list>
+        <div className={`sv-page-col${fill ? " sv-fill" : ""}`}>
+          {title !== undefined && (
+            <header className="sv-page-head">
+              <div className="sv-title"><span className="sv-page-t">{title}</span>{actions}</div>
+              {sub && <div className="sv-page-sub">{sub}</div>}
+              {seg && <div className="sv-page-seg">{seg}</div>}
+            </header>
+          )}
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}

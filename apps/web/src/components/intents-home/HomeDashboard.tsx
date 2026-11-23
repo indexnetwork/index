@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/plain.css";
-import { SplitView, Seg, ListHead } from "@/components/intents-home/SplitView";
-import { RightWindow } from "@/components/intents-home/AppFrame";
+import { PageView, ListHead } from "@/components/intents-home/SplitView";
 import QuestionCard from "@/components/intents-home/QuestionCard";
 import { useUndo } from "@/components/intents-home/undo";
-import { jumpTo } from "@/components/intents-home/homeSectionsContext";
 import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
@@ -55,9 +53,14 @@ export default function HomeDashboard() {
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
   const { setOpen: toggleAgent, log: openLog, setLog, decisions, decide } = useAgentWindow();
   const later = useUndo();
-  // One layout everywhere: the list on the left, who you picked (or your agent) on the right.
-  const split = (list: ReactNode, seg?: ReactNode) => (
-    <SplitView title="home" seg={seg} list={list} pane={<RightWindow inPane />} />
+  // A page in the middle; your agent, or whoever you open, docks on the right (see AppFrame).
+  const split = (page: ReactNode) => (
+    <PageView
+      title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} {HOME_STATUS_LINE}</>}
+      actions={<button type="button" className="sv-btn go sm" onClick={() => navigate("/i/new")}>+ new intent</button>}
+    >
+      {page}
+    </PageView>
   );
 
   const { questions, all: allQuestions, loaded: questionsLoaded, answer } = usePersonalQuestions();
@@ -247,14 +250,6 @@ export default function HomeDashboard() {
     );
   }
 
-  const seg = (
-    <Seg items={[
-      { label: "all", n: (questionsLoaded ? questions.length : 0) + waitingCount + moving.length },
-      { label: "questions", n: questionsLoaded ? questions.length : undefined, onClick: () => jumpTo("questions") },
-      { label: "waiting", n: loadingPeople ? undefined : waitingCount, onClick: () => jumpTo("waiting") },
-      { label: "in progress", n: moving.length, onClick: () => jumpTo("progress") },
-    ]} />
-  );
 
   return split(
     <>
@@ -349,7 +344,6 @@ export default function HomeDashboard() {
         </>
       )}
     </>,
-    seg,
   );
 }
 

@@ -18,7 +18,7 @@ import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { AgentWorking } from "@/components/ui/AgentWorking";
 import { useIndexingToast } from "@/components/intents-home/useIndexingToast";
-import { IntentsSplit } from "@/components/intents-home/IntentsIndex";
+import { PageView } from "@/components/intents-home/SplitView";
 import NewIntentPane from "@/components/intents-home/NewIntentPane";
 
 const OPENING_PROMPT = "what are you looking for right now?";
@@ -148,7 +148,7 @@ export default function NewIntentPage() {
   const rootClass = card ? "pl-new pl-new-first" : "pl-new";
   const signOutLink = card && <button type="button" className="wb-onboarding-out" onClick={() => void signOut()}>sign out</button>;
 
-  // On a desktop, past onboarding: written on the right of your intents, the agent reading along.
+  // On a desktop, past onboarding: a page of its own, the agent reading along.
   if (!compact && !onboarding) {
     const later = stage === "retry" ? (
       <AgentSays>
@@ -172,11 +172,11 @@ export default function NewIntentPage() {
       : thinking ? <AgentWorking kind="look" size={120}>reading that</AgentWorking>
       : null;
     return (
-      <IntentsSplit writing pane={
+      <PageView fill>
         <NewIntentPane busy={busy} onSubmit={submitOpening} onClose={() => navigate("/intents")}>
           {later && <OpenAgentLines.Provider value>{later}</OpenAgentLines.Provider>}
         </NewIntentPane>
-      } />
+      </PageView>
     );
   }
 

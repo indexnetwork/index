@@ -181,7 +181,7 @@ function AccountMenu() {
 }
 
 /** The agent's own window beside Home, opened from Home's "talk to your agent". */
-function AgentWindow({ inPane = false }: { inPane?: boolean }) {
+function AgentWindow() {
   const { open, setOpen } = useAgentWindow();
   const { intents, fetchIntents, loadRadar } = useIntentsData();
   // After the agent changes something, show it: reread intents and everyone's stage.
@@ -189,8 +189,6 @@ function AgentWindow({ inPane = false }: { inPane?: boolean }) {
     void fetchIntents();
     for (const intent of intents) void loadRadar(intent.id, "skeleton");
   }, [fetchIntents, intents, loadRadar]);
-  // On the right of Home's list, your agent is what shows when nobody is picked.
-  if (inPane) return <div className="sv-agent"><PersonalAgentPanel onChanged={onChanged} /></div>;
   if (!open) {
     // Closed, the chat stays docked on the right as a thin strip; a click opens it.
     return (
@@ -207,15 +205,25 @@ function AgentWindow({ inPane = false }: { inPane?: boolean }) {
   );
 }
 
-/** Beside an intent: that intent's agent, always open (it's half of the page). */
+/** Beside an intent: that intent's agent, docked like Home's and opened the same way. */
 function IntentAgentWindow({ intentId }: { intentId: string }) {
+  const { open, setOpen } = useAgentWindow();
   const { intents } = useIntentsData();
   const intent = intents.find((i) => i.id === intentId);
   if (!intent) return null;
+  if (!open) {
+    return (
+      <button type="button" className="ih-agentdock" aria-label="open this intent's agent" title="talk about this intent" onClick={() => setOpen(true)}>
+        <span className="ih-agentdock-arrow" aria-hidden>◂</span>
+        <span className="ih-agentdock-label">talk about this intent</span>
+      </button>
+    );
+  }
   const paused = (intent.status || "").toLowerCase() === "paused";
   return (
     <section className="ih-agentwin" aria-label="this intent's agent">
-      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} />
+      {/* Its open questions sit on the page, above the matches. */}
+      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} hideOpenQuestions onClose={() => setOpen(false)} />
     </section>
   );
 }
@@ -224,7 +232,7 @@ function IntentAgentWindow({ intentId }: { intentId: string }) {
  * Beside Home or an intent: an open match takes the agent window's place
  * until it's closed. On an intent page the agent there is that intent's.
  */
-export function RightWindow({ intentId, inPane = false }: { intentId?: string; inPane?: boolean }) {
+function RightWindow({ intentId }: { intentId?: string }) {
   const { pathname } = useLocation();
   const { log, setLog, open, setOpen } = useAgentWindow();
   // A match belongs to the page it was opened from.
@@ -237,13 +245,20 @@ export function RightWindow({ intentId, inPane = false }: { intentId?: string; i
       const target = event.target as HTMLElement | null;
       const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT") && (target as HTMLTextAreaElement).value.trim() !== "";
       if (log) { if (log.view !== "chat" || !typing) setLog(null); return; }
-      if (open && !typing && !intentId) setOpen(false);
+      if (open && !typing) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [log, setLog, open, setOpen, intentId]);
-  if (log) return <MatchWindow />;
-  return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow inPane={inPane} />;
+  }, [log, setLog, open, setOpen]);
+  if (log) {
+    // The person picked from the page, in the same pane the conversations page uses.
+    return (
+      <section className="ih-agentwin sv-matchwin" aria-label={`you and ${log.name.split(" ")[0]}`}>
+        <div className="sv"><section className="sv-pane" data-zone="pane"><MatchWindow /></section></div>
+      </section>
+    );
+  }
+  return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
 }
 
 /** The signed-in desktop shell on the blue desktop: the sidebar window, the page window, and on Home the agent's window. */
@@ -251,6 +266,9 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const { user } = useAuthContext();
   const here = railKey(pathname, search, user?.id, user?.username);
+  // Home and an intent's page have their agent docked on the right.
+  const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
+  const withRight = pathname === "/" || (!!intentId && intentId !== "new");
   // The first intent is the last onboarding step: no rail, and the page is a card on the
   // blue desktop like the steps before it. Creating the picks finishes onboarding
   // mid-flow, so the choice holds until the page changes.
@@ -269,6 +287,7 @@ export default function AppFrame({ children }: { children: ReactNode }) {
               <main className="ih-main">
                 <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
               </main>
+              {!bare && withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
             </div>
           </KeyboardProvider>
         </UndoProvider>

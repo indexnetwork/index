@@ -49,8 +49,10 @@ function Markdown({ text }: { text: string }) {
 /** A new intent's first steps can take a while to arrive; until then it reads as warming up. */
 const FRESH_MS = 30 * 60_000;
 
-export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpenQuestions = false, plain = false }: {
+export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpenQuestions = false, plain = false, onClose }: {
   intentId: string;
+  /** Docked beside the page: collapses it back to the strip. */
+  onClose?: () => void;
   paused: boolean;
   createdAt?: string;
   /** Beside the matches: no avatars or clocks, and the search as plain lines. */
@@ -73,6 +75,7 @@ export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpen
     <div className="pl pl-agent pl-intent-agent" data-testid="intent-agent-panel">
       <div className="pl-agent-head">
         <span>talk to me about this intent</span>
+        {onClose && <button type="button" className="pl-win-close" aria-label="collapse" title="collapse" onClick={onClose}>▸</button>}
       </div>
       <div className="pl-agent-log">
         {loading && !fresh ? (

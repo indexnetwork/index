@@ -460,5 +460,26 @@ a.sv-soc:hover { background: var(--sv-sel); }
 
 /* the body fills the window to the right of the rail */
 .sv { flex: 1 1 auto; width: 100%; }
+
+/* ---------- a page on its own: home, intents, one intent ---------- */
+.sv.sv-page { display: block; }
+.sv-page-scroll { --sv-hover: var(--sv-sel); height: 100%; overflow-y: auto; }
+.sv-page-scroll.sv-focus { --sv-hover: var(--sv-sel-focus); }
+.sv-page-col { max-width: 880px; margin: 0 auto; padding: 0 8px 56px; }
+.sv-page-col.sv-fill { height: 100%; padding-bottom: 0; display: flex; flex-direction: column; border-left: 1px solid var(--sv-line); border-right: 1px solid var(--sv-line); }
+.sv-page-head { padding: 28px 20px 14px; }
+.sv-page-head .sv-title { margin: 0; align-items: flex-start; }
+.sv-page-t { font: 600 20px/1.35 var(--sv-sans); }
+.sv-page-head .sv-title > :not(.sv-page-t) { flex: none; margin-top: 2px; }
+.sv-page-sub { margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 400 12px var(--sv-mono); color: var(--sv-ink2); }
+.sv-page-sub .sp { flex: 1; }
+.sv-page-seg { margin-top: 14px; }
+.sv-page-list { border-top: 1px solid var(--sv-line); }
+.sv-page-gap { padding-top: 28px; }
+.sv-page-col.sv-fill { padding: 0; }
+.sv .sv-page-col > .sv-more { padding: 12px 20px; }
+.sv-page-sub .sv-sdot { margin-right: -2px; }
+.sv-page .sv-lh { padding-top: 26px; }
+.sv-page .sv-lh:first-of-type { padding-top: 10px; }
 /* a narrower pane: the intent's agent column gives way first */
 .sv-iagent { width: clamp(240px, 42%, 300px); }
