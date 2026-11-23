@@ -8,6 +8,7 @@ import { log } from '../log';
 
 import { registerMcpEvents } from './mcp.events';
 import { mcpInstructions } from './mcp.instructions';
+import { oauthClientSurface } from './mcp.surface';
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
 
@@ -33,7 +34,13 @@ async function authenticateMcpOAuthToken(request: Request): Promise<McpPrincipal
     if (!session?.userId) return null;
     const expiresAt = new Date(session.accessTokenExpiresAt).getTime();
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
-    return { userId: session.userId, authKind: 'session', credential: { kind: 'oauth', id: session.clientId } };
+    const surface = await oauthClientSurface(session.clientId);
+    return {
+      userId: session.userId,
+      authKind: 'session',
+      credential: { kind: 'oauth', id: session.clientId },
+      ...(surface && { surface }),
+    };
   } catch {
     // Do not attach the SDK error: authentication failures must never carry a raw token into logs or Sentry.
     throw new Error('Session verification failed');

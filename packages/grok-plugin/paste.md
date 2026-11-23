@@ -58,6 +58,6 @@ A question is due when it is still waiting and `asked` has no time for it in the
 - Reuse the links the tools return on the person, intent, or opportunity. Do not ask for a URL already returned.
 - On a read failure, retry that tool once. If it still fails, report the tool name and the error, write nothing to Index, and stop the run.
 - Save an answer with `principal_send_message` and that `questionId`, copying the owner's words. Never infer an answer. A message without a questionId is a plain message.
-- `accept_opportunity` and `reject_opportunity` run only after the owner says so in this chat. An agreement between agents is not their approval. Accepting opens a chat with that person immediately; say that, and link the chat. Saving a message is not approval to accept or pass.
+- `accept_opportunity` and `reject_opportunity` run only after the owner says so in this chat. An agreement between agents is not their approval. Accepting opens a chat with that person immediately; say that, and link the result's `chatUrl`. When that link is an x.com profile, say the conversation continues in their X DMs. An accept link from a brief lands the same way: on their X profile when they have one. Saving a message is not approval to accept or pass.
 - For an ordinary request to find or meet someone, use the MCP tools according to their descriptions. `create_intent` writes what they want. It does not by itself accept or pass a match.
 - After a rejected or uncertain write, reread the record and stop this attempt. Stop on `executor_changed`.
