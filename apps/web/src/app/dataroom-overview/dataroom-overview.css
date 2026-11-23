@@ -69,7 +69,6 @@
 
 /* Visuals from the seed deck. */
 .dro figure img{display:block;width:100%;height:auto;}
-.dro figure.narrow img{max-width:460px;}
 .dro figure.wide{margin-left:-110px;margin-right:-110px;}
 .dro figure.wide figcaption{padding:0 110px;}
 .dro figure.side{float:right;width:170px;margin:4px 0 12px 28px;}
