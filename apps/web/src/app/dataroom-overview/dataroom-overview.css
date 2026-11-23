@@ -67,6 +67,31 @@
 
 .dro .foot{font-family:'Public Sans', system-ui, sans-serif;}
 
+/* Visuals from the seed deck. */
+.dro figure img{display:block;width:100%;height:auto;}
+.dro header .art{display:block;width:100%;max-width:520px;height:auto;margin:28px 0 0 -10px;}
+.dro figure.narrow img{max-width:460px;}
+.dro figure.wide{margin-left:-110px;margin-right:-110px;}
+.dro figure.wide figcaption{padding:0 110px;}
+.dro figure.side{float:right;width:170px;margin:4px 0 12px 28px;}
+.dro .tbl + figcaption,.dro figure .tbl{clear:both;}
+.dro h2{clear:both;}
+.dro .posts{columns:2;column-gap:14px;}
+.dro .posts img{break-inside:avoid;margin-bottom:14px;border-radius:12px;}
+.dro .person{display:grid;grid-template-columns:64px 1fr;gap:18px;align-items:start;margin-top:1.3em;}
+.dro .person img{width:64px;height:64px;object-fit:cover;border-radius:50%;filter:grayscale(1);}
+.dro .person p{margin:0;}
+@media (max-width:1000px){
+  .dro figure.wide{margin-left:0;margin-right:0;}
+  .dro figure.wide figcaption{padding:0;}
+}
+@media (max-width:640px){ .dro .posts{columns:1;} }
+@media (max-width:560px){
+  .dro figure.side{float:none;width:150px;margin:1.5em auto 0;}
+  .dro .person{grid-template-columns:48px 1fr;gap:14px;}
+  .dro .person img{width:48px;height:48px;}
+}
+
 @media (max-width:720px){
   .dro .doc{font-size:15.5px;padding-top:48px;}
   .dro h1{font-size:26px;}
