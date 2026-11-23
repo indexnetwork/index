@@ -32,7 +32,7 @@
   --sv-sh-field: 2px 2px 0 rgba(0, 0, 0, 0.12);
   --sv-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --sv-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
-  --sv-list-w: 440px;
+  --sv-list-w: clamp(440px, 36vw, 580px);
 
   flex: 1;
   min-width: 0;
