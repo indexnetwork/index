@@ -156,7 +156,7 @@
 .dro .toc a{color:#6b6b66;text-decoration:none;}
 .dro .toc a:hover,.dro .toc a:focus-visible{color:var(--accent);}
 .dro h2[id]{scroll-margin-top:24px;}
-.dro .toc + p{margin-top:0;}
+.dro .toc + p,.dro .dro-side + p{margin-top:0;}
 @media (min-width:1080px){
   .dro .toc{position:fixed;top:112px;right:calc(50% + 330px + 44px);z-index:5;display:flex;flex-direction:column;gap:11px;padding-right:16px;border-right:1px solid var(--line);text-align:right;}
 }
@@ -168,16 +168,42 @@
 }
 @media print{ .dro .toc{display:none;} }
 
-/* Top menu: the Index mark, then two actions kept visibly different. The pitch
-   deck is a quiet text link; joining Index is the one filled button. */
-.dro .dro-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:40px;font-family:'Public Sans', system-ui, sans-serif;}
+/* Top menu and the action buttons. Three actions, each styled differently:
+   the pitch deck is an outline, Join Index a soft green, and Schedule a
+   meeting the one solid button. On wide screens they sit in the left column
+   under the section links, in their own area; below that width they sit in
+   the top menu, since the section links become a bar there. */
+.dro .dro-nav{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px 16px;margin-bottom:40px;font-family:'Public Sans', system-ui, sans-serif;}
 .dro .dro-mark{display:block;flex-shrink:0;line-height:0;}
 .dro .dro-mark img{height:15px;width:auto;display:block;}
-.dro .dro-nav-links{display:flex;align-items:center;gap:20px;}
-.dro .dro-nav a.dro-nav-deck{font-size:14px;font-weight:500;color:#444;text-decoration:none;}
-.dro .dro-nav a.dro-nav-deck::after{content:' ↗';color:#999;}
-.dro .dro-nav a.dro-nav-deck:hover{color:var(--ink);text-decoration:underline;}
-.dro .dro-nav a.dro-nav-join{font-size:14px;font-weight:600;color:#fff;background:var(--ink);padding:8px 16px;border-radius:999px;text-decoration:none;transition:background-color .15s ease;}
-.dro .dro-nav a.dro-nav-join:hover{color:#fff;background:var(--accent);}
-.dro .dro-nav-links a{white-space:nowrap;}
-@media (max-width:420px){ .dro .dro-nav{gap:12px;} .dro .dro-mark img{height:10px;} .dro .dro-nav-links{gap:12px;} .dro .dro-nav a.dro-nav-deck,.dro .dro-nav a.dro-nav-join{font-size:13px;} .dro .dro-nav a.dro-nav-join{padding:7px 13px;} }
+.dro .dro-nav-links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+
+.dro a.dro-btn{
+  display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;
+  font-family:'Public Sans', system-ui, sans-serif;font-size:13px;font-weight:600;line-height:1;
+  padding:9px 14px;border-radius:999px;text-decoration:none;border:1px solid transparent;
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease;
+}
+.dro a.dro-btn-deck{color:var(--ink);background:#fff;border-color:#cfcfca;}
+.dro a.dro-btn-deck::after{content:'\2197';margin-left:5px;font-weight:400;color:#999;}
+.dro a.dro-btn-deck:hover{color:var(--ink);border-color:var(--ink);}
+.dro a.dro-btn-join{color:var(--accent);background:#e7efe9;}
+.dro a.dro-btn-join:hover{color:var(--accent);background:#d7e6db;}
+.dro a.dro-btn-meet{color:#fff;background:var(--ink);}
+.dro a.dro-btn-meet:hover{color:#fff;background:var(--accent);}
+
+/* The wrapper only matters on wide screens; elsewhere it steps out of the
+   layout so the section bar stays sticky against the article. */
+.dro .dro-side{display:contents;}
+.dro .dro-side-actions{display:none;}
+@media (min-width:1080px){
+  .dro .dro-nav-links{display:none;}
+  .dro .dro-side{position:fixed;top:112px;right:calc(50% + 330px + 44px);z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:28px;}
+  .dro .dro-side .toc{position:static;}
+  .dro .dro-side-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:24px 17px 0 0;border-top:1px solid var(--line);}
+}
+@media (max-width:560px){
+  .dro .dro-nav-links{width:100%;}
+  .dro .dro-nav-links .dro-btn{flex:1 1 auto;}
+}
+@media print{ .dro .dro-nav-links,.dro .dro-side-actions{display:none;} }
