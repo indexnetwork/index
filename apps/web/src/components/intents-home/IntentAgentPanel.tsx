@@ -5,20 +5,36 @@ import remarkGfm from "remark-gfm";
 import { questionAsker, useIntentAgentChat, type QuestionCard } from "@/components/IntentNegotiatorChat";
 import QuestionItem from "@/components/intents-home/QuestionItem";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
-import { AgentFeedNote, DiscoveryTrace } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, DiscoveryTrace, discoverySummary } from "@/components/workbench/mac-blocks";
 import { formatChatClock } from "@/lib/utils";
 import { Placeholder } from "@/components/ui/Placeholder";
 
 /** One line of the chat, drawn like Home's agent window: my avatar and a bubble, yours on the right. */
-function Line({ who, at, mine = false, open = false, children }: { who: ReactNode; at?: string; mine?: boolean; open?: boolean; children: ReactNode }) {
+function Line({ who, at, mine = false, open = false, plain = false, children }: { who: ReactNode; at?: string; mine?: boolean; open?: boolean; plain?: boolean; children: ReactNode }) {
   return (
     <div className={`pl-agent-line${mine ? " mine" : ""}${open ? " pl-agent-open" : ""}`}>
-      {!mine && <MyAgentAvatar size={22} />}
+      {!mine && !plain && <MyAgentAvatar size={22} />}
       <div className={`pl-agent-bubble${mine ? " mine" : ""}`}>
-        <div className="pl-agent-meta">{who}{at && <> · <time dateTime={at} title={new Date(at).toLocaleString()}>{formatChatClock(at)}</time></>}</div>
+        <div className="pl-agent-meta">{who}{at && !plain && <> · <time dateTime={at} title={new Date(at).toLocaleString()}>{formatChatClock(at)}</time></>}</div>
         {children}
       </div>
     </div>
+  );
+}
+
+/** How I went looking, as two plain lines: the queries, then who I found. */
+function PlainTrace({ loading = [], queries = [], discovered = null, reached = null, progress = "" }: {
+  loading?: string[]; queries?: string[]; discovered?: number | null; reached?: number | null; progress?: string;
+}) {
+  const summary = typeof discovered === "number" ? discoverySummary(discovered, reached) : progress;
+  return (
+    <>
+      {loading.length > 0 && <Line who="your agent" plain>{loading.some((l) => l.startsWith("Warming up")) ? "Warming up." : ["Warming up.", ...loading].join(" ")}</Line>}
+      {queries.length > 0 && (
+        <div className="sv-trace">· Ran {queries.length} {queries.length === 1 ? "query" : "queries"} · Looking for {queries.map((q) => `“${q}”`).join(", ")}</div>
+      )}
+      {summary && <div className="sv-trace">· {summary}</div>}
+    </>
   );
 }
 
@@ -33,10 +49,12 @@ function Markdown({ text }: { text: string }) {
 /** A new intent's first steps can take a while to arrive; until then it reads as warming up. */
 const FRESH_MS = 30 * 60_000;
 
-export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpenQuestions = false }: {
+export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpenQuestions = false, plain = false }: {
   intentId: string;
   paused: boolean;
   createdAt?: string;
+  /** Beside the matches: no avatars or clocks, and the search as plain lines. */
+  plain?: boolean;
   /** The intent's open questions are shown above its matches instead. */
   hideOpenQuestions?: boolean;
 }) {
@@ -64,24 +82,25 @@ export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpen
         ) : feed.length === 0 && questions.length === 0 ? (
           // Nothing from me yet: a new intent starts on my trace, as on production; an older one on a note.
           fresh
-            ? <DiscoveryTrace loading={["Warming up"]} />
+            ? (plain ? <PlainTrace loading={["Warming up"]} /> : <DiscoveryTrace loading={["Warming up"]} />)
             : <AgentFeedNote>ask me about your matches, share a preference, or tell me what to look for.</AgentFeedNote>
         ) : feed.map((piece, index) => {
           const at = timeById.get(piece.id);
           if (piece.kind === "discovery") {
             // How I went looking, drawn as on production: steps, the queries I ran, who I found.
+            if (plain) return <PlainTrace key={piece.id} loading={piece.loading} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
           }
           if (piece.kind === "user") {
             return (
               <div key={piece.id}>
-                <Line who="you" at={at} mine><Markdown text={piece.text} /></Line>
+                <Line who="you" at={at} mine plain={plain}><Markdown text={piece.text} /></Line>
                 {waiting && index > firstWaiting && <div className="pl-agent-meta pl-queued">queued</div>}
               </div>
             );
           }
           if (piece.kind === "progress") {
-            return <p key={piece.id} className="pl-dim pl-small pl-trace-step">· {piece.text}</p>;
+            return plain ? <div key={piece.id} className="sv-trace">· {piece.text}</div> : <p key={piece.id} className="pl-dim pl-small pl-trace-step">· {piece.text}</p>;
           }
           if (piece.kind === "open-question" && hideOpenQuestions) return null;
           if (piece.kind === "open-question") {
@@ -99,16 +118,17 @@ export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpen
           if (piece.kind === "answered-question") {
             return (
               <div key={piece.id} className="pl-answered">
-                <Line who={`answered · ${askerLabel(piece.question)}`} at={at} open>{piece.question.text}</Line>
-                <Line who="you" mine>{piece.answer}</Line>
+                <Line who={`answered · ${askerLabel(piece.question)}`} at={at} open plain={plain}>{piece.question.text}</Line>
+                <Line who="you" mine plain={plain}>{piece.answer}</Line>
               </div>
             );
           }
+          if (plain) return <Line key={piece.id} who="your agent" plain><Markdown text={piece.text} /></Line>;
           return <AgentFeedNote key={piece.id} at={at}><Markdown text={piece.text} /></AgentFeedNote>;
         })}
         {waiting && (
           <div className="pl-agent-line">
-            <MyAgentAvatar size={22} />
+            {!plain && <MyAgentAvatar size={22} />}
             <Placeholder.Reply who="working on it" />
           </div>
         )}

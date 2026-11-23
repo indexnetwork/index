@@ -135,7 +135,7 @@ export default function ChatSidebar({ showEmpty = true }: {
                   <span className="sv-row-t">
                     <span className="sv-row-n" style={{ display: "block" }}>{chat.name}</span>
                     <span className="sv-row-pv" style={{ display: "block", color: preview.kind === "empty" ? "var(--sv-dim)" : undefined }}>
-                      {preview.kind === "empty" ? `${preview.text.toLowerCase()}.` : preview.text}
+                      {preview.kind === "empty" ? "not started yet. say hi." : preview.text}
                     </span>
                   </span>
                   <span style={{ display: "grid", justifyItems: "end", gap: 4 }}>

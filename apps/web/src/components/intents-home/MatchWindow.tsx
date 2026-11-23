@@ -24,6 +24,7 @@ export default function MatchWindow() {
   const { entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   const opportunities = useOpportunities();
   const later = useUndo();
+  const [chatCount, setChatCount] = useState(0);
   const [detailFor, setDetailFor] = useState<{ id: string; detail: OpportunityDetailResponse } | null>(null);
 
   // The card's entries, refreshed from the live list so a decision shows here at once.
@@ -111,12 +112,13 @@ export default function MatchWindow() {
       tab={tab}
       onTab={setTab}
       chatOff={chatOff}
+      chatCount={chatOff ? undefined : chatCount}
       onClose={close}
       foot={foot}
       summary={<PersonSummary userId={match.notOnIndex ? undefined : match.userId} focusId={match.opportunityId} why={surfaced} intentId={lead?.intentId} />}
       chat={match.userId && (
         <InAppFrameContext.Provider value>
-          <ChatView key={match.userId} userId={match.userId} userName={match.name} userAvatar={match.avatar ?? undefined} onClose={close} bare />
+          <ChatView key={match.userId} userId={match.userId} userName={match.name} userAvatar={match.avatar ?? undefined} onClose={close} bare onCount={setChatCount} />
         </InAppFrameContext.Provider>
       )}
     />

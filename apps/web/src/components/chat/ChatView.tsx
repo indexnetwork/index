@@ -47,6 +47,8 @@ interface ChatViewProps {
   footer?: React.ReactNode;
   /** Only the conversation: no profile head and no match write-up (the pane around it shows who they are). */
   bare?: boolean;
+  /** Told how many messages there are, e.g. for a count beside the "chat" tab. */
+  onCount?: (count: number) => void;
 }
 
 /** What the chat's head shows of the other person, beyond their name and photo. */
@@ -71,7 +73,7 @@ function conversationIdForPeer(
   )?.id ?? null;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer, bare = false }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer, bare = false, onCount }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const usersService = useUsers();
@@ -133,6 +135,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
     [conversationId, allMessages],
   );
+  useEffect(() => { onCount?.(messages.length); }, [messages.length, onCount]);
   const conversationSummary = conversationId
     ? conversations.find((conversation) => conversation.id === conversationId) ?? null
     : null;

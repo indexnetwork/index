@@ -305,7 +305,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
             <>
               <h4 className="sv-h4">waiting on you ({waitingNow})</h4>
               {waitingNow > 0 ? (
-                <div className="sv-ibleed">{matchList.shown.map(renderCard)}{matchList.more}</div>
+                <div className="sv-ilist">{matchList.shown.map(renderCard)}{matchList.more}</div>
               ) : (
                 <p className="sv-dimp">
                   {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
@@ -314,14 +314,14 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
               {sections["in progress"].length > 0 && (
                 <>
                   <h4 className="sv-h4">in progress ({sections["in progress"].length})</h4>
-                  <div className="sv-ibleed">{progressList.shown.map(renderCard)}{progressList.more}</div>
+                  <div className="sv-ilist">{progressList.shown.map(renderCard)}{progressList.more}</div>
                 </>
               )}
               {sections.closed.length > 0 && (
                 showClosed ? (
                   <>
                     <h4 className="sv-h4">closed ({sections.closed.length})</h4>
-                    <div className="sv-ibleed">{closedList.shown.map(renderCard)}{closedList.more}</div>
+                    <div className="sv-ilist">{closedList.shown.map(renderCard)}{closedList.more}</div>
                   </>
                 ) : <button type="button" className="sv-more" style={{ paddingLeft: 0 }} onClick={() => setShowClosed(true)}>show {sections.closed.length} closed</button>
               )}
@@ -329,7 +329,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
           )}
         </div>
         <div className="sv-iagent">
-          <IntentAgentPanel key={current.id} intentId={current.id} paused={paused} createdAt={current.createdAt} hideOpenQuestions />
+          <IntentAgentPanel key={current.id} intentId={current.id} paused={paused} createdAt={current.createdAt} hideOpenQuestions plain />
         </div>
       </div>
     </div>

@@ -43,7 +43,7 @@
   color: var(--sv-ink);
   font-family: var(--sv-sans);
   font-size: 14px;
-  line-height: 1.45;
+  line-height: normal;
   position: relative;
 }
 .sv *, .sv *::before, .sv *::after { box-sizing: border-box; }
@@ -72,10 +72,10 @@
 
 /* filter row: segmented, like the app's */
 .sv-seg { display: inline-flex; border: 1px solid var(--sv-ink); border-radius: 2px; box-shadow: var(--sv-sh-chip); font: 500 11.5px var(--sv-mono); overflow: hidden; }
-.sv .sv-seg button, .sv-seg span { padding: 4px 9px; border: 0; border-left: 1px solid var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.sv .sv-seg > button, .sv-seg > span { white-space: nowrap; padding: 4px 9px; border: 0; border-left: 1px solid var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
 .sv .sv-seg > :first-child { border-left: 0; }
 .sv .sv-seg [aria-pressed="true"], .sv .sv-seg [aria-selected="true"] { background: var(--sv-sel); font-weight: 700; }
-.sv-seg .n { color: var(--sv-dim); font-weight: 400; margin-left: 4px; }
+.sv-seg .n { color: inherit; font-weight: inherit; margin-left: 1ch; }
 
 /* section heading inside a list */
 .sv-lh { padding: 14px 20px 6px; font: 700 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink2); border-bottom: 1px solid var(--sv-line); scroll-margin-top: 0; }
@@ -89,7 +89,7 @@
 .sv-card.sv-static:hover { background: none; }
 .sv-card-body { min-width: 0; flex: 1; }
 .sv-card b, .sv-name { font-weight: 700; font-size: 14px; }
-.sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; line-height: 1.45; }
+.sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; }
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-via a { text-decoration: underline; }
 .sv-card.done { color: var(--sv-ink2); font-size: 13.5px; align-items: center; cursor: default; }
@@ -153,8 +153,8 @@
 .sv-pu .loc { color: var(--sv-ink2); letter-spacing: 0.5px; }
 .sv .sv-x { position: absolute; top: 14px; right: 16px; width: 26px; height: 26px; padding: 0; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); font: 500 13px var(--sv-sans); color: var(--sv-ink); }
 .sv-tabs { display: flex; align-items: center; gap: 4px; padding: 0 22px 0 14px; min-height: 36px; }
-.sv .sv-tabs > button { font: 500 11.5px var(--sv-mono); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 8px 9px; color: var(--sv-ink2); }
-.sv .sv-tabs > button:hover { color: var(--sv-ink); }
+.sv .sv-tabs > button:not(.sv-btn) { font: 500 11.5px var(--sv-mono); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 8px 9px; color: var(--sv-ink2); }
+.sv .sv-tabs > button:not(.sv-btn):hover { color: var(--sv-ink); }
 .sv .sv-tabs > button[aria-current="true"] { color: var(--sv-ink); font-weight: 700; border-bottom-color: var(--sv-ink); }
 .sv .sv-tabs > button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
 .sv-tabs .n { color: var(--sv-dim); font-weight: 400; margin-left: 3px; }
@@ -217,12 +217,12 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .ih.ih .ih-rail { width: 210px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; }
 .ih .ih-rail .ih-brand { padding: 16px 20px 18px; font: 500 17px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0; }
 .ih .ih-rail .ih-rail-body { padding: 0 10px 16px; gap: 0; }
-.ih .ih-rail .ih-nav { justify-content: space-between; padding: 8px 10px; border: 0; border-radius: 2px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; color: #000; background: none; box-shadow: none; }
+.ih .ih-rail .ih-nav { justify-content: space-between; padding: 8px 10px; line-height: normal; border: 0; border-radius: 2px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; color: #000; background: none; box-shadow: none; }
 .ih .ih-rail .ih-nav.on { font-weight: 700; box-shadow: none; }
 .ih .ih-rail .ih-nav:hover, .ih .ih-rail .ih-nav.on { background: #f3f2ee; }
 .ih .ih-rail.sv-focus .ih-nav:hover, .ih .ih-rail.sv-focus .ih-nav.on { background: #e6e5df; }
 .ih .ih-rail .ih-nav-label { flex: none; }
-.ih .ih-rail .ih-badge, .ih .ih-rail .ih-nav.on .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; font: 700 11px/1.45 "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ih .ih-rail .ih-badge, .ih .ih-rail .ih-nav.on .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; min-width: 0; height: auto; font: 700 11px/normal "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
 .ih .ih-rail .ih-sub { margin: 2px 0 10px 22px; padding: 0 0 0 12px; border-left: 1px dotted #cfcfcf; }
 .ih .ih-rail .ih-sub-link { justify-content: space-between; gap: 8px; padding: 3px 0; border: 0; background: none; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #000; text-align: left; }
 .ih .ih-rail .ih-sub-link::before { content: none; }
@@ -272,7 +272,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-icard.paused .sv-itext, .sv-icard.paused .sv-istat { color: var(--sv-dim); }
 .sv-icard .sv-badge { margin-top: 2px; }
 .sv-pid.sv-ihead { padding-right: 22px; }
-.sv-ihead .sv-pn { font-size: 18px; }
+.sv-ihead .sv-pn { font-size: 20px; line-height: 1.3; }
 .sv-sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--sv-live); margin-right: 6px; vertical-align: 1px; }
 .sv-sdot.off { background: var(--sv-idle); }
 .sv-ilab { font: 700 11.5px var(--sv-mono); padding: 10px 8px 9px; border-bottom: 2px solid var(--sv-ink); margin-bottom: -1px; }
@@ -381,3 +381,79 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-chat form.pl-agent-compose textarea:focus { border-color: var(--sv-ink); }
 .sv .sv-chat form.pl-agent-compose button[type="submit"] { font: 700 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-orange); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; }
 .sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { opacity: 0.4; box-shadow: none; }
+
+/* your agent's "ix" square, where the prototype draws it */
+.sv-mine { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 2px; background: var(--sv-ink); color: var(--sv-paper); font: 700 11px var(--sv-mono); }
+
+/* an agent column (beside an intent, or on Home): plain bubbles, plain trace lines, the prototype's composer */
+.sv-iagent .pl-agent-log, .sv-agent .pl-agent-log { display: flex; flex-direction: column; gap: 12px; }
+.sv-iagent .pl-agent-log > *, .sv-agent .pl-agent-log > * { margin: 0; }
+.sv-iagent .pl-agent-line, .sv-agent .pl-agent-line { display: flex; justify-content: flex-start; gap: 0; margin: 0; padding: 0; }
+.sv-iagent .pl-agent-line.mine, .sv-agent .pl-agent-line.mine { justify-content: flex-end; }
+.sv-iagent .pl-agent-bubble, .sv-agent .pl-agent-bubble { max-width: 90%; margin: 0; border: 1px solid var(--sv-edge); padding: 8px 11px; border-radius: 3px; font: 400 13px/1.45 var(--sv-sans); background: var(--sv-paper); color: var(--sv-ink); box-shadow: none; }
+.sv-agent .pl-agent-bubble { max-width: 78%; font-size: 14px; }
+.sv-iagent .pl-agent-bubble.mine, .sv-agent .pl-agent-bubble.mine { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv-iagent .pl-agent-meta, .sv-agent .pl-agent-meta { font: 500 10.5px var(--sv-mono); opacity: 0.6; margin: 0 0 2px; color: inherit; letter-spacing: 0; text-transform: none; }
+.sv-iagent .pl-agent-md, .sv-iagent .pl-agent-md p, .sv-agent .pl-agent-md, .sv-agent .pl-agent-md p { margin: 0; font: inherit; color: inherit; }
+.sv-iagent .pl-agent-md p + p, .sv-agent .pl-agent-md p + p { margin-top: 6px; }
+.sv-trace { font: 400 10.5px/1.45 var(--sv-mono); color: var(--sv-ink2); }
+.sv-iagent form.pl-agent-compose textarea, .sv-agent form.pl-agent-compose textarea { flex: 1; resize: none; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 7px 9px; font: 400 13px var(--sv-sans); height: 36px; min-height: 36px; outline: none; background: var(--sv-paper); box-shadow: none; color: var(--sv-ink); }
+.sv-iagent form.pl-agent-compose textarea:focus, .sv-agent form.pl-agent-compose textarea:focus { border-color: var(--sv-ink); }
+.sv-iagent form.pl-agent-compose button[type="submit"], .sv-agent form.pl-agent-compose button[type="submit"] { flex: none; font: 700 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-orange); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; opacity: 1; }
+.sv-iagent form.pl-agent-compose button[type="submit"]:disabled, .sv-agent form.pl-agent-compose button[type="submit"]:disabled { box-shadow: var(--sv-sh-btn); cursor: default; }
+/* Home's agent: the same warm column, full width */
+.sv-agent { background: var(--sv-well); }
+.sv-agent > .pl.pl-agent { background: none; padding: 0; }
+.sv-agent .pl-agent-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 8px; font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; border: 0; background: none; color: var(--sv-ink); }
+.sv-agent .pl-agent-head button { font: 500 11px var(--sv-mono); letter-spacing: 0; text-transform: none; height: 24px; padding: 0 10px; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); }
+.sv-agent .pl-agent-log { padding: 4px 16px 14px; background: none; }
+.sv-agent form.pl-agent-compose { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 16px 14px; border-top: 1px dashed var(--sv-well-line); background: none; margin: 0; }
+.sv-agent .pl-agent-line > :not(.pl-agent-bubble) { display: none; }
+.sv .sv-iagent form.pl-agent-compose button[type="submit"]:disabled, .sv .sv-agent form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; }
+.sv .sv-chat .pl-agent-log.pl-dm-tl { background: var(--sv-well); }
+.sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
+.sv .sv-chat form.pl-agent-compose textarea { height: 40px; min-height: 40px; max-height: 40px; }
+.sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; box-shadow: var(--sv-sh-btn); }
+.sv .sv-x { display: grid; place-items: center; line-height: 1; text-align: center; }
+
+/* buttons.css lifts the app's buttons with ":not(#_)"; these match it so the prototype's look wins here */
+.ih:not(#_) .ih-rail .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; font: 700 11px/normal "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"],
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"]:disabled {
+  font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; height: 26px; padding: 0 14px; border: 1px solid #000; border-radius: 1px;
+  background: #ff8a00; color: #000; box-shadow: 1px 1px 0 #000; opacity: 1; filter: none; cursor: pointer;
+}
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"]:disabled { cursor: default; }
+.ih:not(#_) .sv .sv-agent .pl-agent-head button { font: 500 11px "JetBrains Mono", ui-monospace, monospace; height: 24px; padding: 0 10px; border: 1px solid #000; border-radius: 1px; background: #fff; color: #000; box-shadow: 1px 1px 0 #000; }
+.sv-tabs { min-height: 35px; }
+.ih .sv .sv-scroll button.sv-row { padding: 12px 20px; gap: 12px; align-items: flex-start; font: inherit; line-height: normal; }
+.ih .sv .sv-chat .pl-agent-log.pl-dm-tl { padding: 14px 16px 16px; }
+.sv-idk { --idk-line: var(--sv-edge); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); }
+.sv-idk .idk-run-foot { font-size: 11.5px; color: var(--sv-ink2); }
+.sv-ilab .n { margin-left: 0; }
+.sv-ni-head { height: 108px; }
+.sv-body.sv-ni { padding-top: 14px; }
+.sv-ni > .sv-h4 { margin-top: 12px; }
+.sv-ni > .sv-h4:first-child { margin-top: 6px; }
+.sv-ni .sv-ni-text { height: 110px; min-height: 110px; }
+.sv .sv-chip.picked.sv-ni-net:hover { background: var(--sv-ink); }
+.ih .sv .sv-chat .pl-agent-line .pl-agent-bubble { max-width: 78%; }
+.ih .sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
+.sv-ni .sv-ni-starters { margin-top: 14px; }
+.sv .sv-chip.picked.sv-ni-net { font-weight: 600; }
+/* an intent's matches: cards inside the column (only its questions run edge to edge) */
+.sv-imatches > .sv-h4 { margin-top: 18px; }
+.sv-imatches > .sv-h4:first-child { margin-top: 6px; }
+.sv-body.sv-imatches { padding-top: 14px; }
+.sv-ilist .sv-card { padding: 12px 0; }
+.sv-ilist .sv-card:hover, .sv-ilist .sv-card.on { background: none; }
+/* the running list: rows open in place (beats introduce.css's flex rows) */
+.idk.sv-idk .idk-rows.sv-runs li { display: block; padding: 0; margin: 0 -8px; }
+.idk.sv-idk .idk-rows.sv-runs li.on { background: var(--sv-sel-pane); }
+.idk.sv-idk .idk-rows.sv-runs li + li { border-top: 1px dashed var(--sv-edge); }
+.sv-idk .sv-run { padding: 6px 8px; font-size: 13px; }
+.sv-idk .sv-run:hover { background: var(--sv-sel-pane); }
+.sv-rdet { padding: 4px 8px 12px; }
+.sv-rsteps { margin: 2px 0 10px; }
+.sv-idk .sv-idk-sent { font: 12.5px/1.45 var(--sv-sans); padding: 6px 8px; border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-well); }
+.sv-idk textarea.sv-idk-text { height: 96px; min-height: 56px; font: 12.5px/1.45 var(--sv-sans); }

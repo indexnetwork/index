@@ -3,7 +3,7 @@ import { Link } from "react-router";
 
 import type { PrincipalQuestion } from "@/services/conversation";
 import { questionAsker } from "@/components/IntentNegotiatorChat";
-import { MyAgentAvatar, TheirAgentAvatar } from "@/components/workbench/agent-avatar";
+import UserAvatar from "@/components/UserAvatar";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUndo } from "@/components/intents-home/undo";
 
@@ -51,15 +51,18 @@ export default function QuestionCard({ question, intentLabel, intentHref, select
   };
 
   if (gone) return null;
-  const face = asker.owner
-    ? <Link to={`/u/${asker.owner.id}`} title={`${asker.owner.name}'s profile`}><TheirAgentAvatar owner={{ id: asker.owner.id, name: asker.owner.name }} size={36} /></Link>
-    : <MyAgentAvatar size={36} />;
+  // Their agent wears their photo; yours is the black "ix" square.
+  const owner = asker.owner as ({ id: string; name: string; avatar?: string | null } | null);
+  const face = owner
+    ? <Link to={`/u/${owner.id}`} title={`${owner.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={owner.id} name={owner.name} avatar={owner.avatar ?? null} size={36} /></Link>
+    : <span className="sv-mine" aria-hidden>ix</span>;
+  const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
 
   return (
     <div id={question.groupId ? `q-card-${question.groupId}` : undefined} className={`sv-card sv-static${selected ? " on" : ""}`}>
       {face}
       <div className="sv-card-body">
-        <b>{asker.label}</b>
+        <b>{label}</b>
         {intentLabel && (
           <span className="sv-via"> · {intentHref ? <Link to={intentHref}>{intentLabel}</Link> : intentLabel}</span>
         )}

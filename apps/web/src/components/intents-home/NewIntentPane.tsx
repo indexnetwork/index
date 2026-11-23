@@ -97,7 +97,7 @@ export default function NewIntentPane({ busy, children, onSubmit, onClose }: {
 
   return (
     <div className="sv-person">
-      <header className="sv-ph">
+      <header className="sv-ph sv-ni-head">
         <div className="sv-pid sv-ihead">
           <div className="who">
             <div className="sv-pn">new intent</div>
@@ -163,9 +163,9 @@ export default function NewIntentPane({ busy, children, onSubmit, onClose }: {
               <>
                 <h4 className="sv-h4">look in</h4>
                 <div className="sv-chips">
-                  {lookIn.map((title) => <span key={title} className="sv-chip sv-ni-net">{title}</span>)}
+                  {lookIn.map((title) => <span key={title} className="sv-chip picked sv-ni-net">{title}</span>)}
                 </div>
-                <p className="sv-ni-tip">people in your networks can find this intent too, so their agents can come to yours.</p>
+                <p className="sv-ni-tip">people in these networks can find this intent too, so their agents can come to yours.</p>
               </>
             )}
           </>

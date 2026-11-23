@@ -18,7 +18,9 @@ import ConnectAgent from "@/components/intents-home/ConnectAgent";
 import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
-import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
+import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections, usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
+import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
+import { personKey, RANK, type Stage } from "@/components/intents-home/stages";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { KeyboardProvider, JumpButton, useZone } from "@/components/intents-home/keyboard";
 import { UndoProvider } from "@/components/intents-home/undo";
@@ -43,6 +45,30 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
   return "";
 }
 
+/**
+ * Opened somewhere other than Home first: count Home's sections here so the
+ * sidebar shows them anyway. Home takes over once it draws.
+ */
+function RailCounts() {
+  const { entriesByIntent } = useIntentsData();
+  const { questions, loaded } = usePersonalQuestions();
+  const best = new Map<string, Stage>();
+  for (const entries of Object.values(entriesByIntent)) {
+    for (const entry of entries) {
+      const key = personKey(entry.item);
+      const now = best.get(key);
+      if (!now || RANK[entry.stage] < RANK[now]) best.set(key, entry.stage);
+    }
+  }
+  const stages = [...best.values()];
+  usePublishHomeSections(loaded ? [
+    { id: "questions", label: "questions", count: questions.length },
+    { id: "waiting", label: "waiting on you", count: stages.filter((s) => s === "awaiting").length },
+    { id: "progress", label: "in progress", count: stages.filter((s) => s === "talks" || s === "chat").length },
+  ] : []);
+  return null;
+}
+
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
 function AppRail({ here }: { here: RailKey }) {
   const navigate = useNavigate();
@@ -65,6 +91,8 @@ function AppRail({ here }: { here: RailKey }) {
 
   const zone = useZone();
   return (
+    <>
+    {here !== "home" && <RailCounts />}
     <nav className={`ih-rail${zone === "rail" ? " sv-focus" : ""}`} aria-label="main" data-zone="rail">
       <div className="ih-brand">index</div>
       <div className="ih-rail-body">
@@ -98,6 +126,7 @@ function AppRail({ here }: { here: RailKey }) {
         </div>
       </div>
     </nav>
+    </>
   );
 }
 

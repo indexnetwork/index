@@ -26,7 +26,12 @@ export function IntentsSplit({ selectedId, writing = false, pane }: { selectedId
     <div className="sv-empty"><Placeholder.Rows count={4} avatar={false} label="loading intents" /></div>
   ) : intents.length === 0 ? (
     <div className="sv-empty">none yet. <button type="button" className="sv-link" onClick={() => navigate("/i/new")}>write your first intent</button></div>
-  ) : intents.map((intent) => {
+  ) : [...intents].sort((a, b) => {
+    // Live first, then paused; each oldest first.
+    const pa = (a.status || "").toLowerCase() === "paused" ? 1 : 0;
+    const pb = (b.status || "").toLowerCase() === "paused" ? 1 : 0;
+    return pa - pb || (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+  }).map((intent) => {
     const paused = (intent.status || "").toLowerCase() === "paused";
     const counts: Record<Stage, number> = { awaiting: 0, talks: 0, chat: 0, closed: 0 };
     for (const entry of entriesByIntent[intent.id] ?? []) counts[entry.stage] += 1;

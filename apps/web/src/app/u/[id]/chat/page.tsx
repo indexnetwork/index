@@ -108,7 +108,7 @@ export default function ChatPage() {
       ) : id && !compact ? (
         // On the desktop the conversation is the person pane, opened on chat: who they are a tab away.
         <ConversationPane key={id} userId={id} name={userName || "someone"} avatar={avatar}>
-          <ChatView
+          {(onCount) => <ChatView
             key={id}
             userId={id}
             userName={userName || "someone"}
@@ -119,7 +119,8 @@ export default function ChatPage() {
             onClose={leave}
             onBack={leave}
             bare
-          />
+            onCount={onCount}
+          />}
         </ConversationPane>
       ) : id ? (
         <ChatView
@@ -141,15 +142,17 @@ export default function ChatPage() {
 export const Component = ChatPage;
 
 /** The person you're talking to, opened on chat; summary shows who they are and what you were matched on. */
-function ConversationPane({ userId, name, avatar, children }: { userId: string; name: string; avatar?: string; children: React.ReactNode }) {
+function ConversationPane({ userId, name, avatar, children }: { userId: string; name: string; avatar?: string; children: (onCount: (count: number) => void) => React.ReactNode }) {
   const [tab, setTab] = useState<PersonTab>("chat");
+  const [count, setCount] = useState(0);
   return (
     <PersonPane
       person={{ name, userId, avatar }}
       tab={tab}
       onTab={setTab}
+      chatCount={count}
       summary={<PersonSummary userId={userId} />}
-      chat={children}
+      chat={children(setCount)}
     />
   );
 }

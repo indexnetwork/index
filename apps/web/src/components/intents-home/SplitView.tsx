@@ -35,10 +35,12 @@ export function SplitView({ title, actions, seg, list, pane, listRef }: {
 
 /** The filter row: counts for each part of the list. Pressing one is optional. */
 export function Seg({ items }: { items: Array<{ label: string; n?: number; on?: boolean; onClick?: () => void }> }) {
+  // Nothing picked reads as the first one ("all").
+  const none = !items.some((item) => item.on);
   return (
     <span className="sv-seg">
-      {items.map((item) => (
-        <button key={item.label} type="button" aria-pressed={!!item.on} onClick={item.onClick}>
+      {items.map((item, i) => (
+        <button key={item.label} type="button" aria-pressed={!!item.on || (none && i === 0)} onClick={item.onClick}>
           {item.label}{item.n !== undefined && <span className="n">{item.n}</span>}
         </button>
       ))}

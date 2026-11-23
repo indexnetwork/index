@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -134,6 +133,9 @@ function statusOf(item: RadarCardItem, hasChat: boolean): { label: string; cls: 
   return { label: "accepted", cls: "live" };
 }
 
+/** 444, 1.2k, 3m: how the prototype counts members. */
+const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n).toLowerCase();
+
 const shortDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }).toLowerCase() : "";
 
 /**
@@ -156,7 +158,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
   const { intents } = useIntentsData();
   const [nets, setNets] = useState<{ id: string; list: Array<{ id: string; title: string; _count: { members: number } }> } | null>(null);
   const [opps, setOpps] = useState<{ id: string; list: RadarCardItem[] } | null>(null);
-  const [open, setOpen] = useState<string | null>(focusId ?? null);
+  const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -188,7 +190,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
           <h4 className="sv-h4">elsewhere</h4>
           <div className="sv-socials">
             {socials.map((s) => (
-              <a className="sv-soc" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">{SOCIAL_ICONS[s.platform]}<span>{s.handle}</span></a>
+              <a className="sv-soc" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">{s.platform === "website" ? s.handle : `${s.platform} ${s.handle}`}</a>
             ))}
           </div>
         </>
@@ -198,7 +200,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
         <>
           <h4 className="sv-h4">networks</h4>
           <div className="sv-socials">
-            {shared.map((n) => <Link key={n.id} className="sv-soc" to={`/networks/${n.id}`}>{n.title} · {n._count.members}</Link>)}
+            {shared.map((n) => <Link key={n.id} className="sv-soc" to={`/networks/${n.id}`}>{n.title} · {compact(n._count.members)}</Link>)}
           </div>
         </>
       )}
@@ -221,7 +223,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
               <div key={item.opportunityId} className={`sv-orow${isOpen ? " open" : ""}`}>
                 <button type="button" className="sv-orh" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : item.opportunityId)}>
                   <span className="sv-oh">{headline}</span>
-                  <span className="sv-os">{status.cls === "talks" && <span className="sv-dot" />}{status.label}</span>
+                  <span className="sv-os">{status.cls === "talks" && item.opportunityId === focusId && <span className="sv-dot" />}{status.label}</span>
                   <span className="sv-oc">{isOpen ? "▾" : "›"}</span>
                 </button>
                 {isOpen && (

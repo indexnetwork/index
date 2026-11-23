@@ -204,7 +204,7 @@ function PairPane({ proposal, text, error, onText, onClose }: {
 }) {
   return (
     <div className="sv-person">
-      <header className="sv-ph">
+      <header className="sv-ph sv-ni-head">
         <div className="sv-pid">
           <PairFace proposal={proposal} size={48} />
           <div className="who">
@@ -219,7 +219,7 @@ function PairPane({ proposal, text, error, onText, onClose }: {
           <div className="idk-who">
             <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
             <div style={{ minWidth: 0 }}>
-              <div className="idk-line" title={proposal.member.intentText}><b>{first(proposal.member.name)}</b> {proposal.member.line}</div>
+              <div className="idk-line" title={proposal.member.intentText}><b>{first(proposal.member.name)}</b> {lc(proposal.member.line)}</div>
               <small>{proposal.networkTitle}</small>
             </div>
           </div>
@@ -278,6 +278,7 @@ function RunningPane({ runs, opening, freshId }: { runs: IntroductionProgress[];
             <div className="sv-pu">{opening.length + live.length} going<span className="loc"> · {ended.length} ended</span></div>
           </div>
         </div>
+        <div className="sv-tabs"><span className="sv-ilab">all {opening.length + runs.length}</span></div>
       </header>
       <div className="sv-body idk sv-idk" aria-live="polite">
         {opening.length + runs.length === 0 ? (
@@ -295,7 +296,8 @@ function RunningPane({ runs, opening, freshId }: { runs: IntroductionProgress[];
                 {openId === p.id && (
                   <div className="sv-rdet">
                     <RunSteps phase="woken" />
-                    <div className="sv-dim-note">Looking {first(p.contact.name)} up and seating their agent. This takes a minute or two.</div>
+                    <div className="idk-label"><span>THE INTRO YOU SENT</span><span>via {p.networkTitle}</span></div>
+                    <div className="sv-idk-sent">{p.draft}</div>
                   </div>
                 )}
               </li>
@@ -311,7 +313,6 @@ function RunningPane({ runs, opening, freshId }: { runs: IntroductionProgress[];
                 {openId === r.opportunityId && (
                   <div className="sv-rdet">
                     <RunSteps phase={r.phase} />
-                    <div className="sv-dim-note">{phaseLine(r)}</div>
                     {r.context && (
                       <>
                         <div className="idk-label"><span>THE INTRO YOU SENT</span></div>
@@ -680,9 +681,6 @@ export default function IntroducePage() {
         setSkipping((all) => { const next = new Set(all); next.delete(p.id); return next; });
       });
     };
-    const synced = status?.contacts.lastImportAt
-      ? <span className="sv-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt)} ago`}</span>
-      : undefined;
     const list = !status ? (
       <div className="sv-empty">{error ?? "loading…"}</div>
     ) : !ready ? (
@@ -720,10 +718,10 @@ export default function IntroducePage() {
     return (
       <SplitView
         title="introduce"
-        actions={synced}
         seg={ready ? <Seg items={[
-          { label: "pairs", n: shown.length, on: view === "pairs" && !!picked, onClick: () => { setView("pairs"); if (!picked && shown[0]) setPickedId(shown[0].id); } },
-          { label: "running", n: liveRuns, on: view === "pairs" && !picked, onClick: () => { setView("pairs"); setPickedId(null); } },
+          { label: "all", n: shown.length + runs.length + opening.length, on: view === "pairs", onClick: () => { setView("pairs"); setPickedId(null); } },
+          { label: "pairs", n: shown.length, onClick: () => { setView("pairs"); if (!picked && shown[0]) setPickedId(shown[0].id); } },
+          { label: "running", n: liveRuns, onClick: () => { setView("pairs"); setPickedId(null); } },
           { label: "contacts", n: status?.contacts.total ?? 0, on: view === "contacts", onClick: () => setView(view === "contacts" ? "pairs" : "contacts") },
         ]} /> : undefined}
         list={list}
