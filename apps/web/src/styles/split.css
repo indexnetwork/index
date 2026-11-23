@@ -1,0 +1,239 @@
+/*
+ * One layout for home, intents, conversations and introduce: a list on the left,
+ * the thing you picked on the right. Matches the person-pane prototype.
+ *
+ * Colour discipline. ink / ink2 / dim for text; line / edge for rules; paper; the
+ * warm well only behind chats. Orange only for the main action and things that
+ * need you (accept, wake, send, badges). Status colours only for status.
+ * Hover and selected are the same shade; the column the arrow keys act on is a
+ * touch deeper. No coloured edge bars anywhere.
+ */
+.sv {
+  --sv-ink: #000;
+  --sv-ink2: #555;
+  --sv-dim: #8a8578;
+  --sv-line: #e6e6e6;
+  --sv-edge: #cfcfcf;
+  --sv-paper: #fff;
+  --sv-well: #f5f1e8;
+  --sv-well-line: #e6e0d2;
+  --sv-orange: #ff8a00;
+  --sv-talks: #ffcc00;
+  --sv-live: #33aa33;
+  --sv-idle: #cfcfcf;
+  --sv-danger: #a30000;
+  --sv-sel: #f3f2ee;
+  --sv-sel-focus: #e6e5df;
+  --sv-sel-pane: #ebeae5;
+  /* shadows: A, hard offset */
+  --sv-sh-btn: 1px 1px 0 #000;
+  --sv-sh-chip: 1px 1px 0 rgba(0, 0, 0, 0.25);
+  --sv-sh-pop: 4px 4px 0 #000;
+  --sv-sh-field: 2px 2px 0 rgba(0, 0, 0, 0.12);
+  --sv-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sv-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --sv-list-w: 440px;
+
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  background: var(--sv-paper);
+  color: var(--sv-ink);
+  font-family: var(--sv-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  position: relative;
+}
+.sv *, .sv *::before, .sv *::after { box-sizing: border-box; }
+.sv button { font: inherit; color: inherit; cursor: pointer; }
+.sv a { color: inherit; }
+
+/* the app's thin grey scrollbar */
+.sv ::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+.sv ::-webkit-scrollbar-track { background: transparent; }
+.sv ::-webkit-scrollbar-thumb { background: var(--sv-edge); border-radius: 3px; min-height: 28px; }
+
+/* ---------- the list column ---------- */
+.sv-list {
+  --sv-hover: var(--sv-sel);
+  width: var(--sv-list-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--sv-line);
+}
+.sv-list.sv-focus { --sv-hover: var(--sv-sel-focus); }
+.sv-head { flex: none; padding: 18px 20px 12px; border-bottom: 1px solid var(--sv-line); }
+.sv-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 600 20px var(--sv-sans); margin: 0 0 10px; }
+.sv-scroll { flex: 1; min-height: 0; overflow: auto; }
+
+/* filter row: segmented, like the app's */
+.sv-seg { display: inline-flex; border: 1px solid var(--sv-ink); border-radius: 2px; box-shadow: var(--sv-sh-chip); font: 500 11.5px var(--sv-mono); overflow: hidden; }
+.sv .sv-seg button, .sv-seg span { padding: 4px 9px; border: 0; border-left: 1px solid var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.sv .sv-seg > :first-child { border-left: 0; }
+.sv .sv-seg [aria-pressed="true"], .sv .sv-seg [aria-selected="true"] { background: var(--sv-sel); font-weight: 700; }
+.sv-seg .n { color: var(--sv-dim); font-weight: 400; margin-left: 4px; }
+
+/* section heading inside a list */
+.sv-lh { padding: 14px 20px 6px; font: 700 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink2); border-bottom: 1px solid var(--sv-line); scroll-margin-top: 0; }
+.sv-empty { padding: 12px 20px 16px; color: var(--sv-ink2); font-size: 13.5px; }
+.sv-more { display: block; padding: 10px 20px; font: 500 11px var(--sv-mono); text-decoration: underline; color: var(--sv-ink2); background: none; border: 0; }
+
+/* a card: avatar, name, a line, buttons */
+.sv-card { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; }
+.sv-card:hover, .sv-card.on { background: var(--sv-hover); }
+.sv-card.sv-static { cursor: default; }
+.sv-card.sv-static:hover { background: none; }
+.sv-card-body { min-width: 0; flex: 1; }
+.sv-card b, .sv-name { font-weight: 700; font-size: 14px; }
+.sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; line-height: 1.45; }
+.sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-via a { text-decoration: underline; }
+.sv-card.done { color: var(--sv-ink2); font-size: 13.5px; align-items: center; cursor: default; }
+.sv-card.done:hover { background: none; }
+
+/* a row: avatar, name + one line, something on the right */
+.sv-row { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; align-items: flex-start; }
+.sv-row:hover, .sv-row.on { background: var(--sv-hover); }
+.sv-row-t { flex: 1; min-width: 0; }
+.sv-row-n { font-weight: 600; font-size: 14px; }
+.sv-row-pv { font-size: 13px; color: var(--sv-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-row-tm { font: 400 10.5px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-row .sv-badge { margin-top: 2px; }
+
+/* ---------- buttons, chips, badges ---------- */
+.sv .sv-btn { font: 500 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; white-space: nowrap; }
+.sv .sv-btn.go { background: var(--sv-orange); font-weight: 700; }
+.sv .sv-btn.danger { color: var(--sv-danger); }
+.sv .sv-btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+.sv .sv-btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+.sv .sv-btn.sm { height: 24px; padding: 0 10px; font-size: 11px; }
+.sv-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sv-badge { flex: none; background: var(--sv-orange); border: 1px solid var(--sv-ink); font: 700 11px var(--sv-mono); padding: 0 5px; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); color: var(--sv-ink); }
+.sv .sv-link { background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
+.sv .sv-link:hover { color: var(--sv-ink); }
+
+/* answer chips. The shape says how it's picked: rounded = pick one (answers on click), square = pick any */
+.sv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
+.sv .sv-chip { font: 400 12.5px var(--sv-sans); border: 1px solid var(--sv-ink); border-radius: 2px; padding: 4px 9px; background: var(--sv-paper); box-shadow: var(--sv-sh-chip); color: var(--sv-ink); }
+.sv .sv-chip:hover { background: var(--sv-orange); }
+.sv-chips.one .sv-chip { border-radius: 999px; padding-left: 11px; padding-right: 11px; }
+.sv .sv-chip.ghost { border-style: dashed; box-shadow: none; color: var(--sv-ink2); }
+.sv .sv-chip.ghost:hover { background: var(--sv-sel); }
+.sv .sv-chip.picked { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv .sv-chip.send { background: var(--sv-orange); font-weight: 600; }
+.sv-chips .sv-link { margin-left: auto; padding: 4px 0; }
+.sv-own { display: flex; gap: 6px; margin-top: 8px; }
+.sv-own input { flex: 1; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 6px 8px; font: 400 13px var(--sv-sans); outline: none; }
+.sv-own input:focus { border-color: var(--sv-ink); }
+
+/* status: a small square with the stage's colour */
+.sv-status { white-space: nowrap; font: 500 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border: 1px solid var(--sv-ink); vertical-align: 0; background: var(--sv-paper); }
+.sv-status.talks::before { background: var(--sv-talks); animation: sv-blink 1.4s ease-in-out infinite; }
+.sv-status.live::before { background: var(--sv-live); }
+.sv-status.waiting::before { background: var(--sv-orange); }
+.sv-status.paused::before { background: var(--sv-idle); }
+@keyframes sv-blink { 50% { opacity: 0.3; } }
+
+/* ---------- the right pane ---------- */
+.sv-pane { --sv-hover: var(--sv-sel-pane); flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.sv-blank { flex: 1; display: grid; place-items: center; color: var(--sv-dim); font-size: 13px; }
+
+/* header: who it is, tabs under the name. Fixed: nothing shrinks or moves. */
+.sv-ph { flex: none; position: relative; border-bottom: 1px solid var(--sv-line); background: var(--sv-paper); }
+.sv-pid { display: flex; gap: 14px; align-items: center; padding: 18px 60px 6px 22px; min-height: 72px; }
+.sv-pid .who { flex: 1; min-width: 0; }
+.sv-pn { font: 600 20px var(--sv-sans); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-pn a { text-decoration: none; }
+.sv-pu { font: 400 12.5px var(--sv-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-pu .loc { color: var(--sv-ink2); letter-spacing: 0.5px; }
+.sv .sv-x { position: absolute; top: 14px; right: 16px; width: 26px; height: 26px; padding: 0; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); font: 500 13px var(--sv-sans); color: var(--sv-ink); }
+.sv-tabs { display: flex; align-items: center; gap: 4px; padding: 0 22px 0 14px; min-height: 36px; }
+.sv .sv-tabs > button { font: 500 11.5px var(--sv-mono); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 8px 9px; color: var(--sv-ink2); }
+.sv .sv-tabs > button:hover { color: var(--sv-ink); }
+.sv .sv-tabs > button[aria-current="true"] { color: var(--sv-ink); font-weight: 700; border-bottom-color: var(--sv-ink); }
+.sv .sv-tabs > button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.sv-tabs .n { color: var(--sv-dim); font-weight: 400; margin-left: 3px; }
+.sv-tabs .sp { flex: 1; }
+.sv-tabs .why { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+
+/* pane body */
+.sv-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 22px 26px; }
+.sv-h4 { font: 500 11px var(--sv-mono); letter-spacing: 3px; text-transform: uppercase; color: var(--sv-ink); margin: 22px 0 10px; }
+.sv-body > .sv-h4:first-child { margin-top: 14px; }
+.sv-body p, .sv-p { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.sv-dimp { color: var(--sv-ink2); font-size: 13.5px; }
+.sv-socials { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv-soc { display: inline-flex; gap: 6px; align-items: center; font: 500 11.5px var(--sv-mono); border: 1px solid var(--sv-ink); border-radius: 2px; padding: 5px 10px; text-decoration: none; background: var(--sv-paper); }
+.sv-soc svg { width: 13px; height: 13px; flex-shrink: 0; }
+a.sv-soc:hover { background: var(--sv-sel); }
+
+/* opportunities between you two: one row each; open shows why and the agents' log */
+.sv-olist { display: grid; gap: 8px; }
+.sv-orow { border: 1px solid var(--sv-ink); background: var(--sv-paper); overflow: hidden; }
+.sv .sv-orh { display: flex; gap: 12px; align-items: baseline; padding: 11px 14px; width: 100%; text-align: left; background: none; border: 0; }
+.sv-orh:hover, .sv-orow.open .sv-orh { background: var(--sv-hover); }
+.sv-oh { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
+.sv-oc { font: 400 12px var(--sv-mono); color: var(--sv-dim); }
+.sv-olog { border-top: 1px solid var(--sv-line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sv-olog .sv-via { color: var(--sv-ink2); }
+
+/* bottom bar: accept / pass, or a note */
+.sv-bar { flex: none; display: flex; gap: 10px; align-items: center; padding: 12px 22px 14px; border-top: 1px solid var(--sv-line); background: var(--sv-paper); }
+.sv-bar .hint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-bar.note { color: var(--sv-ink2); font-size: 13px; }
+
+/* the chat: an inset warm well whose closed bottom is the composer (ChatView inside) */
+.sv-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 22px 16px; }
+.sv-chat .pl.pl-agent.pl-dm { flex: 1; min-height: 0; display: flex; flex-direction: column; background: none; padding: 0; margin: 0; max-width: none; height: auto; }
+.sv-chat .pl-agent-log {
+  flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 14px 16px 16px;
+  background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0;
+}
+.sv-chat .pl-agent-bubble:not(.mine) { background: var(--sv-paper); }
+.sv-chat form.pl-agent-compose {
+  flex: none; margin: 0; padding: 10px 16px 14px; display: flex; gap: 10px; align-items: flex-end;
+  background: var(--sv-well); border: 1px solid var(--sv-well-line); border-top: 1px dashed var(--sv-well-line); border-radius: 0 0 4px 4px;
+}
+.sv-chat form.pl-agent-compose textarea { background: var(--sv-paper); }
+.sv-chat .pl-dm-opener { background: var(--sv-paper); }
+
+/* the column the arrow keys act on: only a hint (its selection is a shade deeper) */
+.sv-pane.sv-focus { --sv-hover: var(--sv-sel-pane); }
+
+/* the person on the right, and the agents that fill it when nothing is picked */
+.sv-person { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-bar .note { color: var(--sv-ink2); font-size: 13px; }
+.sv-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-agent > .pl.pl-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: none; margin: 0; }
+.sv-agent .pl-agent-log { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- outside the layout: the rail's hint, the jump box, keys, undo ---------- */
+.ih-rail .ih-nav:hover, .ih-rail .ih-nav.on { background: #f3f2ee; }
+.ih-rail.sv-focus .ih-nav:hover, .ih-rail.sv-focus .ih-nav.on { background: #e6e5df; }
+.ih .sv-jumpbtn { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 0 0 10px; padding: 7px 10px; border: 1px dashed #cfcfcf; background: #fff; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #555; cursor: pointer; border-radius: 2px; }
+.ih .sv-jumpbtn:hover { border-color: #000; color: #000; }
+.sv-jumpbtn kbd, .sv-hrow kbd { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; border: 1px solid #cfcfcf; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; background: #fff; color: #000; white-space: nowrap; }
+
+.sv-layer { position: fixed; inset: 0; z-index: 1000; }
+.sv-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); }
+.sv-pal { position: absolute; top: 14vh; left: 50%; transform: translateX(-50%); width: min(560px, 92vw); background: #fff; border: 1px solid #000; box-shadow: 4px 4px 0 #000; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #000; }
+.sv-pal input { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid #e6e6e6; padding: 14px 16px; font: 400 16px "IBM Plex Sans", system-ui, sans-serif; outline: none; }
+.sv-palres { max-height: 380px; overflow: auto; }
+.sv-palrow { display: flex; gap: 12px; align-items: baseline; width: 100%; padding: 9px 16px; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.sv-palrow.on, .sv-palrow:hover { background: #ebeae5; }
+.sv-palrow.none { color: #8a8578; cursor: default; }
+.sv-palrow .pl { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-palrow .pk { font: 400 11px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; white-space: nowrap; }
+.sv-palfoot { display: flex; gap: 16px; padding: 8px 16px; border-top: 1px solid #e6e6e6; font: 400 10.5px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; }
+.sv-help { width: min(460px, 92vw); padding-top: 4px; }
+.sv-helph { padding: 12px 16px 6px; font: 700 10.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 2px; text-transform: uppercase; }
+.sv-hrow { display: flex; gap: 14px; align-items: center; padding: 6px 16px; font-size: 13.5px; }
+.sv-hrow kbd { min-width: 150px; text-align: center; }
+
+.sv-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1001; display: flex; gap: 14px; align-items: center; background: #000; color: #fff; padding: 9px 12px 9px 16px; font: 500 12.5px "JetBrains Mono", ui-monospace, monospace; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25); }
+.sv-toast button { background: none; border: 0; color: #fff; font: 700 12.5px "JetBrains Mono", ui-monospace, monospace; text-decoration: underline; cursor: pointer; }

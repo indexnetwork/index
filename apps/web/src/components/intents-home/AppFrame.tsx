@@ -19,6 +19,8 @@ import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { KeyboardProvider, JumpButton, useZone } from "@/components/intents-home/keyboard";
+import { UndoProvider } from "@/components/intents-home/undo";
 
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
@@ -60,8 +62,9 @@ function AppRail({ here }: { here: RailKey }) {
     </button>
   );
 
+  const zone = useZone();
   return (
-    <nav className="ih-rail" aria-label="main">
+    <nav className={`ih-rail${zone === "rail" ? " sv-focus" : ""}`} aria-label="main" data-zone="rail">
       <div className="ih-brand">index</div>
       <div className="ih-rail-body">
         {item("home", "home", "/", waiting)}
@@ -83,6 +86,7 @@ function AppRail({ here }: { here: RailKey }) {
         {item("introduce", "introduce", "/introduce")}
 
         <div className="ih-foot">
+          <JumpButton />
           <ConnectAgent />
           <div className="ih-menu">
             {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
@@ -147,7 +151,7 @@ function AccountMenu() {
 }
 
 /** The agent's own window beside Home, opened from Home's "talk to your agent". */
-function AgentWindow() {
+function AgentWindow({ inPane = false }: { inPane?: boolean }) {
   const { open, setOpen } = useAgentWindow();
   const { intents, fetchIntents, loadRadar } = useIntentsData();
   // After the agent changes something, show it: reread intents and everyone's stage.
@@ -155,6 +159,8 @@ function AgentWindow() {
     void fetchIntents();
     for (const intent of intents) void loadRadar(intent.id, "skeleton");
   }, [fetchIntents, intents, loadRadar]);
+  // On the right of Home's list, your agent is what shows when nobody is picked.
+  if (inPane) return <div className="sv-agent"><PersonalAgentPanel onChanged={onChanged} /></div>;
   if (!open) {
     // Closed, the chat stays docked on the right as a thin strip; a click opens it.
     return (
@@ -188,7 +194,7 @@ function IntentAgentWindow({ intentId }: { intentId: string }) {
  * Beside Home or an intent: an open match takes the agent window's place
  * until it's closed. On an intent page the agent there is that intent's.
  */
-function RightWindow({ intentId }: { intentId?: string }) {
+export function RightWindow({ intentId, inPane = false }: { intentId?: string; inPane?: boolean }) {
   const { pathname } = useLocation();
   const { log, setLog, open, setOpen } = useAgentWindow();
   // A match belongs to the page it was opened from.
@@ -207,7 +213,7 @@ function RightWindow({ intentId }: { intentId?: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [log, setLog, open, setOpen, intentId]);
   if (log) return <MatchWindow />;
-  return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
+  return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow inPane={inPane} />;
 }
 
 /** The signed-in desktop shell on the blue desktop: the sidebar window, the page window, and on Home the agent's window. */
@@ -215,9 +221,6 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const { user } = useAuthContext();
   const here = railKey(pathname, search, user?.id, user?.username);
-  // An intent's page (not the new-intent flow) has its agent on the right.
-  const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
-  const withRight = pathname === "/" || (!!intentId && intentId !== "new");
   // The first intent is the last onboarding step: no rail, and the page is a card on the
   // blue desktop like the steps before it. Creating the picks finishes onboarding
   // mid-flow, so the choice holds until the page changes.
@@ -229,13 +232,16 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   return (
     <HomeSectionsProvider>
       <AgentWindowProvider>
-        <div className={bare ? "ih ih-first" : "ih"}>
-          {!bare && <AppRail here={here} />}
-          <main className="ih-main">
-            <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
-          </main>
-          {withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
-        </div>
+        <UndoProvider>
+          <KeyboardProvider>
+            <div className={bare ? "ih ih-first" : "ih"}>
+              {!bare && <AppRail here={here} />}
+              <main className="ih-main">
+                <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
+              </main>
+            </div>
+          </KeyboardProvider>
+        </UndoProvider>
       </AgentWindowProvider>
     </HomeSectionsProvider>
   );

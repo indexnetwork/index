@@ -45,6 +45,8 @@ interface ChatViewProps {
   threadExtra?: React.ReactNode;
   /** Takes the composer's place while there is no chat to write in yet: accept and pass, say. */
   footer?: React.ReactNode;
+  /** Only the conversation: no profile head and no match write-up (the pane around it shows who they are). */
+  bare?: boolean;
 }
 
 /** What the chat's head shows of the other person, beyond their name and photo. */
@@ -69,7 +71,7 @@ function conversationIdForPeer(
   )?.id ?? null;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer, bare = false }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const usersService = useUsers();
@@ -416,7 +418,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       <div className="pl pl-agent pl-dm">
         <div className="pl-agent-log pl-dm-tl" ref={logRef}>
           {/* Who they are is the head; why you're talking is the history under it. */}
-          <div className="pl-dmh" ref={headRef}>
+          {!bare && <div className="pl-dmh" ref={headRef}>
             <button type="button" className="pl-win-close pl-dmh-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>
             <div className="pl-dmh-row">
               <Link to={`/u/${userId}`} className="pl-dmh-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={72} /></Link>
@@ -470,9 +472,9 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 )}
               </div>
             )}
-          </div>
+          </div>}
           {history?.hasPreviousSession && conversationId && history.loadingPrevious && <Placeholder.Thread label="loading earlier messages" />}
-          {openerBody && (
+          {openerBody && !bare && (
             <div className="pl-dm-opener">
               {showOpenerHeadline && <b>{openerHeadline}</b>}
               <span>{openerBody}</span>

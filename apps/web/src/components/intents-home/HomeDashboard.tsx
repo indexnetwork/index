@@ -2,16 +2,18 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import "@/styles/intents-home.css";
-import PageHead from "@/components/intents-home/PageHead";
 import "@/styles/plain.css";
+import { SplitView, Seg, ListHead } from "@/components/intents-home/SplitView";
+import { RightWindow } from "@/components/intents-home/AppFrame";
+import QuestionCard from "@/components/intents-home/QuestionCard";
+import { useUndo } from "@/components/intents-home/undo";
+import { jumpTo } from "@/components/intents-home/homeSectionsContext";
 import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { focusedGroup, intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
-import QuestionItem from "@/components/intents-home/QuestionItem";
 import UserAvatar from "@/components/UserAvatar";
-import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -52,18 +54,10 @@ export default function HomeDashboard() {
   const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
   const { setOpen: toggleAgent, log: openLog, setLog, decisions, decide } = useAgentWindow();
-  const withAgent = (page: ReactNode) => (
-    <div className="ih-view pl">
-      <div className="pl-col">
-        <PageHead
-          title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} {HOME_STATUS_LINE}</>}
-          centered
-        >
-          <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
-        </PageHead>
-        {page}
-      </div>
-    </div>
+  const later = useUndo();
+  // One layout everywhere: the list on the left, who you picked (or your agent) on the right.
+  const split = (list: ReactNode, seg?: ReactNode) => (
+    <SplitView title="home" seg={seg} list={list} pane={<RightWindow inPane />} />
   );
 
   const { questions, all: allQuestions, loaded: questionsLoaded, answer } = usePersonalQuestions();
@@ -183,13 +177,23 @@ export default function HomeDashboard() {
     if (chatting) openChat(person);
     // A decision applies to every intent where they are waiting on you.
     const pending = person.entries.filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId]);
-    void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
+    const send = () => void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
       notOnIndex: person.notOnIndex,
       scope: { intentId: entry.intentId },
     }).then((ok) => { void loadRadar(entry.intentId); return ok; }))).then((results) => {
       // It didn't go through: the error is already shown, so give the card back.
       if (results.includes(false)) { decide(person.key, null); if (chatting) setLog(null); }
     });
+    if (action === "accepted") { send(); return; }
+    // Passing on the one that's open moves on to the next person waiting.
+    const wasOpen = !!openLog && person.entries.some((e) => e.item.opportunityId === openLog.opportunityId);
+    if (wasOpen) {
+      const rest = waitingRows.filter((row) => !row.decision && row.person.key !== person.key).map((row) => row.person);
+      const at = waitingRows.findIndex((row) => row.person.key === person.key);
+      const next = rest.find((p) => waitingRows.findIndex((row) => row.person.key === p.key) > at) ?? rest[0];
+      if (next) openMatch(next); else setLog(null);
+    }
+    later(`passed on ${person.name.split(" ")[0]}`, send, () => decide(person.key, null));
   };
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
@@ -221,130 +225,131 @@ export default function HomeDashboard() {
   const cardProps = (person: Person, className: string) => {
     const on = !!openLog && person.entries.some((e) => e.item.opportunityId === openLog.opportunityId);
     return {
-      className: `${className} pl-card-open${on ? " on" : ""}`,
+      className: `${className}${on ? " on" : ""}`,
+      "data-sv-item": person.key,
       onClick: (event: React.MouseEvent) => {
-        if ((event.target as HTMLElement).closest("a, button")) return;
+        if ((event.target as HTMLElement).closest("a, button, input")) return;
         if (on) setLog(null); else openMatch(person);
       },
     };
   };
 
   if (intentsLoaded && intents.length === 0) {
-    return withAgent(
-      <div className="pl-page">
-        <h1>welcome to index.</h1>
-        <p>tell your agent who you want to meet. it goes looking, talks to other agents, and brings you the people worth meeting.</p>
-        <p>
-          <button type="button" className="go big" onClick={() => toggleAgent(true)}>talk to your agent</button>{" "}
-          <button type="button" onClick={() => navigate("/i/new")}>+ start an intent</button>
-        </p>
+    return split(
+      <div className="sv-empty">
+        <p className="sv-p"><b>welcome to index.</b></p>
+        <p className="sv-p" style={{ margin: "6px 0 12px" }}>tell your agent who you want to meet. it goes looking, talks to other agents, and brings you the people worth meeting.</p>
+        <div className="sv-actions">
+          <button type="button" className="sv-btn go" onClick={() => toggleAgent(true)}>talk to your agent</button>
+          <button type="button" className="sv-btn" onClick={() => navigate("/i/new")}>+ start an intent</button>
+        </div>
       </div>,
     );
   }
 
-  return withAgent(
-      <div className="pl-page">
-        <h2 id="questions">questions from your agents {questionsLoaded && `(${questions.length})`}</h2>
-        {staleLink && <p className="pl-dim">that question was already answered.</p>}
-        {!questionsLoaded ? (
-          <Placeholder.Rows count={2} avatar={false} label="loading questions" />
-        ) : questions.length === 0 ? (
-          <p className="pl-dim">none right now.</p>
-        ) : (
-          <>
-          <ul className="pl-cards pl-q-list">
-            {questionList.shown.map((question) => (
-              <QuestionItem key={question.groupId} question={question} forIntents={forLine(question)} selected={question.groupId === linkedGroup} onAnswer={answerAndRefresh} />
-            ))}
-          </ul>
+  const seg = (
+    <Seg items={[
+      { label: "all", n: (questionsLoaded ? questions.length : 0) + waitingCount + moving.length },
+      { label: "questions", n: questionsLoaded ? questions.length : undefined, onClick: () => jumpTo("questions") },
+      { label: "waiting", n: loadingPeople ? undefined : waitingCount, onClick: () => jumpTo("waiting") },
+      { label: "in progress", n: moving.length, onClick: () => jumpTo("progress") },
+    ]} />
+  );
+
+  return split(
+    <>
+      <ListHead id="questions">questions · {questionsLoaded ? questions.length : "…"}</ListHead>
+      {staleLink && <div className="sv-empty">that question was already answered.</div>}
+      {!questionsLoaded ? (
+        <div className="sv-empty"><Placeholder.Rows count={2} avatar={false} label="loading questions" /></div>
+      ) : questions.length === 0 ? (
+        <div className="sv-empty">no questions right now.</div>
+      ) : (
+        <>
+          {questionList.shown.map((question) => {
+            const one = question.intentIds.length <= 1;
+            return (
+              <QuestionCard
+                key={question.groupId}
+                question={question}
+                intentLabel={one ? intentLabel(intents.find((intent) => intent.id === question.intentId)) : forLine(question)?.replace(/^for: /, "")}
+                intentHref={one ? `/i/${question.intentId}` : undefined}
+                selected={question.groupId === linkedGroup}
+                onAnswer={answerAndRefresh}
+              />
+            );
+          })}
           {questionList.more}
-          </>
-        )}
+        </>
+      )}
 
-        <hr />
-
-        <h2 id="waiting">waiting on you {!loadingPeople && `(${waitingCount})`}</h2>
-        {loadingPeople && !waitingRows.length ? (
-          <Placeholder.Rows count={3} label="loading people" />
-        ) : waitingRows.length === 0 ? (
-          <p className="pl-dim">nobody yet. your agents are still looking.</p>
-        ) : (
-          <>
-          <ul className="pl-cards">
-            {waitingList.shown.map(({ person, decision }) => {
-              if (decision) {
-                const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
-                const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
-                return (
-                  <li key={person.key} className={`pl-card pl-card-passed${chatOpen ? " on" : ""}`}>
-                    <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
-                    <div className="pl-card-body">
-                      {decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.
-                    </div>
-                    {canChat && !chatOpen && <button type="button" onClick={() => openChat(person)}>open chat</button>}
-                    {decision === "accepted" && person.notOnIndex && (
-                      <button type="button" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
-                    )}
-                  </li>
-                );
-              }
-              const lead = person.entries[0];
-              const blurb = lead.item.headline || lead.item.mainText || "";
-              const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
+      <ListHead id="waiting">waiting on you · {loadingPeople ? "…" : waitingCount}</ListHead>
+      {loadingPeople && !waitingRows.length ? (
+        <div className="sv-empty"><Placeholder.Rows count={3} label="loading people" /></div>
+      ) : waitingRows.length === 0 ? (
+        <div className="sv-empty">nobody yet. your agents are still looking.</div>
+      ) : (
+        <>
+          {waitingList.shown.map(({ person, decision }) => {
+            if (decision) {
+              const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
+              const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
               return (
-                <li key={person.key} {...cardProps(person, "pl-card")}>
-                  {/* The person themselves here, not their agent: this is who you'd meet. */}
-                  {person.userId
-                    ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><UserAvatar id={person.userId} name={person.name} avatar={person.avatar} size={36} /></Link>
-                    : <UserAvatar id={person.key} name={person.name} avatar={person.avatar} size={36} />}
-                  <div className="pl-card-body">
-                  <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                  {person.notOnIndex && <span className="pl-dim"> (not on index)</span>}
-                  {blurb && <div className="pl-blurb">{blurb}</div>}
-                  <div className="pl-actions">
-                    {/* Someone you already chat with sits in progress, so everyone here is a fresh decision. */}
-                    <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                    <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
-                  </div>
-                  </div>
-                </li>
+                <div key={person.key} className={`sv-card done${chatOpen ? " on" : ""}`}>
+                  <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={32} />
+                  <div className="sv-card-body">{decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.</div>
+                  {canChat && !chatOpen && <button type="button" className="sv-btn sm" onClick={() => openChat(person)}>open chat</button>}
+                  {decision === "accepted" && person.notOnIndex && (
+                    <button type="button" className="sv-btn sm" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
+                  )}
+                </div>
               );
-            })}
-          </ul>
+            }
+            const lead = person.entries[0];
+            const blurb = lead.item.headline || lead.item.mainText || "";
+            const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
+            return (
+              <div key={person.key} {...cardProps(person, "sv-card")}>
+                <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
+                <div className="sv-card-body">
+                  <b>{person.name}</b>
+                  {person.notOnIndex && <span className="sv-via"> · not on index</span>}
+                  {blurb && <div className="sv-blurb">{blurb}</div>}
+                  <div className="sv-actions">
+                    <button type="button" className="sv-btn go" data-sv-key="accept" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
+                    <button type="button" className="sv-btn" data-sv-key="pass" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
           {waitingList.more}
-          </>
-        )}
+        </>
+      )}
 
-        {(moving.length > 0 || refreshingIds.length > 0) && (
-          <>
-            <hr />
-            <h2 id="progress">
-              in progress ({refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length})
-            </h2>
-            <ul className="pl-moving">
-              {movingList.shown.map((person) => {
-                const lead = person.entries[0];
-                const talking = lead.stage === "talks";
-                const blurb = lead.item.headline || lead.item.mainText || "";
-                const { className, onClick } = cardProps(person, "pl-moving-row");
-                return (
-                  <li key={person.key} className={className} onClick={onClick}>
-                    {person.userId
-                      ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}><TheirAgentAvatar owner={{ id: person.userId, name: person.name, photo: person.avatar }} size={22} /></Link>
-                      : <TheirAgentAvatar owner={{ id: person.key, name: person.name, photo: person.avatar }} size={22} />}
-                    <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-                    <span className="pl-moving-blurb">{blurb}</span>
-                    <span className={`pl-status ${talking ? "talks" : "chat"}`}>
-                      {talking ? "talking" : person.notOnIndex ? "not on index" : "chat"}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            {movingList.more}
-          </>
-        )}
-      </div>,
+      {(moving.length > 0 || refreshingIds.length > 0) && (
+        <>
+          <ListHead id="progress">in progress · {refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length}</ListHead>
+          {movingList.shown.map((person) => {
+            const lead = person.entries[0];
+            const talking = lead.stage === "talks";
+            const blurb = lead.item.headline || lead.item.mainText || "";
+            return (
+              <div key={person.key} {...cardProps(person, "sv-row")}>
+                <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
+                <div className="sv-row-t">
+                  <div className="sv-row-n">{person.name}</div>
+                  <div className="sv-row-pv">{blurb}</div>
+                </div>
+                <span className="sv-row-tm">{talking ? "agents talking" : person.notOnIndex ? "not on index" : "chatting"}</span>
+              </div>
+            );
+          })}
+          {movingList.more}
+        </>
+      )}
+    </>,
+    seg,
   );
 }
 
