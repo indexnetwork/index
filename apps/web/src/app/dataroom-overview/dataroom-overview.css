@@ -27,7 +27,7 @@
 .dro header{margin-bottom:36px;padding-bottom:24px;border-bottom:1px solid var(--line);}
 .dro .eyebrow{font-family:'Public Sans', system-ui, sans-serif;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);}
 .dro h1{font-family:'Public Sans', system-ui, sans-serif;font-size:30px;line-height:1.15;font-weight:700;letter-spacing:-.015em;color:var(--ink);margin-top:12px;}
-.dro .dek{font-size:17px;line-height:1.55;color:#55554f;margin-top:14px;font-style:italic;}
+.dro .dek{margin-top:14px;font-style:italic;}
 .dro .byline{font-family:'Public Sans', system-ui, sans-serif;font-size:12px;color:#888;margin-top:18px;}
 .dro p{margin-top:1.1em;}
 .dro header + p{margin-top:0;}
@@ -85,6 +85,8 @@
 .dro .wlbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;padding-top:3px;}
 .dro .wnames{display:flex;flex-wrap:wrap;gap:6px 18px;}
 .dro .wnames span{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#3a3a37;}
+.dro .wnames a{color:inherit;text-decoration:none;}
+.dro .wnames a:hover{text-decoration:underline;text-underline-offset:2px;}
 .dro .wall figcaption{margin:8px 0 10px;}
 @media (max-width:560px){ .dro .wrow{grid-template-columns:1fr;gap:8px;} .dro .wnames span{font-size:14px;} }
 @media (max-width:560px){
@@ -94,7 +96,6 @@
 @media (max-width:720px){
   .dro .doc{font-size:15.5px;padding-top:48px;}
   .dro h1{font-size:26px;}
-  .dro .dek{font-size:16px;}
   .dro h2{font-size:19px;}
   .dro .chart .row{grid-template-columns:120px 1fr 40px;font-size:13px;}
 }
@@ -147,3 +148,22 @@
   .dro .dro-shot img,.dro .dro-lb,.dro .dro-lb img{transition-duration:.01ms;}
   .dro .dro-lb img{transform:none;}
 }
+
+/* Section navigation. On wide screens it is a list fixed to the left of the
+   reading column; on narrower ones it is a bar that sticks to the top and
+   scrolls sideways when the labels do not fit. */
+.dro .toc{font-family:'Public Sans', system-ui, sans-serif;font-size:12.5px;font-weight:600;}
+.dro .toc a{color:#6b6b66;text-decoration:none;}
+.dro .toc a:hover,.dro .toc a:focus-visible{color:var(--accent);}
+.dro h2[id]{scroll-margin-top:24px;}
+.dro .toc + p{margin-top:0;}
+@media (min-width:1080px){
+  .dro .toc{position:fixed;top:112px;right:calc(50% + 330px + 44px);z-index:5;display:flex;flex-direction:column;gap:11px;padding-right:16px;border-right:1px solid var(--line);text-align:right;}
+}
+@media (max-width:1079.98px){
+  .dro header{margin-bottom:0;border-bottom:0;padding-bottom:16px;}
+  .dro .toc{position:sticky;top:0;z-index:5;display:flex;gap:4px 18px;margin:0 -28px 28px;padding:12px 28px;background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);white-space:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .dro .toc::-webkit-scrollbar{display:none;}
+  .dro h2[id]{scroll-margin-top:60px;}
+}
+@media print{ .dro .toc{display:none;} }
