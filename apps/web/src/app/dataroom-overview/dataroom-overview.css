@@ -167,3 +167,17 @@
   .dro h2[id]{scroll-margin-top:60px;}
 }
 @media print{ .dro .toc{display:none;} }
+
+/* Top menu: the Index mark, then two actions kept visibly different. The pitch
+   deck is a quiet text link; joining Index is the one filled button. */
+.dro .dro-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:40px;font-family:'Public Sans', system-ui, sans-serif;}
+.dro .dro-mark{display:block;flex-shrink:0;line-height:0;}
+.dro .dro-mark img{height:15px;width:auto;display:block;}
+.dro .dro-nav-links{display:flex;align-items:center;gap:20px;}
+.dro .dro-nav a.dro-nav-deck{font-size:14px;font-weight:500;color:#444;text-decoration:none;}
+.dro .dro-nav a.dro-nav-deck::after{content:' ↗';color:#999;}
+.dro .dro-nav a.dro-nav-deck:hover{color:var(--ink);text-decoration:underline;}
+.dro .dro-nav a.dro-nav-join{font-size:14px;font-weight:600;color:#fff;background:var(--ink);padding:8px 16px;border-radius:999px;text-decoration:none;transition:background-color .15s ease;}
+.dro .dro-nav a.dro-nav-join:hover{color:#fff;background:var(--accent);}
+.dro .dro-nav-links a{white-space:nowrap;}
+@media (max-width:420px){ .dro .dro-nav{gap:12px;} .dro .dro-mark img{height:10px;} .dro .dro-nav-links{gap:12px;} .dro .dro-nav a.dro-nav-deck,.dro .dro-nav a.dro-nav-join{font-size:13px;} .dro .dro-nav a.dro-nav-join{padding:7px 13px;} }
