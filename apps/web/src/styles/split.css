@@ -32,7 +32,7 @@
   --sv-sh-field: 2px 2px 0 rgba(0, 0, 0, 0.12);
   --sv-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --sv-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
-  --sv-list-w: clamp(420px, 52%, 600px);
+  --sv-list-w: clamp(420px, 44%, 680px);
 
   flex: 1;
   min-width: 0;
@@ -458,10 +458,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-idk .sv-idk-sent { font: 12.5px/1.45 var(--sv-sans); padding: 6px 8px; border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-well); }
 .sv-idk textarea.sv-idk-text { height: 96px; min-height: 56px; font: 12.5px/1.45 var(--sv-sans); }
 
-/* the body sits centred to the right of the rail, a bit narrower than the window */
-.sv { flex: 1 1 auto; width: 100%; max-width: 1160px; margin: 0 auto; }
-/* side lines only once there's room around it (rail 210 + body 1160) */
-@media (min-width: 1372px) { .sv { border-left: 1px solid var(--sv-line); border-right: 1px solid var(--sv-line); } }
-.ih-main:has(> .sv), .ih-main:has(.sv) { display: flex; justify-content: center; }
+/* the body fills the window to the right of the rail */
+.sv { flex: 1 1 auto; width: 100%; }
 /* a narrower pane: the intent's agent column gives way first */
 .sv-iagent { width: clamp(240px, 42%, 300px); }
