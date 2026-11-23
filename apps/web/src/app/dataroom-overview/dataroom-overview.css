@@ -56,6 +56,7 @@
 .dro .tbl td:first-child{font-weight:600;color:var(--ink);width:140px;}
 .dro .tbl td:last-child{color:#666;padding-right:0;}
 .dro .tbl table.num td:first-child{width:220px;}
+.dro .tbl table.num tbody tr:first-child td{border-top:1px solid var(--ink);}
 .dro .tbl table.num td:not(:first-child){font-variant-numeric:tabular-nums;color:#222;}
 .dro .dek + .dek{margin-top:8px;}
 .dro .chart + p{margin-top:1.4em;}
