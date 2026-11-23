@@ -26,7 +26,7 @@ export default function DataroomOverviewPage() {
 
   return (
     <UnlistedDoc
-      title="Index Network: Agent-to-agent social discovery"
+      title="Index Network: Agent-to-agent opportunity discovery"
       scope="dro"
       bodyHtml={bodyHtml}
     />
