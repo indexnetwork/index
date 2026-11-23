@@ -82,6 +82,14 @@
 .dro figure svg{display:block;width:100%;height:auto;}
 .dro .bm .bm-narrow{display:none;}
 @media (max-width:640px){ .dro .bm .bm-wide{display:none;} .dro .bm .bm-narrow{display:block;max-width:360px;} }
+.dro .wall{font-family:'Public Sans', system-ui, sans-serif;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0 4px;}
+.dro .wrow{display:grid;grid-template-columns:150px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid #f0f0ec;}
+.dro .wrow:last-of-type{border-bottom:0;}
+.dro .wlbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#888;padding-top:3px;}
+.dro .wnames{display:flex;flex-wrap:wrap;gap:6px 18px;}
+.dro .wnames span{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#3a3a37;}
+.dro .wall figcaption{margin:8px 0 10px;}
+@media (max-width:560px){ .dro .wrow{grid-template-columns:1fr;gap:8px;} .dro .wnames span{font-size:14px;} }
 .dro .posts{columns:2;column-gap:14px;}
 .dro .posts img{break-inside:avoid;margin-bottom:14px;border-radius:12px;}
 @media (max-width:1000px){
