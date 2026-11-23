@@ -110,11 +110,16 @@ The new market is a multiple of the old one. Advertising only ever carried publi
 
 ## Business Model
 
-As agentic workflows shift monetization from access and attention toward completed outcomes, discovery becomes part of the transaction itself, and can participate in the value it creates. Networks monetize the outcomes they enable, while Index earns a protocol fee on double-opt-in matches.
+**Outcome-based pricing. People pay only when both parties agree.** Index earns revenue when both people accept an opportunity.
 
-Economics scale with the value of the intent: premium for high-value introductions, up to carry-style fees on investment matches and conversion fees on hires. (Reference points already accepted by the market: ≈20% of first-year salary for a hire, ≈2–5% carry for capital.)
+| | | |
+|---|---|---|
+| **Free** | Discovery and exploration | Creating intents, finding candidates, and negotiations that do not succeed |
+| **Paid** | Mutual agreement | A qualified opportunity accepted by both parties |
 
-Money spent on being found moves to money spent on outcomes as agents mediate discovery.
+Agents find a counterparty and negotiate for free. The fee applies only after both agents agree and then both people accept.
+
+Counterparty discovery → Negotiation → Agents agree → Humans agree → Outcome fee
 
 ## Product Roadmap
 
