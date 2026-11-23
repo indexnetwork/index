@@ -1,9 +1,17 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import "@/styles/plain.css";
 import { Stage, Window } from "@/components/workbench/Workbench";
-import PageHead from "@/components/intents-home/PageHead";
+import { SplitView, Seg } from "@/components/intents-home/SplitView";
 import { useCompact } from "@/hooks/useCompact";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { useConversation } from "@/contexts/ConversationContext";
+import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
+
+export type ChatFilter = "all" | "unread" | "new";
+const ChatFilterContext = createContext<ChatFilter>("all");
+/** Which conversations the list shows: all, unread, or not started yet. */
+export const useChatFilter = () => useContext(ChatFilterContext);
 
 /**
  * The box chat pages sit in. Desktop is a plain page like Home and Intents:
@@ -13,17 +21,28 @@ import { useCompact } from "@/hooks/useCompact";
  */
 export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClose?: () => void; children: ReactNode }) {
   const compact = useCompact();
+  const { user } = useAuthContext();
+  const { conversations } = useConversation();
+  const [filter, setFilter] = useState<ChatFilter>("all");
   if (!compact) {
+    // The same layout as home: the conversations on the left, the person you're talking to on the right.
+    const visible = conversations.filter(isVisibleH2HConversation);
+    const unread = visible.filter((c) => c.unreadCount > 0).length;
+    const fresh = visible.filter((c) => !c.lastMessage && (c.participants ?? []).some((p) => p.participantId !== user?.id)).length;
+    const toggle = (next: ChatFilter) => setFilter((now) => (now === next ? "all" : next));
     return (
-      <div className="ih-view pl pl-chat-page">
-        <div className="pl-col pl-chat-col">
-          <PageHead title="conversations" centered />
-          <div className={list ? "ih-chat" : "ih-chat solo"}>
-            {list && <div className="ih-chat-list">{list}</div>}
-            <div className="ih-chat-pane">{children}</div>
-          </div>
-        </div>
-      </div>
+      <ChatFilterContext.Provider value={filter}>
+        <SplitView
+          title="conversations"
+          seg={<Seg items={[
+            { label: "all", n: visible.length, on: filter === "all", onClick: () => setFilter("all") },
+            { label: "unread", n: unread, on: filter === "unread", onClick: () => toggle("unread") },
+            { label: "not started", n: fresh, on: filter === "new", onClick: () => toggle("new") },
+          ]} />}
+          list={list}
+          pane={children}
+        />
+      </ChatFilterContext.Provider>
     );
   }
   return (

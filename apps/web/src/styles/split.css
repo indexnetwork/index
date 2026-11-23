@@ -237,3 +237,75 @@ a.sv-soc:hover { background: var(--sv-sel); }
 
 .sv-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1001; display: flex; gap: 14px; align-items: center; background: #000; color: #fff; padding: 9px 12px 9px 16px; font: 500 12.5px "JetBrains Mono", ui-monospace, monospace; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25); }
 .sv-toast button { background: none; border: 0; color: #fff; font: 700 12.5px "JetBrains Mono", ui-monospace, monospace; text-decoration: underline; cursor: pointer; }
+
+/* ---------- intents ---------- */
+.sv-icard { align-items: flex-start; }
+.sv-itext { font-size: 14px; line-height: 1.45; }
+.sv-istat { margin-top: 6px; font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-istat .sv-status { font-size: 11px; }
+.sv-icard.paused .sv-itext, .sv-icard.paused .sv-istat { color: var(--sv-dim); }
+.sv-icard .sv-badge { margin-top: 2px; }
+.sv-pid.sv-ihead { padding-right: 22px; }
+.sv-ihead .sv-pn { font-size: 18px; }
+.sv-sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--sv-live); margin-right: 6px; vertical-align: 1px; }
+.sv-sdot.off { background: var(--sv-idle); }
+.sv-ilab { font: 700 11.5px var(--sv-mono); padding: 10px 8px 9px; border-bottom: 2px solid var(--sv-ink); margin-bottom: -1px; }
+.sv-ilab .n { font-weight: 400; color: var(--sv-dim); margin-left: 3px; }
+.sv-tabs .sv-btn + .sv-btn { margin-left: 6px; }
+/* matches beside this intent's agent: decide on the left, watch it react on the right */
+.sv-isplit { flex: 1; min-height: 0; display: flex; }
+.sv-imatches { flex: 1; min-width: 0; }
+.sv-ibleed { margin: 0 -22px; border-top: 1px solid var(--sv-line); }
+.sv-ibleed .sv-card { padding: 12px 22px; }
+.sv-card.closed { opacity: 0.6; }
+.sv-mrow { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.sv-mchip { margin-left: auto; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-iagent { width: 300px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--sv-well-line); background: var(--sv-well); }
+.sv-iagent > .pl.pl-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; background: none; max-width: none; margin: 0; padding: 0; }
+.sv-iagent .pl-agent-head { flex: none; padding: 12px 16px 8px; font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; border: 0; background: none; }
+.sv-iagent .pl-agent-log { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 14px; background: none; }
+.sv-iagent .pl-agent-bubble:not(.mine) { background: var(--sv-paper); }
+.sv-iagent form.pl-agent-compose { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 14px 14px; border-top: 1px dashed var(--sv-well-line); background: none; margin: 0; }
+.sv-iagent form.pl-agent-compose textarea { flex: 1; background: var(--sv-paper); }
+
+/* new intent: write it, the agent reads along */
+.sv-ni .sv-ni-text { display: block; width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical; border: 1px solid var(--sv-ink); border-radius: 2px; padding: 12px 14px; font: 400 16px/1.5 var(--sv-sans); color: var(--sv-ink); background: var(--sv-paper); outline: none; box-shadow: var(--sv-sh-field); }
+.sv-ni .sv-ni-starters { margin-top: 10px; }
+.sv-ni-lab { font: 400 11px var(--sv-mono); color: var(--sv-dim); margin-right: 4px; }
+.sv-ni-read { border: 1px solid var(--sv-well-line); background: var(--sv-well); border-radius: 4px; padding: 6px 14px; }
+.sv-ni-row { display: flex; gap: 14px; padding: 6px 0; font-size: 14px; }
+.sv-ni-row + .sv-ni-row { border-top: 1px dashed var(--sv-well-line); }
+.sv-ni-row span { width: 90px; flex: none; font: 400 11px var(--sv-mono); color: var(--sv-ink2); padding-top: 2px; }
+.sv-ni-warn { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--sv-ink); background: var(--sv-paper); font-size: 13px; line-height: 1.45; }
+.sv-ni-warn .sv-chips { margin-top: 8px; }
+.sv .sv-ni-dup { background: none; border: 0; padding: 0; font: inherit; color: var(--sv-ink); text-decoration: underline; cursor: pointer; text-align: left; }
+.sv-body p.sv-ni-tip { margin-top: 8px; font-size: 12.5px; color: var(--sv-ink2); }
+.sv .sv-chip.sv-ni-net { cursor: default; }
+.sv .sv-chip.sv-ni-net:hover { background: var(--sv-paper); }
+.sv-ni .pl-ni-text { width: 100%; box-sizing: border-box; }
+
+/* introduce: pairs on the left, the running list (or a picked pair) on the right */
+.sv-pairav { position: relative; flex: none; }
+.sv-pairav > * { position: absolute; top: 0; }
+.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); border-radius: 50%; }
+.sv-ghost { right: 0; display: grid; place-items: center; border: 1px dashed var(--sv-ink); border-radius: 50%; background: var(--sv-paper); color: var(--sv-ink); font-family: var(--sv-mono); font-weight: 700; box-sizing: border-box; }
+.sv-faint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-body.sv-idk { padding-top: 14px; }
+.sv-idk .idk-pair { margin-bottom: 14px; }
+.sv-idk textarea.sv-idk-text { height: 110px; font-size: 13.5px; }
+.sv-idk-hint { margin-top: 6px; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); }
+.sv-idk .sv-runs li { display: block; padding: 0; margin: 0 -8px; }
+.sv-idk .sv-runs li.on { background: var(--sv-sel); }
+.sv-run { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 7px 8px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.sv-run:hover { background: var(--sv-sel); }
+.sv-run .chev { font: 400 12px var(--sv-mono); color: var(--sv-dim); width: 10px; text-align: right; }
+.sv-rdet { padding: 2px 8px 12px; }
+.sv-rsteps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 8px; font: 500 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-rstep-wrap { display: inline-flex; gap: 6px; align-items: center; }
+.sv-rsteps .st.done { color: var(--sv-ink); }
+.sv-rsteps .st.now { color: var(--sv-ink); font-weight: 700; background: var(--sv-paper); padding: 1px 5px; border: 1px solid var(--sv-ink); }
+.sv-rsteps .st.end { color: var(--sv-ink); font-weight: 700; border: 1px dashed var(--sv-ink); padding: 1px 5px; }
+.sv-rsteps .sep { color: var(--sv-edge); }
+.sv-dim-note { font-size: 12.5px; color: var(--sv-ink2); margin-bottom: 8px; }
+.sv-idk-sent { font-size: 13px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--sv-well-line); background: var(--sv-well); border-radius: 2px; white-space: pre-wrap; }
+.sv-idk .idk-run-foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--sv-edge); }

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/plain.css";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { RANK, filterOf, personKey, type Entry, type Filter, type HomeIntent } from "@/components/intents-home/stages";
 import UserAvatar from "@/components/UserAvatar";
-import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -19,6 +18,12 @@ import type { RadarCardItem } from "@/services/opportunities";
 import { getPublicUserProfile } from "@/services/users";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { useShowMore } from "@/components/ui/ShowMore";
+import { IntentsSplit } from "@/components/intents-home/IntentsIndex";
+import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
+import MatchWindow from "@/components/intents-home/MatchWindow";
+import QuestionCard from "@/components/intents-home/QuestionCard";
+import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
+import { useUndo } from "@/components/intents-home/undo";
 
 interface Person {
   key: string;
@@ -50,12 +55,16 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     entriesByIntent, opportunityActionLoading, handleOpportunityAction,
   } = useIntentsData();
 
+  const later = useUndo();
+  const { questions: allQuestions, answer } = usePersonalQuestions();
+  // This intent's questions sit on top of its matches, the same cards as Home's.
+  const questions = allQuestions.filter((question) => question.intentIds.includes(selectedId));
   const [missing, setMissing] = useState(false);
   const [inviteFor, setInviteFor] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const [statusPending, setStatusPending] = useState<string | null>(null);
   const [archiveArmed, setArchiveArmed] = useState(false);
-  const [archiving, setArchiving] = useState(false);
+  const [archiving] = useState(false);
   const archiveTimer = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
@@ -125,14 +134,21 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     return ids;
   }, [conversations, user?.id]);
 
+  const [passed, setPassed] = useState<Set<string>>(() => new Set());
   const act = (person: Person, action: "accepted" | "rejected") => {
-    for (const entry of person.entries.filter((e) => e.stage === "awaiting")) {
-      if (opportunityActionLoading[entry.item.opportunityId]) continue;
-      void handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
-        notOnIndex: person.notOnIndex,
-        scope: { intentId: entry.intentId },
-      }).then(() => loadRadar(entry.intentId));
-    }
+    const send = () => {
+      for (const entry of person.entries.filter((e) => e.stage === "awaiting")) {
+        if (opportunityActionLoading[entry.item.opportunityId]) continue;
+        void handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
+          notOnIndex: person.notOnIndex,
+          scope: { intentId: entry.intentId },
+        }).then(() => loadRadar(entry.intentId));
+      }
+    };
+    if (action === "accepted") { send(); return; }
+    // A pass waits a few seconds behind "undo"; the card steps aside meanwhile.
+    setPassed((prev) => new Set(prev).add(person.key));
+    later(`passed on ${person.name.split(" ")[0]}`, send, () => setPassed((prev) => { const next = new Set(prev); next.delete(person.key); return next; }));
   };
 
   const openMatch = (person: Person) => {
@@ -154,62 +170,46 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     const blurb = lead.item.headline || lead.item.mainText || "";
     const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
     const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
-    const on = log?.opportunityId === lead.item.opportunityId;
     const inviting = inviteFor === person.key;
-    const chip = stage === "talks" ? { tone: "talks", text: "agents talking" }
-      : stage === "chat" ? { tone: "chat", text: person.notOnIndex ? "not on index yet" : "chat open" }
-        : stage === "closed" ? { tone: "paused", text: lead.item.status === "rejected" ? "not a fit" : "missed" }
+    const chip = stage === "talks" ? "agents talking"
+      : stage === "chat" ? (person.notOnIndex ? "not on index yet" : "chat open")
+        : stage === "closed" ? (lead.item.status === "rejected" ? "not a fit" : "missed")
           : null;
-    const tone = stage === "talks" ? " talks" : stage === "chat" ? " live" : stage === "closed" ? " paused" : "";
-    const face = stage === "awaiting"
-      ? <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
-      : <TheirAgentAvatar owner={{ id: person.userId ?? person.key, name: person.name, photo: person.avatar }} size={36} />;
     return (
-      <li key={person.key} className={`pl-card${tone} pl-card-open${on ? " on" : ""}`}
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest("a, button, textarea, input")) return;
-          if (on) setLog(null); else openMatch(person);
-        }}>
-        {person.userId ? <Link to={`/u/${person.userId}`} className="pl-card-face" title={`${person.name}'s profile`}>{face}</Link> : face}
-        <div className="pl-card-body">
-          <div className="pl-card-head">
-            <span>
-              <b>{person.userId ? <Link to={`/u/${person.userId}`} className="pl-name" title={`${person.name}'s profile`}>{person.name}</Link> : person.name}</b>
-              {person.notOnIndex && stage !== "chat" && <span className="pl-dim"> (not on index)</span>}
-              {person.intentCount > 1 && <span className="pl-dim"> · in {person.intentCount} of your intents</span>}
-            </span>
-            {chip && <span className={`pl-status ${chip.tone}`}>{chip.text}</span>}
+      <div key={person.key} className={`sv-card${stage === "closed" ? " closed" : ""}`}
+        onClick={(event) => { if (!(event.target as HTMLElement).closest("a, button, textarea, input")) openMatch(person); }}>
+        <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
+        <div className="sv-card-body">
+          <div className="sv-mrow">
+            <b>{person.name}</b>
+            {person.notOnIndex && stage !== "chat" && <span className="sv-via"> · not on index</span>}
+            {person.intentCount > 1 && <span className="sv-via"> · in {person.intentCount} of your intents</span>}
+            {chip && <span className="sv-mchip">{chip}</span>}
           </div>
           {blurb
-            ? <div className="pl-blurb">{blurb}</div>
-            : lead.item.presentationPending && <div className="pl-blurb"><Placeholder.Text lines={2} label="writing this up" /></div>}
-          <div className="pl-actions">
+            ? <div className="sv-blurb">{blurb}</div>
+            : lead.item.presentationPending && <div className="sv-blurb"><Placeholder.Text lines={2} label="writing this up" /></div>}
+          <div className="sv-actions">
             {stage === "awaiting" && hasChat ? (
-              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
+              <button type="button" className="sv-btn go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
             ) : stage === "awaiting" ? (
               <>
-                <button type="button" className="go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>{" "}
-                <button type="button" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                <button type="button" className="sv-btn go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
+                <button type="button" className="sv-btn" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
               </>
             ) : stage === "chat" && person.notOnIndex ? (
-              <button type="button" aria-pressed={inviting} onClick={() => setInviteFor(inviting ? null : person.key)}>send invite</button>
+              <button type="button" className="sv-btn" aria-pressed={inviting} onClick={() => setInviteFor(inviting ? null : person.key)}>send invite</button>
             ) : stage === "chat" && person.userId ? (
-              <button type="button" className="go" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
+              <button type="button" className="sv-btn" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
             ) : (
-              <button type="button" onClick={() => openMatch(person)}>read the log</button>
+              <button type="button" className="sv-btn" onClick={() => openMatch(person)}>read the log</button>
             )}
           </div>
           {inviting && (
-            <InviteLog
-              key={lead.item.opportunityId}
-              item={lead.item}
-              name={person.name}
-              intent={current?.payload}
-              senderName={user?.name}
-            />
+            <InviteLog key={lead.item.opportunityId} item={lead.item} name={person.name} intent={current?.payload} senderName={user?.name} />
           )}
         </div>
-      </li>
+      </div>
     );
   };
 
@@ -229,7 +229,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     }
   };
 
-  const clickArchive = async () => {
+  const clickArchive = () => {
     if (!current || archiving) return;
     if (archiveTimer.current) window.clearTimeout(archiveTimer.current);
     if (!archiveArmed) {
@@ -238,103 +238,105 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
       return;
     }
     setArchiveArmed(false);
-    setArchiving(true);
-    try {
-      await intentsService.archiveIntent(current.id);
-      updateIntents((prev) => prev.filter((intent) => intent.id !== current.id));
-      setLog(null);
-      navigate("/intents");
-    } catch {
-      showError("couldn't archive this intent.");
-    } finally {
-      if (mountedRef.current) setArchiving(false);
-    }
+    // The intent leaves the list at once; the archive is sent a few seconds later unless undone.
+    const gone = current;
+    updateIntents((prev) => prev.filter((intent) => intent.id !== gone.id));
+    setLog(null);
+    navigate("/intents");
+    later("intent archived", () => {
+      intentsService.archiveIntent(gone.id).catch(() => {
+        showError("couldn't archive this intent.");
+        updateIntents((prev) => prev.some((i) => i.id === gone.id) ? prev : [gone, ...prev]);
+      });
+    }, () => {
+      updateIntents((prev) => prev.some((i) => i.id === gone.id) ? prev : [gone, ...prev]);
+      navigate(`/i/${gone.id}`);
+    });
   };
 
   const loadingPeople = !radar[selectedId] && !radarFailed[selectedId];
   const peopleFailed = radarFailed[selectedId] && !radar[selectedId];
   const found = sections.matches.length + sections["in progress"].length + sections.closed.length;
-  const matchList = useShowMore(sections.matches);
+  const matchList = useShowMore(sections.matches.filter((person) => !passed.has(person.key)));
   const progressList = useShowMore(sections["in progress"]);
   const closedList = useShowMore(sections.closed);
   const created = current?.createdAt
-    ? ` · since ${new Date(current.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    ? `since ${new Date(current.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }).toLowerCase()}`
     : "";
 
-  return (
-    <div className="ih-view pl">
-      <div className="pl-col">
-        {/* It's all about the intent: back and the buttons share the top line, so the intent gets the column's full width. */}
-        <header className="ih-head pl-intent-head">
-          <div className="pl-intent-top">
-            <button type="button" className="pl-back ih-head-back" onClick={() => navigate("/intents")}>◂ intents</button>
-            {current && (
-              <div className="ih-actions">
-                <button type="button" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
-                <button aria-busy={archiving} type="button" className={`danger${archiveArmed || archiving ? " on" : ""}`} disabled={archiving} onClick={() => void clickArchive()}>
-                  {archiving ? "archiving" : archiveArmed ? "archive, sure?" : "archive"}
-                </button>
+  const text = current ? (current.payload?.trim() || current.summary?.trim() || "your intent") : "";
+  const waitingNow = matchList.shown.length;
+  const detail = !current ? (
+    <div className="sv-blank">{missing ? "this intent doesn't exist or was removed." : <Placeholder.Text lines={2} title label="loading this intent" />}</div>
+  ) : (
+    <div className="sv-person">
+      <header className="sv-ph">
+        <div className="sv-pid sv-ihead">
+          <div className="who">
+            <div className="sv-pn" title={text}>{text}</div>
+            <div className="sv-pu"><span className={`sv-sdot${paused ? " off" : ""}`} />{paused ? "paused, your agent isn't looking" : "live, your agent is looking in the background"}{created && <span className="loc"> · {created}</span>}</div>
+          </div>
+        </div>
+        <div className="sv-tabs">
+          <span className="sv-ilab">matches <span className="n">{found}</span></span>
+          <span className="sp" />
+          <button type="button" className="sv-btn sm" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
+          <button aria-busy={archiving} type="button" className="sv-btn sm danger" disabled={archiving} onClick={clickArchive}>
+            {archiving ? "archiving" : archiveArmed ? "archive, sure?" : "archive"}
+          </button>
+        </div>
+      </header>
+      {/* Matches and this intent's agent side by side: answer or decide on the left, watch it react on the right. */}
+      <div className="sv-isplit">
+        <div className="sv-body sv-imatches">
+          {questions.length > 0 && (
+            <>
+              <h4 className="sv-h4">questions ({questions.length})</h4>
+              <div className="sv-ibleed">
+                {questions.map((question) => <QuestionCard key={question.groupId} question={question} onAnswer={answer} />)}
               </div>
-            )}
-          </div>
-          {current || missing ? (
-            <h1 className="ih-title">
-              {current ? (current.payload?.trim() || current.summary?.trim() || "your intent") : "this intent doesn't exist or was removed."}
-            </h1>
+            </>
+          )}
+          {peopleFailed ? (
+            <p className="sv-dimp">couldn&apos;t load people. <button type="button" className="sv-link" onClick={() => void loadRadar(selectedId)}>try again</button></p>
+          ) : loadingPeople && found === 0 ? (
+            <Placeholder.Rows count={3} label="loading people" />
           ) : (
-            <Placeholder.Text lines={1} title label="loading this intent" style={{ margin: "6px 0 14px", maxWidth: 520 }} />
-          )}
-          {current && (
-            <div className="ih-status">
-              <span className="ih-status-dot" style={{ background: paused ? "var(--ih-closed)" : "var(--ih-live)" }} />
-              <span style={{ flex: 1, minWidth: 0 }}>{paused ? "paused, your agent isn't looking" : "live, your agent is looking in the background"}{created}</span>
-            </div>
-          )}
-        </header>
-
-        {current && (
-          <div className="pl-page">
-            {peopleFailed ? (
-              <p>couldn&apos;t load people. <button type="button" onClick={() => void loadRadar(selectedId)}>try again</button></p>
-            ) : loadingPeople && found === 0 ? (
-              <Placeholder.Rows count={3} label="loading people" />
-            ) : (
-              <>
-                <h2>waiting on you ({sections.matches.length})</h2>
-                {sections.matches.length > 0 ? (
-                  <><ul className="pl-cards">{matchList.shown.map(renderCard)}</ul>{matchList.more}</>
-                ) : (
-                  <p className="pl-dim">
-                    {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
-                  </p>
-                )}
-
-                {sections["in progress"].length > 0 && (
+            <>
+              <h4 className="sv-h4">waiting on you ({waitingNow})</h4>
+              {waitingNow > 0 ? (
+                <div className="sv-ibleed">{matchList.shown.map(renderCard)}{matchList.more}</div>
+              ) : (
+                <p className="sv-dimp">
+                  {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
+                </p>
+              )}
+              {sections["in progress"].length > 0 && (
+                <>
+                  <h4 className="sv-h4">in progress ({sections["in progress"].length})</h4>
+                  <div className="sv-ibleed">{progressList.shown.map(renderCard)}{progressList.more}</div>
+                </>
+              )}
+              {sections.closed.length > 0 && (
+                showClosed ? (
                   <>
-                    <hr />
-                    <h2>in progress ({sections["in progress"].length})</h2>
-                    <ul className="pl-cards">{progressList.shown.map(renderCard)}</ul>
-                    {progressList.more}
+                    <h4 className="sv-h4">closed ({sections.closed.length})</h4>
+                    <div className="sv-ibleed">{closedList.shown.map(renderCard)}{closedList.more}</div>
                   </>
-                )}
-
-                {sections.closed.length > 0 && (
-                  <>
-                    <hr />
-                    <h2>closed ({sections.closed.length})</h2>
-                    {/* Closed stays folded until asked for, then opens like any other list. */}
-                    {showClosed
-                      ? <><ul className="pl-cards">{closedList.shown.map(renderCard)}</ul>{closedList.more}</>
-                      : <button type="button" className="pl-more" aria-expanded={false} onClick={() => setShowClosed(true)}>show {sections.closed.length} closed</button>}
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        )}
+                ) : <button type="button" className="sv-more" style={{ paddingLeft: 0 }} onClick={() => setShowClosed(true)}>show {sections.closed.length} closed</button>
+              )}
+            </>
+          )}
+        </div>
+        <div className="sv-iagent">
+          <IntentAgentPanel key={current.id} intentId={current.id} paused={paused} createdAt={current.createdAt} hideOpenQuestions />
+        </div>
       </div>
     </div>
   );
+
+  // A person picked from the matches takes the right side until it's closed.
+  return <IntentsSplit selectedId={selectedId} pane={log ? <MatchWindow /> : detail} />;
 }
 
 /**

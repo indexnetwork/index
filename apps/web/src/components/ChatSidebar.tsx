@@ -8,6 +8,7 @@ import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useCompact } from '@/hooks/useCompact';
 import { Placeholder } from "@/components/ui/Placeholder";
+import { useChatFilter } from '@/components/chat/ChatFrame';
 
 interface RecentChat {
   groupId: string;
@@ -20,6 +21,7 @@ interface RecentChat {
   unreadCount: number;
   showUnreadCount: boolean;
   sortTimestamp: number;
+  started: boolean;
 }
 
 const formatConversationTime = (timestamp: number) => {
@@ -59,6 +61,7 @@ export default function ChatSidebar({ showEmpty = true }: {
   const { conversations, conversationsStatus, refreshConversations } = useConversation();
 
   const [refreshing, setRefreshing] = useState(true);
+  const filter = useChatFilter();
 
   useEffect(() => {
     if (!user?.id) return;
@@ -79,12 +82,14 @@ export default function ChatSidebar({ showEmpty = true }: {
         name: conv.metadata?.title ?? peer?.name ?? 'someone',
         lastMessage: lastText,
         lastMessageIsInternal: false,
+        started: !!conv.lastMessage,
         viaTitle: conv.via?.[0]?.title,
         unreadCount: conv.unreadCount,
         showUnreadCount: conv.unreadCount > 0,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
-    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp)
+    .filter((chat) => compact || filter === "all" || (filter === "unread" ? chat.unreadCount > 0 : !chat.started));
 
   /* Cold cache: conversation-row placeholders while the first fetch lands. */
   const renderSkeleton = () => <Placeholder.Rows count={8} label="loading conversations" />;
@@ -108,6 +113,40 @@ export default function ChatSidebar({ showEmpty = true }: {
             message="no conversations yet. a chat opens when you and someone both accept an intro."
             action={{ label: 'start an intent', to: '/i/new' }}
           />
+        ) : !compact ? (
+          <div>
+            {recentChats.map((chat) => {
+              const preview = resolveConversationPreview({ lastMessage: chat.lastMessage, lastMessageIsInternal: chat.lastMessageIsInternal });
+              return (
+                <button
+                  key={chat.groupId}
+                  type="button"
+                  className={`sv-row${chat.peerUserId === activePeerId ? " on" : ""}`}
+                  data-sv-item={chat.groupId}
+                  aria-current={chat.peerUserId === activePeerId ? "page" : undefined}
+                  style={{ width: "100%", textAlign: "left", background: undefined, border: 0, borderBottom: "1px solid var(--sv-line)" }}
+                  onClick={() => {
+                    const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
+                    if (to === pathname) return;
+                    navigate(to, { replace: pathname === "/chat" || activePeerId !== null });
+                  }}
+                >
+                  <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={36} />
+                  <span className="sv-row-t">
+                    <span className="sv-row-n" style={{ display: "block" }}>{chat.name}</span>
+                    <span className="sv-row-pv" style={{ display: "block", color: preview.kind === "empty" ? "var(--sv-dim)" : undefined }}>
+                      {preview.kind === "empty" ? `${preview.text.toLowerCase()}.` : preview.text}
+                    </span>
+                  </span>
+                  <span style={{ display: "grid", justifyItems: "end", gap: 4 }}>
+                    {chat.lastMessage && <span className="sv-row-tm">{formatConversationTime(chat.sortTimestamp)}</span>}
+                    {chat.showUnreadCount && <span className="sv-badge" data-testid={`chat-unread-${chat.groupId}`}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>}
+                  </span>
+                </button>
+              );
+            })}
+            {recentChats.length === 0 && <div className="sv-empty">nothing here.</div>}
+          </div>
         ) : (
           <div>
             {recentChats.map((chat) => (

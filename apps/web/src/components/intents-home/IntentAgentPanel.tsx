@@ -33,10 +33,12 @@ function Markdown({ text }: { text: string }) {
 /** A new intent's first steps can take a while to arrive; until then it reads as warming up. */
 const FRESH_MS = 30 * 60_000;
 
-export default function IntentAgentPanel({ intentId, paused, createdAt }: {
+export default function IntentAgentPanel({ intentId, paused, createdAt, hideOpenQuestions = false }: {
   intentId: string;
   paused: boolean;
   createdAt?: string;
+  /** The intent's open questions are shown above its matches instead. */
+  hideOpenQuestions?: boolean;
 }) {
   const {
     loading, loadFailed, retry, feed, questions, draft, setDraft, send, answerOne, sending, waiting, firstWaiting, timeById, inputRef,
@@ -81,6 +83,7 @@ export default function IntentAgentPanel({ intentId, paused, createdAt }: {
           if (piece.kind === "progress") {
             return <p key={piece.id} className="pl-dim pl-small pl-trace-step">· {piece.text}</p>;
           }
+          if (piece.kind === "open-question" && hideOpenQuestions) return null;
           if (piece.kind === "open-question") {
             // The same question card as Home's: who's asking, the question, radios, send answer and skip.
             const { question } = piece;
