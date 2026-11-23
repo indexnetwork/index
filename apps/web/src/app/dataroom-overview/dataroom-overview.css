@@ -23,33 +23,33 @@
    figures with captions. The storyline follows the seed deck. */
 .dro{--accent:#1f4d3a;--line:#e6e6e2;--soft:#f6f6f3;
   --serif:'Source Serif 4', 'Source Serif Pro', Georgia, 'Times New Roman', serif;}
-.dro .doc{max-width:680px;padding:88px 28px 72px;color:#1d1d1b;font-family:var(--serif);font-size:19px;line-height:1.7;}
-.dro header{margin-bottom:44px;padding-bottom:28px;border-bottom:1px solid var(--line);}
-.dro .eyebrow{font-family:'Public Sans', system-ui, sans-serif;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);}
-.dro h1{font-family:'Public Sans', system-ui, sans-serif;font-size:40px;line-height:1.12;font-weight:700;letter-spacing:-.02em;color:var(--ink);margin-top:14px;}
-.dro .dek{font-size:21px;line-height:1.5;color:#55554f;margin-top:18px;font-style:italic;}
-.dro .byline{font-family:'Public Sans', system-ui, sans-serif;font-size:13px;color:#888;margin-top:22px;}
+.dro .doc{max-width:660px;padding:72px 28px 64px;color:#1d1d1b;font-family:var(--serif);font-size:16px;line-height:1.7;}
+.dro header{margin-bottom:36px;padding-bottom:24px;border-bottom:1px solid var(--line);}
+.dro .eyebrow{font-family:'Public Sans', system-ui, sans-serif;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);}
+.dro h1{font-family:'Public Sans', system-ui, sans-serif;font-size:30px;line-height:1.15;font-weight:700;letter-spacing:-.015em;color:var(--ink);margin-top:12px;}
+.dro .dek{font-size:17px;line-height:1.55;color:#55554f;margin-top:14px;font-style:italic;}
+.dro .byline{font-family:'Public Sans', system-ui, sans-serif;font-size:12px;color:#888;margin-top:18px;}
 .dro p{margin-top:1.1em;}
 .dro header + p{margin-top:0;}
-.dro h2{font-family:'Public Sans', system-ui, sans-serif;font-size:25px;line-height:1.3;font-weight:700;letter-spacing:-.01em;color:var(--ink);margin-top:2.4em;}
-.dro h3{font-family:'Public Sans', system-ui, sans-serif;font-size:19px;font-weight:700;color:var(--ink);margin-top:2em;}
+.dro h2{font-family:'Public Sans', system-ui, sans-serif;font-size:20px;line-height:1.3;font-weight:700;letter-spacing:-.01em;color:var(--ink);margin-top:2.2em;}
+.dro h3{font-family:'Public Sans', system-ui, sans-serif;font-size:16px;font-weight:700;color:var(--ink);margin-top:2em;}
 .dro h2 + p,.dro h3 + p{margin-top:.6em;}
 .dro strong{font-weight:600;color:var(--ink);}
 .dro blockquote{margin:1.4em 0 0;padding-left:22px;border-left:3px solid var(--accent);font-size:23px;line-height:1.4;color:var(--ink);font-style:italic;}
-.dro .aside{font-family:'Public Sans', system-ui, sans-serif;font-size:13.5px;color:#777;}
+.dro .aside{font-family:'Public Sans', system-ui, sans-serif;font-size:12.5px;color:#777;}
 
 .dro figure{margin:2em 0 0;}
-.dro figcaption{font-family:'Public Sans', system-ui, sans-serif;font-size:13px;line-height:1.5;color:#888;margin-top:10px;}
+.dro figcaption{font-family:'Public Sans', system-ui, sans-serif;font-size:12px;line-height:1.5;color:#888;margin-top:10px;}
 .dro figure iframe{width:100%;height:772px;border:1px solid #e3e4e0;display:block;background:#fff;}
 
 .dro .chart{font-family:'Public Sans', system-ui, sans-serif;padding:20px 0 4px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
-.dro .chart .row{display:grid;grid-template-columns:180px 1fr 44px;align-items:center;gap:14px;font-size:14px;padding:5px 0;color:#333;}
+.dro .chart .row{display:grid;grid-template-columns:170px 1fr 44px;align-items:center;gap:14px;font-size:13px;padding:5px 0;color:#333;}
 .dro .chart i{display:block;height:9px;background:linear-gradient(90deg,var(--accent) var(--w),var(--soft) var(--w));}
 .dro .chart b{font-weight:600;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums;}
 .dro .chart figcaption{margin:12px 0 10px;}
 
 .dro .tbl{overflow-x:auto;}
-.dro .tbl table{width:100%;min-width:560px;font-family:'Public Sans', system-ui, sans-serif;font-size:14px;line-height:1.55;}
+.dro .tbl table{width:100%;min-width:560px;font-family:'Public Sans', system-ui, sans-serif;font-size:13px;line-height:1.55;}
 .dro .tbl th{padding:0 16px 10px 0;text-align:left;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#666;border-bottom:1px solid var(--ink);}
 .dro .tbl td{padding:14px 16px 14px 0;vertical-align:top;border-bottom:1px solid #eee;color:#222;}
 .dro .tbl td:first-child{font-weight:600;color:var(--ink);width:140px;}
@@ -64,11 +64,10 @@
 .dro .foot{font-family:'Public Sans', system-ui, sans-serif;}
 
 @media (max-width:720px){
-  .dro .doc{font-size:17.5px;padding-top:56px;}
-  .dro h1{font-size:30px;}
-  .dro .dek{font-size:19px;}
-  .dro h2{font-size:22px;}
-  .dro blockquote{font-size:20px;}
+  .dro .doc{font-size:15.5px;padding-top:48px;}
+  .dro h1{font-size:26px;}
+  .dro .dek{font-size:16px;}
+  .dro h2{font-size:19px;}
   .dro .chart .row{grid-template-columns:120px 1fr 40px;font-size:13px;}
 }
 
