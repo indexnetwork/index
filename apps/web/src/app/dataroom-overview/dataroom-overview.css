@@ -34,6 +34,7 @@
 .dro h2{font-family:'Public Sans', system-ui, sans-serif;font-size:20px;line-height:1.3;font-weight:700;letter-spacing:-.01em;color:var(--ink);margin-top:2.2em;}
 .dro h3{font-family:'Public Sans', system-ui, sans-serif;font-size:16px;font-weight:700;color:var(--ink);margin-top:2em;}
 .dro h2 + p,.dro h3 + p{margin-top:.6em;}
+.dro code{font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;font-size:.82em;color:#444;}
 .dro strong{font-weight:600;color:var(--ink);}
 .dro blockquote{margin:1.4em 0 0;padding-left:22px;border-left:3px solid var(--accent);font-size:23px;line-height:1.4;color:var(--ink);font-style:italic;}
 .dro .aside{font-family:'Public Sans', system-ui, sans-serif;font-size:12.5px;color:#777;}
