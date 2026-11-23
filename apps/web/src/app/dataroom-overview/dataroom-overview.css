@@ -121,9 +121,6 @@
 .dro .dro-shot:hover::after{opacity:1;background-color:rgba(17,17,17,.82);}
 .dro .dro-shot img{
   width:100%;display:block;border:1px solid #e3e4e0;
-  /* The two screenshots are not the same shape; crop the thumbnails to one
-     height and let the lightbox show each image whole. */
-  aspect-ratio:16/9;object-fit:cover;object-position:top;
   transition:transform .3s cubic-bezier(.2,.8,.24,1),box-shadow .3s ease;
 }
 .dro .dro-shot:hover img{transform:translateY(-2px);box-shadow:0 8px 24px rgba(17,17,17,.14);}
