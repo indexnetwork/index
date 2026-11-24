@@ -15,8 +15,8 @@ type Question = PrincipalQuestion & { intentId: string; groupId?: string };
 /**
  * A question from an agent, built like the other cards in a list: who's
  * asking (and for which intent), the question, then its answers as chips.
- * A rounded chip answers in one click; "something else…" opens a box for your
- * own words; skip lets the agent decide. Every answer waits a few seconds
+ * A rounded chip answers in one click; "something else…" is a chip you type
+ * in (enter sends); skip lets the agent decide. Every answer waits a few seconds
  * behind "undo" before it's sent.
  */
 export default function QuestionCard({ question, intentLabel, intentHref, selected, onAnswer, onHide }: {
@@ -31,7 +31,7 @@ export default function QuestionCard({ question, intentLabel, intentHref, select
 }) {
   const later = useUndo();
   const { error: showError } = useNotifications();
-  const [own, setOwn] = useState<string | null>(null);
+  const [own, setOwn] = useState("");
   const [gone, setGone] = useState(false);
   const asker = questionAsker(question);
   const options = question.options ?? [];
@@ -71,17 +71,12 @@ export default function QuestionCard({ question, intentLabel, intentHref, select
           {options.map((option) => (
             <button key={option} type="button" className="sv-chip" onClick={() => send(option, `answered “${option}”`)}>{option}</button>
           ))}
-          <button type="button" className="sv-chip ghost" onClick={() => setOwn(own === null ? "" : null)}>
-            {options.length ? "something else…" : "answer…"}
-          </button>
+          <form className="sv-chip ghost sv-chip-own" onSubmit={(event) => { event.preventDefault(); send(own, `answered “${own.trim()}”`); }}>
+            <input value={own} onChange={(event) => setOwn(event.target.value)} placeholder={options.length ? "something else…" : "type your answer…"} aria-label="your answer" size={Math.max(15, own.length + 1)} />
+            {own.trim() && <button type="submit" className="sv-chip-send">send</button>}
+          </form>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
-        {own !== null && (
-          <form className="sv-own" onSubmit={(event) => { event.preventDefault(); send(own, `answered “${own.trim()}”`); }}>
-            <input autoFocus value={own} onChange={(event) => setOwn(event.target.value)} placeholder="your answer" aria-label="your answer" />
-            <button type="submit" className="sv-btn go" disabled={!own.trim()}>send</button>
-          </form>
-        )}
       </div>
     </div>
   );

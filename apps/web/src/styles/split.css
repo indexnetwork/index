@@ -128,9 +128,6 @@
 .sv .sv-chip.picked { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
 .sv .sv-chip.send { background: var(--sv-orange); font-weight: 600; }
 .sv-chips .sv-link { margin-left: auto; padding: 4px 0; }
-.sv-own { display: flex; gap: 6px; margin-top: 8px; }
-.sv-own input { flex: 1; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 6px 8px; font: 400 13px var(--sv-sans); outline: none; }
-.sv-own input:focus { border-color: var(--sv-ink); }
 
 /* status: a small square with the stage's colour */
 .sv-status { white-space: nowrap; font: 500 11px var(--sv-mono); color: var(--sv-ink2); }
@@ -512,3 +509,10 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-istat .sv-status::before { width: 7px; height: 7px; margin-right: 5px; }
 /* an intent as a page title: long ones step down so three lines don't shout */
 .sv-page-long { display: block; font-size: 19px; line-height: 1.4; letter-spacing: 0; }
+/* "something else…": a chip you type in, enter or send answers */
+.sv-chips.one .sv-chip.sv-chip-own { display: inline-flex; align-items: center; gap: 6px; padding: 0 3px 0 11px; cursor: text; }
+.sv .sv-chip.sv-chip-own:hover { background: var(--sv-paper); }
+.sv .sv-chip.sv-chip-own:focus-within { border-color: var(--sv-ink); color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-chip-own input { box-shadow: none; border-radius: 0; height: auto; min-height: 0; width: auto; min-width: 0; max-width: 46ch; padding: 4px 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-chip-own input::placeholder { color: var(--sv-ink2); opacity: 1; }
+.sv .sv-chip-send { height: 20px; padding: 0 8px; border: 1px solid var(--sv-ink); border-radius: 999px; background: var(--sv-orange); font: 700 10.5px var(--sv-mono); color: var(--sv-ink); }
