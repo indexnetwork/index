@@ -310,31 +310,8 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-chip.sv-ni-net:hover { background: var(--sv-paper); }
 .sv-ni .pl-ni-text { width: 100%; box-sizing: border-box; }
 
-/* introduce: pairs on the left, the running list (or a picked pair) on the right */
-.sv-pairav { position: relative; flex: none; }
-.sv-pairav > * { position: absolute; top: 0; }
-.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); }
-.sv-ghost { right: 0; display: grid; place-items: center; border: 1px dashed var(--sv-ink); border-radius: 50%; background: var(--sv-paper); color: var(--sv-ink); font-family: var(--sv-mono); font-weight: 700; box-sizing: border-box; }
 .sv-faint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
-.sv-body.sv-idk { padding-top: 14px; }
-.sv-idk .idk-pair { margin-bottom: 14px; }
-.sv-idk textarea.sv-idk-text { height: 110px; font-size: 13.5px; }
-.sv-idk-hint { margin-top: 6px; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); }
-.sv-idk .sv-runs li { display: block; padding: 0; margin: 0 -8px; }
-.sv-idk .sv-runs li.on { background: var(--sv-sel); }
-.sv-run { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 7px 8px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.sv-run:hover { background: var(--sv-sel); }
-.sv-run .chev { font: 400 12px var(--sv-mono); color: var(--sv-dim); width: 10px; text-align: right; }
-.sv-rdet { padding: 2px 8px 12px; }
-.sv-rsteps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 8px; font: 500 11px var(--sv-mono); color: var(--sv-dim); }
-.sv-rstep-wrap { display: inline-flex; gap: 6px; align-items: center; }
-.sv-rsteps .st.done { color: var(--sv-ink); }
-.sv-rsteps .st.now { color: var(--sv-ink); font-weight: 700; background: var(--sv-paper); padding: 1px 5px; border: 1px solid var(--sv-ink); }
-.sv-rsteps .st.end { color: var(--sv-ink); font-weight: 700; border: 1px dashed var(--sv-ink); padding: 1px 5px; }
-.sv-rsteps .sep { color: var(--sv-edge); }
 .sv-dim-note { font-size: 12.5px; color: var(--sv-ink2); margin-bottom: 8px; }
-.sv-idk-sent { font-size: 13px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--sv-well-line); background: var(--sv-well); border-radius: 2px; white-space: pre-wrap; }
-.sv-idk .idk-run-foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--sv-edge); }
 
 /* ---------- the pane, matched to the prototype ---------- */
 /* summary: 24px down to "bio", a wider gap before "opportunities" */
@@ -428,8 +405,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-tabs { min-height: 35px; }
 .ih .sv .sv-scroll button.sv-row { padding: 12px 20px; gap: 12px; align-items: flex-start; font: inherit; line-height: normal; }
 .ih .sv .sv-chat .pl-agent-log.pl-dm-tl { padding: 14px 16px 16px; }
-.sv-idk { --idk-line: var(--sv-edge); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); }
-.sv-idk .idk-run-foot { font-size: 11.5px; color: var(--sv-ink2); }
 .sv-ilab .n { margin-left: 0; }
 .sv-ni-head { height: 108px; }
 .sv-body.sv-ni { padding-top: 14px; }
@@ -447,16 +422,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-body.sv-imatches { padding-top: 14px; }
 .sv-ilist .sv-card { padding: 12px 0; }
 .sv-ilist .sv-card:hover, .sv-ilist .sv-card.on { background: none; }
-/* the running list: rows open in place (beats introduce.css's flex rows) */
-.idk.sv-idk .idk-rows.sv-runs li { display: block; padding: 0; margin: 0 -8px; }
-.idk.sv-idk .idk-rows.sv-runs li.on { background: var(--sv-sel-pane); }
-.idk.sv-idk .idk-rows.sv-runs li + li { border-top: 1px dashed var(--sv-edge); }
-.sv-idk .sv-run { padding: 6px 8px; font-size: 13px; }
-.sv-idk .sv-run:hover { background: var(--sv-sel-pane); }
-.sv-rdet { padding: 4px 8px 12px; }
-.sv-rsteps { margin: 2px 0 10px; }
-.sv-idk .sv-idk-sent { font: 12.5px/1.45 var(--sv-sans); padding: 6px 8px; border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-well); }
-.sv-idk textarea.sv-idk-text { height: 96px; min-height: 56px; font: 12.5px/1.45 var(--sv-sans); }
 
 /* the body fills the window to the right of the rail */
 .sv { flex: 1 1 auto; width: 100%; }
