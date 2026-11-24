@@ -114,6 +114,7 @@ export default function ChatPage() {
           autoSend={autoSend}
           onClose={leave}
           onBack={leave}
+          noClose={!compact}
         />
       ) : null}
     </ChatFrame>

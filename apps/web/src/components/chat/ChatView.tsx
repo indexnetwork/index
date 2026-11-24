@@ -33,6 +33,8 @@ interface ChatViewProps {
   onFirstMessageSent?: () => void;
   onClose: () => void;
   onBack?: () => void;
+  /** The conversations page is not a window, so its head has no close button. */
+  noClose?: boolean;
   /** Third window on an intent: the window already has the name header. */
   embedded?: boolean;
   /** Match write-up shown above the thread, the way the desktop chat opens. */
@@ -69,7 +71,7 @@ function conversationIdForPeer(
   )?.id ?? null;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, noClose = false, embedded = false, opener, fallbackContext, contextKey, threadExtra, footer }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const usersService = useUsers();
@@ -417,7 +419,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         <div className="pl-agent-log pl-dm-tl" ref={logRef}>
           {/* Who they are is the head; why you're talking is the history under it. */}
           <div className="pl-dmh" ref={headRef}>
-            <button type="button" className="pl-win-close pl-dmh-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>
+            {!noClose && <button type="button" className="pl-win-close pl-dmh-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>}
             <div className="pl-dmh-row">
               <Link to={`/u/${userId}`} className="pl-dmh-face"><UserAvatar avatar={userAvatar} id={userId} name={userName} size={72} /></Link>
               <div className="pl-dm-who">
