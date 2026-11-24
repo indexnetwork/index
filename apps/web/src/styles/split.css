@@ -504,7 +504,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-page-sub { margin-top: 8px; font-size: 11.5px; }
 .sv-page-seg { margin-top: 16px; }
 .sv-icard { padding: 15px 20px 14px; }
-.sv-itext { max-width: 74ch; font: 400 14.5px/1.5 var(--sv-sans); color: var(--sv-ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.sv-itext { max-width: 74ch; font: 500 14.5px/1.5 var(--sv-sans); color: var(--sv-ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .sv-istat { margin-top: 5px; font: 400 10.5px var(--sv-mono); letter-spacing: 0.2px; color: var(--sv-dim); }
 .sv-istat .sv-status { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); }
 .sv-istat .sv-status::before { width: 7px; height: 7px; margin-right: 5px; }
