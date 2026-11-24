@@ -120,7 +120,8 @@
 .sv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
 .sv .sv-chip { font: 400 12.5px var(--sv-sans); border: 1px solid var(--sv-ink); border-radius: 2px; padding: 4px 9px; background: var(--sv-paper); box-shadow: var(--sv-sh-chip); color: var(--sv-ink); }
 .sv .sv-chip:hover { background: var(--sv-orange); }
-.sv-chips.one .sv-chip { border-radius: 999px; padding-left: 11px; padding-right: 11px; }
+.sv-chips.one .sv-chip { border-radius: 999px; padding-left: 11px; padding-right: 11px; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.125); }
+.sv-chips.one .sv-chip.ghost { box-shadow: none; }
 .sv .sv-chip.ghost { border-color: var(--sv-edge); box-shadow: none; color: var(--sv-ink2); }
 .sv .sv-chip.ghost:hover { border-color: var(--sv-ink); color: var(--sv-ink); }
 .sv .sv-chip.ghost:hover { background: var(--sv-sel); }
