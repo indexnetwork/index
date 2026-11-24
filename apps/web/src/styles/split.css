@@ -32,7 +32,7 @@
   --sv-sh-field: 2px 2px 0 rgba(0, 0, 0, 0.12);
   --sv-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --sv-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
-  --sv-list-w: clamp(420px, 44%, 680px);
+  --sv-list-w: clamp(420px, 34vw, 600px);
 
   flex: 1;
   min-width: 0;
@@ -489,3 +489,10 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-idk-page .idk-setup { max-width: none; padding: 0; border: 0; background: none; }
 .sv .sv-idk-page .idk-steps li { border-top: 1px solid var(--sv-line); }
 .sv .sv-idk-page .idk-note { background: var(--sv-well); border-left-color: var(--sv-ink); }
+
+/* conversations: the list as narrow as the agent window, the person in a centred column like home's
+   (lines and scroll run the full width; the content keeps to 840px in the middle) */
+.sv-pane { --sv-gut: max(22px, calc((100% - 840px) / 2)); }
+.sv-pane .sv-pid { padding-left: var(--sv-gut); padding-right: max(60px, var(--sv-gut)); }
+.sv-pane .sv-tabs { padding-left: calc(var(--sv-gut) - 8px); padding-right: var(--sv-gut); }
+.sv-pane .sv-body, .sv-pane .sv-body.sv-sum, .sv-pane .sv-chat, .sv-pane .sv-bar { padding-left: var(--sv-gut); padding-right: var(--sv-gut); }
