@@ -155,6 +155,10 @@
 .dro .toc{font-family:'Public Sans', system-ui, sans-serif;font-size:12.5px;font-weight:600;}
 .dro .toc a{color:#6b6b66;text-decoration:none;}
 .dro .toc a:hover,.dro .toc a:focus-visible{color:var(--accent);}
+/* The current section, set by the scroll-spy in page.tsx: ink text, and a
+   green mark on the column's rule (wide) or under the label (bar). */
+.dro .toc a{position:relative;transition:color .15s ease;}
+.dro .toc a.is-current{color:var(--ink);}
 .dro h2[id]{scroll-margin-top:24px;}
 .dro .toc + p,.dro .dro-side + p{margin-top:0;}
 @media (min-width:1080px){
@@ -165,6 +169,12 @@
   .dro .toc{position:sticky;top:0;z-index:5;display:flex;gap:4px 18px;margin:0 -28px 28px;padding:12px 28px;background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);white-space:nowrap;overflow-x:auto;scrollbar-width:none;}
   .dro .toc::-webkit-scrollbar{display:none;}
   .dro h2[id]{scroll-margin-top:60px;}
+}
+@media (min-width:1080px){
+  .dro .toc a.is-current::after{content:'';position:absolute;top:1px;bottom:1px;right:-17px;width:2px;background:var(--accent);}
+}
+@media (max-width:1079.98px){
+  .dro .toc a.is-current::after{content:'';position:absolute;left:0;right:0;bottom:-12px;height:2px;background:var(--accent);}
 }
 @media print{ .dro .toc{display:none;} }
 
