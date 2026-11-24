@@ -277,7 +277,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
   // Its agent docks on the right, and a person opened here takes its place (see AppFrame).
   return (
     <PageView
-      title={text}
+      title={<span className={text.length > 90 ? "sv-page-long" : undefined}>{text}</span>}
       actions={
         <span className="sv-actions">
           <button type="button" className="sv-btn sm" disabled={!!statusPending} onClick={() => void togglePause()}>{paused ? "▶ resume" : "❚❚ pause"}</button>
