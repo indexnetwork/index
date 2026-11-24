@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
+import { ListHead, PageView, Seg } from "@/components/intents-home/SplitView";
+import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
@@ -145,6 +147,106 @@ function ProposalCard({ proposal, onOpen, onSkip }: {
         </>
       )}
     </div>
+  );
+}
+
+/** The member's photo with your contact's letter beside it, in a dashed circle: they're not on Index. */
+function PairFace({ proposal, size = 36 }: { proposal: OpportunityProposal; size?: number }) {
+  return (
+    <div className="sv-pairav" style={{ width: Math.round(size * 1.7), height: size }}>
+      <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
+      <span className="sv-ghost" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }} aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
+    </div>
+  );
+}
+
+/** "Wants a partner." → "wants a partner", but "PM at…" stays "PM at…". */
+const lc = (text: string) => {
+  const t = text.replace(/\.$/, "");
+  return /^[A-Z][a-z]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t;
+};
+
+/** A pair, drawn like home's cards: who and who, the intro you'll send, wake or skip. */
+function PairCard({ proposal, onOpen, onSkip }: {
+  proposal: OpportunityProposal;
+  onOpen: (p: OpportunityProposal, context: string) => Promise<void>;
+  onSkip: (p: OpportunityProposal) => void;
+}) {
+  const [text, setText] = useState(proposal.draft);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const opening = proposal.status === "opening";
+  const A = first(proposal.member.name), B = first(proposal.contact.name);
+  return (
+    <div className="sv-card sv-static sv-pair" data-sv-item={proposal.id}>
+      <PairFace proposal={proposal} />
+      <div className="sv-card-body">
+        <b>{A} ⇄ {B}</b><span className="sv-via"> · via {proposal.networkTitle}</span>
+        <div className="sv-blurb">
+          <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
+          <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
+        </div>
+        {opening ? (
+          <div className="sv-pair-lab" role="status"><span>waking both agents · see running</span></div>
+        ) : (
+          <>
+            <label className="sv-pair-lab" htmlFor={`intro-${proposal.id}`}>
+              <span>your intro</span>
+              <span>{text.length} / {MAX_CONTEXT}</span>
+            </label>
+            <textarea id={`intro-${proposal.id}`} className="sv-pair-text" value={text} maxLength={MAX_CONTEXT} onChange={(e) => setText(e.target.value)} />
+            <div className="sv-actions">
+              <button
+                type="button"
+                className="sv-btn go"
+                disabled={busy || !text.trim()}
+                onClick={() => {
+                  setBusy(true);
+                  setError(null);
+                  onOpen(proposal, text.trim())
+                    .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't wake the agents"))
+                    .finally(() => setBusy(false));
+                }}
+              >{busy ? "waking…" : proposal.status === "failed" ? "try again" : "wake both agents"}</button>
+              <button type="button" className="sv-btn" disabled={busy} onClick={() => onSkip(proposal)}>skip</button>
+            </div>
+            {(error ?? proposal.failure) && <div className="sv-pair-err">{error ?? proposal.failure}</div>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The introductions you woke, one row each, as a column beside the pairs. */
+function RunColumn({ runs, opening, freshId }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null }) {
+  const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
+  const live = opening.length + runs.filter((r) => !isFinal(r)).length;
+  return (
+    <aside className="sv-intro-run" aria-live="polite">
+      <ListHead id="running">running · {live}</ListHead>
+      {ordered.length + opening.length === 0 ? (
+        <div className="sv-empty">Nothing running. Wake a pair and it shows up here.</div>
+      ) : (
+        <>
+          {opening.map((p) => (
+            <div key={p.id} className="sv-runrow" title={`Looking ${first(p.contact.name)} up and seating their agent. This takes a minute or two.`}>
+              <span className="p">{first(p.member.name)} ⇄ {first(p.contact.name)}</span>
+              <span className="pl-status pending">waking</span>
+              <span className="t">now</span>
+            </div>
+          ))}
+          {ordered.map((r) => (
+            <div key={r.opportunityId} className={`sv-runrow${isFinal(r) ? " done" : ""}${r.opportunityId === freshId ? " fresh" : ""}`} title={phaseLine(r)}>
+              <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
+              <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
+              <span className="t">{since(r.createdAt)}</span>
+            </div>
+          ))}
+        </>
+      )}
+      <div className="sv-run-foot">🔒 You see where each ends up, never what the agents say.</div>
+    </aside>
   );
 }
 
@@ -315,6 +417,9 @@ export default function IntroducePage() {
   const autoImported = useRef(false);
   // Proposals opened from this page; when one's agents are up, it lights up in the running column.
   const openingHere = useRef(new Set<string>());
+  const later = useUndo();
+  // Skips wait behind "undo" for a few seconds before they reach the server.
+  const [skipping, setSkipping] = useState<Set<string>>(() => new Set());
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -466,6 +571,57 @@ export default function IntroducePage() {
   const headStatus = !ready ? "connect your contacts to start"
     : view === "contacts" ? `${status?.contacts.total ?? 0} contacts, private to you`
       : `${count} pair${count === 1 ? "" : "s"} you could introduce`;
+
+  // A desktop inside the app: a page like home's, pairs on the left and what's running beside them.
+  if (plain && !compact) {
+    const shown = waiting.filter((p) => !skipping.has(p.id));
+    const skipLater = (p: OpportunityProposal) => {
+      setSkipping((all) => new Set(all).add(p.id));
+      later(`skipped ${first(p.member.name)} ⇄ ${first(p.contact.name)}`, () => skip(p), () => {
+        setSkipping((all) => { const next = new Set(all); next.delete(p.id); return next; });
+      });
+    };
+    const sub = (
+      <>
+        <span>{ready && view === "pairs" ? `${shown.length} pair${shown.length === 1 ? "" : "s"} you could introduce` : headStatus}</span>
+        <span className="sp" />
+        {ready && <span title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status!.contacts.lastImportAt!)} ago`}</span>}
+      </>
+    );
+    const seg = ready ? (
+      <Seg items={[
+        { label: "pairs", n: shown.length, on: view === "pairs", onClick: () => setView("pairs") },
+        { label: "contacts", n: status?.contacts.total ?? 0, on: view === "contacts", onClick: () => setView("contacts") },
+      ]} />
+    ) : undefined;
+    return (
+      <PageView title="introduce" sub={sub} seg={seg}>
+        {!status ? (
+          <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
+        ) : !ready ? (
+          <div className="idk sv-idk-page"><Setup status={status} importing={importing} error={error} onConnect={connect} onImport={() => void doImport()} /></div>
+        ) : view === "contacts" ? (
+          <div className="idk sv-idk-page">
+            {error && <div className="idk-error">{error}</div>}
+            <Contacts service={service} status={status} onDeleted={() => { setView("pairs"); setProposals(null); void load(); }} />
+          </div>
+        ) : (
+          <div className="sv-intro-cols">
+            <section className="sv-intro-pairs">
+              <ListHead id="pairs">pairs you could introduce · {shown.length}</ListHead>
+              {error && <div className="sv-empty sv-pair-err">{error}</div>}
+              {proposals === null ? (
+                <div className="sv-empty">loading pairs…</div>
+              ) : shown.length === 0 ? (
+                <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
+              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} />)}
+            </section>
+            <RunColumn runs={runs} opening={opening} freshId={freshId} />
+          </div>
+        )}
+      </PageView>
+    );
+  }
 
   if (plain) {
     return (
