@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
@@ -16,7 +17,10 @@ const since = (iso?: string) => iso ? new Date(iso).toLocaleDateString("en-US", 
 export default function IntentsIndex() {
   const navigate = useNavigate();
   const { intents, intentsLoaded, intentsError, fetchIntents, entriesByIntent } = useIntentsData();
-  const live = intents.filter((intent) => (intent.status || "").toLowerCase() !== "paused").length;
+  const isPaused = (intent: { status?: string | null }) => (intent.status || "").toLowerCase() === "paused";
+  const live = intents.filter((intent) => !isPaused(intent)).length;
+  const [filter, setFilter] = useState<"all" | "live" | "paused">("all");
+  const shown = filter === "all" ? intents : intents.filter((intent) => isPaused(intent) === (filter === "paused"));
 
   const list = intentsError && !intents.length ? (
     <div className="sv-empty">couldn&apos;t load your intents. <button type="button" className="sv-link" onClick={() => void fetchIntents()}>try again</button></div>
@@ -24,7 +28,9 @@ export default function IntentsIndex() {
     <div className="sv-empty"><Placeholder.Rows count={4} avatar={false} label="loading intents" /></div>
   ) : intents.length === 0 ? (
     <div className="sv-empty">none yet. <button type="button" className="sv-link" onClick={() => navigate("/i/new")}>write your first intent</button></div>
-  ) : [...intents].sort((a, b) => {
+  ) : shown.length === 0 ? (
+    <div className="sv-empty">{filter === "paused" ? "nothing paused." : "nothing live. resume an intent or write a new one."}</div>
+  ) : [...shown].sort((a, b) => {
     // Live first, then paused; each oldest first.
     const pa = (a.status || "").toLowerCase() === "paused" ? 1 : 0;
     const pb = (b.status || "").toLowerCase() === "paused" ? 1 : 0;
@@ -53,7 +59,11 @@ export default function IntentsIndex() {
     <PageView
       title="intents"
       actions={<button type="button" className="sv-btn go sm" onClick={() => navigate("/i/new")}>+ new intent</button>}
-      seg={<Seg items={[{ label: "all", n: intents.length }, { label: "live", n: live }, { label: "paused", n: intents.length - live }]} />}
+      seg={<Seg items={[
+        { label: "all", n: intents.length, on: filter === "all", onClick: () => setFilter("all") },
+        { label: "live", n: live, on: filter === "live", onClick: () => setFilter("live") },
+        { label: "paused", n: intents.length - live, on: filter === "paused", onClick: () => setFilter("paused") },
+      ]} />}
     >
       <div className="sv-page-list">{list}</div>
     </PageView>
