@@ -53,13 +53,54 @@ function useProfile(userId?: string): Profile | null {
 }
 
 /**
- * One person, the same everywhere (home, an intent, conversations): who they
- * are on top (photo, name, @handle · where), then "summary · chat" under the
- * name. The header never moves. Summary is their profile and every
- * opportunity between you two; chat is the conversation in a warm box joined
- * to its composer.
+ * Who a person is, on top of their pane and their profile page: photo, name,
+ * @handle · where. Whatever sits under the name (the tabs) comes as children.
  */
-export function PersonPane({ person, tab, onTab, chatOff, chatCount, onClose, summary, foot, chat }: {
+export function PersonHead({ person, handle, location, linked = true, actions, onClose, children }: {
+  person: PanePerson;
+  /** "@name", or what to show when there's none yet. */
+  handle?: ReactNode;
+  location?: string | null;
+  /** Photo and name open their profile (off on the profile itself). */
+  linked?: boolean;
+  /** Beside the name, e.g. your own profile's "edit profile". */
+  actions?: ReactNode;
+  onClose?: () => void;
+  children?: ReactNode;
+}) {
+  const face = <UserAvatar id={person.userId ?? person.fallbackId} name={person.name} avatar={person.avatar} size={48} />;
+  const link = linked && person.userId;
+  return (
+    <header className="sv-ph">
+      {onClose && <button type="button" className="sv-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>}
+      <div className="sv-pid">
+        {link ? <Link to={`/u/${person.userId}`} title={`${person.name}'s profile`} style={{ display: "flex" }}>{face}</Link> : face}
+        <div className="who">
+          <div className="sv-pn">{link ? <Link to={`/u/${person.userId}`}>{person.name}</Link> : person.name}</div>
+          <div className="sv-pu">
+            {person.notOnIndex ? <span className="loc">not on index yet</span> : (
+              <>
+                {handle}
+                {location && <span className="loc">{handle ? " · " : ""}{location}</span>}
+              </>
+            )}
+          </div>
+        </div>
+        {actions && <div className="sv-pact">{actions}</div>}
+      </div>
+      {children}
+    </header>
+  );
+}
+
+/**
+ * One person, the same everywhere (home, an intent, conversations, their
+ * profile): who they are on top (photo, name, @handle · where), then
+ * "summary · chat" under the name. The header never moves. Summary is their
+ * profile and every opportunity between you two; chat is the conversation in
+ * a warm box joined to its composer.
+ */
+export function PersonPane({ person, tab, onTab, chatOff, chatCount, onClose, linked, summary, foot, chat }: {
   person: PanePerson;
   tab: PersonTab;
   onTab: (tab: PersonTab) => void;
@@ -68,6 +109,8 @@ export function PersonPane({ person, tab, onTab, chatOff, chatCount, onClose, su
   /** Messages so far, beside "chat". */
   chatCount?: number;
   onClose?: () => void;
+  /** Photo and name open their profile (off on the profile itself). */
+  linked?: boolean;
   summary: ReactNode;
   foot?: ReactNode;
   chat: ReactNode;
@@ -79,33 +122,16 @@ export function PersonPane({ person, tab, onTab, chatOff, chatCount, onClose, su
   const [chatOpened, setChatOpened] = useState(showChat);
   if (showChat && !chatOpened) setChatOpened(true);
 
-  const face = <UserAvatar id={person.userId ?? person.fallbackId} name={person.name} avatar={person.avatar} size={48} />;
-  const handle = profile?.username ? `@${profile.username}` : null;
   return (
     <div className="sv-person" aria-label={`you and ${first}`}>
-      <header className="sv-ph">
-        <div className="sv-pid">
-          {person.userId ? <Link to={`/u/${person.userId}`} title={`${person.name}'s profile`} style={{ display: "flex" }}>{face}</Link> : face}
-          <div className="who">
-            <div className="sv-pn">{person.userId ? <Link to={`/u/${person.userId}`}>{person.name}</Link> : person.name}</div>
-            <div className="sv-pu">
-              {person.notOnIndex ? <span className="loc">not on index yet</span> : (
-                <>
-                  {handle}
-                  {profile?.location && <span className="loc">{handle ? " · " : ""}{profile.location}</span>}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        {onClose && <button type="button" className="sv-x" aria-label="close (esc)" title="close (esc)" onClick={onClose}>×</button>}
+      <PersonHead person={person} handle={profile?.username ? `@${profile.username}` : null} location={profile?.location} linked={linked} onClose={onClose}>
         <div className="sv-tabs" role="tablist" aria-label={`${first}: summary or chat`}>
           <button type="button" role="tab" data-sv-key="tab-summary" aria-current={!showChat} onClick={() => onTab("summary")}>summary</button>
           <button type="button" role="tab" data-sv-key="tab-chat" aria-current={showChat} onClick={() => onTab("chat")}>
             chat{!!chatCount && <span className="n">{chatCount}</span>}
           </button>
         </div>
-      </header>
+      </PersonHead>
 
       {chatOpened && !chatOff && <div className="sv-chat" role="tabpanel" hidden={!showChat}>{chat}</div>}
       {showChat && chatOff && (
@@ -144,13 +170,17 @@ const shortDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString(undef
  * between you two as a row (headline · status ›). The one this pane opened
  * for starts open, showing why your agent found them and the agents' log.
  */
-export function PersonSummary({ userId, focusId, why, intentId }: {
+export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
   userId?: string;
   /** The opportunity this pane is for: its row starts open. */
   focusId?: string;
   /** Why your agent surfaced them, for the focused row (or on its own when there's no user yet). */
   why?: string;
   intentId?: string;
+  /** What "opportunities" says when there's nothing between you two yet. */
+  none?: ReactNode;
+  /** Skip the cached opportunities, e.g. right after pairing. */
+  fresh?: boolean;
 }) {
   const profile = useProfile(userId);
   const networksApi = useNetworks();
@@ -165,11 +195,11 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
     if (!userId) return;
     let active = true;
     networksApi.getSharedNetworks(userId).then((list) => { if (active) setNets({ id: userId, list }); }).catch(() => { if (active) setNets({ id: userId, list: [] }); });
-    opportunitiesApi.getRadarView({ peerUserId: userId, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"] })
+    opportunitiesApi.getRadarView({ peerUserId: userId, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: fresh })
       .then((res) => { if (active) setOpps({ id: userId, list: res.items }); })
       .catch(() => { if (active) setOpps({ id: userId, list: [] }); });
     return () => { active = false; };
-  }, [userId, networksApi, opportunitiesApi]);
+  }, [userId, networksApi, opportunitiesApi, fresh]);
 
   const shared = nets && nets.id === userId ? nets.list : null;
   const list = opps && opps.id === userId ? opps.list : null;
@@ -212,7 +242,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
       ) : !list ? (
         <Placeholder.Rows count={2} avatar={false} label="loading opportunities" />
       ) : list.length === 0 ? (
-        why ? <p>{why}</p> : <p className="sv-dimp">nothing between you two yet.</p>
+        why ? <p>{why}</p> : none ?? <p className="sv-dimp">nothing between you two yet.</p>
       ) : (
         <div className="sv-olist">
           {list.map((item) => {

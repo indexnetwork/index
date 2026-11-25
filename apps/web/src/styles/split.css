@@ -152,6 +152,20 @@
 .sv-ph { flex: none; position: relative; border-bottom: 1px solid var(--sv-line); background: var(--sv-paper); }
 .sv-pid { display: flex; gap: 14px; align-items: center; padding: 18px 60px 6px 22px; min-height: 72px; }
 .sv-pid .who { flex: 1; min-width: 0; }
+/* beside the name, e.g. your own profile's "edit profile"; a header with no tabs under it keeps its breath at the bottom */
+.sv-pact { flex: none; display: flex; align-items: center; gap: 8px; }
+.sv-pact .sv-btn { display: inline-flex; align-items: center; }
+.sv-ph > .sv-pid:last-child { padding-bottom: 18px; }
+/* your own profile's agent analytics: four tiles in a ruled row */
+.sv-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--sv-ink); background: var(--sv-ink); }
+.sv-stat { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; padding: 8px 10px; background: var(--sv-paper); }
+.sv-stat b { font: 600 16px var(--sv-sans); }
+.sv-stat span { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+@media (max-width: 720px) {
+  .sv-pid:has(.sv-pact) { flex-wrap: wrap; }
+  .sv-pid .sv-pact { width: 100%; padding-left: 62px; }
+  .sv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .sv-pn { font: 600 20px var(--sv-sans); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sv-pn a { text-decoration: none; }
 .sv-pu { font: 400 12.5px var(--sv-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
