@@ -576,3 +576,23 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-ni .pl-ni-label + .pl-q-options.pl-chips { margin-top: 10px; }
 .sv .sv-ni .pl-q-options.pl-chips { gap: 8px; }
 .sv .sv-ni .pl-ni-fields + .pl-ni-actions { margin-top: 30px; }
+
+/* ---------- button discipline ----------
+   decide = orange box, do = outlined box, remove = red-text box, open = mono text ending in ›
+   (never boxed), leave = underlined text ending in ↗, quiet = .sv-link, choose = pills, close = .sv-x.
+   A row that opens a person is itself the link: its name underlines on hover. */
+.sv .sv-open { margin-left: auto; flex: none; background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink); white-space: nowrap; cursor: pointer; }
+.sv .sv-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sv-card.done .sv-open { margin-left: auto; }
+.sv-card:not(.done):not(.sv-static):hover .sv-mrow > b,
+.sv-card:not(.done):not(.sv-static):hover > .sv-card-body > b,
+.sv-row:hover .sv-row-n { text-decoration: underline; text-underline-offset: 3px; }
+.sv .sv-x.inline { position: static; }
+/* links in a person's summary are text, not boxes: "elsewhere" leaves index (↗, underlined),
+   their networks open inside it (›, underlined on hover) */
+.sv .sv-socials { gap: 6px 18px; }
+.sv .sv-soc, .sv .sv-soc:hover { border: 0; padding: 0; background: none; box-shadow: none; color: var(--sv-ink); text-decoration: none; text-underline-offset: 3px; }
+.sv .sv-soc[target="_blank"] { text-decoration: underline; text-decoration-color: var(--sv-edge); }
+.sv .sv-soc[target="_blank"]::after { content: "↗"; margin-left: 2px; }
+.sv .sv-soc:not([target="_blank"])::after { content: "›"; margin-left: 4px; }
+.sv .sv-soc:hover { text-decoration: underline; text-decoration-color: var(--sv-ink); }

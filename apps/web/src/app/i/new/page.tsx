@@ -207,7 +207,7 @@ export default function NewIntentPage() {
       <div className="sv-ni-wrap">
         <PageView
           title="new intent"
-          actions={<button type="button" className="sv-btn" onClick={() => navigate("/")}>close</button>}
+          actions={<button type="button" className="sv-x inline" aria-label="close" title="close" onClick={() => navigate("/")}>×</button>}
           sub={<span className="sv-ni-steps">step {stepIdx} of {stepCount}
             <span className="sv-ni-bar" aria-hidden>
               {Array.from({ length: stepCount }, (_, i) => <span key={i} className={i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "now" : undefined} />)}

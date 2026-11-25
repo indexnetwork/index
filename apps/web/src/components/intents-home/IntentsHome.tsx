@@ -149,9 +149,10 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     later(`passed on ${person.name.split(" ")[0]}`, send, () => setPassed((prev) => { const next = new Set(prev); next.delete(person.key); return next; }));
   };
 
-  const openMatch = (person: Person) => {
+  const openMatch = (person: Person, view?: "chat") => {
     const lead = person.entries[0];
     setLog({
+      view,
       opportunityId: lead.item.opportunityId,
       intentId: lead.intentId,
       name: person.name,
@@ -169,6 +170,8 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
     const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
     const hasChat = !!person.userId && chatPeers.has(person.userId) && !person.notOnIndex;
     const inviting = inviteFor === person.key;
+    // Opening the chat is a way in, not a decision: a link on the row's right, in place of its status.
+    const canOpenChat = !!person.userId && !person.notOnIndex && (stage === "chat" || (stage === "awaiting" && hasChat));
     const chip = stage === "talks" ? "agents talking"
       : stage === "chat" ? (person.notOnIndex ? "not on index yet" : "chat open")
         : stage === "closed" ? (lead.item.status === "rejected" ? "not a fit" : "missed")
@@ -182,27 +185,23 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
             <b>{person.name}</b>
             {person.notOnIndex && stage !== "chat" && <span className="sv-via"> · not on index</span>}
             {person.intentCount > 1 && <span className="sv-via"> · in {person.intentCount} of your intents</span>}
-            {chip && <span className="sv-mchip">{chip}</span>}
+            {canOpenChat
+              ? <button type="button" className="sv-open" onClick={() => openMatch(person, "chat")}>open chat ›</button>
+              : chip && <span className="sv-mchip">{chip}</span>}
           </div>
           {blurb
             ? <div className="sv-blurb">{blurb}</div>
             : lead.item.presentationPending && <div className="sv-blurb"><Placeholder.Text lines={2} label="writing this up" /></div>}
-          <div className="sv-actions">
-            {stage === "awaiting" && hasChat ? (
-              <button type="button" className="sv-btn go" onClick={() => navigate(`/u/${person.userId}/chat`)}>open chat</button>
-            ) : stage === "awaiting" ? (
-              <>
-                <button type="button" className="sv-btn go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
-                <button type="button" className="sv-btn" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
-              </>
-            ) : stage === "chat" && person.notOnIndex ? (
+          {stage === "awaiting" && !hasChat ? (
+            <div className="sv-actions">
+              <button type="button" className="sv-btn go" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
+              <button type="button" className="sv-btn" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+            </div>
+          ) : stage === "chat" && person.notOnIndex && (
+            <div className="sv-actions">
               <button type="button" className="sv-btn" aria-pressed={inviting} onClick={() => setInviteFor(inviting ? null : person.key)}>send invite</button>
-            ) : stage === "chat" && person.userId ? (
-              <button type="button" className="sv-btn" onClick={() => navigate(`/u/${person.userId}/chat`)}>go to chat</button>
-            ) : (
-              <button type="button" className="sv-btn" onClick={() => openMatch(person)}>read the log</button>
-            )}
-          </div>
+            </div>
+          )}
           {inviting && (
             <InviteLog key={lead.item.opportunityId} item={lead.item} name={person.name} intent={current?.payload} senderName={user?.name} />
           )}

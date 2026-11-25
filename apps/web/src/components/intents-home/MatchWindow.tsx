@@ -8,6 +8,7 @@ import { PersonPane, PersonSummary, type PersonTab } from "@/components/intents-
 import { personKey, type Entry } from "@/components/intents-home/stages";
 import { useUndo } from "@/components/intents-home/undo";
 import { useOpportunities } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import type { OpportunityDetailResponse } from "@/services/opportunities";
 
@@ -23,6 +24,7 @@ export default function MatchWindow() {
   const { log: match, setLog, decisions, decide } = useAgentWindow();
   const { entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
   const opportunities = useOpportunities();
+  const { conversations } = useConversation();
   const later = useUndo();
   const [chatCount, setChatCount] = useState(0);
   const [detailFor, setDetailFor] = useState<{ id: string; detail: OpportunityDetailResponse } | null>(null);
@@ -62,7 +64,9 @@ export default function MatchWindow() {
   const busy = entries.some((entry) => opportunityActionLoading[entry.item.opportunityId]);
 
   // Chat opens once you've said yes (or the chat already exists); before that the tab says why not.
-  const accepted = stage === "chat" || (key ? decisions[key] === "accepted" : false);
+  const chatExists = !!match.userId && conversations.some((conv) => (conv.participants ?? [])
+    .some((p) => p.participantType === "user" && p.participantId === match.userId));
+  const accepted = stage === "chat" || chatExists || (key ? decisions[key] === "accepted" : false);
   const chatOff = accepted && match.userId && !match.notOnIndex ? undefined
     : stage === "awaiting" ? `accept below and your chat with ${first} starts right here.`
     : match.notOnIndex || !match.userId ? `${first} isn't on index yet. the chat opens here once they join.`

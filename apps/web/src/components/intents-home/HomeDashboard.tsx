@@ -293,7 +293,7 @@ export default function HomeDashboard() {
                 <div key={person.key} className={`sv-card done${chatOpen ? " on" : ""}`}>
                   <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={32} />
                   <div className="sv-card-body">{decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.</div>
-                  {canChat && !chatOpen && <button type="button" className="sv-btn sm" onClick={() => openChat(person)}>open chat</button>}
+                  {canChat && !chatOpen && <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>}
                   {decision === "accepted" && person.notOnIndex && (
                     <button type="button" className="sv-btn sm" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
                   )}
