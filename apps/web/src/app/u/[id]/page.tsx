@@ -27,6 +27,8 @@ import { useBack } from "@/hooks/useBack";
 import { clearPendingPair, readPendingPair, rememberPendingPair } from "@/lib/pending-pair";
 import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
 import { Placeholder } from "@/components/ui/Placeholder";
+// Its in-app layout (.pl) lives here; /u/:id can be the first page opened.
+import "@/styles/plain.css";
 
 const logger = log.page.from("u/[id]");
 
