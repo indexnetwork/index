@@ -25,6 +25,8 @@
   --sv-sel: #f3f2ee;
   --sv-sel-focus: #e6e5df;
   --sv-sel-pane: #ebeae5;
+  /* hover: a whisper, so it never reads as the selected one */
+  --sv-tint: #faf9f6;
   /* shadows: A, hard offset */
   --sv-sh-btn: 1px 1px 0 #000;
   --sv-sh-chip: 1px 1px 0 rgba(0, 0, 0, 0.25);
@@ -84,7 +86,8 @@
 
 /* a card: avatar, name, a line, buttons */
 .sv-card { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; }
-.sv-card:hover, .sv-card.on { background: var(--sv-hover); }
+.sv-card:hover { background: var(--sv-tint); }
+.sv-card.on { background: var(--sv-hover); }
 .sv-card.sv-static { cursor: default; }
 .sv-card.sv-static:hover { background: none; }
 .sv-card-body { min-width: 0; flex: 1; }
@@ -103,7 +106,8 @@
 
 /* a row: avatar, name + one line, something on the right */
 .sv-row { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; align-items: flex-start; }
-.sv-row:hover, .sv-row.on { background: var(--sv-hover); }
+.sv-row:hover { background: var(--sv-tint); }
+.sv-row.on { background: var(--sv-hover); }
 .sv-row-t { flex: 1; min-width: 0; }
 .sv-row-n { font-weight: 600; font-size: 14px; }
 .sv-row-pv { font-size: 13px; color: var(--sv-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -200,7 +204,8 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-agline { width: 14px; border-top: 1px dashed var(--sv-dim); margin: 0 3px; }
 .sv-orow { border: 1px solid var(--sv-ink); background: var(--sv-paper); overflow: hidden; }
 .sv .sv-orh { display: flex; gap: 12px; align-items: baseline; padding: 11px 14px; width: 100%; text-align: left; background: none; border: 0; }
-.sv-orh:hover, .sv-orow.open .sv-orh { background: var(--sv-hover); }
+.sv-orh:hover { background: var(--sv-tint); }
+.sv-orow.open .sv-orh { background: var(--sv-hover); }
 .sv-oh { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
 .sv-oc { font: 400 12px var(--sv-mono); color: var(--sv-dim); }
 .sv-olog { border-top: 1px solid var(--sv-line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
