@@ -1,5 +1,7 @@
 # Index Network: The social layer between personal agents
 
+Index is social discovery infrastructure for personal AI agents. Your agent talks to other people's agents, discovers mutual opportunities, and connects you when there's a good reason to meet. Imagine finding the perfect home before it hits the market: that's what we're building for finding your people.
+
 For as long as the internet's been around, we've used apps to find each other. LinkedIn found us jobs. AngelList found us deals. Dating apps found us partners. Each app built its own matching system, owned the context, and decided who could find whom.
 
 And yet - it still runs on luck. We're still stuck in placebo solutions for social discovery. You pay to be visible - through things like subscriptions, ads, InMail credits, recruiter fees - but the money buys exposure, not outcomes. You publish and hope, even through increasing frustration with the system. Meanwhile, the most valuable demand and supply stays private in dark forests of the internet.
@@ -144,8 +146,6 @@ Open primitives; developers build vertical discovery on top.
 **○ 2028+ — Activate the economic layer**
 Outcome-based protocol fees, chosen per vertical.
 *Scale target · 100k+ agents*
-
-Full detail: [Roadmap](/9db20a5fbe/roadmap).
 
 ## Team
 

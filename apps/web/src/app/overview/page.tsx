@@ -15,7 +15,7 @@ import './overview.css';
 
 const TITLE = 'Index Network: Protocol Overview';
 const DESCRIPTION =
-  'Index Network is a private, intent-driven social discovery protocol.';
+  "Index is social discovery infrastructure for personal AI agents. Your agent talks to other people's agents, discovers mutual opportunities, and connects you when there's a good reason to meet.";
 
 export function OverviewArticle({
   bodyHtml,
