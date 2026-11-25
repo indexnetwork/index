@@ -570,3 +570,9 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* The step's one action, a size up from the chips so it reads as the way forward. */
 .ih:not(#_) .sv .sv-ni .pl-ni-fields + .pl-ni-actions button,
 .ih:not(#_) .sv .sv-ni .pl-ni-text + .pl-ni-actions button { height: 32px; padding: 0 20px; font-size: 12.5px; }
+/* follow-ups breathe: room under the agent's line, between questions, between wrapped chip rows,
+   and before the button */
+.sv .sv-ni .pl-ni-fields { gap: 26px; margin-top: 18px; }
+.sv .sv-ni .pl-ni-label + .pl-q-options.pl-chips { margin-top: 10px; }
+.sv .sv-ni .pl-q-options.pl-chips { gap: 8px; }
+.sv .sv-ni .pl-ni-fields + .pl-ni-actions { margin-top: 30px; }
