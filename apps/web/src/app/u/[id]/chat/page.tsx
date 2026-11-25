@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { PersonPane, PersonSummary, type PersonTab } from "@/components/intents-home/PersonPane";
 
 const logger = log.page.from("u/[id]/chat");
 
@@ -87,6 +88,7 @@ export default function ChatPage() {
   }
 
   const userName = profile?.name || cachedPeer?.name || "";
+  const avatar = profile?.avatar || cachedPeer?.avatar || undefined;
   const showMissingUser = Boolean(error && !profile && !cachedPeer);
 
   return (
@@ -103,6 +105,23 @@ export default function ChatPage() {
             />
           )}
         </div>
+      ) : id && !compact ? (
+        // On the desktop the conversation is the person pane, opened on chat: who they are a tab away.
+        <ConversationPane key={id} userId={id} name={userName || "someone"} avatar={avatar}>
+          {(onCount) => <ChatView
+            key={id}
+            userId={id}
+            userName={userName || "someone"}
+            userAvatar={avatar}
+            initialGroupId={initialGroupId}
+            initialMessage={prefillMessage}
+            autoSend={autoSend}
+            onClose={leave}
+            onBack={leave}
+            bare
+            onCount={onCount}
+          />}
+        </ConversationPane>
       ) : id ? (
         <ChatView
           key={id}
@@ -122,3 +141,19 @@ export default function ChatPage() {
 }
 
 export const Component = ChatPage;
+
+/** The person you're talking to, opened on chat; summary shows who they are and what you were matched on. */
+function ConversationPane({ userId, name, avatar, children }: { userId: string; name: string; avatar?: string; children: (onCount: (count: number) => void) => React.ReactNode }) {
+  const [tab, setTab] = useState<PersonTab>("chat");
+  const [count, setCount] = useState(0);
+  return (
+    <PersonPane
+      person={{ name, userId, avatar }}
+      tab={tab}
+      onTab={setTab}
+      chatCount={count}
+      summary={<PersonSummary userId={userId} />}
+      chat={children(setCount)}
+    />
+  );
+}

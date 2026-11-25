@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import NotFound from "@/app/not-found";
 import NetworkDetailPage from "@/app/networks/[id]/page";
-import { UserProfile } from "@/app/u/[id]/page";
+import { ProfileHold, UserProfile } from "@/app/u/[id]/page";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNetworks } from "@/contexts/APIContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
@@ -52,15 +52,11 @@ export default function HandlePage() {
   if (state === "missing") return <NotFound />;
   if (state !== "ready" || !holder) {
     return (
-      <Stage width={480}>
-        <Window title={handle} onClose={back}>
-          <div style={{ padding: "36px 24px" }}>
-            {state === "failed"
-              ? <EmptyState tone="error" message="couldn't load this page." action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }} />
-              : <Placeholder.Window rows={3} label="loading this page" />}
-          </div>
-        </Window>
-      </Stage>
+      <ProfileHold title={handle} onClose={back}>
+        {state === "failed"
+          ? <EmptyState tone="error" message="couldn't load this page." action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }} />
+          : <Placeholder.Window rows={3} label="loading this page" />}
+      </ProfileHold>
     );
   }
 
@@ -99,11 +95,9 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
 
   if (authLoading || (isAuthenticated && networksLoading)) {
     return (
-      <Stage width={480}>
-        <Window title={network.title} onClose={back}>
-          <div style={{ padding: "36px 24px" }}><Placeholder.Window rows={4} label="loading this network" /></div>
-        </Window>
-      </Stage>
+      <ProfileHold title={network.title} onClose={back}>
+        <Placeholder.Window rows={4} label="loading this network" />
+      </ProfileHold>
     );
   }
 

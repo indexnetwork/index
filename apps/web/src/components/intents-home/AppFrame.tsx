@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import "@/styles/intents-home.css";
 import "@/styles/buttons.css";
+import "@/styles/split.css";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { awaitsFirstIntent } from "@/services/onboarding";
 import UserAvatar from "@/components/UserAvatar";
@@ -17,8 +18,12 @@ import ConnectAgent from "@/components/intents-home/ConnectAgent";
 import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
-import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections } from "@/components/intents-home/homeSectionsContext";
+import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections, usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
+import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
+import { personKey, RANK, type Stage } from "@/components/intents-home/stages";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { KeyboardProvider, JumpButton, useZone } from "@/components/intents-home/keyboard";
+import { UndoProvider } from "@/components/intents-home/undo";
 
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
@@ -38,6 +43,30 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
   if (pathname.startsWith("/agents")) return "settings";
   if (pathname.startsWith("/negotiations")) return "settings";
   return "";
+}
+
+/**
+ * Opened somewhere other than Home first: count Home's sections here so the
+ * sidebar shows them anyway. Home takes over once it draws.
+ */
+function RailCounts() {
+  const { entriesByIntent } = useIntentsData();
+  const { questions, loaded } = usePersonalQuestions();
+  const best = new Map<string, Stage>();
+  for (const entries of Object.values(entriesByIntent)) {
+    for (const entry of entries) {
+      const key = personKey(entry.item);
+      const now = best.get(key);
+      if (!now || RANK[entry.stage] < RANK[now]) best.set(key, entry.stage);
+    }
+  }
+  const stages = [...best.values()];
+  usePublishHomeSections(loaded ? [
+    { id: "questions", label: "questions", count: questions.length },
+    { id: "waiting", label: "waiting on you", count: stages.filter((s) => s === "awaiting").length },
+    { id: "progress", label: "in progress", count: stages.filter((s) => s === "talks" || s === "chat").length },
+  ] : []);
+  return null;
 }
 
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
@@ -60,8 +89,11 @@ function AppRail({ here }: { here: RailKey }) {
     </button>
   );
 
+  const zone = useZone();
   return (
-    <nav className="ih-rail" aria-label="main">
+    <>
+    {here !== "home" && <RailCounts />}
+    <nav className={`ih-rail${zone === "rail" ? " sv-focus" : ""}`} aria-label="main" data-zone="rail">
       <div className="ih-brand">index</div>
       <div className="ih-rail-body">
         {item("home", "home", "/", waiting)}
@@ -83,6 +115,7 @@ function AppRail({ here }: { here: RailKey }) {
         {item("introduce", "introduce", "/introduce")}
 
         <div className="ih-foot">
+          <JumpButton />
           <ConnectAgent />
           <div className="ih-menu">
             {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
@@ -93,6 +126,7 @@ function AppRail({ here }: { here: RailKey }) {
         </div>
       </div>
     </nav>
+    </>
   );
 }
 
@@ -171,15 +205,25 @@ function AgentWindow() {
   );
 }
 
-/** Beside an intent: that intent's agent, always open (it's half of the page). */
+/** Beside an intent: that intent's agent, docked like Home's and opened the same way. */
 function IntentAgentWindow({ intentId }: { intentId: string }) {
+  const { open, setOpen } = useAgentWindow();
   const { intents } = useIntentsData();
   const intent = intents.find((i) => i.id === intentId);
   if (!intent) return null;
+  if (!open) {
+    return (
+      <button type="button" className="ih-agentdock" aria-label="open this intent's agent" title="talk about this intent" onClick={() => setOpen(true)}>
+        <span className="ih-agentdock-arrow" aria-hidden>◂</span>
+        <span className="ih-agentdock-label">talk about this intent</span>
+      </button>
+    );
+  }
   const paused = (intent.status || "").toLowerCase() === "paused";
   return (
     <section className="ih-agentwin" aria-label="this intent's agent">
-      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} />
+      {/* Its open questions sit on the page, above the matches. */}
+      <IntentAgentPanel key={intentId} intentId={intentId} paused={paused} createdAt={intent.createdAt} hideOpenQuestions onClose={() => setOpen(false)} />
     </section>
   );
 }
@@ -201,12 +245,19 @@ function RightWindow({ intentId }: { intentId?: string }) {
       const target = event.target as HTMLElement | null;
       const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT") && (target as HTMLTextAreaElement).value.trim() !== "";
       if (log) { if (log.view !== "chat" || !typing) setLog(null); return; }
-      if (open && !typing && !intentId) setOpen(false);
+      if (open && !typing) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [log, setLog, open, setOpen, intentId]);
-  if (log) return <MatchWindow />;
+  }, [log, setLog, open, setOpen]);
+  if (log) {
+    // The person picked from the page, in the same pane the conversations page uses.
+    return (
+      <section className="ih-agentwin sv-matchwin" aria-label={`you and ${log.name.split(" ")[0]}`}>
+        <div className="sv"><section className="sv-pane" data-zone="pane"><MatchWindow /></section></div>
+      </section>
+    );
+  }
   return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
 }
 
@@ -215,7 +266,7 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const { user } = useAuthContext();
   const here = railKey(pathname, search, user?.id, user?.username);
-  // An intent's page (not the new-intent flow) has its agent on the right.
+  // Home and an intent's page have their agent docked on the right.
   const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
   const withRight = pathname === "/" || (!!intentId && intentId !== "new");
   // The first intent is the last onboarding step: no rail, and the page is a card on the
@@ -229,13 +280,17 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   return (
     <HomeSectionsProvider>
       <AgentWindowProvider>
-        <div className={bare ? "ih ih-first" : "ih"}>
-          {!bare && <AppRail here={here} />}
-          <main className="ih-main">
-            <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
-          </main>
-          {withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
-        </div>
+        <UndoProvider>
+          <KeyboardProvider>
+            <div className={bare ? "ih ih-first" : "ih"}>
+              {!bare && <AppRail here={here} />}
+              <main className="ih-main">
+                <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
+              </main>
+              {!bare && withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
+            </div>
+          </KeyboardProvider>
+        </UndoProvider>
       </AgentWindowProvider>
     </HomeSectionsProvider>
   );

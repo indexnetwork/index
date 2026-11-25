@@ -18,6 +18,8 @@ import { awaitsFirstIntent, onboardingService } from "@/services/onboarding";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { AgentWorking } from "@/components/ui/AgentWorking";
 import { useIndexingToast } from "@/components/intents-home/useIndexingToast";
+import { PageView } from "@/components/intents-home/SplitView";
+import NewIntentPane from "@/components/intents-home/NewIntentPane";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
@@ -145,6 +147,38 @@ export default function NewIntentPage() {
   const card = onboarding && !compact;
   const rootClass = card ? "pl-new pl-new-first" : "pl-new";
   const signOutLink = card && <button type="button" className="wb-onboarding-out" onClick={() => void signOut()}>sign out</button>;
+
+  // On a desktop, past onboarding: a page of its own, the agent reading along.
+  if (!compact && !onboarding) {
+    const later = stage === "retry" ? (
+      <AgentSays>
+        couldn&apos;t reach your agent.
+        <div className="pl-ni-actions"><button type="button" className="sv-btn go" onClick={() => void runPrepare(payload)}>try again</button></div>
+      </AgentSays>
+    ) : stage === "summary" ? (
+      <AgentSays>
+        {preparationReceipt ? "here's your intent. change anything you like, then start it." : feedback || "here's your intent."}
+        <textarea className="pl-ni-text" aria-label="Intent description" value={payload} rows={5} maxLength={65_536} onChange={(event) => setPayload(event.target.value)} />
+        <div className="pl-ni-actions">
+          {preparationReceipt
+            ? <button type="button" className="sv-btn go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>start looking ▸</button>
+            : <button type="button" className="sv-btn go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check it again</button>}
+        </div>
+      </AgentSays>
+    ) : stage === "recovery" ? (
+      <Recovery fields={recoveryFields} feedback={feedback} onSubmit={(answers) => void runPrepare(payload, answers, 2)} />
+    ) : null;
+    const busy = settingUp ? <AgentWorking kind="grow" size={120}>starting to look</AgentWorking>
+      : thinking ? <AgentWorking kind="look" size={120}>reading that</AgentWorking>
+      : null;
+    return (
+      <PageView fill>
+        <NewIntentPane busy={busy} onSubmit={submitOpening} onClose={() => navigate("/intents")}>
+          {later && <OpenAgentLines.Provider value>{later}</OpenAgentLines.Provider>}
+        </NewIntentPane>
+      </PageView>
+    );
+  }
 
   if (settingUp) return <div className={rootClass}>{signOutLink}<Calibrating /></div>;
 
