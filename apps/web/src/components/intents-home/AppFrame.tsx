@@ -112,7 +112,6 @@ function AppRail({ here }: { here: RailKey }) {
         </ul>
         {item("intents", "intents", "/intents", waiting)}
         {item("chat", "conversations", "/chat", unread)}
-        {item("introduce", "introduce", "/introduce")}
 
         <div className="ih-foot">
           <JumpButton />

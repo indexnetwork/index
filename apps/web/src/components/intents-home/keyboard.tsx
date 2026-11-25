@@ -19,7 +19,7 @@ import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
  */
 export type Zone = "rail" | "list" | "pane";
 const ZONES: Zone[] = ["rail", "list", "pane"];
-const PAGES = ["/", "/intents", "/chat", "/introduce"];
+const PAGES = ["/", "/intents", "/chat"];
 
 const ZoneContext = createContext<Zone>("list");
 export const useZone = () => useContext(ZoneContext);
@@ -78,7 +78,6 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
       { label: "home", kind: "page", run: () => navigate("/") },
       { label: "intents", kind: "page", run: () => navigate("/intents") },
       { label: "conversations", kind: "page", run: () => navigate("/chat") },
-      { label: "introduce", kind: "page", run: () => navigate("/introduce") },
       { label: "new intent", kind: "write one", run: () => navigate("/i/new") },
       { label: "answer questions", kind: "home", run: () => { navigate("/"); setTimeout(() => document.getElementById("questions")?.scrollIntoView({ block: "start" }), 50); } },
       ...people.values(),
