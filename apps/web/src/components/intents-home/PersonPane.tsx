@@ -9,6 +9,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import { resolveSocials } from "@/lib/socials";
+import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import type { RadarCardItem } from "@/services/opportunities";
 import { intentLabel } from "@/components/intents-home/stages";
 
@@ -190,7 +191,7 @@ export function PersonSummary({ userId, focusId, why, intentId }: {
           <h4 className="sv-h4">elsewhere</h4>
           <div className="sv-socials">
             {socials.map((s) => (
-              <a className="sv-soc" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer">{s.platform === "website" ? s.handle : `${s.platform} ${s.handle}`}</a>
+              <a className="sv-soc" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" title={s.platform}>{SOCIAL_ICONS[s.platform]}<span>{s.handle}</span></a>
             ))}
           </div>
         </>
