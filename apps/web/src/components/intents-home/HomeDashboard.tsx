@@ -6,10 +6,10 @@ import "@/styles/plain.css";
 import { PageView, ListHead } from "@/components/intents-home/SplitView";
 import QuestionCard from "@/components/intents-home/QuestionCard";
 import { useUndo } from "@/components/intents-home/undo";
-import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
+import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
-import { focusedGroup, intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
+import { focusedGroup, intentsToRefresh } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -72,10 +72,6 @@ export default function HomeDashboard() {
   useEffect(() => {
     if (linkedGroup) document.getElementById(`q-card-${linkedGroup}`)?.scrollIntoView({ block: "center" });
   }, [linkedGroup]);
-  /** "for: …" under a card that stands for more than one intent. */
-  const forLine = (question: AgentQuestion) => question.intentIds.length > 1
-    ? `for: ${question.intentIds.map((id) => intentLabel(intents.find((intent) => intent.id === id))).filter(Boolean).join(", ")}`
-    : undefined;
 
   // After an answer my agent goes back to work on that intent, so "in progress"
   // shows as loading until its people change (or a while passes), rereading
@@ -261,19 +257,14 @@ export default function HomeDashboard() {
         <div className="sv-empty">no questions right now.</div>
       ) : (
         <>
-          {questionList.shown.map((question) => {
-            const one = question.intentIds.length <= 1;
-            return (
-              <QuestionCard
-                key={question.groupId}
-                question={question}
-                intentLabel={one ? intentLabel(intents.find((intent) => intent.id === question.intentId)) : forLine(question)?.replace(/^for: /, "")}
-                intentHref={one ? `/i/${question.intentId}` : undefined}
-                selected={question.groupId === linkedGroup}
-                onAnswer={answerAndRefresh}
-              />
-            );
-          })}
+          {questionList.shown.map((question) => (
+            <QuestionCard
+              key={question.groupId}
+              question={question}
+              selected={question.groupId === linkedGroup}
+              onAnswer={answerAndRefresh}
+            />
+          ))}
           {questionList.more}
         </>
       )}

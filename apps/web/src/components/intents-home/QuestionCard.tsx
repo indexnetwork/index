@@ -19,11 +19,8 @@ type Question = PrincipalQuestion & { intentId: string; groupId?: string };
  * in (enter sends); skip lets the agent decide. Every answer waits a few seconds
  * behind "undo" before it's sent.
  */
-export default function QuestionCard({ question, intentLabel, intentHref, selected, onAnswer, onHide }: {
+export default function QuestionCard({ question, selected, onAnswer, onHide }: {
   question: Question;
-  /** The intent it's about, shown after the asker (left out on that intent's own page). */
-  intentLabel?: string;
-  intentHref?: string;
   selected?: boolean;
   onAnswer: (intentId: string, questionId: string, text: string) => Promise<void>;
   /** Hide the card while its answer waits (and bring it back on undo). */
@@ -63,9 +60,6 @@ export default function QuestionCard({ question, intentLabel, intentHref, select
       {face}
       <div className="sv-card-body">
         <b>{label}</b>
-        {intentLabel && (
-          <span className="sv-via"> · {intentHref ? <Link to={intentHref}>{intentLabel}</Link> : intentLabel}</span>
-        )}
         <div className="sv-blurb">{question.question}</div>
         <div className="sv-chips one">
           {options.map((option) => (
