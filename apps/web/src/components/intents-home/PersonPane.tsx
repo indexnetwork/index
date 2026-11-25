@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
@@ -160,8 +160,20 @@ function statusOf(item: RadarCardItem, hasChat: boolean): { label: string; cls: 
   return { label: "accepted", cls: "live" };
 }
 
+/** Accepted, then waiting on you, then in progress, then closed. */
+const STATUS_RANK: Record<string, number> = { live: 0, waiting: 1, talks: 2, paused: 3 };
+
+/** "9 missed · 3 not a fit": what the folded closed rows hold. */
+function closedLabel(labels: string[]): string {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...counts].map(([label, n]) => `${n} ${label}`).join(" · ");
+}
+
 /** Every opportunity between you two, open or closed. */
-const PAIR_STATUSES: OpportunityLifecycleStatus[] = ["negotiating", "pending", "accepted", "rejected", "expired"];
+const LIVE_STATUSES: OpportunityLifecycleStatus[] = ["negotiating", "pending", "accepted"];
+const CLOSED_STATUSES: OpportunityLifecycleStatus[] = ["rejected", "expired"];
+const PAIR_STATUSES = [...LIVE_STATUSES, ...CLOSED_STATUSES];
 
 /** 444, 1.2k, 3m: how the prototype counts members. */
 const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n).toLowerCase();
@@ -193,23 +205,19 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
   const [nets, setNets] = useState<{ id: string; list: Array<{ id: string; title: string; _count: { members: number } }> } | null>(null);
   const [opps, setOpps] = useState<{ id: string; list: RadarCardItem[] } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  /** Closed rows folded or not, for whose pane; another person's starts from the default. */
+  const [fold, setFold] = useState<{ id: string; open: boolean } | null>(null);
 
   useEffect(() => {
     if (!userId) return;
     let active = true;
     networksApi.getSharedNetworks(userId).then((list) => { if (active) setNets({ id: userId, list }); }).catch(() => { if (active) setNets({ id: userId, list: [] }); });
-    // Rows come first from stored cards, blank where none is written yet (always
-    // so for one still negotiating); writing those up takes seconds, so they
-    // fill in from a second request instead of holding the whole list back.
-    const query = { peerUserId: userId, statuses: PAIR_STATUSES, noCache: fresh };
-    opportunitiesApi.getRadarView({ ...query, presentation: "skeleton" })
-      .then((res) => {
-        if (active) setOpps({ id: userId, list: res.items });
-        return res.items.some((item) => item.presentationPending);
-      }, () => true)
-      .then((pending) => pending && active ? opportunitiesApi.getRadarView(query) : null)
-      .then((res) => { if (res && active) setOpps({ id: userId, list: res.items }); })
-      .catch(() => { if (active) setOpps((prev) => prev && prev.id === userId ? prev : { id: userId, list: [] }); });
+    // Rows come first from stored cards, blank where none is written yet; writing
+    // those up takes seconds, so the effect below fills in the ones on screen.
+    opportunitiesApi.getRadarView({ peerUserId: userId, statuses: PAIR_STATUSES, noCache: fresh, presentation: "skeleton" })
+      .catch(() => opportunitiesApi.getRadarView({ peerUserId: userId, statuses: PAIR_STATUSES, noCache: fresh }))
+      .then((res) => { if (active) setOpps({ id: userId, list: res.items }); })
+      .catch(() => { if (active) setOpps({ id: userId, list: [] }); });
     return () => { active = false; };
   }, [userId, networksApi, opportunitiesApi, fresh]);
 
@@ -218,6 +226,59 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
   const socials = resolveSocials(profile?.socials ?? []);
   const hasChat = !!userId && conversations.some((conv) => (conv.participants ?? []).some((p) => p.participantType === "user" && p.participantId === userId));
   const intentTitle = intentLabel(intents.find((intent) => intent.id === intentId));
+  // Live rows first; missed and not-a-fit ones fold under one line, unless the
+  // one this pane is for is among them. Sorting is stable, so each group keeps
+  // the server's most-recently-changed-first order.
+  const rows = (list ?? []).map((item) => ({ item, status: statusOf(item, hasChat) }))
+    .sort((a, b) => STATUS_RANK[a.status.cls] - STATUS_RANK[b.status.cls]);
+  const live = rows.filter((row) => row.status.cls !== "paused");
+  const closed = rows.filter((row) => row.status.cls === "paused");
+  const showClosed = fold && fold.id === userId ? fold.open : closed.some((row) => row.item.opportunityId === focusId);
+
+  // Write up the blank rows on screen: live ones at once, closed ones only once
+  // unfolded, so a pair with dozens of missed rows doesn't write them all. Each
+  // group is asked for once per person; its cards replace their blanks.
+  const blankLive = live.some((row) => row.item.presentationPending);
+  const blankClosed = showClosed && closed.some((row) => row.item.presentationPending);
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!userId) return;
+    const groups = [blankLive && "live", blankClosed && "closed"].filter((g): g is "live" | "closed" => !!g && !asked.current.has(`${userId}:${g}`));
+    for (const group of groups) {
+      asked.current.add(`${userId}:${group}`);
+      opportunitiesApi.getRadarView({ peerUserId: userId, statuses: group === "live" ? LIVE_STATUSES : CLOSED_STATUSES, noCache: fresh })
+        .then((res) => {
+          const byId = new Map(res.items.map((item) => [item.opportunityId, item]));
+          setOpps((prev) => prev && prev.id === userId ? { id: userId, list: prev.list.map((item) => byId.get(item.opportunityId) ?? item) } : prev);
+        })
+        .catch(() => asked.current.delete(`${userId}:${group}`));
+    }
+  }, [userId, blankLive, blankClosed, opportunitiesApi, fresh]);
+
+  const renderRow = ({ item, status }: { item: RadarCardItem; status: { label: string; cls: string } }) => {
+    const isOpen = open === item.opportunityId;
+    const headline = item.headline || item.mainText;
+    const reason = item.opportunityId === focusId && why ? why : (item.personalizedSummary || (item.mainText !== headline ? item.mainText : ""));
+    return (
+      <div key={item.opportunityId} className={`sv-orow${isOpen ? " open" : ""}`}>
+        <button type="button" className="sv-orh" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : item.opportunityId)}>
+          <span className="sv-oh">{headline || (item.presentationPending ? <Placeholder.Text lines={1} label="writing this up" style={{ width: "70%" }} /> : "an opportunity")}</span>
+          <span className="sv-os">{status.cls === "talks" && item.opportunityId === focusId && <span className="sv-dot" />}{status.label}</span>
+          <span className="sv-oc">{isOpen ? "▾" : "›"}</span>
+        </button>
+        {isOpen && (
+          <div className="sv-olog">
+            <div className="sv-alh">
+              {item.opportunityId === focusId && intentTitle ? <>for <Link to={`/i/${intentId}`}>{intentTitle}</Link></> : item.mutualIntentsLabel}
+              {item.createdAt && ` · ${shortDate(item.createdAt)}`}
+            </div>
+            {reason && <p className="sv-owhy">{reason}</p>}
+            <NegotiationConversation opportunityId={item.opportunityId} expanded onToggle={() => setOpen(null)} look="turns" />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -257,31 +318,13 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
         why ? <p>{why}</p> : none ?? <p className="sv-dimp">nothing between you two yet.</p>
       ) : (
         <div className="sv-olist">
-          {list.map((item) => {
-            const isOpen = open === item.opportunityId;
-            const status = statusOf(item, hasChat);
-            const headline = item.headline || item.mainText;
-            const reason = item.opportunityId === focusId && why ? why : (item.personalizedSummary || (item.mainText !== headline ? item.mainText : ""));
-            return (
-              <div key={item.opportunityId} className={`sv-orow${isOpen ? " open" : ""}`}>
-                <button type="button" className="sv-orh" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : item.opportunityId)}>
-                  <span className="sv-oh">{headline || (item.presentationPending ? <Placeholder.Text lines={1} label="writing this up" style={{ width: "70%" }} /> : "an opportunity")}</span>
-                  <span className="sv-os">{status.cls === "talks" && item.opportunityId === focusId && <span className="sv-dot" />}{status.label}</span>
-                  <span className="sv-oc">{isOpen ? "▾" : "›"}</span>
-                </button>
-                {isOpen && (
-                  <div className="sv-olog">
-                    <div className="sv-alh">
-                      {item.opportunityId === focusId && intentTitle ? <>for <Link to={`/i/${intentId}`}>{intentTitle}</Link></> : item.mutualIntentsLabel}
-                      {item.createdAt && ` · ${shortDate(item.createdAt)}`}
-                    </div>
-                    {reason && <p className="sv-owhy">{reason}</p>}
-                    <NegotiationConversation opportunityId={item.opportunityId} expanded onToggle={() => setOpen(null)} look="turns" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {live.map(renderRow)}
+          {closed.length > 0 && (
+            <button type="button" className="sv-ofold" aria-expanded={showClosed} onClick={() => userId && setFold({ id: userId, open: !showClosed })}>
+              {closedLabel(closed.map((row) => row.status.label))} {showClosed ? "▾" : "›"}
+            </button>
+          )}
+          {showClosed && closed.map(renderRow)}
         </div>
       )}
     </>

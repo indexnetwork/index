@@ -200,6 +200,9 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-oc { font: 400 12px var(--sv-mono); color: var(--sv-dim); }
 .sv-olog { border-top: 1px solid var(--sv-line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
 .sv-olog .sv-via { color: var(--sv-ink2); }
+/* the missed and not-a-fit rows fold under one line of text, never a box */
+.sv .sv-ofold { justify-self: start; background: none; border: 0; padding: 6px 0; font: 500 11px var(--sv-mono); color: var(--sv-ink2); cursor: pointer; }
+.sv .sv-ofold:hover { color: var(--sv-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* bottom bar: accept / pass, or a note */
 .sv-bar { flex: none; display: flex; gap: 10px; align-items: center; padding: 12px 22px 14px; border-top: 1px solid var(--sv-line); background: var(--sv-paper); }

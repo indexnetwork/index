@@ -32,6 +32,31 @@ async function flagUnverifiedPeers(presented: PresentedOpportunity[]): Promise<P
   return presented.map((o) => ({ ...o, peer: { ...o.peer, emailVerified: !unverified.has(o.peer.userId) } }));
 }
 
+const TOPIC_MAX = 100;
+const TOPIC_MIN = 60;
+
+/**
+ * A one-line title for a negotiation still running, from the latest proposal
+ * (counters tend to open with thanks), else the latest turn: whole sentences
+ * until it says something (a bare "I'm reaching out on behalf of X." doesn't),
+ * cut at a word near 100 chars.
+ */
+function proposalTopic(turns: Array<{ action: string; message: string }>): string | null {
+  const turn = [...turns].reverse().find((t) => t.action === 'propose') ?? turns.at(-1);
+  const text = turn?.message.replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const sentences = text.match(/[^.?!]+[.?!]+(?=\s|$)|[^.?!]+$/g) ?? [text];
+  let topic = '';
+  for (const sentence of sentences) {
+    topic = `${topic} ${sentence.trim()}`.trim();
+    if (topic.length >= TOPIC_MIN) break;
+  }
+  if (topic.length <= TOPIC_MAX) return topic;
+  const cut = topic.slice(0, TOPIC_MAX);
+  const space = cut.lastIndexOf(' ');
+  return `${cut.slice(0, space > TOPIC_MIN ? space : TOPIC_MAX).replace(/[,;:.]$/, '')}…`;
+}
+
 function sanitizeOpportunityForResponse<T extends Opportunity>(opportunity: T): T {
   return {
     ...opportunity,
@@ -253,10 +278,17 @@ export class OpportunityService {
     if (options?.peerUserId && options.statuses) {
       const rows = await this.db.findOpportunitiesByActors([userId, options.peerUserId], { includeIntroducers: true, statuses: options.statuses });
       const seen = rows.filter((opp) => canUserSeeOpportunity(opp.actors, opp.status, userId));
-      const turns = await Promise.all(seen.map((opp) => this.negotiations.readNegotiationContext(opp.id, userId)));
-      const visible = seen.filter((_, i) => (turns[i]?.turns.length ?? 0) > 0);
+      const records = await Promise.all(seen.map((opp) => this.negotiations.readNegotiationContext(opp.id, userId)));
+      const visible = seen.flatMap((opp, i) => records[i]?.turns.length ? [{ opp, turns: records[i]!.turns }] : []);
       const skeleton = options.presentation === 'skeleton';
-      const opportunities = await Promise.all(visible.map((opp) => this.presentOpportunityForViewer(opp, userId, undefined, { skeleton })));
+      const opportunities = await Promise.all(visible.map(async ({ opp, turns }) => {
+        // A negotiating card is a template, not presenter text, so it comes whole
+        // even in skeleton mode, titled by what the agents are proposing.
+        if (opp.status !== 'negotiating') return this.presentOpportunityForViewer(opp, userId, undefined, { skeleton });
+        const presented = await this.presentOpportunityForViewer(opp, userId);
+        const topic = proposalTopic(turns);
+        return topic ? { ...presented, headline: topic } : presented;
+      }));
       return { opportunities, meta: { totalOpportunities: opportunities.length } };
     }
     if (options?.peerUserId) {
