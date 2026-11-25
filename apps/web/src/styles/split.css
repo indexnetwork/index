@@ -567,3 +567,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* a question with no options: one line in the app's field */
 .ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child { width: 100%; max-width: 420px; height: auto; margin: 0; padding: 6px 10px; border: 1px solid var(--sv-edge); border-radius: 2px; box-shadow: none; background: var(--sv-paper); font: 400 14px/1.45 var(--sv-sans); color: var(--sv-ink); outline: none; }
 .ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child:focus { border-color: var(--sv-ink); }
+/* The step's one action, a size up from the chips so it reads as the way forward. */
+.ih:not(#_) .sv .sv-ni .pl-ni-fields + .pl-ni-actions button,
+.ih:not(#_) .sv .sv-ni .pl-ni-text + .pl-ni-actions button { height: 32px; padding: 0 20px; font-size: 12.5px; }
