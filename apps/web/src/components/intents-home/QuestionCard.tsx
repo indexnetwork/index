@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type { PrincipalQuestion } from "@/services/conversation";
 import { questionAsker } from "@/components/IntentNegotiatorChat";
 import UserAvatar from "@/components/UserAvatar";
+import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUndo } from "@/components/intents-home/undo";
 
@@ -11,6 +12,17 @@ import { useUndo } from "@/components/intents-home/undo";
 export const SKIP_ANSWER = "skip this one. use your best judgement.";
 
 type Question = PrincipalQuestion & { intentId: string; groupId?: string };
+
+/** "40 minutes", "3 hours", "2 days": how long two agents have been at it. */
+function talkingFor(since: string, now = Date.now()): string {
+  const minutes = Math.max(1, Math.floor((now - Date.parse(since)) / 60000));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (minutes < 60) return plural(minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return plural(hours, "hour");
+  const days = Math.floor(hours / 24);
+  return days < 14 ? plural(days, "day") : plural(Math.floor(days / 7), "week");
+}
 
 /**
  * A question from an agent, built like the other cards in a list: who's
@@ -28,6 +40,7 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
 }) {
   const later = useUndo();
   const { error: showError } = useNotifications();
+  const { entriesByIntent } = useIntentsData();
   const [own, setOwn] = useState("");
   const [gone, setGone] = useState(false);
   const asker = questionAsker(question);
@@ -54,6 +67,11 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
     ? <Link to={`/u/${owner.id}`} title={`${owner.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={owner.id} name={owner.name} avatar={owner.avatar ?? null} size={36} /></Link>
     : <span className="sv-mine" aria-hidden>ix</span>;
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
+  // How long their agent and yours have been talking, from the opportunity the question is about.
+  const opportunityId = question.matches?.[0]?.opportunityId;
+  const since = owner && opportunityId
+    ? Object.values(entriesByIntent).flat().find((entry) => entry.item.opportunityId === opportunityId)?.item.createdAt
+    : undefined;
   const sent = owner ? `answered. your agent takes it back to ${label}.` : null;
 
   return (
@@ -61,7 +79,7 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <b>{label}</b>
+          <span><b>{label}</b>{since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
         <div className="sv-blurb">{question.question}</div>
