@@ -293,21 +293,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-iagent form.pl-agent-compose { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 14px 14px; border-top: 1px dashed var(--sv-well-line); background: none; margin: 0; }
 .sv-iagent form.pl-agent-compose textarea { flex: 1; background: var(--sv-paper); }
 
-/* new intent: write it, the agent reads along */
-.sv-ni .sv-ni-text { display: block; width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical; border: 1px solid var(--sv-ink); border-radius: 2px; padding: 12px 14px; font: 400 16px/1.5 var(--sv-sans); color: var(--sv-ink); background: var(--sv-paper); outline: none; box-shadow: var(--sv-sh-field); }
-.sv-ni .sv-ni-starters { margin-top: 10px; }
-.sv-ni-lab { font: 400 11px var(--sv-mono); color: var(--sv-dim); margin-right: 4px; }
-.sv-ni-read { border: 1px solid var(--sv-well-line); background: var(--sv-well); border-radius: 4px; padding: 6px 14px; }
-.sv-ni-row { display: flex; gap: 14px; padding: 6px 0; font-size: 14px; }
-.sv-ni-row + .sv-ni-row { border-top: 1px dashed var(--sv-well-line); }
-.sv-ni-row span { width: 90px; flex: none; font: 400 11px var(--sv-mono); color: var(--sv-ink2); padding-top: 2px; }
-.sv-ni-warn { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--sv-ink); background: var(--sv-paper); font-size: 13px; line-height: 1.45; }
-.sv-ni-warn .sv-chips { margin-top: 8px; }
-.sv .sv-ni-dup { background: none; border: 0; padding: 0; font: inherit; color: var(--sv-ink); text-decoration: underline; cursor: pointer; text-align: left; }
-.sv-body p.sv-ni-tip { margin-top: 8px; font-size: 12.5px; color: var(--sv-ink2); }
-.sv .sv-chip.sv-ni-net { cursor: default; }
-.sv .sv-chip.sv-ni-net:hover { background: var(--sv-paper); }
-.sv-ni .pl-ni-text { width: 100%; box-sizing: border-box; }
 
 .sv-faint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-dim-note { font-size: 12.5px; color: var(--sv-ink2); margin-bottom: 8px; }
@@ -405,16 +390,8 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .ih .sv .sv-scroll button.sv-row { padding: 12px 20px; gap: 12px; align-items: flex-start; font: inherit; line-height: normal; }
 .ih .sv .sv-chat .pl-agent-log.pl-dm-tl { padding: 14px 16px 16px; }
 .sv-ilab .n { margin-left: 0; }
-.sv-ni-head { height: 108px; }
-.sv-body.sv-ni { padding-top: 14px; }
-.sv-ni > .sv-h4 { margin-top: 12px; }
-.sv-ni > .sv-h4:first-child { margin-top: 6px; }
-.sv-ni .sv-ni-text { height: 110px; min-height: 110px; }
-.sv .sv-chip.picked.sv-ni-net:hover { background: var(--sv-ink); }
 .ih .sv .sv-chat .pl-agent-line .pl-agent-bubble { max-width: 78%; }
 .ih .sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
-.sv-ni .sv-ni-starters { margin-top: 14px; }
-.sv .sv-chip.picked.sv-ni-net { font-weight: 600; }
 /* an intent's matches: cards inside the column (only its questions run edge to edge) */
 .sv-imatches > .sv-h4 { margin-top: 18px; }
 .sv-imatches > .sv-h4:first-child { margin-top: 6px; }
@@ -516,3 +493,53 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .ih:not(#_) .sv .sv-chip-own input { box-shadow: none; border-radius: 0; height: auto; min-height: 0; width: auto; min-width: 0; max-width: 46ch; padding: 4px 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--sv-ink); }
 .ih:not(#_) .sv .sv-chip-own input::placeholder { color: var(--sv-ink2); opacity: 1; }
 .sv .sv-chip-send { height: 20px; padding: 0 8px; border: 1px solid var(--sv-ink); border-radius: 999px; background: var(--sv-orange); font: 700 10.5px var(--sv-mono); color: var(--sv-ink); }
+
+/* ---------- new intent: dev's flow (question, starters, follow-ups, final check) in the app's look ---------- */
+.sv-ni-wrap { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; }
+.sv-ni-wrap > .sv-page { flex: 1 1 auto; min-width: 0; height: 100%; }
+.sv-ni-steps { display: inline-flex; align-items: center; gap: 10px; }
+.sv-ni-bar { display: inline-flex; gap: 4px; }
+.sv-ni-bar > span { width: 48px; height: 3px; background: var(--sv-line); }
+.sv-ni-bar > span.done { background: var(--sv-ink); }
+.sv-ni-bar > span.now { background: var(--sv-orange); }
+.ih:not(#_) .sv .sv-ni { overflow: visible; background: none; display: grid; gap: 22px; padding: 10px 20px 0; border-top: 1px solid var(--sv-line); padding-top: 22px; font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); }
+/* the agent speaking: avatar, a mono label, then its words, as on home's question cards */
+.sv .sv-ni .pl-open,
+.sv .sv-ni .pl-agent-line.pl-agent-open { gap: 12px; }
+.sv .sv-ni .pl-open-body,
+.sv .sv-ni .pl-agent-open > .pl-agent-bubble { flex: 1; min-width: 0; max-width: none; font: 400 14px/1.5 var(--sv-sans); }
+.sv .sv-ni .pl-open-who { font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-dim); }
+.sv .sv-ni .pl-open-q { margin: 4px 0 14px; font: 600 16px/1.4 var(--sv-sans); }
+/* what you said: right-aligned, in the conversation pane's warm well */
+.sv .sv-ni .pl-agent-bubble.mine { max-width: 70%; padding: 8px 12px; border: 1px solid var(--sv-well-line); border-radius: 2px; background: var(--sv-well); box-shadow: none; font: 400 14px/1.5 var(--sv-sans); white-space: pre-wrap; }
+.sv .sv-ni .pl-ni-turn { display: grid; gap: 10px; }
+/* the box to write in, with send inside it */
+.sv .sv-ni .pl-open-box { border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-paper); box-shadow: var(--sv-sh-field); }
+.sv .sv-ni .pl-open-box:focus-within { border-color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-open-box textarea { min-height: 76px; padding: 10px 12px 4px; border: 0; box-shadow: none; background: transparent; font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); }
+.sv .sv-ni .pl-open-box textarea::placeholder { color: var(--sv-dim); }
+/* buttons: the app's, orange for the one that moves you on */
+.ih:not(#_) .sv .sv-ni button.go,
+.ih:not(#_) .sv .sv-ni .pl-open-done button,
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button { height: 26px; margin: 0; padding: 0 14px; border: 1px solid var(--sv-ink); border-radius: 1px; background: var(--sv-paper); box-shadow: var(--sv-sh-btn); font: 500 11.5px var(--sv-mono); letter-spacing: 0; color: var(--sv-ink); transform: none; }
+.ih:not(#_) .sv .sv-ni button.go { background: var(--sv-orange); font-weight: 700; }
+.ih:not(#_) .sv .sv-ni .pl-open-box button.go { align-self: flex-end; margin: 0 8px 8px; }
+.ih:not(#_) .sv .sv-ni button.go:active:not(:disabled),
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+.ih:not(#_) .sv .sv-ni button.go:disabled,
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
+.sv .sv-ni .pl-ni-actions { margin-top: 10px; display: flex; gap: 8px; }
+/* starters: rows like the intents list, a hairline between, the row lit on hover */
+.sv .sv-ni .pl-open-options { margin-top: 16px; border-bottom: 1px solid var(--sv-line); }
+.ih:not(#_) .sv .sv-ni .pl-open-options button { height: auto; padding: 11px 12px; border: 0; border-top: 1px solid var(--sv-line); border-radius: 0; background: transparent; box-shadow: none; font: 500 14px/1.45 var(--sv-sans); color: var(--sv-ink); text-align: left; justify-content: flex-start; }
+.ih:not(#_) .sv .sv-ni .pl-open-options button:hover:not(:disabled) { background: var(--sv-hover, var(--sv-sel)); }
+.ih:not(#_) .sv .sv-ni .pl-open-options button:active:not(:disabled) { background: var(--sv-sel-focus); transform: none; }
+/* the final check: the intent in a field like the introduce page's */
+.ih:not(#_) .sv .sv-ni textarea.pl-ni-text { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--sv-edge); border-radius: 2px; box-shadow: none; background: var(--sv-paper); font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); resize: vertical; }
+.ih:not(#_) .sv .sv-ni textarea.pl-ni-text:focus { border-color: var(--sv-ink); outline: none; }
+.sv .sv-ni .pl-ni-label { font: 500 10.5px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-ink2); }
+.sv .sv-ni .pl-new-note { margin: -6px 0 12px; font: 400 12px var(--sv-mono); color: var(--sv-ink2); }
+
+/* what the agent is picking up, docked on the right like the agent window on home and an intent */
+.sv.sv-ni-warm { flex: none; width: var(--sv-list-w); display: flex; flex-direction: column; background: var(--sv-paper); }
+.sv-ni-warm-head { flex: none; padding: 14px 20px 10px; border-bottom: 1px solid var(--sv-line); font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink); }

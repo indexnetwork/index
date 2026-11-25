@@ -19,7 +19,6 @@ import { Placeholder } from "@/components/ui/Placeholder";
 import { AgentWorking } from "@/components/ui/AgentWorking";
 import { useIndexingToast } from "@/components/intents-home/useIndexingToast";
 import { PageView } from "@/components/intents-home/SplitView";
-import NewIntentPane from "@/components/intents-home/NewIntentPane";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const PICKS_PROMPT = "here's what i found about you, so this is where i'd start. pick as many as you like, and i'll take them to other agents on index and bring the opportunities back to you.";
@@ -148,43 +147,87 @@ export default function NewIntentPage() {
   const rootClass = card ? "pl-new pl-new-first" : "pl-new";
   const signOutLink = card && <button type="button" className="wb-onboarding-out" onClick={() => void signOut()}>sign out</button>;
 
-  // On a desktop, past onboarding: a page of its own, the agent reading along.
-  if (!compact && !onboarding) {
-    const later = stage === "retry" ? (
-      <AgentSays>
-        couldn&apos;t reach your agent.
-        <div className="pl-ni-actions"><button type="button" className="sv-btn go" onClick={() => void runPrepare(payload)}>try again</button></div>
-      </AgentSays>
-    ) : stage === "summary" ? (
-      <AgentSays>
-        {preparationReceipt ? "here's your intent. change anything you like, then start it." : feedback || "here's your intent."}
-        <textarea className="pl-ni-text" aria-label="Intent description" value={payload} rows={5} maxLength={65_536} onChange={(event) => setPayload(event.target.value)} />
-        <div className="pl-ni-actions">
-          {preparationReceipt
-            ? <button type="button" className="sv-btn go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>start looking ▸</button>
-            : <button type="button" className="sv-btn go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check it again</button>}
+  if (settingUp) return <div className={rootClass}>{signOutLink}<Calibrating /></div>;
+
+  // The flow itself, the same on every screen: what was said so far, then the step it's on.
+  const chat = (
+    <>
+      {turns.map((turn) => (
+        <div key={turn.id} className="pl-ni-turn">
+          <AgentSays>{turn.prompt}</AgentSays>
+          <YouSaid>{turn.answer}</YouSaid>
         </div>
-      </AgentSays>
-    ) : stage === "recovery" ? (
-      <Recovery fields={recoveryFields} feedback={feedback} onSubmit={(answers) => void runPrepare(payload, answers, 2)} />
-    ) : null;
-    const busy = settingUp ? <AgentWorking kind="grow" size={120}>starting to look</AgentWorking>
-      : thinking ? <AgentWorking kind="look" size={120}>reading that</AgentWorking>
-      : null;
+      ))}
+      {thinking ? (
+        <AgentSays><span className="pl-dim">reading that</span><Placeholder.Text lines={2} label="reading that" style={{ width: 220, marginTop: 6 }} /></AgentSays>
+      ) : stage === "retry" ? (
+        <AgentSays>
+          couldn&apos;t reach your agent.
+          <div className="pl-ni-actions"><button type="button" className="go" onClick={() => void runPrepare(payload)}>try again</button></div>
+        </AgentSays>
+      ) : stage === "summary" ? (
+        <AgentSays>
+          {preparationReceipt ? "here's your intent. change anything you like, then create it." : feedback || "here's your intent."}
+          <textarea
+            className="pl-ni-text"
+            aria-label="Intent description"
+            value={payload}
+            rows={5}
+            maxLength={65_536}
+            onChange={(event) => setPayload(event.target.value)}
+          />
+          <div className="pl-ni-actions">
+            {preparationReceipt ? (
+              <button type="button" className="go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>create this intent</button>
+            ) : (
+              <button type="button" className="go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check intent</button>
+            )}
+          </div>
+        </AgentSays>
+      ) : stage === "recovery" ? (
+        <Recovery fields={recoveryFields} feedback={feedback} onSubmit={(answers) => void runPrepare(payload, answers, 2)} />
+      ) : stage === "picks" ? (
+        <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
+      ) : (
+        <Opening
+          prompt={openingPrompt}
+          note={picksNote}
+          examples={examples.length ? examples : OPENING_OPTIONS}
+          onSubmit={submitOpening}
+          onDone={createdIds.length ? () => navigate("/") : undefined}
+        />
+      )}
+    </>
+  );
+
+  // On a desktop past onboarding: a page like Intents and an intent, the flow in its column and
+  // what the agent is picking up docked on the right, where the agent sits on those pages.
+  if (!compact && !card) {
     return (
-      <PageView fill>
-        <NewIntentPane busy={busy} onSubmit={submitOpening} onClose={() => navigate("/intents")}>
-          {later && <OpenAgentLines.Provider value>{later}</OpenAgentLines.Provider>}
-        </NewIntentPane>
-      </PageView>
+      <div className="sv-ni-wrap">
+        <PageView
+          title="new intent"
+          actions={<button type="button" className="sv-btn" onClick={() => navigate("/")}>close</button>}
+          sub={<span className="sv-ni-steps">step {stepIdx} of {stepCount}
+            <span className="sv-ni-bar" aria-hidden>
+              {Array.from({ length: stepCount }, (_, i) => <span key={i} className={i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "now" : undefined} />)}
+            </span>
+          </span>}
+        >
+          <OpenAgentLines.Provider value>
+            <div className="pl sv-ni">{chat}</div>
+          </OpenAgentLines.Provider>
+        </PageView>
+        <section className="ih-agentwin sv sv-ni-warm" aria-label="warming up">
+          <div className="sv-ni-warm-head">warming up</div>
+          <FieldPreview turns={turns} refining={stepIdx === stepCount} />
+        </section>
+      </div>
     );
   }
 
-  if (settingUp) return <div className={rootClass}>{signOutLink}<Calibrating /></div>;
-
   return (
-    // Drawn like the intent page: the flow as a chat in the page column, and what the agent
-    // is picking up in production's warming up panel on the right.
+    // A phone, or the first run's card on the blue desktop: the flow as a chat in the page column.
     <div className={rootClass}>
       {signOutLink}
       <div className="ih-view pl pl-new-page">
@@ -205,62 +248,10 @@ export default function NewIntentPage() {
             <button type="button" onClick={() => navigate("/")}>{card ? "i'll do it later" : "close"}</button>
           </PageHead>
           <OpenAgentLines.Provider value>
-          <div className="pl-page pl-new-chat">
-            {turns.map((turn) => (
-              <div key={turn.id} className="pl-ni-turn">
-                <AgentSays>{turn.prompt}</AgentSays>
-                <YouSaid>{turn.answer}</YouSaid>
-              </div>
-            ))}
-            {thinking ? (
-              <AgentSays><span className="pl-dim">reading that</span><Placeholder.Text lines={2} label="reading that" style={{ width: 220, marginTop: 6 }} /></AgentSays>
-            ) : stage === "retry" ? (
-              <AgentSays>
-                couldn&apos;t reach your agent.
-                <div className="pl-ni-actions"><button type="button" className="go" onClick={() => void runPrepare(payload)}>try again</button></div>
-              </AgentSays>
-            ) : stage === "summary" ? (
-              <AgentSays>
-                {preparationReceipt ? "here's your intent. change anything you like, then create it." : feedback || "here's your intent."}
-                <textarea
-                  className="pl-ni-text"
-                  aria-label="Intent description"
-                  value={payload}
-                  rows={5}
-                  maxLength={65_536}
-                  onChange={(event) => setPayload(event.target.value)}
-                />
-                <div className="pl-ni-actions">
-                  {preparationReceipt ? (
-                    <button type="button" className="go" disabled={!payload.trim() || payload.length > 65_536} onClick={() => void create()}>create this intent</button>
-                  ) : (
-                    <button type="button" className="go" disabled={!payload.trim()} onClick={() => void runPrepare(payload)}>check intent</button>
-                  )}
-                </div>
-              </AgentSays>
-            ) : stage === "recovery" ? (
-              <Recovery fields={recoveryFields} feedback={feedback} onSubmit={(answers) => void runPrepare(payload, answers, 2)} />
-            ) : stage === "picks" ? (
-              <Picks suggestions={suggestions} onCreate={(picked) => void createPicks(picked)} onSkip={() => setStage("opening")} />
-            ) : (
-              <Opening
-                prompt={openingPrompt}
-                note={picksNote}
-                examples={examples.length ? examples : OPENING_OPTIONS}
-                onSubmit={submitOpening}
-                onDone={createdIds.length ? () => navigate("/") : undefined}
-              />
-            )}
-          </div>
+          <div className="pl-page pl-new-chat">{chat}</div>
           </OpenAgentLines.Provider>
         </div>
       </div>
-      {/* The live preview is a side panel, as on production; a phone has no side. */}
-      {!compact && !card && (
-        <Window title="warming up" style={{ flex: "none", width: "clamp(420px, 34vw, 600px)", borderTop: "none", borderRight: "none", borderBottom: "none", borderLeft: "1px solid #e6e6e6" }}>
-          <FieldPreview turns={turns} refining={stepIdx === stepCount} />
-        </Window>
-      )}
     </div>
   );
 }
@@ -369,7 +360,7 @@ function FieldPreview({ turns, refining }: { turns: Turn[]; refining: boolean })
   ].filter((line): line is string => Boolean(line));
 
   return (
-    <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0, background: "var(--wb-hover)" }}>
+    <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0 }}>
       <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--wb-code)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
         {lines.map((line, i) => (
           <div key={line} className="fade-up" style={{ animationDelay: `${i * 60}ms`, display: "flex", gap: 8, alignItems: "baseline" }}>
