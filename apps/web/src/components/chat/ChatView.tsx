@@ -103,6 +103,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
+  // The chat context is written by a model on a cold cache, so it takes seconds: the
+  // thread never waits on it. Its cards join the timeline when they arrive.
   const [acceptedOpportunitiesLoading, setAcceptedOpportunitiesLoading] = useState(true);
   const [peer, setPeer] = useState<PeerProfile | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -485,7 +487,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               <span>{openerBody}</span>
             </div>
           )}
-          {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
+          {messagesLoading ? (
             <Placeholder.Thread label="loading messages" />
           ) : !footer && messages.length === 0 && via.length > 0 && !openerBody ? (
             <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
@@ -493,7 +495,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             <p className="pl-dim pl-small">no messages yet. say hello.</p>
           ) : null}
 
-          {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
+          {timeline.map((item, index) => {
             if (item.type === 'opportunity') return null;
             const message = item.message;
             const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
@@ -572,7 +574,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{openerBody}</span>
               </div>
             )}
-            {messagesLoading || (messages.length === 0 && acceptedOpportunitiesLoading) ? (
+            {messagesLoading ? (
               <Placeholder.Thread label="loading messages" />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
               <EmptyState message="agents matched you on this intent. say hi." style={{ padding: "20px 0" }} />
