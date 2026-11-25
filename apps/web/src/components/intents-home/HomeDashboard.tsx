@@ -291,7 +291,6 @@ export default function HomeDashboard() {
             const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
             // Once you decide, the card stays as it was; only its buttons change.
             const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
-            const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
             return (
               <div key={person.key} {...cardProps(person, "sv-card")}>
                 <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
@@ -299,7 +298,7 @@ export default function HomeDashboard() {
                   <div className="sv-mrow">
                     <b>{person.name}</b>
                     {person.notOnIndex && <span className="sv-via"> · not on index</span>}
-                    {canChat && !chatOpen
+                    {canChat
                       ? <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>
                       : decision === "rejected" && <span className="sv-mchip">passed</span>}
                   </div>
