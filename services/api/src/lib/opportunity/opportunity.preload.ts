@@ -1,11 +1,10 @@
 import type { Opportunity, OpportunityStatus } from '@indexnetwork/protocol';
-import { buildApiChatCardPresentationCacheKey, buildOpportunityCardCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
+import { buildOpportunityCardCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../log';
 import { isOpportunityPresentationCacheable } from './opportunity.presentation';
 
 const logger = log.service.from('OpportunityService.preload');
-const CHAT_CACHE_TTL = 24 * 60 * 60;
 
 interface PreloadDeps {
   db: PresenterDatabase & { getUser(userId: string): Promise<{ name?: string | null; avatar?: string | null } | null> };
@@ -40,26 +39,6 @@ export async function preloadOpportunityPresentation(
       const presenterInput = await gather(deps.db, opportunity, viewerId);
       presenterInput.opportunityStatus = opportunity.status;
       const presented = await deps.presenter.present(presenterInput);
-
-      if (opportunity.status === 'accepted') {
-        const peer = opportunity.actors.find((actor) => actor.userId !== viewerId);
-        const peerUser = peer ? await deps.db.getUser(peer.userId) : null;
-        await deps.cache.set(
-          buildApiChatCardPresentationCacheKey(opportunity.id, viewerId),
-          {
-            opportunityId: opportunity.id,
-            headline: presented.headline,
-            personalizedSummary: presented.personalizedSummary,
-            narratorRemark: '',
-            peerName: peerUser?.name ?? 'Someone',
-            peerAvatar: peerUser?.avatar ?? null,
-            acceptedAt: opportunity.updatedAt instanceof Date
-              ? opportunity.updatedAt.toISOString()
-              : (opportunity.updatedAt ?? null),
-          },
-          { ttl: CHAT_CACHE_TTL },
-        );
-      }
 
       const counterpart = opportunity.actors.find((actor) => actor.userId !== viewerId);
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);

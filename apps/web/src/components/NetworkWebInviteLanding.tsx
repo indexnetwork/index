@@ -7,8 +7,9 @@ import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
 import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
-import { SiteSignInCard, SiteSignInMeta, SiteSignInPage } from "@/components/SiteSignIn";
+import { SiteSignInCard, SiteSignInPage } from "@/components/SiteSignIn";
 import { NetworkInviteBoard, type NetworkPulse } from "@/components/NetworkInviteBoard";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("l/[code]");
 
@@ -206,7 +207,7 @@ export default function NetworkWebInviteLanding() {
     typeof window !== "undefined" && code ? `${window.location.origin}/l/${encodeURIComponent(code)}` : "";
 
   if (previewStep === "loading") {
-    return <SiteSignInPage><SiteSignInMeta>Loading invitation…</SiteSignInMeta></SiteSignInPage>;
+    return <SiteSignInPage><Placeholder.Form fields={2} label="loading invitation" /></SiteSignInPage>;
   }
 
   if (previewStep === "error" || !network) {
@@ -249,7 +250,7 @@ export default function NetworkWebInviteLanding() {
       pulse={network.pulse}
       inviteUrl={inviteUrl}
       status={showChoice ? null : linkSentTo ? signInCard : joining ? (
-        <SiteSignInMeta>Joining…</SiteSignInMeta>
+        <div className="signin-status"><button type="button" className="site-btn" disabled aria-busy="true">Joining</button></div>
       ) : joinOutcome === "pending" ? (
         <p className="site-p signin-status">
           Your request is waiting for an admin to review it. You&apos;ll be
@@ -266,7 +267,7 @@ export default function NetworkWebInviteLanding() {
           <button type="button" className="site-btn" onClick={() => void attemptJoin()}>Try again</button>
         </div>
       ) : (
-        <SiteSignInMeta>Loading…</SiteSignInMeta>
+        <Placeholder.Form fields={2} label="loading" />
       )}
     />
   );

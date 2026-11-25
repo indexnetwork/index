@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 
 import { ProfileSettings } from "@/app/settings/page";
 import { Btn, Stage, Window } from "@/components/workbench/Workbench";
@@ -24,7 +24,12 @@ const HOW_STEPS = [
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading, signOut } = useAuthContext();
-  const [step, setStep] = useState<Step>("name");
+  // Coming back from the first intent (the step after these) lands on how-it-works.
+  const cameBack = (useLocation().state as { step?: Step } | null)?.step === "how";
+  const [step, setStep] = useState<Step>(cameBack ? "how" : "name");
+  // Once the review is confirmed, going back shows the saved profile, not the lookup's note.
+  const [confirmed, setConfirmed] = useState(cameBack);
+  const [moved, setMoved] = useState(cameBack);
   const [name, setName] = useState("");
   const [lookup, setLookup] = useState<PublicProfileLookup | null>(null);
 
@@ -45,26 +50,31 @@ export default function OnboardingPage() {
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login?next=/onboarding" replace />;
   // Already confirmed (another tab, the Mac app): nothing to set up here.
-  if (step === "name" && user && !needsOnboarding(user)) return <Navigate to="/" replace />;
+  // Not when they stepped back here themselves.
+  if (step === "name" && !moved && user && !needsOnboarding(user)) return <Navigate to="/" replace />;
 
-  if (step === "looking-up") return <LookingUp />;
+  const onSignOut = () => void signOut();
 
-  if (step === "how") return <HowItWorks onDone={() => navigate("/i/new", { replace: true })} onSignOut={() => void signOut()} />;
-
-  if (step === "review") {
-    return (
-      <ProfileSettings
-        firstRun={{ lookup, name, onDone: () => setStep("how") }}
+  let body;
+  if (step === "looking-up") body = <LookingUp />;
+  else if (step === "how") body = <HowItWorks onDone={() => navigate("/i/new", { replace: true })} onBack={() => setStep("review")} onSignOut={onSignOut} />;
+  else if (step === "review") body = <ProfileSettings firstRun={{ lookup, name, returning: confirmed, onBack: () => setStep("name"), onDone: () => { setConfirmed(true); setStep("how"); } }} />;
+  else {
+    body = (
+      <AskName
+        initialName={name || user?.name || ""}
+        onSubmit={(typed) => { setName(typed); setMoved(true); setStep("looking-up"); }}
+        onSignOut={onSignOut}
       />
     );
   }
 
+  // The steps carry no title bar here, so the way out sits in the corner of the page instead.
   return (
-    <AskName
-      initialName={user?.name || ""}
-      onSubmit={(confirmed) => { setName(confirmed); setStep("looking-up"); }}
-      onSignOut={() => void signOut()}
-    />
+    <>
+      <button type="button" className="wb-onboarding-out" onClick={onSignOut}>sign out</button>
+      {body}
+    </>
   );
 }
 
@@ -84,10 +94,10 @@ function AskName({ initialName, onSubmit, onSignOut }: {
           style={{ padding: "30px 30px 26px" }}
         >
           {/* Smaller than the sign-in heading: that one introduces the app, this one asks a question. */}
-          <h1 style={{ fontFamily: "var(--amiga-mono)", fontWeight: 500, fontSize: 20, lineHeight: 1.15, letterSpacing: -0.3, margin: 0, color: "#000" }}>
-            what&apos;s your <span style={{ fontWeight: 700 }}>name</span>?
+          <h1 style={{ fontFamily: "var(--mac-sans)", fontWeight: 500, fontSize: 16, lineHeight: 1.3, margin: 0, color: "var(--ink)" }}>
+            what&apos;s your <span style={{ fontWeight: 500 }}>name</span>?
           </h1>
-          <p style={{ marginTop: 12, marginBottom: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>
+          <p style={{ marginTop: 12, marginBottom: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
             i&apos;ll use it to find what&apos;s already public about you, so you don&apos;t
             have to type it all out.
           </p>
@@ -100,21 +110,12 @@ function AskName({ initialName, onSubmit, onSignOut }: {
             aria-label="your name"
             style={{
               width: "100%", marginTop: 22, padding: "7px 0",
-              background: "transparent", border: "none", borderBottom: "1px solid #000", borderRadius: 0,
-              outline: "none", fontFamily: "var(--mac-sans)", fontSize: 16, color: "#000",
+              background: "transparent", border: "none", borderBottom: "1px solid var(--wb-control)", borderRadius: 0,
+              outline: "none", fontFamily: "var(--mac-sans)", fontSize: 16, color: "var(--ink)",
             }}
           />
-          <div style={{ marginTop: 22, display: "grid" }}>
+          <div style={{ marginTop: 22, display: "flex" }}>
             <Btn primary type="submit" disabled={!ready}>continue →</Btn>
-          </div>
-          <div style={{ marginTop: 20, textAlign: "center" }}>
-            <button
-              type="button"
-              onClick={onSignOut}
-              style={{ fontFamily: "var(--mac-mono)", fontSize: 10, padding: 0, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", cursor: "pointer" }}
-            >
-              sign out
-            </button>
           </div>
         </form>
       </Window>
@@ -122,7 +123,7 @@ function AskName({ initialName, onSubmit, onSignOut }: {
   );
 }
 
-function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () => void }) {
+function HowItWorks({ onDone, onBack, onSignOut }: { onDone: () => void; onBack: () => void; onSignOut: () => void }) {
   return (
     <Stage width={960}>
       <Window title="how this works" onClose={onSignOut} style={{ height: "auto" }}>
@@ -132,18 +133,19 @@ function HowItWorks({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =
               <div key={step.title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <span style={{
                   flex: "0 0 auto", width: 26, height: 26, display: "grid", placeItems: "center",
-                  background: i === HOW_STEPS.length - 1 ? "#FF8A00" : "#000", color: i === HOW_STEPS.length - 1 ? "#000" : "#fff",
-                  border: "1px solid #000", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700,
+                  background: "#ededea", color: "var(--ink-2)", borderRadius: "50%",
+                  fontFamily: "var(--mac-sans)", fontSize: 12, fontWeight: 500,
                 }}>{i + 1}</span>
                 <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <div style={{ fontFamily: "var(--mac-mono)", fontSize: 14, fontWeight: 700, lineHeight: 1.3, color: "#000" }}>{step.title}</div>
+                  <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 500, lineHeight: 1.3, color: "var(--ink)" }}>{step.title}</div>
                   <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{step.body}</div>
                 </div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ marginTop: 32, display: "flex", alignItems: "center", gap: 14 }}>
             <Btn primary onClick={onDone}>got it →</Btn>
+            <button type="button" className="st-link" onClick={onBack}>‹ back</button>
           </div>
         </div>
       </Window>
@@ -156,21 +158,14 @@ function LookingUp() {
     <Stage width={420}>
       <Window title="looking you up" style={{ height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }} role="status" aria-live="polite">
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
-            <span className="wb-live" style={{ width: 9, height: 9 }} />
-            <span style={{ fontFamily: "var(--mac-mono)", letterSpacing: 3, fontSize: 13, textTransform: "uppercase" }}>index</span>
-          </div>
-          <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
-            <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
-          </div>
           {LOOKUP_LINES.map((line, i) => (
             <div key={line} className="fade-up" style={{
-              animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 15,
-              color: i === LOOKUP_LINES.length - 1 ? "#000" : "var(--ink-2)",
-              letterSpacing: 0.2, padding: "4px 0",
-              fontWeight: i === LOOKUP_LINES.length - 1 ? 700 : 400,
+              animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 14,
+              color: i === LOOKUP_LINES.length - 1 ? "var(--ink)" : "var(--ink-2)",
+              padding: "4px 0",
+              fontWeight: i === LOOKUP_LINES.length - 1 ? 500 : 400,
             }}>
-              <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{line}
+              <span style={{ marginRight: 8, color: "var(--ink-3)" }}>›</span>{line}
             </div>
           ))}
         </div>

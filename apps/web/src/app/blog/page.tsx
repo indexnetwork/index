@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
 import NewsletterForm from "@/app/site/NewsletterForm";
 import { formatEntryDate, useBlogIndex } from "@/app/site/blog-entries";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 function BlogIndexPage() {
   const { entries, failed, retry } = useBlogIndex();
@@ -19,9 +20,7 @@ function BlogIndexPage() {
         )}
         <div className="site-post-index">
           {entries === null ? (
-            <div className="site-post-row" aria-busy="true">
-              <span className="site-meta">Loading…</span>
-            </div>
+            <Placeholder.Rows count={4} avatar={false} sub={false} label="loading posts" />
           ) : (
             entries.map((entry) => (
               <Link className="site-post-row" to={entry.href} key={entry.href}>

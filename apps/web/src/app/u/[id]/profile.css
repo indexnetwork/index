@@ -8,6 +8,12 @@
   gap: 20px;
   align-content: start;
 }
+/* Inside the app frame the plain page already pads the sides, so the profile
+   body is as wide as Home's and every other plain page. */
+.pl-page > .profile-content {
+  padding-left: 0;
+  padding-right: 0;
+}
 
 .profile-header {
   display: grid;

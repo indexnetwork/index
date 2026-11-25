@@ -630,6 +630,17 @@
 .index-agent-header__tag[data-status="paused"] { color: #B07A1E; }
 .index-agent-header__tag[data-status="pending"] { color: #E07A1A; }
 .index-agent-header__tag[data-status="stopped"] { color: #8A867F; }
+.index-agent-header__tag[data-status="signed out"] { color: #C23B3B; }
+.index-agent-header__banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  margin: 0 0 12px; padding: 10px 14px;
+  border: 1px solid #E8C4C4; border-radius: 8px; background: #FBEFEF; color: #7A2626;
+  font-size: 13px; line-height: 1.4;
+}
+.index-agent-header__banner-copy { flex: 1 1 280px; }
+.index-agent-header__banner-note { flex-basis: 100%; font-size: 12px; }
+.index-agent-header__banner-note a { color: inherit; text-decoration: underline; }
+.index-agent-header__banner-note--error { color: #A12020; }
 
 .index-agent-header__dot {
   width: 5px;
@@ -810,6 +821,11 @@
 
 /* The status inks are tuned for white; lift them so they hold on dark. */
 .index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="running"] { color: #5CC495; }
+.index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="signed out"] { color: #F08080; }
+.index-dashboard[data-scheme="dark"] .index-agent-header__banner {
+  border-color: #5C2B2B; background: #2A1717; color: #F2C4C4;
+}
+.index-dashboard[data-scheme="dark"] .index-agent-header__banner-note--error { color: #F08080; }
 .index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="paused"] { color: #E0AE55; }
 .index-dashboard[data-scheme="dark"] .index-agent-header__tag[data-status="pending"] { color: #F29A4A; }
 .index-dashboard[data-scheme="dark"] .index-agent-header__icon--dot::after { background: #E0AE55; }

@@ -142,18 +142,22 @@ export class AgentSessionDatabaseAdapter {
    * @param maxAgeHours - How long a question may wait on its owner.
    * @returns Each owner's intent with a question older than that, neither answered nor withdrawn.
    */
-  static async listOverdueQuestions(maxAgeHours: number): Promise<{ userId: string; intentId: string }[]> {
+  static async listOverdueQuestions(maxAgeHours: number): Promise<{ userId: string; intentId: string; questionId: string }[]> {
     return await db.execute(sql`
-      select distinct replace(c.dm_pair, 'agent-dm:', '') as "userId", q.metadata->>'intentId' as "intentId"
+      select distinct replace(c.dm_pair, 'agent-dm:', '') as "userId", q.metadata->>'intentId' as "intentId",
+        q.metadata->'principalMessage'->>'questionId' as "questionId"
       from ${messages} q join conversations c on c.id = q.conversation_id
       where c.dm_pair like 'agent-dm:%' and q.role = 'agent'
         and q.metadata->'principalMessage'->>'kind' = 'question'
         and q.created_at < now() - make_interval(hours => ${maxAgeHours}::int)
         and not exists (
+          select 1 from question_group_members m where m.question_id = q.metadata->'principalMessage'->>'questionId'
+        )
+        and not exists (
           select 1 from ${messages} r where r.conversation_id = q.conversation_id
             and r.metadata->'principalMessage'->>'questionId' = q.metadata->'principalMessage'->>'questionId'
             and r.metadata->'principalMessage'->>'kind' in ('answer', 'expire')
-        )`) as unknown as { userId: string; intentId: string }[];
+        )`) as unknown as { userId: string; intentId: string; questionId: string }[];
   }
 
   /**

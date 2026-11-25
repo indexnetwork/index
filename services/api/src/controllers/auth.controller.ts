@@ -107,6 +107,19 @@ export class AuthController {
   }
 
   /**
+   * GET /auth/username-suggestion?name=… — a free username made from a name,
+   * for the first-run form to prefill. Claims nothing.
+   *
+   * @returns `{ username }`, null when the name yields none.
+   */
+  @Get('/username-suggestion')
+  @UseGuards(AuthGuard)
+  async usernameSuggestion(req: Request) {
+    const name = (new URL(req.url).searchParams.get('name') ?? '').slice(0, 200);
+    return Response.json({ username: await userService.suggestUsername(name) });
+  }
+
+  /**
    * Updates the authenticated user's profile.
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */

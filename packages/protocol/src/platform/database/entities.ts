@@ -95,8 +95,17 @@ export interface OpportunityDetection {
 }
 
 /** A participant (user + network) involved in an opportunity. */
+/**
+ * One participant on an opportunity and what anchors them to it. Discovery
+ * anchors every participant on a network they share. An introduction to
+ * someone outside every network anchors that person `via` the member who
+ * introduced them instead: reach through a person, one hop, never a network.
+ */
 export interface OpportunityActor {
-  networkId: Id<'networks'>;
+  /** The network this participant was matched in. Absent when anchored `via` an introducer. */
+  networkId?: Id<'networks'>;
+  /** The introducer this participant is reached through, when no network anchors them. */
+  via?: Id<'users'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
   role: string;

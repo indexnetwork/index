@@ -70,6 +70,8 @@ export interface PresentedOpportunity {
   /** This viewer already committed. Status can still be pending until the other person accepts. */
   viewerCommitted?: boolean;
   personalizedSummary?: string;
+  /** Chat context only: one third-person sentence per person. */
+  contextSides?: { viewer: string; peer: string };
   narratorRemark?: string;
   acceptedAt?: string | null;
 }
@@ -101,6 +103,8 @@ function toChatContextOpportunity(card: PresentedOpportunity): ChatContextOpport
     peerName: card.peer.name,
     peerAvatar: card.peer.avatar,
     acceptedAt: card.acceptedAt ?? card.updatedAt ?? null,
+    foundAt: card.createdAt ?? null,
+    sides: card.contextSides?.viewer && card.contextSides.peer ? card.contextSides : undefined,
     status: card.status,
   };
 }
@@ -157,6 +161,10 @@ export interface ChatContextOpportunity {
   peerAvatar: string | null;
   /** ISO-8601 acceptance time (from opportunities.updatedAt). May be null for legacy rows. */
   acceptedAt: string | null;
+  /** ISO-8601 time the agents found this match. */
+  foundAt?: string | null;
+  /** What each person is after, one sentence each: the viewer's, then the other person's. */
+  sides?: { viewer: string; peer: string };
   /** `pending` when only one side has accepted so far (the chat opens on the first accept). */
   status: OpportunityStatus;
 }

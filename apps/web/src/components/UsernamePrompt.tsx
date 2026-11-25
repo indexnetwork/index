@@ -86,8 +86,8 @@ export default function UsernamePrompt() {
             {error ?? `${window.location.host}/${value || "yourname"}`}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="submit" className="wb-btn primary" disabled={!ready}>
-              {saving ? "saving…" : "save"}
+            <button aria-busy={saving} type="submit" className="wb-btn primary" disabled={!ready}>
+              {saving ? "saving" : "save"}
             </button>
           </div>
         </div>

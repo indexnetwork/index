@@ -1,0 +1,590 @@
+/*
+ * One layout for home, intents, conversations and introduce: a list on the left,
+ * the thing you picked on the right. Matches the person-pane prototype.
+ *
+ * Colour discipline. ink / ink2 / dim for text; line / edge for rules; paper; the
+ * warm well only behind chats. Orange only for the main action and things that
+ * need you (accept, wake, send, badges). Status colours only for status.
+ * Hover and selected are the same shade; the column the arrow keys act on is a
+ * touch deeper. No coloured edge bars anywhere.
+ */
+.sv {
+  --sv-ink: #000;
+  --sv-ink2: #555;
+  --sv-dim: #8a8578;
+  --sv-line: #e6e6e6;
+  --sv-edge: #cfcfcf;
+  --sv-paper: #fff;
+  --sv-well: #f5f1e8;
+  --sv-well-line: #e6e0d2;
+  --sv-orange: #ff8a00;
+  --sv-talks: #ffcc00;
+  --sv-live: #33aa33;
+  --sv-idle: #cfcfcf;
+  --sv-danger: #a30000;
+  --sv-sel: #f3f2ee;
+  --sv-sel-focus: #e6e5df;
+  --sv-sel-pane: #ebeae5;
+  /* shadows: A, hard offset */
+  --sv-sh-btn: 1px 1px 0 #000;
+  --sv-sh-chip: 1px 1px 0 rgba(0, 0, 0, 0.25);
+  --sv-sh-pop: 4px 4px 0 #000;
+  --sv-sh-field: 2px 2px 0 rgba(0, 0, 0, 0.12);
+  --sv-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sv-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --sv-list-w: clamp(420px, 34vw, 600px);
+
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  background: var(--sv-paper);
+  color: var(--sv-ink);
+  font-family: var(--sv-sans);
+  font-size: 14px;
+  line-height: normal;
+  position: relative;
+}
+.sv *, .sv *::before, .sv *::after { box-sizing: border-box; }
+.sv button { font: inherit; color: inherit; cursor: pointer; }
+.sv a { color: inherit; }
+
+/* the app's thin grey scrollbar */
+.sv ::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+.sv ::-webkit-scrollbar-track { background: transparent; }
+.sv ::-webkit-scrollbar-thumb { background: var(--sv-edge); border-radius: 3px; min-height: 28px; }
+
+/* ---------- the list column ---------- */
+.sv-list {
+  --sv-hover: var(--sv-sel);
+  width: var(--sv-list-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--sv-line);
+}
+.sv-list.sv-focus { --sv-hover: var(--sv-sel-focus); }
+.sv-head { flex: none; padding: 18px 20px 12px; border-bottom: 1px solid var(--sv-line); }
+.sv-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 600 20px var(--sv-sans); margin: 0 0 10px; }
+.sv-scroll { flex: 1; min-height: 0; overflow: auto; }
+
+/* filter row: segmented, like the app's */
+.sv-seg { display: inline-flex; border: 1px solid var(--sv-ink); border-radius: 2px; box-shadow: var(--sv-sh-chip); font: 500 11.5px var(--sv-mono); overflow: hidden; }
+.sv .sv-seg > button, .sv-seg > span { white-space: nowrap; padding: 4px 9px; border: 0; border-left: 1px solid var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.sv .sv-seg > :first-child { border-left: 0; }
+.sv .sv-seg [aria-pressed="true"], .sv .sv-seg [aria-selected="true"] { background: var(--sv-sel); font-weight: 700; }
+.sv-seg .n { color: inherit; font-weight: inherit; margin-left: 1ch; }
+
+/* section heading inside a list */
+.sv-lh { padding: 14px 20px 6px; font: 700 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink2); border-bottom: 1px solid var(--sv-line); scroll-margin-top: 0; }
+.sv-empty { padding: 12px 20px 16px; color: var(--sv-ink2); font-size: 13.5px; }
+.sv-more { display: block; padding: 10px 20px; font: 500 11px var(--sv-mono); text-decoration: underline; color: var(--sv-ink2); background: none; border: 0; }
+
+/* a card: avatar, name, a line, buttons */
+.sv-card { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; }
+.sv-card:hover, .sv-card.on { background: var(--sv-hover); }
+.sv-card.sv-static { cursor: default; }
+.sv-card.sv-static:hover { background: none; }
+.sv-card-body { min-width: 0; flex: 1; }
+.sv-card b, .sv-name { font-weight: 700; font-size: 14px; }
+.sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; }
+.sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-via a { text-decoration: underline; }
+.sv-card.done { color: var(--sv-ink2); font-size: 13.5px; align-items: center; cursor: default; }
+.sv-card.done:hover { background: none; }
+
+/* a row: avatar, name + one line, something on the right */
+.sv-row { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; align-items: flex-start; }
+.sv-row:hover, .sv-row.on { background: var(--sv-hover); }
+.sv-row-t { flex: 1; min-width: 0; }
+.sv-row-n { font-weight: 600; font-size: 14px; }
+.sv-row-pv { font-size: 13px; color: var(--sv-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-row-tm { font: 400 10.5px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-row .sv-badge { margin-top: 2px; }
+
+/* ---------- buttons, chips, badges ---------- */
+.sv .sv-btn { font: 500 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; white-space: nowrap; }
+.sv .sv-btn.go { background: var(--sv-orange); font-weight: 700; }
+.sv .sv-btn.danger { color: var(--sv-danger); }
+.sv .sv-btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+.sv .sv-btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+.sv .sv-btn.sm { height: 24px; padding: 0 10px; font-size: 11px; }
+.sv-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sv-badge { flex: none; background: var(--sv-orange); border: 1px solid var(--sv-ink); font: 700 11px var(--sv-mono); padding: 0 5px; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); color: var(--sv-ink); }
+.sv .sv-link { background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
+.sv .sv-link:hover { color: var(--sv-ink); }
+
+/* answer chips. The shape says how it's picked: rounded = pick one (answers on click), square = pick any */
+.sv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
+.sv .sv-chip { font: 400 12.5px var(--sv-sans); border: 1px solid var(--sv-ink); border-radius: 2px; padding: 4px 9px; background: var(--sv-paper); box-shadow: var(--sv-sh-chip); color: var(--sv-ink); }
+.sv .sv-chip:hover { background: var(--sv-orange); }
+.sv-chips.one .sv-chip { border-radius: 999px; padding-left: 11px; padding-right: 11px; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.125); }
+.sv-chips.one .sv-chip.ghost { box-shadow: none; }
+.sv .sv-chip.ghost { border-color: var(--sv-edge); box-shadow: none; color: var(--sv-ink2); }
+.sv .sv-chip.ghost:hover { border-color: var(--sv-ink); color: var(--sv-ink); }
+.sv .sv-chip.ghost:hover { background: var(--sv-sel); }
+.sv .sv-chip.picked { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv .sv-chip.send { background: var(--sv-orange); font-weight: 600; }
+.sv-chips .sv-link { margin-left: auto; padding: 4px 0; }
+
+/* status: a small square with the stage's colour */
+.sv-status { white-space: nowrap; font: 500 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border: 1px solid var(--sv-ink); vertical-align: 0; background: var(--sv-paper); }
+.sv-status.talks::before { background: var(--sv-talks); animation: sv-blink 1.4s ease-in-out infinite; }
+.sv-status.live::before { background: var(--sv-live); }
+.sv-status.waiting::before { background: var(--sv-orange); }
+.sv-status.paused::before { background: var(--sv-idle); }
+@keyframes sv-blink { 50% { opacity: 0.3; } }
+
+/* ---------- the right pane ---------- */
+.sv-pane { --sv-hover: var(--sv-sel-pane); flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.sv-blank { flex: 1; display: grid; place-items: center; color: var(--sv-dim); font-size: 13px; }
+
+/* header: who it is, tabs under the name. Fixed: nothing shrinks or moves. */
+.sv-ph { flex: none; position: relative; border-bottom: 1px solid var(--sv-line); background: var(--sv-paper); }
+.sv-pid { display: flex; gap: 14px; align-items: center; padding: 18px 60px 6px 22px; min-height: 72px; }
+.sv-pid .who { flex: 1; min-width: 0; }
+.sv-pn { font: 600 20px var(--sv-sans); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-pn a { text-decoration: none; }
+.sv-pu { font: 400 12.5px var(--sv-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-pu .loc { color: var(--sv-ink2); letter-spacing: 0.5px; }
+.sv .sv-x { position: absolute; top: 14px; right: 16px; width: 26px; height: 26px; padding: 0; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); font: 500 13px var(--sv-sans); color: var(--sv-ink); }
+.sv-tabs { display: flex; align-items: center; gap: 4px; padding: 0 22px 0 14px; min-height: 36px; }
+.sv .sv-tabs > button:not(.sv-btn) { font: 500 11.5px var(--sv-mono); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 8px 9px; color: var(--sv-ink2); }
+.sv .sv-tabs > button:not(.sv-btn):hover { color: var(--sv-ink); }
+.sv .sv-tabs > button[aria-current="true"] { color: var(--sv-ink); font-weight: 700; border-bottom-color: var(--sv-ink); }
+.sv .sv-tabs > button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.sv-tabs .n { color: var(--sv-dim); font-weight: 400; margin-left: 3px; }
+.sv-tabs .sp { flex: 1; }
+.sv-tabs .why { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+
+/* pane body */
+.sv-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 22px 26px; }
+.sv-h4 { font: 500 11px var(--sv-mono); letter-spacing: 3px; text-transform: uppercase; color: var(--sv-ink); margin: 22px 0 10px; }
+.sv-body > .sv-h4:first-child { margin-top: 14px; }
+.sv-body p, .sv-p { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.sv-dimp { color: var(--sv-ink2); font-size: 13.5px; }
+.sv-socials { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv-soc { display: inline-flex; gap: 6px; align-items: center; font: 500 11.5px var(--sv-mono); border: 1px solid var(--sv-ink); border-radius: 2px; padding: 5px 10px; text-decoration: none; background: var(--sv-paper); }
+.sv-soc svg { width: 13px; height: 13px; flex-shrink: 0; }
+a.sv-soc:hover { background: var(--sv-sel); }
+
+/* opportunities between you two: one row each; open shows why and the agents' log */
+.sv-olist { display: grid; gap: 8px; }
+.sv-orow { border: 1px solid var(--sv-ink); background: var(--sv-paper); overflow: hidden; }
+.sv .sv-orh { display: flex; gap: 12px; align-items: baseline; padding: 11px 14px; width: 100%; text-align: left; background: none; border: 0; }
+.sv-orh:hover, .sv-orow.open .sv-orh { background: var(--sv-hover); }
+.sv-oh { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
+.sv-oc { font: 400 12px var(--sv-mono); color: var(--sv-dim); }
+.sv-olog { border-top: 1px solid var(--sv-line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sv-olog .sv-via { color: var(--sv-ink2); }
+
+/* bottom bar: accept / pass, or a note */
+.sv-bar { flex: none; display: flex; gap: 10px; align-items: center; padding: 12px 22px 14px; border-top: 1px solid var(--sv-line); background: var(--sv-paper); }
+.sv-bar .hint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-bar.note { color: var(--sv-ink2); font-size: 13px; }
+
+/* the chat: an inset warm well whose closed bottom is the composer (ChatView inside) */
+.sv-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 22px 16px; }
+.sv-chat .pl.pl-agent.pl-dm { flex: 1; min-height: 0; display: flex; flex-direction: column; background: none; padding: 0; margin: 0; max-width: none; height: auto; }
+.sv-chat .pl-agent-log {
+  flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 14px 16px 16px;
+  background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0;
+}
+.sv-chat .pl-agent-bubble:not(.mine) { background: var(--sv-paper); }
+.sv-chat form.pl-agent-compose {
+  flex: none; margin: 0; padding: 10px 16px 14px; display: flex; gap: 10px; align-items: flex-end;
+  background: var(--sv-well); border: 1px solid var(--sv-well-line); border-top: 1px dashed var(--sv-well-line); border-radius: 0 0 4px 4px;
+}
+.sv-chat form.pl-agent-compose textarea { background: var(--sv-paper); }
+.sv-chat .pl-dm-opener { background: var(--sv-paper); }
+
+/* the column the arrow keys act on: only a hint (its selection is a shade deeper) */
+.sv-pane.sv-focus { --sv-hover: var(--sv-sel-pane); }
+
+/* the person on the right, and the agents that fill it when nothing is picked */
+.sv-person { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-bar .note { color: var(--sv-ink2); font-size: 13px; }
+.sv-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-agent > .pl.pl-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: none; margin: 0; }
+.sv-agent .pl-agent-log { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- outside the layout: the rail's hint, the jump box, keys, undo ---------- */
+/* the rail, as in the prototype: mono, plain rows, the home tree, connect, the menu, you */
+.ih.ih .ih-rail { width: 210px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; }
+.ih .ih-rail .ih-brand { padding: 16px 20px 18px; font: 500 17px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0; }
+.ih .ih-rail .ih-rail-body { padding: 0 10px 16px; gap: 0; }
+.ih .ih-rail .ih-nav { justify-content: space-between; padding: 8px 10px; line-height: normal; border: 0; border-radius: 2px; font: 500 13px "JetBrains Mono", ui-monospace, monospace; color: #000; background: none; box-shadow: none; }
+.ih .ih-rail .ih-nav.on { font-weight: 700; box-shadow: none; }
+.ih .ih-rail .ih-nav:hover, .ih .ih-rail .ih-nav.on { background: #f3f2ee; }
+.ih .ih-rail.sv-focus .ih-nav:hover, .ih .ih-rail.sv-focus .ih-nav.on { background: #e6e5df; }
+.ih .ih-rail .ih-nav-label { flex: none; }
+.ih .ih-rail .ih-badge, .ih .ih-rail .ih-nav.on .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; min-width: 0; height: auto; font: 700 11px/normal "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ih .ih-rail .ih-sub { margin: 2px 0 10px 22px; padding: 0 0 0 12px; border-left: 1px dotted #cfcfcf; }
+.ih .ih-rail .ih-sub-link { justify-content: space-between; gap: 8px; padding: 3px 0; border: 0; background: none; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #000; text-align: left; }
+.ih .ih-rail .ih-sub-link::before { content: none; }
+.ih .ih-rail .ih-sub-link .ih-nav-label { text-decoration: underline; text-decoration-color: #cfcfcf; text-underline-offset: 3px; }
+.ih .ih-rail .ih-sub-link:hover { background: none; }
+.ih .ih-rail .ih-sub-link:hover .ih-nav-label { font-weight: 700; text-decoration: none; }
+.ih .ih-rail .ih-sub-n { font: 700 12px "JetBrains Mono", ui-monospace, monospace; color: #000; }
+.ih .ih-rail .ih-foot { gap: 0; padding-top: 10px; }
+.ih .ih-rail .ca-strip { justify-content: space-between; margin: 0 0 14px; padding: 9px 12px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 2px 2px 0 #000; }
+.ih .ih-rail .ca-strip:hover { background: #f3f2ee; }
+.ih .ih-rail .ca-strip-label { flex: none; font: 600 13px "IBM Plex Sans", sans-serif; }
+.ih .ih-rail .ca-strip-go { font: 600 13px "IBM Plex Sans", sans-serif; color: #000; }
+.ih .ih-rail .ih-foot .ih-menu { border-top: 0; padding-top: 0; gap: 0; }
+.ih .ih-rail .ih-account { margin-top: 8px; padding-top: 12px; border-top: 1px solid #e6e6e6; }
+.ih .ih-rail .ih-account-btn { padding: 0 6px; gap: 8px; }
+.ih .ih-rail .ih-account-btn:hover, .ih .ih-rail .ih-account-btn.open { background: none; }
+.ih .ih-rail .ih-account-name { font: 600 13px "IBM Plex Sans", sans-serif; }
+.ih .ih-rail .ih-account-sub, .ih .ih-rail .ih-account-more { display: none; }
+.ih .sv-jumpbtn { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 0 0 10px; padding: 7px 10px; border: 1px dashed #cfcfcf; background: #fff; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #555; cursor: pointer; border-radius: 2px; }
+.ih .sv-jumpbtn:hover { border-color: #000; color: #000; }
+.sv-jumpbtn kbd, .sv-hrow kbd { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; border: 1px solid #cfcfcf; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; background: #fff; color: #000; white-space: nowrap; }
+
+.sv-layer { position: fixed; inset: 0; z-index: 1000; }
+.sv-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); }
+.sv-pal { position: absolute; top: 14vh; left: 50%; transform: translateX(-50%); width: min(560px, 92vw); background: #fff; border: 1px solid #000; box-shadow: 4px 4px 0 #000; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #000; }
+.sv-pal input { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid #e6e6e6; padding: 14px 16px; font: 400 16px "IBM Plex Sans", system-ui, sans-serif; outline: none; }
+.sv-palres { max-height: 380px; overflow: auto; }
+.sv-palrow { display: flex; gap: 12px; align-items: baseline; width: 100%; padding: 9px 16px; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.sv-palrow.on, .sv-palrow:hover { background: #ebeae5; }
+.sv-palrow.none { color: #8a8578; cursor: default; }
+.sv-palrow .pl { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-palrow .pk { font: 400 11px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; white-space: nowrap; }
+.sv-palfoot { display: flex; gap: 16px; padding: 8px 16px; border-top: 1px solid #e6e6e6; font: 400 10.5px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; }
+.sv-help { width: min(460px, 92vw); padding-top: 4px; }
+.sv-helph { padding: 12px 16px 6px; font: 700 10.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 2px; text-transform: uppercase; }
+.sv-hrow { display: flex; gap: 14px; align-items: center; padding: 6px 16px; font-size: 13.5px; }
+.sv-hrow kbd { min-width: 150px; text-align: center; }
+
+.sv-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1001; display: flex; gap: 14px; align-items: center; background: #000; color: #fff; padding: 9px 12px 9px 16px; font: 500 12.5px "JetBrains Mono", ui-monospace, monospace; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25); }
+.sv-toast button { background: none; border: 0; color: #fff; font: 700 12.5px "JetBrains Mono", ui-monospace, monospace; text-decoration: underline; cursor: pointer; }
+
+/* ---------- intents ---------- */
+.sv-icard { align-items: flex-start; }
+.sv-itext { font-size: 14px; line-height: 1.45; }
+.sv-istat { margin-top: 6px; font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-istat .sv-status { font-size: 11px; }
+.sv-icard.paused .sv-itext, .sv-icard.paused .sv-istat { color: var(--sv-dim); }
+.sv-icard .sv-badge { margin-top: 2px; }
+.sv-pid.sv-ihead { padding-right: 22px; }
+.sv-ihead .sv-pn { font-size: 20px; line-height: 1.3; }
+.sv-sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--sv-live); margin-right: 6px; vertical-align: 1px; }
+.sv-sdot.off { background: var(--sv-idle); }
+.sv-ilab { font: 700 11.5px var(--sv-mono); padding: 10px 8px 9px; border-bottom: 2px solid var(--sv-ink); margin-bottom: -1px; }
+.sv-ilab .n { font-weight: 400; color: var(--sv-dim); margin-left: 3px; }
+.sv-tabs .sv-btn + .sv-btn { margin-left: 6px; }
+/* matches beside this intent's agent: decide on the left, watch it react on the right */
+.sv-isplit { flex: 1; min-height: 0; display: flex; }
+.sv-imatches { flex: 1; min-width: 0; }
+.sv-ibleed { margin: 0 -22px; border-top: 1px solid var(--sv-line); }
+.sv-ibleed .sv-card { padding: 12px 22px; }
+.sv-card.closed { opacity: 0.6; }
+.sv-mrow { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.sv-mchip { margin-left: auto; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-iagent { width: 300px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--sv-well-line); background: var(--sv-well); }
+.sv-iagent > .pl.pl-agent { flex: 1; min-height: 0; display: flex; flex-direction: column; background: none; max-width: none; margin: 0; padding: 0; }
+.sv-iagent .pl-agent-head { flex: none; padding: 12px 16px 8px; font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; border: 0; background: none; }
+.sv-iagent .pl-agent-log { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 14px; background: none; }
+.sv-iagent .pl-agent-bubble:not(.mine) { background: var(--sv-paper); }
+.sv-iagent form.pl-agent-compose { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 14px 14px; border-top: 1px dashed var(--sv-well-line); background: none; margin: 0; }
+.sv-iagent form.pl-agent-compose textarea { flex: 1; background: var(--sv-paper); }
+
+
+.sv-faint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-dim-note { font-size: 12.5px; color: var(--sv-ink2); margin-bottom: 8px; }
+
+/* ---------- the pane, matched to the prototype ---------- */
+/* summary: 24px down to "bio", a wider gap before "opportunities" */
+.sv-body.sv-sum { padding: 14px 22px 26px; }
+.sv-sum > .sv-h4:first-child { margin-top: 10px; }
+.sv-sum > h4.sv-h4:nth-of-type(4) { margin-top: 30px; }
+.sv-soc { padding: 6px 10px; }
+.sv-os { font: 400 11px var(--sv-mono); color: var(--sv-dim); white-space: nowrap; }
+.sv-dot { display: inline-block; width: 8px; height: 8px; border: 1px solid var(--sv-ink); background: var(--sv-talks); margin-right: 4px; vertical-align: 0; animation: sv-blink 1.4s ease-in-out infinite; }
+.sv-alh { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-alh a { color: inherit; text-decoration: underline; }
+.sv-body p.sv-owhy { margin: 0 0 2px; font-size: 14px; line-height: 1.5; }
+.sv-turn { display: grid; gap: 4px; }
+.sv-turn .tl { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); letter-spacing: 0.06em; }
+.sv-turn .tl a { color: inherit; text-decoration: none; }
+.sv-turn .tm { border: 1px solid var(--sv-line); border-radius: 3px; padding: 8px 11px; font-size: 13.5px; line-height: 1.45; background: var(--sv-paper); white-space: pre-wrap; word-break: break-word; }
+.sv-turn.own .tm { background: var(--sv-well); }
+
+/* the chat tab before it opens: the warm box says when, accept and pass are its foot */
+.sv-well { flex: 1 0 auto; padding: 14px 16px 16px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0; }
+.sv-wait { border: 1px dashed var(--sv-edge); border-radius: 3px; padding: 14px; color: var(--sv-ink2); font-size: 13.5px; text-align: center; background: var(--sv-paper); }
+.sv-wellbar { flex: none; display: flex; gap: 10px; align-items: center; padding: 10px 16px 14px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-top: 1px dashed var(--sv-well-line); border-radius: 0 0 4px 4px; }
+.sv-wellbar .hint { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-wellbar .note { color: var(--sv-ink2); font-size: 13px; }
+.sv-wellbar:has(> .note:only-child) { color: var(--sv-ink2); font-size: 13px; }
+
+/* the conversation inside the well, drawn like the prototype's messages */
+.sv .sv-chat .pl-agent-log { display: flex; flex-direction: column; gap: 12px; }
+.sv .sv-chat .pl-dm-item { display: flex; flex-direction: column; gap: 12px; }
+.sv .sv-chat .pl-agent-line { display: flex; justify-content: flex-start; margin: 0; padding: 0; }
+.sv .sv-chat .pl-agent-line.mine { justify-content: flex-end; }
+.sv .sv-chat .pl-agent-bubble { max-width: 78%; margin: 0; border: 1px solid var(--sv-edge); padding: 8px 11px; border-radius: 3px; font: 400 14px/1.45 var(--sv-sans); background: var(--sv-paper); color: var(--sv-ink); box-shadow: none; }
+.sv .sv-chat .pl-agent-bubble.mine { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv .sv-chat .pl-agent-meta { font: 500 10.5px var(--sv-mono); opacity: 0.6; margin: 0 0 2px; color: inherit; letter-spacing: 0; text-transform: none; }
+.sv .sv-chat .pl-agent-md, .sv .sv-chat .pl-agent-md p { margin: 0; font: inherit; color: inherit; }
+.sv .sv-chat .pl-agent-md p + p { margin-top: 6px; }
+.sv .sv-chat .pl-agent-md a { color: inherit; text-decoration: underline; }
+.sv .sv-chat .pl-dm-day { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0; font: 400 10.5px var(--sv-mono); color: var(--sv-dim); text-transform: none; letter-spacing: 0; }
+.sv .sv-chat .pl-dm-day::before, .sv .sv-chat .pl-dm-day::after { content: ""; flex: 1; height: 1px; background: var(--sv-line); }
+.sv .sv-chat .pl-dm-day span { background: none; padding: 0; border: 0; }
+.sv .sv-chat .pl-agent-log > p.pl-dim { margin: 8px auto; text-align: center; color: var(--sv-dim); font-size: 13px; max-width: 280px; line-height: 1.5; }
+.sv .sv-chat form.pl-agent-compose { align-items: center; }
+.sv .sv-chat form.pl-agent-compose textarea { flex: 1; resize: none; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 8px 10px; font: 400 14px var(--sv-sans); height: 40px; min-height: 40px; outline: none; background: var(--sv-paper); box-shadow: none; }
+.sv .sv-chat form.pl-agent-compose textarea:focus { border-color: var(--sv-ink); }
+.sv .sv-chat form.pl-agent-compose button[type="submit"] { font: 700 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-orange); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; }
+.sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { opacity: 0.4; box-shadow: none; }
+
+/* your agent's "ix" square, where the prototype draws it */
+.sv-mine { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 2px; background: var(--sv-ink); color: var(--sv-paper); font: 700 11px var(--sv-mono); }
+
+/* an agent column (beside an intent, or on Home): plain bubbles, plain trace lines, the prototype's composer */
+.sv-iagent .pl-agent-log, .sv-agent .pl-agent-log { display: flex; flex-direction: column; gap: 12px; }
+.sv-iagent .pl-agent-log > *, .sv-agent .pl-agent-log > * { margin: 0; }
+.sv-iagent .pl-agent-line, .sv-agent .pl-agent-line { display: flex; justify-content: flex-start; gap: 0; margin: 0; padding: 0; }
+.sv-iagent .pl-agent-line.mine, .sv-agent .pl-agent-line.mine { justify-content: flex-end; }
+.sv-iagent .pl-agent-bubble, .sv-agent .pl-agent-bubble { max-width: 90%; margin: 0; border: 1px solid var(--sv-edge); padding: 8px 11px; border-radius: 3px; font: 400 13px/1.45 var(--sv-sans); background: var(--sv-paper); color: var(--sv-ink); box-shadow: none; }
+.sv-agent .pl-agent-bubble { max-width: 78%; font-size: 14px; }
+.sv-iagent .pl-agent-bubble.mine, .sv-agent .pl-agent-bubble.mine { background: var(--sv-ink); color: var(--sv-paper); border-color: var(--sv-ink); }
+.sv-iagent .pl-agent-meta, .sv-agent .pl-agent-meta { font: 500 10.5px var(--sv-mono); opacity: 0.6; margin: 0 0 2px; color: inherit; letter-spacing: 0; text-transform: none; }
+.sv-iagent .pl-agent-md, .sv-iagent .pl-agent-md p, .sv-agent .pl-agent-md, .sv-agent .pl-agent-md p { margin: 0; font: inherit; color: inherit; }
+.sv-iagent .pl-agent-md p + p, .sv-agent .pl-agent-md p + p { margin-top: 6px; }
+.sv-trace { font: 400 10.5px/1.45 var(--sv-mono); color: var(--sv-ink2); }
+.sv-iagent form.pl-agent-compose textarea, .sv-agent form.pl-agent-compose textarea { flex: 1; resize: none; border: 1px solid var(--sv-edge); border-radius: 2px; padding: 7px 9px; font: 400 13px var(--sv-sans); height: 36px; min-height: 36px; outline: none; background: var(--sv-paper); box-shadow: none; color: var(--sv-ink); }
+.sv-iagent form.pl-agent-compose textarea:focus, .sv-agent form.pl-agent-compose textarea:focus { border-color: var(--sv-ink); }
+.sv-iagent form.pl-agent-compose button[type="submit"], .sv-agent form.pl-agent-compose button[type="submit"] { flex: none; font: 700 11.5px var(--sv-mono); height: 26px; padding: 0 14px; border: 1px solid var(--sv-ink); background: var(--sv-orange); box-shadow: var(--sv-sh-btn); color: var(--sv-ink); border-radius: 1px; opacity: 1; }
+.sv-iagent form.pl-agent-compose button[type="submit"]:disabled, .sv-agent form.pl-agent-compose button[type="submit"]:disabled { box-shadow: var(--sv-sh-btn); cursor: default; }
+/* Home's agent: the same warm column, full width */
+.sv-agent { background: var(--sv-well); }
+.sv-agent > .pl.pl-agent { background: none; padding: 0; }
+.sv-agent .pl-agent-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 8px; font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; border: 0; background: none; color: var(--sv-ink); }
+.sv-agent .pl-agent-head button { font: 500 11px var(--sv-mono); letter-spacing: 0; text-transform: none; height: 24px; padding: 0 10px; border: 1px solid var(--sv-ink); background: var(--sv-paper); box-shadow: var(--sv-sh-btn); }
+.sv-agent .pl-agent-log { padding: 4px 16px 14px; background: none; }
+.sv-agent form.pl-agent-compose { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 16px 14px; border-top: 1px dashed var(--sv-well-line); background: none; margin: 0; }
+.sv-agent .pl-agent-line > :not(.pl-agent-bubble) { display: none; }
+.sv .sv-iagent form.pl-agent-compose button[type="submit"]:disabled, .sv .sv-agent form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; }
+.sv .sv-chat .pl-agent-log.pl-dm-tl { background: var(--sv-well); }
+.sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
+.sv .sv-chat form.pl-agent-compose textarea { height: 40px; min-height: 40px; max-height: 40px; }
+.sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; box-shadow: var(--sv-sh-btn); }
+.sv .sv-x { display: grid; place-items: center; line-height: 1; text-align: center; }
+
+/* buttons.css lifts the app's buttons with ":not(#_)"; these match it so the prototype's look wins here */
+.ih:not(#_) .ih-rail .ih-badge { background: #ff8a00; border: 1px solid #000; border-radius: 0; padding: 0 5px; font: 700 11px/normal "JetBrains Mono", ui-monospace, monospace; color: #000; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"],
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"]:disabled {
+  font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; height: 26px; padding: 0 14px; border: 1px solid #000; border-radius: 1px;
+  background: #ff8a00; color: #000; box-shadow: 1px 1px 0 #000; opacity: 1; filter: none; cursor: pointer;
+}
+.ih:not(#_) .sv :is(.sv-chat, .sv-iagent, .sv-agent) form.pl-agent-compose button[type="submit"]:disabled { cursor: default; }
+.ih:not(#_) .sv .sv-agent .pl-agent-head button { font: 500 11px "JetBrains Mono", ui-monospace, monospace; height: 24px; padding: 0 10px; border: 1px solid #000; border-radius: 1px; background: #fff; color: #000; box-shadow: 1px 1px 0 #000; }
+.sv-tabs { min-height: 35px; }
+.ih .sv .sv-scroll button.sv-row { padding: 12px 20px; gap: 12px; align-items: flex-start; font: inherit; line-height: normal; }
+.ih .sv .sv-chat .pl-agent-log.pl-dm-tl { padding: 14px 16px 16px; }
+.sv-ilab .n { margin-left: 0; }
+.ih .sv .sv-chat .pl-agent-line .pl-agent-bubble { max-width: 78%; }
+.ih .sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
+/* an intent's matches: cards inside the column (only its questions run edge to edge) */
+.sv-imatches > .sv-h4 { margin-top: 18px; }
+.sv-imatches > .sv-h4:first-child { margin-top: 6px; }
+.sv-body.sv-imatches { padding-top: 14px; }
+.sv-ilist .sv-card { padding: 12px 0; }
+.sv-ilist .sv-card:hover, .sv-ilist .sv-card.on { background: none; }
+
+/* the body fills the window to the right of the rail */
+.sv { flex: 1 1 auto; width: 100%; }
+
+/* ---------- a page on its own: home, intents, one intent ---------- */
+.sv.sv-page { display: block; }
+.sv-page-scroll { --sv-hover: var(--sv-sel); height: 100%; overflow-y: auto; }
+.sv-page-scroll.sv-focus { --sv-hover: var(--sv-sel-focus); }
+.sv-page-col { max-width: 880px; margin: 0 auto; padding: 0 8px 56px; }
+.sv-page-col.sv-fill { height: 100%; padding-bottom: 0; display: flex; flex-direction: column; border-left: 1px solid var(--sv-line); border-right: 1px solid var(--sv-line); }
+.sv-page-head { padding: 28px 20px 14px; }
+.sv-page-head .sv-title { margin: 0; align-items: flex-start; }
+.sv-page-t { font: 600 20px/1.35 var(--sv-sans); }
+.sv-page-head .sv-title > :not(.sv-page-t) { flex: none; margin-top: 2px; }
+.sv-page-sub { margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 400 12px var(--sv-mono); color: var(--sv-ink2); }
+.sv-page-sub .sp { flex: 1; }
+.sv-page-seg { margin-top: 14px; }
+.sv-page-list { border-top: 1px solid var(--sv-line); }
+.sv-page-gap { padding-top: 28px; }
+.sv-page-col.sv-fill { padding: 0; }
+.sv .sv-page-col > .sv-more { padding: 12px 20px; }
+.sv-page-sub .sv-sdot { margin-right: -2px; }
+.sv-page .sv-lh { padding-top: 26px; }
+.sv-page .sv-lh:first-of-type { padding-top: 10px; }
+/* a narrower pane: the intent's agent column gives way first */
+.sv-iagent { width: clamp(240px, 42%, 300px); }
+
+/* introduce: a page like home's, pairs on the left, what's running in a column beside them */
+.sv-intro-cols { display: grid; grid-template-columns: minmax(0, 1fr) 272px; align-items: start; }
+.sv-intro-pairs { min-width: 0; }
+.sv-intro-run { border-left: 1px solid var(--sv-line); align-self: stretch; }
+.sv-pairav { position: relative; flex: none; }
+.sv-pairav > * { position: absolute; top: 0; }
+.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); }
+.sv-ghost { right: 0; display: grid; place-items: center; border: 1px dashed var(--sv-ink); border-radius: 50%; background: var(--sv-paper); color: var(--sv-ink); font-family: var(--sv-mono); font-weight: 700; box-sizing: border-box; }
+.sv-pair { padding: 14px 20px 16px; }
+.sv-pair .sv-blurb { margin: 3px 0 12px; line-height: 1.45; }
+.sv-pair-lab { display: flex; justify-content: space-between; margin-bottom: 4px; font: 700 10px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-dim); }
+.sv textarea.sv-pair-text { display: block; width: 100%; box-sizing: border-box; height: 72px; min-height: 52px; margin-bottom: 10px; padding: 7px 9px; resize: vertical; border: 1px solid var(--sv-edge); border-radius: 2px; outline: none; background: var(--sv-paper); color: var(--sv-ink); font: 400 13px/1.45 var(--sv-sans); }
+.sv textarea.sv-pair-text:focus { border-color: var(--sv-ink); }
+.sv-pair-err { margin-top: 8px; font-size: 12px; color: var(--sv-danger); }
+.sv-runrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }
+.sv-runrow .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-runrow .t { width: 24px; text-align: right; font: 400 11px var(--sv-mono); color: var(--sv-dim); }
+.sv-runrow.done .p { color: var(--sv-dim); }
+.sv-runrow.fresh { background: var(--sv-sel); }
+.sv-run-foot { padding: 12px 20px; font-size: 12px; line-height: 1.45; color: var(--sv-ink2); }
+/* contacts and setup, inside the page: the app's buttons, tabs and lines */
+.sv-idk-page { padding: 16px 20px 0; --idk-line: var(--sv-line); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); font-family: var(--sv-sans); }
+.sv .sv-idk-page .idk-btn { height: 24px; padding: 0 10px; font: 500 11px var(--sv-mono); letter-spacing: 0; border: 1px solid var(--sv-ink); border-radius: 1px; background: var(--sv-paper); color: var(--sv-ink); box-shadow: var(--sv-sh-btn); white-space: nowrap; }
+.sv .sv-idk-page .idk-btn.go { background: var(--sv-orange); font-weight: 700; }
+.sv .sv-idk-page .idk-btn.danger { color: var(--sv-danger); }
+.sv .sv-idk-page .idk-btn:hover:not(:disabled) { background: var(--sv-paper); }
+.sv .sv-idk-page .idk-btn.go:hover:not(:disabled) { background: var(--sv-orange); }
+.sv .sv-idk-page .idk-btn:active:not(:disabled) { background: var(--sv-paper); color: var(--sv-ink); transform: translate(1px, 1px); box-shadow: none; }
+.sv .sv-idk-page .idk-chips { display: inline-flex; gap: 0; flex-wrap: nowrap; border: 1px solid var(--sv-ink); border-radius: 2px; box-shadow: var(--sv-sh-chip); overflow: hidden; }
+.sv .sv-idk-page .idk-chips button { padding: 4px 9px; border: 0; border-left: 1px solid var(--sv-ink); background: var(--sv-paper); font: 500 11.5px var(--sv-mono); white-space: nowrap; }
+.sv .sv-idk-page .idk-chips button:first-child { border-left: 0; }
+.sv .sv-idk-page .idk-chips button[aria-selected="true"] { background: var(--sv-sel); font-weight: 700; }
+.sv .sv-idk-page .idk-contacts-tools input { padding: 6px 9px; border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-paper); font: 400 13px var(--sv-sans); }
+.sv .sv-idk-page .idk-contacts-tools input:focus { border-color: var(--sv-ink); background: var(--sv-paper); }
+.sv .sv-idk-page .idk-clist { border-top: 1px solid var(--sv-line); }
+.sv .sv-idk-page .idk-clist li { border-bottom: 1px solid var(--sv-line); padding: 10px 0; }
+.sv .sv-idk-page .idk-contacts-foot { border-top: 0; }
+.sv .sv-idk-page .idk-setup { max-width: none; padding: 0; border: 0; background: none; }
+.sv .sv-idk-page .idk-steps li { border-top: 1px solid var(--sv-line); }
+.sv .sv-idk-page .idk-note { background: var(--sv-well); border-left-color: var(--sv-ink); }
+
+/* conversations: the list as narrow as the agent window, the person in a centred column like home's
+   (lines and scroll run the full width; the content keeps to 840px in the middle) */
+.sv-pane { --sv-gut: max(22px, calc((100% - 840px) / 2)); }
+.sv-pane .sv-pid { padding-left: var(--sv-gut); padding-right: max(60px, var(--sv-gut)); }
+.sv-pane .sv-tabs { padding-left: calc(var(--sv-gut) - 8px); padding-right: var(--sv-gut); }
+.sv-pane .sv-body, .sv-pane .sv-body.sv-sum, .sv-pane .sv-chat, .sv-pane .sv-bar { padding-left: var(--sv-gut); padding-right: var(--sv-gut); }
+
+/* type scale for the pages: a clear title, readable rows, quiet meta */
+.sv-page-head { padding: 32px 20px 18px; }
+.sv-page-t { font: 600 24px/1.25 var(--sv-sans); letter-spacing: -0.01em; }
+.sv-page-head .sv-title > :not(.sv-page-t) { margin-top: 3px; }
+.sv-page-sub { margin-top: 8px; font-size: 11.5px; }
+.sv-page-seg { margin-top: 16px; }
+.sv-icard { padding: 15px 20px 14px; }
+.sv-itext { font: 500 14.5px/1.5 var(--sv-sans); color: var(--sv-ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.sv-istat { margin-top: 5px; font: 400 10.5px var(--sv-mono); letter-spacing: 0.2px; color: var(--sv-dim); }
+.sv-istat .sv-status { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); }
+.sv-istat .sv-status::before { width: 7px; height: 7px; margin-right: 5px; }
+/* an intent as a page title: long ones step down so three lines don't shout */
+.sv-page-long { display: block; font-size: 19px; line-height: 1.4; letter-spacing: 0; }
+/* "something else…": a chip you type in, enter or send answers */
+.sv-chips.one .sv-chip.sv-chip-own { display: inline-flex; align-items: center; gap: 6px; padding: 0 3px 0 11px; cursor: text; }
+.sv .sv-chip.sv-chip-own:hover { background: var(--sv-paper); }
+.sv .sv-chip.sv-chip-own:focus-within { border-color: var(--sv-ink); color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-chip-own input { box-shadow: none; border-radius: 0; height: auto; min-height: 0; width: auto; min-width: 0; max-width: 46ch; padding: 4px 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-chip-own input::placeholder { color: var(--sv-ink2); opacity: 1; }
+.sv .sv-chip-send { height: 20px; padding: 0 8px; border: 1px solid var(--sv-ink); border-radius: 999px; background: var(--sv-orange); font: 700 10.5px var(--sv-mono); color: var(--sv-ink); }
+
+/* ---------- new intent: dev's flow (question, starters, follow-ups, final check) in the app's look ---------- */
+.sv-ni-wrap { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; }
+.sv-ni-wrap > .sv-page { flex: 1 1 auto; min-width: 0; height: 100%; }
+.sv-ni-steps { display: inline-flex; align-items: center; gap: 10px; }
+.sv-ni-bar { display: inline-flex; gap: 4px; }
+.sv-ni-bar > span { width: 48px; height: 3px; background: var(--sv-line); }
+.sv-ni-bar > span.done { background: var(--sv-ink); }
+.sv-ni-bar > span.now { background: var(--sv-orange); }
+.ih:not(#_) .sv .sv-ni { overflow: visible; background: none; display: grid; gap: 22px; padding: 10px 20px 0; border-top: 1px solid var(--sv-line); padding-top: 22px; font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); }
+/* the agent speaking: avatar, a mono label, then its words, as on home's question cards */
+.sv .sv-ni .pl-open,
+.sv .sv-ni .pl-agent-line.pl-agent-open { gap: 12px; }
+.sv .sv-ni .pl-open-body,
+.sv .sv-ni .pl-agent-open > .pl-agent-bubble { flex: 1; min-width: 0; max-width: none; font: 400 14px/1.5 var(--sv-sans); }
+.sv .sv-ni .pl-open-who { font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-dim); }
+.sv .sv-ni .pl-open-q { margin: 4px 0 14px; font: 600 16px/1.4 var(--sv-sans); }
+/* what you said: right-aligned, in the conversation pane's warm well */
+.sv .sv-ni .pl-agent-bubble.mine { max-width: 70%; padding: 8px 12px; border: 1px solid var(--sv-well-line); border-radius: 2px; background: var(--sv-well); box-shadow: none; font: 400 14px/1.5 var(--sv-sans); white-space: pre-wrap; }
+.sv .sv-ni .pl-ni-turn { display: grid; gap: 10px; }
+/* the box to write in, with send inside it */
+.sv .sv-ni .pl-open-box { border: 1px solid var(--sv-edge); border-radius: 2px; background: var(--sv-paper); box-shadow: var(--sv-sh-field); }
+.sv .sv-ni .pl-open-box:focus-within { border-color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-open-box textarea { min-height: 76px; padding: 10px 12px 4px; border: 0; box-shadow: none; background: transparent; font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); }
+.sv .sv-ni .pl-open-box textarea::placeholder { color: var(--sv-dim); }
+/* buttons: the app's, orange for the one that moves you on */
+.ih:not(#_) .sv .sv-ni button.go,
+.ih:not(#_) .sv .sv-ni .pl-open-done button,
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button { height: 26px; margin: 0; padding: 0 14px; border: 1px solid var(--sv-ink); border-radius: 1px; background: var(--sv-paper); box-shadow: var(--sv-sh-btn); font: 500 11.5px var(--sv-mono); letter-spacing: 0; color: var(--sv-ink); transform: none; }
+.ih:not(#_) .sv .sv-ni button.go { background: var(--sv-orange); font-weight: 700; }
+.ih:not(#_) .sv .sv-ni .pl-open-box button.go { align-self: flex-end; margin: 0 8px 8px; }
+.ih:not(#_) .sv .sv-ni button.go:active:not(:disabled),
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+.ih:not(#_) .sv .sv-ni button.go:disabled,
+.ih:not(#_) .sv .sv-ni .pl-ni-actions button:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
+.sv .sv-ni .pl-ni-actions { margin-top: 10px; display: flex; gap: 8px; }
+/* starters: rows like the intents list, a hairline between, the row lit on hover */
+.sv .sv-ni .pl-open-options { margin-top: 16px; border-bottom: 1px solid var(--sv-line); }
+.ih:not(#_) .sv .sv-ni .pl-open-options button { height: auto; padding: 11px 12px; border: 0; border-top: 1px solid var(--sv-line); border-radius: 0; background: transparent; box-shadow: none; font: 500 14px/1.45 var(--sv-sans); color: var(--sv-ink); text-align: left; justify-content: flex-start; }
+.ih:not(#_) .sv .sv-ni .pl-open-options button:hover:not(:disabled) { background: var(--sv-hover, var(--sv-sel)); }
+.ih:not(#_) .sv .sv-ni .pl-open-options button:active:not(:disabled) { background: var(--sv-sel-focus); transform: none; }
+/* the final check: the intent in a field like the introduce page's */
+.ih:not(#_) .sv .sv-ni textarea.pl-ni-text { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--sv-edge); border-radius: 2px; box-shadow: none; background: var(--sv-paper); font: 400 14px/1.5 var(--sv-sans); color: var(--sv-ink); resize: vertical; }
+.ih:not(#_) .sv .sv-ni textarea.pl-ni-text:focus { border-color: var(--sv-ink); outline: none; }
+.sv .sv-ni .pl-ni-label { font: 500 10.5px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-ink2); }
+.sv .sv-ni .pl-new-note { margin: -6px 0 12px; font: 400 12px var(--sv-mono); color: var(--sv-ink2); }
+
+/* what the agent is picking up, docked on the right like the agent window on home and an intent */
+.sv.sv-ni-warm { flex: none; width: var(--sv-list-w); display: flex; flex-direction: column; background: var(--sv-paper); }
+.sv-ni-warm-head { flex: none; padding: 14px 20px 10px; border-bottom: 1px solid var(--sv-line); font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink); }
+/* follow-up answers, as on Home's questions: one answer is a pill, several are square-cornered
+   chips; orange on hover, black once picked. The native radio or box is there for the keyboard
+   and screen readers, not drawn. */
+.sv .sv-ni .pl-q-options.pl-chips { gap: 6px; margin-top: 8px; }
+.sv .sv-ni .pl-chips > label { position: relative; gap: 0; padding: 4px 11px; border: 1px solid var(--sv-ink); border-radius: 2px; background: var(--sv-paper); box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.125); font: 400 12.5px/1.35 var(--sv-sans); color: var(--sv-ink); transition: none; }
+.sv .sv-ni .pl-chips > label:has(input[type="radio"]) { border-radius: 999px; }
+.sv .sv-ni .pl-chips > label:has(input[type="checkbox"]) { border-radius: 2px; }
+.sv .sv-ni .pl-chips > label:hover { border-color: var(--sv-ink); background: var(--sv-orange); }
+.sv .sv-ni .pl-chips > label:has(input:checked) { border-color: var(--sv-ink); background: var(--sv-ink); color: var(--sv-paper); box-shadow: none; }
+.sv .sv-ni .pl-chips > label:focus-within { outline: none; }
+.sv .sv-ni .pl-chips > label:has(input[type="radio"]:focus-visible, input[type="checkbox"]:focus-visible) { outline: 2px solid var(--sv-orange); outline-offset: 1px; }
+.sv .sv-ni .pl-chips > label > input[type="radio"],
+.sv .sv-ni .pl-chips > label > input[type="checkbox"] { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+/* "something else…": Home's quiet chip you type straight into */
+.sv .sv-ni .pl-chips > label.pl-ni-else { border-color: var(--sv-edge); box-shadow: none; color: var(--sv-ink2); cursor: text; }
+.sv .sv-ni .pl-chips > label.pl-ni-else:hover { border-color: var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.sv .sv-ni .pl-chips > label.pl-ni-else:has(input:checked),
+.sv .sv-ni .pl-chips > label.pl-ni-else:focus-within { border-color: var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-q-options.pl-chips .pl-ni-else input[type="text"],
+.ih:not(#_) .sv .sv-ni .pl-q-options.pl-chips .pl-ni-else input[type="text"]:focus { width: auto; min-width: 0; max-width: 46ch; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent; font: inherit; color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-ni-else input[type="text"]::placeholder { color: var(--sv-ink2); opacity: 1; }
+/* a question with no options: one line in the app's field */
+.ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child { width: 100%; max-width: 420px; height: auto; margin: 0; padding: 6px 10px; border: 1px solid var(--sv-edge); border-radius: 2px; box-shadow: none; background: var(--sv-paper); font: 400 14px/1.45 var(--sv-sans); color: var(--sv-ink); outline: none; }
+.ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child:focus { border-color: var(--sv-ink); }
+/* The step's one action, a size up from the chips so it reads as the way forward. */
+.ih:not(#_) .sv .sv-ni .pl-ni-fields + .pl-ni-actions button,
+.ih:not(#_) .sv .sv-ni .pl-ni-text + .pl-ni-actions button { height: 32px; padding: 0 20px; font-size: 12.5px; }
+/* follow-ups breathe: room under the agent's line, between questions, between wrapped chip rows,
+   and before the button */
+.sv .sv-ni .pl-ni-fields { gap: 26px; margin-top: 18px; }
+.sv .sv-ni .pl-ni-label + .pl-q-options.pl-chips { margin-top: 10px; }
+.sv .sv-ni .pl-q-options.pl-chips { gap: 8px; }
+.sv .sv-ni .pl-ni-fields + .pl-ni-actions { margin-top: 30px; }
+
+/* ---------- button discipline ----------
+   decide = orange box, do = outlined box, remove = red-text box, open = mono text ending in ›
+   (never boxed), leave = underlined text ending in ↗, quiet = .sv-link, choose = pills, close = .sv-x.
+   A row that opens a person is itself the link: its name underlines on hover. */
+.sv .sv-open { margin-left: auto; flex: none; background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink); white-space: nowrap; cursor: pointer; }
+.sv .sv-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sv-card.done .sv-open { margin-left: auto; }
+.sv-card:not(.done):not(.sv-static):hover .sv-mrow > b,
+.sv-card:not(.done):not(.sv-static):hover > .sv-card-body > b,
+.sv-row:hover .sv-row-n { text-decoration: underline; text-underline-offset: 3px; }
+.sv .sv-x.inline { position: static; }

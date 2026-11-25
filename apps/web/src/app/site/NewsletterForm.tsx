@@ -47,8 +47,8 @@ export default function NewsletterForm() {
           disabled={status === "loading"}
           required
         />
-        <button type="submit" className="site-btn" disabled={status === "loading"}>
-          {status === "loading" ? "Sending…" : "Subscribe"}
+        <button aria-busy={status === "loading"} type="submit" className="site-btn" disabled={status === "loading"}>
+          {status === "loading" ? "Sending" : "Subscribe"}
         </button>
       </form>
       {status === "error" && <p className="site-newsletter-error">Something went wrong. Please try again.</p>}

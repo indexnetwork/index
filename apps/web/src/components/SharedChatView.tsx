@@ -7,6 +7,7 @@ import SiteLayout from "@/app/site/SiteLayout";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { apiUrl } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.ui.from("SharedChatView");
 
@@ -120,7 +121,7 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
   if (loading) {
     return (
       <SiteLayout>
-        <p className="site-p">Loading…</p>
+        <Placeholder.Thread label="loading this chat" />
       </SiteLayout>
     );
   }

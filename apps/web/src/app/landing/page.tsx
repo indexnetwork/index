@@ -6,7 +6,7 @@ import FeaturedPost from "@/app/site/FeaturedPost";
 import GithubStars from "@/app/site/GithubStars";
 import NewsletterForm from "@/app/site/NewsletterForm";
 import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
-import { CONTACT_EMAIL, docsUrl } from "@/app/site/links";
+import { docsUrl } from "@/app/site/links";
 import FanCanvas from "./FanCanvas";
 import FeedsFlow from "./FeedsFlow";
 import HeroAccess from "./HeroAccess";
@@ -128,7 +128,7 @@ export default function LandingPage() {
                 Run Index to surface the latent potential of your community by connecting the right
                 people. You set the guidelines of what intents are discoverable.
               </p>
-              <a className="site-arrow-link site-arrow-link--13" href={`mailto:${CONTACT_EMAIL}`}>Create your network →</a>
+              <Link className="site-arrow-link site-arrow-link--13" to="/for-networks">Create your network →</Link>
             </div>
           </div>
 

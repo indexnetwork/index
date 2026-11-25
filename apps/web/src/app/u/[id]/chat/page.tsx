@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useParams, useLocation } from "react-router";
-import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
 import ChatSidebar from "@/components/ChatSidebar";
-import { Stage, Window } from "@/components/workbench/Workbench";
+import { ChatFrame } from "@/components/chat/ChatFrame";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { Placeholder } from "@/components/ui/Placeholder";
+import { PersonPane, PersonSummary, type PersonTab } from "@/components/intents-home/PersonPane";
 
 const logger = log.page.from("u/[id]/chat");
 
@@ -80,55 +81,79 @@ export default function ChatPage() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px" }}>
+        <Placeholder.Thread label="loading this chat" />
       </div>
     );
   }
 
   const userName = profile?.name || cachedPeer?.name || "";
+  const avatar = profile?.avatar || cachedPeer?.avatar || undefined;
   const showMissingUser = Boolean(error && !profile && !cachedPeer);
 
   return (
-    <Stage width={860} height="min(660px, calc(100vh - 112px))">
-      <Window title="conversations" onClose={leave} style={{ height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
-          {!compact && (
-            <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>
-              <ChatSidebar />
-            </div>
+    <ChatFrame list={compact ? undefined : <ChatSidebar />} onClose={leave}>
+      {showMissingUser ? (
+        <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
+          {error === "notFound" ? (
+            <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
+          ) : (
+            <EmptyState
+              tone="error"
+              message="couldn't load this person."
+              action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+            />
           )}
-          <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {showMissingUser ? (
-              <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
-                {error === "notFound" ? (
-                  <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
-                ) : (
-                  <EmptyState
-                    tone="error"
-                    message="couldn't load this person."
-                    action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
-                  />
-                )}
-              </div>
-            ) : id ? (
-              <ChatView
-                key={id}
-                userId={id}
-                userName={userName || "someone"}
-                userAvatar={profile?.avatar || cachedPeer?.avatar || undefined}
-                initialGroupId={initialGroupId}
-                initialMessage={prefillMessage}
-                autoSend={autoSend}
-                onClose={leave}
-                onBack={leave}
-              />
-            ) : null}
-          </div>
         </div>
-      </Window>
-    </Stage>
+      ) : id && !compact ? (
+        // On the desktop the conversation is the person pane, opened on chat: who they are a tab away.
+        <ConversationPane key={id} userId={id} name={userName || "someone"} avatar={avatar}>
+          {(onCount) => <ChatView
+            key={id}
+            userId={id}
+            userName={userName || "someone"}
+            userAvatar={avatar}
+            initialGroupId={initialGroupId}
+            initialMessage={prefillMessage}
+            autoSend={autoSend}
+            onClose={leave}
+            onBack={leave}
+            bare
+            onCount={onCount}
+          />}
+        </ConversationPane>
+      ) : id ? (
+        <ChatView
+          key={id}
+          userId={id}
+          userName={userName || "someone"}
+          userAvatar={profile?.avatar || cachedPeer?.avatar || undefined}
+          initialGroupId={initialGroupId}
+          initialMessage={prefillMessage}
+          autoSend={autoSend}
+          onClose={leave}
+          onBack={leave}
+          noClose={!compact}
+        />
+      ) : null}
+    </ChatFrame>
   );
 }
 
 export const Component = ChatPage;
+
+/** The person you're talking to, opened on chat; summary shows who they are and what you were matched on. */
+function ConversationPane({ userId, name, avatar, children }: { userId: string; name: string; avatar?: string; children: (onCount: (count: number) => void) => React.ReactNode }) {
+  const [tab, setTab] = useState<PersonTab>("chat");
+  const [count, setCount] = useState(0);
+  return (
+    <PersonPane
+      person={{ name, userId, avatar }}
+      tab={tab}
+      onTab={setTab}
+      chatCount={count}
+      summary={<PersonSummary userId={userId} />}
+      chat={children(setCount)}
+    />
+  );
+}

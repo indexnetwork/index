@@ -7,6 +7,7 @@ import type { NegotiationHistoryEntry } from "@/services/users";
 import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiations";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatChatClock } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 const PAGE_SIZE = 5;
 
@@ -117,7 +118,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
   return (
     <div className="space-y-2">
-      {isLoading && <EmptyState tone="loading" />}
+      {isLoading && <Placeholder.Rows count={3} label="loading negotiations" />}
 
       {!isLoading && loadFailed && (
         <EmptyState
@@ -194,7 +195,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
             {isExpanded && (
               <div style={{ padding: "8px 16px 16px", borderTop: "1px solid #000" }}>
                 {turns === undefined ? (
-                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+                  <Placeholder.Thread label="loading turns" />
                 ) : turns.length === 0 ? (
                   <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, textAlign: "center" }}>no turns yet.</p>
                 ) : (
@@ -222,12 +223,12 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
       )}
 
       {hasMore && (
-        <button
+        <button aria-busy={loadingMore}
           onClick={loadMore}
           disabled={loadingMore}
           style={{ width: "100%", background: "none", border: "none", fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}
         >
-          {loadingMore ? "loading…" : "show more"}
+          {loadingMore ? "loading more" : "show more"}
         </button>
       )}
     </div>

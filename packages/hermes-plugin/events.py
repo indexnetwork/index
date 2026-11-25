@@ -15,7 +15,7 @@ import threading
 from pathlib import Path
 
 from .morning import sync_morning_cron
-from .sidecar import read_state
+from .sidecar import read_state, write_state
 from .tools import selected_agent, this_install_selected
 
 logger = logging.getLogger(__name__)
@@ -70,8 +70,18 @@ def _apply(sidecar) -> None:
     try:
         agent = selected_agent()
     except Exception as error:
-        logger.warning("Index negotiator selection check failed: %s", error)
-        return
+        if _unauthorized(error) and _recover(error):
+            try:
+                agent = selected_agent()
+            except Exception as retry:
+                _record_auth(sidecar, retry)
+                logger.warning("Index negotiator selection check failed: %s", retry)
+                return
+        else:
+            _record_auth(sidecar, error)
+            logger.warning("Index negotiator selection check failed: %s", error)
+            return
+    _record_auth(sidecar, None)
     home = Path(sidecar.state_path).parent
     if not this_install_selected(agent):
         sidecar.stop()
@@ -83,6 +93,27 @@ def _apply(sidecar) -> None:
         return
     sidecar.start(agent["ownerId"], agent["id"])
     sync_morning_cron(home, True)
+
+
+def _record_auth(sidecar, error: BaseException | None) -> None:
+    """Tell the dashboard whether Index is accepting this gateway's session.
+
+    The negotiator process stays alive while its calls fail, so "running" alone
+    says nothing about whether it can take turns. Only a 401 counts as signed
+    out; an outage leaves the last answer alone.
+    """
+    if error is None:
+        value = "ok"
+    elif _unauthorized(error):
+        value = "unauthorized"
+    else:
+        return
+    path = Path(sidecar.state_path)
+    try:
+        if read_state(path)["auth"] != value:
+            write_state(path, auth=value)
+    except OSError:
+        logger.warning("Index auth state could not be recorded")
 
 
 def _apply_current() -> None:
@@ -199,6 +230,7 @@ def _pause_loop(done: threading.Event) -> None:
     seen_state = read_state(path)
     seen = seen_state["paused"]
     seen_morning = seen_state["morning"]
+    seen_recheck = seen_state["recheck"]
     alive = _pid_alive(seen_state["pid"])
     while not done.is_set():
         if not _wait_state(path, done):
@@ -206,13 +238,15 @@ def _pause_loop(done: threading.Event) -> None:
         state = read_state(path)
         paused = state["paused"]
         morning = state["morning"]
+        recheck = state["recheck"]
         now_alive = _pid_alive(state["pid"])
         died = alive and not now_alive and not paused
         alive = now_alive
-        if paused == seen and morning == seen_morning and not died:
+        if paused == seen and morning == seen_morning and recheck == seen_recheck and not died:
             continue
         seen = paused
         seen_morning = morning
+        seen_recheck = recheck
         _apply_current()
 
 
