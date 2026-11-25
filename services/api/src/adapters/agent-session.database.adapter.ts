@@ -14,7 +14,7 @@ export type QuestionScope = 'intent' | 'match';
 
 export interface MatchReference {
   opportunityId: string;
-  /** `wants` is their intent's statement, added on read for Home; it is never stored. */
+  /** `wants` completes "looking for …" from their intent, added on read for Home; it is never stored. */
   counterparty: { id: string; name: string | null; wants?: string };
 }
 

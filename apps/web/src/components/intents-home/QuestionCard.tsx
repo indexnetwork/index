@@ -13,27 +13,6 @@ export const SKIP_ANSWER = "skip this one. use your best judgement.";
 
 type Question = PrincipalQuestion & { intentId: string; groupId?: string };
 
-/** Where an intent says what it's after: "looking for", "looking to connect … with", "want to meet", "seeking", "hire". */
-const SEEK = /\b(?:looking\s+for|looking\s+to\s+(?:connect|meet)(?:\s+[^,.;]*?)?\s+with|looking\s+to\s+(?:meet|hire|find)|seeking|searching\s+for|(?:want|wants|hoping|hope)\s+to\s+(?:meet|find|hire|connect\s+with)|^(?:meet|find|hire|connect\s+with))\s+/i;
-/** What they're after ends at the first break: punctuation, or a clause that says why, when or how. */
-const STOP = /\s*(?:[,.;:—–(]|\s(?:who|that|which|for|to|in\s+the\s+next|within|especially|specifically|interested\s+in|so|because)\s)/i;
-
-/**
- * "web search providers" from "Looking for web search providers for agentic
- * usage that …": the whole of what they're after, never cut mid-thought.
- * @returns null when the intent doesn't say it in a few words.
- */
-function lookingFor(wants: string): string | null {
-  const text = wants.replace(/\s+/g, " ").trim();
-  const lead = SEEK.exec(text);
-  if (!lead) return null;
-  const rest = text.slice(lead.index + lead[0].length);
-  const stop = STOP.exec(rest);
-  const what = (stop ? rest.slice(0, stop.index) : rest).replace(/^(?:a|an|the|some)\s+/i, "").trim();
-  const words = what.split(" ").filter(Boolean).length;
-  return words > 0 && words <= 9 ? what : null;
-}
-
 /** "40 minutes", "3 hours", "2 days": how long two agents have been at it. */
 function talkingFor(since: string, now = Date.now()): string {
   const minutes = Math.max(1, Math.floor((now - Date.parse(since)) / 60000));
@@ -90,7 +69,6 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
   // Who it's asking for and what they're after; failing that, how long their agent and yours have been talking.
   const wants = owner ? question.matches?.[0]?.counterparty.wants : undefined;
-  const after = wants ? lookingFor(wants) : null;
   const opportunityId = question.matches?.[0]?.opportunityId;
   const since = owner && opportunityId
     ? Object.values(entriesByIntent).flat().find((entry) => entry.item.opportunityId === opportunityId)?.item.createdAt
@@ -102,8 +80,8 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <span><b>{label}</b>{after
-            ? <span className="sv-via"> · looking for {after}</span>
+          <span><b>{label}</b>{wants
+            ? <span className="sv-via"> · looking for {wants}</span>
             : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>

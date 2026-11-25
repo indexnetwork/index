@@ -37,9 +37,9 @@ export class QuestionGroupsDatabaseAdapter {
    *
    * @param userId - The owner; only negotiations they hold a seat in count.
    * @param opportunityIds - The opportunities their questions are about.
-   * @returns Their intent's summary (or text) per opportunity.
+   * @returns Their intent and its summary (or text) per opportunity.
    */
-  static async counterpartWants(userId: string, opportunityIds: string[]): Promise<Map<string, string>> {
+  static async counterpartWants(userId: string, opportunityIds: string[]): Promise<Map<string, { intentId: string; text: string }>> {
     if (!opportunityIds.length) return new Map();
     const seats = await db.select({
       opportunityId: negotiations.opportunityId,
@@ -56,10 +56,10 @@ export class QuestionGroupsDatabaseAdapter {
     const statements = await db.select({ id: intents.id, summary: intents.summary, payload: intents.payload }).from(intents)
       .where(inArray(intents.id, [...new Set(theirIntent.values())]));
     const byId = new Map(statements.map((row) => [row.id, (row.summary ?? row.payload ?? '').trim()]));
-    const wants = new Map<string, string>();
+    const wants = new Map<string, { intentId: string; text: string }>();
     for (const [opportunityId, intentId] of theirIntent) {
       const text = byId.get(intentId);
-      if (text) wants.set(opportunityId, text);
+      if (text) wants.set(opportunityId, { intentId, text });
     }
     return wants;
   }

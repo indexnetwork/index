@@ -15,6 +15,7 @@ import { log } from '../lib/log';
 import { prepareAnswers } from '../lib/personal-agent/answers';
 import { fanOutAnswer } from '../lib/personal-agent/fan-out';
 import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
+import { distinctiveWants } from '../lib/personal-agent/wants';
 import { shownCards, visibleQuestionIds, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
@@ -489,12 +490,14 @@ export class ConversationService {
     await this.groupNewQuestions(userId, { decide: false });
     const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
     const cards = shownCards(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), open);
-    // Each card says who it's asking for and what they're after.
-    const wants = await QuestionGroupsDatabaseAdapter.counterpartWants(userId, cards.flatMap((card) => card.matches.map((match) => match.opportunityId)));
+    // Each card says what the person it asks for is after, in its most distinctive words.
+    const statements = await QuestionGroupsDatabaseAdapter.counterpartWants(userId, cards.flatMap((card) => card.matches.map((match) => match.opportunityId)));
+    const phrases = await distinctiveWants([...statements.values()]);
     return cards.map((card) => ({
       ...card,
       matches: card.matches.map((match) => {
-        const text = wants.get(match.opportunityId);
+        const statement = statements.get(match.opportunityId);
+        const text = statement && phrases.get(statement.intentId);
         return text ? { ...match, counterparty: { ...match.counterparty, wants: text } } : match;
       }),
     }));
