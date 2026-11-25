@@ -593,3 +593,8 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-card:not(.done):not(.sv-static):hover > .sv-card-body > b,
 .sv-row:hover .sv-row-n { text-decoration: underline; text-underline-offset: 3px; }
 .sv .sv-x.inline { position: static; }
+
+/* "show N more" under a list in the new look: the quiet link, lined up with
+   the rows' left edge (same as "show N closed") */
+.sv-page-col > button.pl-more:not(#_) { display: block; margin: 0; padding: 12px 20px; border: 0; box-shadow: none; background: none; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
+.sv-page-col > button.pl-more:not(#_):hover { background: none; color: var(--sv-ink); }
