@@ -94,7 +94,7 @@
 .sv-via a { text-decoration: underline; }
 /* a question card: the question is the headline, who's asking is the quiet line above it */
 .sv-qcard .sv-qhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.sv-qcard .sv-qhead > b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
+.sv-qcard .sv-qhead b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
 .sv .sv-qcard .sv-chip:not(.ghost) { border-color: #999; }
 .sv .sv-qcard .sv-chip:not(.ghost):hover { border-color: var(--sv-ink); }
 .sv-qcard .sv-blurb { font-weight: 500; font-size: 14px; color: var(--sv-ink); }
@@ -193,6 +193,11 @@ a.sv-soc:hover { background: var(--sv-sel); }
 
 /* opportunities between you two: one row each; open shows why and the agents' log */
 .sv-olist { display: grid; gap: 8px; }
+/* "Bob's agent and yours are still talking": their face, a line, your agent's square. */
+.sv-agtalk { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 13.5px; color: var(--sv-ink2); }
+.sv-agfaces { flex: none; display: flex; align-items: center; }
+.sv-agfaces .sv-mine { width: 20px; height: 20px; font-size: 8px; }
+.sv-agline { width: 14px; border-top: 1px dashed var(--sv-dim); margin: 0 3px; }
 .sv-orow { border: 1px solid var(--sv-ink); background: var(--sv-paper); overflow: hidden; }
 .sv .sv-orh { display: flex; gap: 12px; align-items: baseline; padding: 11px 14px; width: 100%; text-align: left; background: none; border: 0; }
 .sv-orh:hover, .sv-orow.open .sv-orh { background: var(--sv-hover); }

@@ -249,7 +249,7 @@ export default function HomeDashboard() {
 
   return split(
     <>
-      <ListHead id="questions">questions · {questionsLoaded ? questions.length : "…"}</ListHead>
+      <ListHead id="questions">agents are asking you · {questionsLoaded ? questions.length : "…"}</ListHead>
       {staleLink && <div className="sv-empty">that question was already answered.</div>}
       {!questionsLoaded ? (
         <div className="sv-empty"><Placeholder.Rows count={2} avatar={false} label="loading questions" /></div>
@@ -269,7 +269,7 @@ export default function HomeDashboard() {
         </>
       )}
 
-      <ListHead id="waiting">waiting on you · {loadingPeople ? "…" : waitingCount}</ListHead>
+      <ListHead id="waiting">agents agreed. your call · {loadingPeople ? "…" : waitingCount}</ListHead>
       {loadingPeople && !waitingRows.length ? (
         <div className="sv-empty"><Placeholder.Rows count={3} label="loading people" /></div>
       ) : waitingRows.length === 0 ? (
@@ -314,7 +314,11 @@ export default function HomeDashboard() {
 
       {(moving.length > 0 || refreshingIds.length > 0) && (
         <>
-          <ListHead id="progress">in progress · {refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length}</ListHead>
+          <ListHead id="progress">
+            {refreshingIds.length > 0
+              ? <>agents talking · <Placeholder.Count label="updating" /></>
+              : <>agents talking · {byStage.talks.length}{byStage.chat.length > 0 && <> · chatting · {byStage.chat.length}</>}</>}
+          </ListHead>
           {movingList.shown.map((person) => {
             const lead = person.entries[0];
             const talking = lead.stage === "talks";

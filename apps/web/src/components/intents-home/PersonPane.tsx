@@ -185,8 +185,11 @@ const shortDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString(undef
  * between you two as a row (headline · status ›). The one this pane opened
  * for starts open, showing why your agent found them and the agents' log.
  */
-export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
+export function PersonSummary({ userId, name, avatar, focusId, why, intentId, none, fresh }: {
   userId?: string;
+  /** Their name and photo, for the note that their agent and yours are talking. */
+  name?: string;
+  avatar?: string | null;
   /** The opportunity this pane is for: its row starts open. */
   focusId?: string;
   /** Why your agent surfaced them, for the focused row (or on its own when there's no user yet). */
@@ -234,6 +237,9 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
   const live = rows.filter((row) => row.status.cls !== "paused");
   const closed = rows.filter((row) => row.status.cls === "paused");
   const showClosed = fold && fold.id === userId ? fold.open : closed.some((row) => row.item.opportunityId === focusId);
+  // Everything live is still between the agents: say who is talking, before the rows.
+  const talking = !!userId && live.length > 0 && live.every((row) => row.status.cls === "talks");
+  const first = name?.split(" ")[0];
 
   // Write up the blank rows on screen: live ones at once, closed ones only once
   // unfolded, so a pair with dozens of missed rows doesn't write them all. Each
@@ -310,6 +316,16 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
       )}
 
       <h4 className="sv-h4">opportunities</h4>
+      {talking && (
+        <div className="sv-agtalk">
+          <span className="sv-agfaces" aria-hidden>
+            <UserAvatar id={userId} name={name ?? ""} avatar={avatar ?? null} size={20} />
+            <span className="sv-agline" />
+            <span className="sv-mine">ix</span>
+          </span>
+          <span>{first ? `${first}'s agent and yours are` : "your agents are"} still talking. chat opens here once you both accept.</span>
+        </div>
+      )}
       {!userId ? (
         why ? <p>{why}</p> : <p className="sv-dimp">I&apos;m still writing this up.</p>
       ) : !list ? (

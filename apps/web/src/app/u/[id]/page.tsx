@@ -225,7 +225,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           onTab={(next) => (next === "chat" && !inFrame ? navigate(`/u/${profileData.id}/chat`) : setTab(next))}
           chatCount={chatCount || undefined}
           linked={false}
-          summary={<PersonSummary key={oppKey} userId={profileData.id} fresh={oppKey > 0} none={(
+          summary={<PersonSummary key={oppKey} userId={profileData.id} name={profileData.name} avatar={profileData.avatar} fresh={oppKey > 0} none={(
             <p className="sv-dimp">our agents are already paired. they&apos;re talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over.</p>
           )} />}
           chat={<ChatView key={profileData.id} userId={profileData.id} userName={profileData.name} userAvatar={profileData.avatar ?? undefined} onClose={() => setTab("summary")} bare onCount={setChatCount} />}
