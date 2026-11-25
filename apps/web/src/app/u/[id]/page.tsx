@@ -221,8 +221,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   if (authLoading || isLoading || error || !profileData) {
     // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
     return (
-      <ProfileFrame width={480} onClose={back}>
-          <div style={{ padding: "36px 24px" }}>
+      <ProfileHold onClose={back}>
             {authLoading || isLoading ? (
               <Placeholder.Window rows={3} label="loading this profile" />
             ) : error === "failed" ? (
@@ -234,8 +233,7 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
             ) : (
               <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: back }} />
             )}
-          </div>
-      </ProfileFrame>
+      </ProfileHold>
     );
   }
 
@@ -409,7 +407,7 @@ export const Component = UserProfilePage;
  * says "profile", so it fills that window like Home and Intents. Elsewhere
  * (phones, signed out) it keeps its own window on the desktop.
  */
-function ProfileFrame({ width, height, onClose, children }: { width: number; height?: string; onClose: () => void; children: ReactNode }) {
+function ProfileFrame({ title = "profile", width, height, onClose, children }: { title?: string; width: number; height?: string; onClose: () => void; children: ReactNode }) {
   const inFrame = useInAppFrame();
   if (inFrame) {
     return (
@@ -420,7 +418,22 @@ function ProfileFrame({ width, height, onClose, children }: { width: number; hei
   }
   return (
     <Stage width={width} height={height}>
-      <Window title="profile" onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
+      <Window title={title} onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
     </Stage>
+  );
+}
+
+/**
+ * A page's loading or error state, held where the page itself will appear:
+ * in the app's main window it starts on the page's left edge, so nothing
+ * jumps when the profile arrives. Shared with `/:handle`, which shows it
+ * while it works out whose page the handle is.
+ */
+export function ProfileHold({ title, onClose, children }: { title?: string; onClose: () => void; children: ReactNode }) {
+  const inFrame = useInAppFrame();
+  return (
+    <ProfileFrame title={title} width={480} onClose={onClose}>
+      <div style={{ padding: inFrame ? "24px 0" : "36px 24px" }}>{children}</div>
+    </ProfileFrame>
   );
 }
