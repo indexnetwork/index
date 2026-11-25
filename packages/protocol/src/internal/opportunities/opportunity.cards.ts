@@ -140,7 +140,7 @@ async function loadPeerContext(
  * @param deps - Database, cache, and presenter.
  * @param opportunity - The opportunity to present.
  * @param viewerId - The viewing user.
- * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter; `noCache` skips the stored-card read; `peerContext` is the prior opportunity and chat when the caller already loaded them.
+ * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter, so a card not already stored comes back blank with `presentationPending`; `noCache` skips the stored-card read; `peerContext` is the prior opportunity and chat when the caller already loaded them.
  * @returns The card, or null when the counterpart's name cannot be resolved.
  * @throws When the presenter fails.
  */
@@ -160,7 +160,7 @@ export async function presentOpportunityCard(
     ?? (await loadPeerContext(database, viewerId, [opportunity])).get(opportunity.id)!;
   const cacheable = opportunity.status !== 'negotiating';
   const cacheKey = buildOpportunityCardCacheKey(opportunity.id, viewerId, options.intentId);
-  if (cacheable && !options.skeleton && !options.noCache) {
+  if (cacheable && !options.noCache) {
     try {
       const hit = await deps.cache.get<OpportunityCard>(cacheKey);
       if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
@@ -316,10 +316,11 @@ export async function listOpportunityCards(
       const hit = cached.get(opp.id);
       if (hit) return hit;
       try {
+        // The stored card was already read above, so a miss here doesn't read it again.
         const card = await presentOpportunityCard(deps, opp, viewerId, {
           intentId,
           skeleton: input.skeleton,
-          noCache: input.noCache,
+          noCache: true,
           peerContext: peerContexts.get(opp.id),
         });
         return card;

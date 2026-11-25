@@ -233,6 +233,8 @@ export class OpportunityService {
    * List opportunities with presenter output for the viewer. peerUserId
    * switches to pair scope: every opportunity in `statuses` whose agents
    * exchanged a turn when given, otherwise accepted ones only (chat context).
+   * In pair scope, `presentation: 'skeleton'` returns stored cards and blank
+   * `presentationPending` ones for the rest, without waiting on the presenter.
    */
   async presentOpportunitiesForViewer(
     userId: string,
@@ -253,7 +255,8 @@ export class OpportunityService {
       const seen = rows.filter((opp) => canUserSeeOpportunity(opp.actors, opp.status, userId));
       const turns = await Promise.all(seen.map((opp) => this.negotiations.readNegotiationContext(opp.id, userId)));
       const visible = seen.filter((_, i) => (turns[i]?.turns.length ?? 0) > 0);
-      const opportunities = await Promise.all(visible.map((opp) => this.presentOpportunityForViewer(opp, userId)));
+      const skeleton = options.presentation === 'skeleton';
+      const opportunities = await Promise.all(visible.map((opp) => this.presentOpportunityForViewer(opp, userId, undefined, { skeleton })));
       return { opportunities, meta: { totalOpportunities: opportunities.length } };
     }
     if (options?.peerUserId) {

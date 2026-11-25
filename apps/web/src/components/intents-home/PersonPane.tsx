@@ -10,7 +10,7 @@ import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
-import type { RadarCardItem } from "@/services/opportunities";
+import type { OpportunityLifecycleStatus, RadarCardItem } from "@/services/opportunities";
 import { intentLabel } from "@/components/intents-home/stages";
 
 export type PersonTab = "summary" | "chat";
@@ -160,6 +160,9 @@ function statusOf(item: RadarCardItem, hasChat: boolean): { label: string; cls: 
   return { label: "accepted", cls: "live" };
 }
 
+/** Every opportunity between you two, open or closed. */
+const PAIR_STATUSES: OpportunityLifecycleStatus[] = ["negotiating", "pending", "accepted", "rejected", "expired"];
+
 /** 444, 1.2k, 3m: how the prototype counts members. */
 const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n).toLowerCase();
 
@@ -195,9 +198,18 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
     if (!userId) return;
     let active = true;
     networksApi.getSharedNetworks(userId).then((list) => { if (active) setNets({ id: userId, list }); }).catch(() => { if (active) setNets({ id: userId, list: [] }); });
-    opportunitiesApi.getRadarView({ peerUserId: userId, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: fresh })
-      .then((res) => { if (active) setOpps({ id: userId, list: res.items }); })
-      .catch(() => { if (active) setOpps({ id: userId, list: [] }); });
+    // Rows come first from stored cards, blank where none is written yet (always
+    // so for one still negotiating); writing those up takes seconds, so they
+    // fill in from a second request instead of holding the whole list back.
+    const query = { peerUserId: userId, statuses: PAIR_STATUSES, noCache: fresh };
+    opportunitiesApi.getRadarView({ ...query, presentation: "skeleton" })
+      .then((res) => {
+        if (active) setOpps({ id: userId, list: res.items });
+        return res.items.some((item) => item.presentationPending);
+      }, () => true)
+      .then((pending) => pending && active ? opportunitiesApi.getRadarView(query) : null)
+      .then((res) => { if (res && active) setOpps({ id: userId, list: res.items }); })
+      .catch(() => { if (active) setOpps((prev) => prev && prev.id === userId ? prev : { id: userId, list: [] }); });
     return () => { active = false; };
   }, [userId, networksApi, opportunitiesApi, fresh]);
 
@@ -253,7 +265,7 @@ export function PersonSummary({ userId, focusId, why, intentId, none, fresh }: {
             return (
               <div key={item.opportunityId} className={`sv-orow${isOpen ? " open" : ""}`}>
                 <button type="button" className="sv-orh" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : item.opportunityId)}>
-                  <span className="sv-oh">{headline}</span>
+                  <span className="sv-oh">{headline || (item.presentationPending ? <Placeholder.Text lines={1} label="writing this up" style={{ width: "70%" }} /> : "an opportunity")}</span>
                   <span className="sv-os">{status.cls === "talks" && item.opportunityId === focusId && <span className="sv-dot" />}{status.label}</span>
                   <span className="sv-oc">{isOpen ? "▾" : "›"}</span>
                 </button>

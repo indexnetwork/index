@@ -328,11 +328,21 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-alh { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
 .sv-alh a { color: inherit; text-decoration: underline; }
 .sv-body p.sv-owhy { margin: 0 0 2px; font-size: 14px; line-height: 1.5; }
-.sv-turn { display: grid; gap: 4px; }
-.sv-turn .tl { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); letter-spacing: 0.06em; }
-.sv-turn .tl a { color: inherit; text-decoration: none; }
-.sv-turn .tm { border: 1px solid var(--sv-line); border-radius: 3px; padding: 8px 11px; font-size: 13.5px; line-height: 1.45; background: var(--sv-paper); white-space: pre-wrap; word-break: break-word; }
-.sv-turn.own .tm { background: var(--sv-well); }
+/* the agent log: entries on a dashed timeline, mono like a log, no boxes.
+   your agent's turns hang off a filled square, theirs off a hollow one. */
+.sv-alog { position: relative; display: flex; flex-direction: column; gap: 14px; margin-top: 4px; padding-left: 18px; }
+.sv-alog::before { content: ""; position: absolute; left: 3px; top: 8px; bottom: 8px; border-left: 1px dashed var(--sv-edge); }
+.sv-alog .le { position: relative; }
+.sv-alog .le::before { content: ""; position: absolute; left: -18px; top: 3px; width: 7px; height: 7px; border: 1px solid var(--sv-ink); background: var(--sv-paper); }
+.sv-alog .le.own::before { background: var(--sv-ink); }
+.sv-alog .lh { display: flex; gap: 10px; align-items: baseline; font: 400 10.5px var(--sv-mono); letter-spacing: 0.06em; }
+.sv-alog .lw { color: var(--sv-ink); font-weight: 500; }
+.sv-alog .lw a { color: inherit; text-decoration: none; }
+.sv-alog .lw a:hover { text-decoration: underline; }
+.sv-alog .la { color: var(--sv-dim); text-transform: uppercase; letter-spacing: 0.14em; }
+.sv-alog time { margin-left: auto; color: var(--sv-dim); white-space: nowrap; }
+.sv-alog .lm { margin-top: 5px; font: 400 12.5px/1.65 var(--sv-mono); color: var(--sv-ink2); white-space: pre-wrap; word-break: break-word; }
+.sv-alog .le.own .lm { color: var(--sv-ink); }
 
 /* the chat tab before it opens: the warm box says when, accept and pass are its foot */
 .sv-well { flex: 1 0 auto; padding: 14px 16px 16px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0; }
