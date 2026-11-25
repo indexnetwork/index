@@ -54,8 +54,6 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
     ? <Link to={`/u/${owner.id}`} title={`${owner.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={owner.id} name={owner.name} avatar={owner.avatar ?? null} size={36} /></Link>
     : <span className="sv-mine" aria-hidden>ix</span>;
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
-  // Your agent asks when its talks with theirs need you; say so, so it doesn't read as a stranger's bot.
-  const why = owner ? "talking with your agent about you two meeting" : (question.matches?.length ?? 0) > 1 ? "talking with your agent" : "";
   const sent = owner ? `answered. your agent takes it back to ${label}.` : null;
 
   return (
@@ -63,7 +61,7 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <span><b>{label}</b>{why && <span className="sv-via"> · {why}</span>}</span>
+          <b>{label}</b>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
         <div className="sv-blurb">{question.question}</div>
