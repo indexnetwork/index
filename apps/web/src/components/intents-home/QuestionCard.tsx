@@ -80,9 +80,11 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <span><b>{label}</b>{wants
+          <b>{label}</b>
+          {wants
             ? <span className="sv-via"> · looking for {wants}</span>
-            : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
+            : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}
+          <span className="sv-via"> · </span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
         <div className="sv-blurb">{question.question}</div>

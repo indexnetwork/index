@@ -96,7 +96,10 @@
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-via a { text-decoration: underline; }
 /* a question card: the question is the headline, who's asking is the quiet line above it */
-.sv-qcard .sv-qhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+/* who's asking, what they're after, then skip, all on one quiet line */
+.sv-qcard .sv-qhead { display: block; }
+.sv-qcard .sv-qhead .sv-link { font-weight: 400; color: var(--sv-dim); }
+.sv-qcard .sv-qhead .sv-link:hover { color: var(--sv-ink); }
 .sv-qcard .sv-qhead b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
 .sv .sv-qcard .sv-chip:not(.ghost) { border-color: #999; }
 .sv .sv-qcard .sv-chip:not(.ghost):hover { border-color: var(--sv-ink); }
