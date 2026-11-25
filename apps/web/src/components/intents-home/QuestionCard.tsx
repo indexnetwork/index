@@ -59,7 +59,7 @@ export default function QuestionCard({ question, intentLabel, intentHref, select
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
 
   return (
-    <div id={question.groupId ? `q-card-${question.groupId}` : undefined} className={`sv-card sv-static${selected ? " on" : ""}`}>
+    <div id={question.groupId ? `q-card-${question.groupId}` : undefined} className={`sv-card sv-static sv-qcard${selected ? " on" : ""}`}>
       {face}
       <div className="sv-card-body">
         <b>{label}</b>

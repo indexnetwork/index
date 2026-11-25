@@ -92,6 +92,11 @@
 .sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; }
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-via a { text-decoration: underline; }
+/* a question card: the question is the headline, who's asking is the quiet line above it */
+.sv-qcard > .sv-card-body > b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
+.sv .sv-qcard .sv-chip:not(.ghost) { border-color: #999; }
+.sv .sv-qcard .sv-chip:not(.ghost):hover { border-color: var(--sv-ink); }
+.sv-qcard .sv-blurb { font-weight: 500; font-size: 14px; color: var(--sv-ink); }
 .sv-card.done { color: var(--sv-ink2); font-size: 13.5px; align-items: center; cursor: default; }
 .sv-card.done:hover { background: none; }
 
