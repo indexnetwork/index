@@ -93,7 +93,8 @@
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-via a { text-decoration: underline; }
 /* a question card: the question is the headline, who's asking is the quiet line above it */
-.sv-qcard > .sv-card-body > b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
+.sv-qcard .sv-qhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sv-qcard .sv-qhead > b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
 .sv .sv-qcard .sv-chip:not(.ghost) { border-color: #999; }
 .sv .sv-qcard .sv-chip:not(.ghost):hover { border-color: var(--sv-ink); }
 .sv-qcard .sv-blurb { font-weight: 500; font-size: 14px; color: var(--sv-ink); }

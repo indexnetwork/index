@@ -59,7 +59,10 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
     <div id={question.groupId ? `q-card-${question.groupId}` : undefined} className={`sv-card sv-static sv-qcard${selected ? " on" : ""}`}>
       {face}
       <div className="sv-card-body">
-        <b>{label}</b>
+        <div className="sv-qhead">
+          <b>{label}</b>
+          <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
+        </div>
         <div className="sv-blurb">{question.question}</div>
         <div className="sv-chips one">
           {options.map((option) => (
@@ -69,7 +72,6 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
             <input value={own} onChange={(event) => setOwn(event.target.value)} placeholder={options.length ? "something else…" : "type your answer…"} aria-label="your answer" size={Math.max(15, own.length + 1)} />
             {own.trim() && <button type="submit" className="sv-chip-send">send</button>}
           </form>
-          <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
       </div>
     </div>
