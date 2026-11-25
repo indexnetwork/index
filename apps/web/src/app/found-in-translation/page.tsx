@@ -260,6 +260,12 @@ export default function FoundInTranslationPage() {
       </section>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
+        <div data-fade style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.06em', color: PALETTE.creamFaint, marginBottom: 14 }}>
+          APR 01, 2026 ·{' '}
+          <a href="https://x.com/serensandikci" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+            SEREN SANDIKCI
+          </a>
+        </div>
         <p data-fade style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(2.5rem,6vw,3.25rem)', lineHeight: 1.1, letterSpacing: '-0.02em', color: PALETTE.cream, marginBottom: '1.75rem' }}>
           Found in Translation
         </p>

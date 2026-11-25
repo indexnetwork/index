@@ -37,6 +37,8 @@ export interface PresentedOpportunity {
   /** This viewer already committed. Status can still be pending until the other person accepts. */
   viewerCommitted?: boolean;
   personalizedSummary?: string;
+  /** Chat context only: one third-person sentence per person. */
+  contextSides?: { viewer: string; peer: string };
   narratorRemark?: string;
   acceptedAt?: string | null;
   /** An earlier opportunity with this person (accepted, or the viewer already said yes). */
@@ -61,6 +63,7 @@ export interface ChatContextCardInput {
   peerUserId?: string;
   status?: OpportunityStatus;
   createdAt?: string;
+  contextSides?: { viewer: string; peer: string };
 }
 
 export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOpportunity {
@@ -111,5 +114,6 @@ export function chatCardToPresentedOpportunity(card: ChatContextCardInput): Pres
     personalizedSummary: card.personalizedSummary,
     narratorRemark: card.narratorRemark,
     acceptedAt: card.acceptedAt,
+    contextSides: card.contextSides,
   };
 }

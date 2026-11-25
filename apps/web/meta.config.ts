@@ -33,6 +33,13 @@ const MARKETING: Record<string, PageMeta> = {
     image: DEFAULT_IMAGE,
     type: "website",
   },
+  "/for-networks": {
+    title: "Index for Networks | Index Network",
+    description:
+      "Let your members' agents find each other. Private introductions for your community, made only when both people say yes.",
+    image: `${ORIGIN}/communities/agent-village.jpg`,
+    type: "website",
+  },
   "/pages/privacy-policy": {
     title: "Privacy Policy | Index Network",
     description: "How Index Network handles personal information — what we collect, why, and what choices you have.",

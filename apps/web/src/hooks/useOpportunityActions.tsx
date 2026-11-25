@@ -29,7 +29,8 @@ interface UseOpportunityActionsOptions {
 /**
  * Shared accept/reject/start-chat handling for opportunity cards. Used by the
  * chat message render and the intent detail view so both surfaces share
- * identical opportunity behavior. (The uptake-preflight modal flow is retired
+ * identical opportunity behavior. `handleOpportunityAction` resolves to whether
+ * the decision went through. (The uptake-preflight modal flow is retired
  * with the pre-accept uptake questions.)
  */
 export function useOpportunityActions({
@@ -52,14 +53,16 @@ export function useOpportunityActions({
       opportunityId: string,
       action: "accepted" | "rejected",
       _fallbackUserId?: string,
-      options?: { notOnIndex?: boolean },
-    ) => {
+      options?: { notOnIndex?: boolean; scope?: OpportunityActionScope },
+    ): Promise<boolean> => {
+      // A screen showing several intents names the row's own intent per call.
+      const callScope = options?.scope ?? scope;
       // Accept someone not on Index yet: record the accept only. There is
       // nobody to chat with, so no DM is created; the caller opens the invite.
       if (action === "accepted" && options?.notOnIndex) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", scope);
+          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", callScope);
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
           onRemove?.(opportunityId);
           onAccepted?.({
@@ -67,12 +70,13 @@ export function useOpportunityActions({
             status: result.opportunity?.status ?? "pending",
             viewerCommitted: result.opportunity?.viewerCommitted ?? true,
           });
+          return true;
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to accept");
+          return false;
         } finally {
           setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
         }
-        return;
       }
 
       // Accept: atomically accept the opp and resolve the DM in one round-trip
@@ -80,7 +84,7 @@ export function useOpportunityActions({
       if (action === "accepted") {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.startChat(opportunityId, scope);
+          const result = await opportunitiesService.startChat(opportunityId, callScope);
           // Local "accepted" keeps the chat column up while the row is still
           // pending on the other person. A radar refresh cannot put it back.
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
@@ -93,22 +97,25 @@ export function useOpportunityActions({
               viewerCommitted: result.opportunity.viewerCommitted ?? true,
             });
           }
+          return true;
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to start chat");
+          return false;
         } finally {
           setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
         }
-        return;
       }
 
       // Reject: proceed immediately, no modal.
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
-        await opportunitiesService.updateStatus(opportunityId, action, scope);
+        await opportunitiesService.updateStatus(opportunityId, action, callScope);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: action }));
         onRemove?.(opportunityId);
+        return true;
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to update opportunity");
+        return false;
       } finally {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }

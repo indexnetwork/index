@@ -1,9 +1,11 @@
-.email-setting { min-width: 0; font-family: var(--mac-sans); font-size: 13px; }
+.email-setting { min-width: 0; font-family: var(--mac-sans); font-size: 14px; }
+/* Label and well match the profile form's other fields (.st-label, .st-well.off). */
+.email-setting > .email-setting-label { display: block; margin-bottom: 6px; font: 500 12px "IBM Plex Sans", sans-serif; color: #5a5548; }
 .email-setting-label { display: block; margin-bottom: 5px; font-family: var(--mac-mono); font-size: 11px; font-weight: 600; }
-.email-setting-well { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid #000; background: #edeae1; box-shadow: inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff; }
-.email-setting-well > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: normal; color: var(--ink-2); }
-.email-setting-change { flex: none; padding: 0 0 0 10px; border: 0; border-left: 1px solid var(--ink-3); background: transparent; font-family: var(--mac-mono); font-size: 11px; cursor: pointer; }
-.email-setting-change:hover { text-decoration: underline; }
+.email-setting-well { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e6e6e6; border-radius: 2px; background: #f7f7f5; }
+.email-setting-well > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 14px/1.5 "IBM Plex Sans", sans-serif; color: #8a8578; }
+.email-setting-change { flex: none; padding: 0; border: 0; background: transparent; font: 400 12px "IBM Plex Sans", sans-serif; color: #8a8578; text-decoration: underline; cursor: pointer; }
+.email-setting-change:hover { color: #000; }
 .email-dialog-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 85, 170, .28); }
 .email-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 201; width: 420px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; background: #fff; }
 .email-dialog-body { display: grid; gap: 18px; padding: 24px; font-family: var(--mac-sans); font-size: 13px; line-height: 1.5; }

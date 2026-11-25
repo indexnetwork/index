@@ -8,6 +8,8 @@ export const HERMES_INSTALL_COMMAND = "hermes plugins install indexnetwork/herme
 export const HERMES_AGENT_URL = "https://hermes-agent.nousresearch.com/";
 
 export const CONTACT_EMAIL = "hello@index.network";
+export const FOUNDERS_EMAIL = "founders@index.network";
+export const FOUNDERS_CALL_URL = "https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref";
 export const GITHUB_URL = "https://github.com/indexnetwork/index";
 export const X_URL = "https://x.com/indexnetwork_";
 

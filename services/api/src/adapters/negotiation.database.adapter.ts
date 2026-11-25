@@ -42,6 +42,12 @@ export interface IntentCounterpartyPair {
   detection?: { source: string; createdBy: string };
   /** A third party who opened the pair, and their case for it. Kept out of `reasoning`, which presenters read. */
   introducer?: { userId: string; context: string };
+  /**
+   * Side B is reached through this introducer, not through `networkId`: B is
+   * in no network, so B's seat is checked by owner alone and B's actor is
+   * anchored `via` the introducer. Side A is still seated in `networkId`.
+   */
+  via?: string;
 }
 
 /** An intent eligible to hold a seat in a negotiation, with its owner. */
@@ -311,8 +317,14 @@ export class NegotiationDatabaseAdapter {
         const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
           .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
           .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
-          .where(and(inArray(intents.id, [pair.intentA, pair.intentB]), liveIntentWhere()))
+          .where(and(inArray(intents.id, pair.via ? [pair.intentA] : [pair.intentA, pair.intentB]), liveIntentWhere()))
           .orderBy(asc(intents.id)).for('share');
+        if (pair.via) {
+          // Reached through a person: B's seat is B's own live intent, in no network.
+          const [viaSeat] = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
+            .where(and(eq(intents.id, pair.intentB), liveIntentWhere())).for('share');
+          if (viaSeat) seats.push(viaSeat);
+        }
         const decision = decide({ ...pair, eligible:
           seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
           && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
@@ -327,7 +339,9 @@ export class NegotiationDatabaseAdapter {
           },
           actors: [
             { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
-            { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
+            pair.via
+              ? { via: pair.via, userId: pair.userB, role: 'party', intent: pair.intentB }
+              : { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
           ],
           interpretation: {
             category: 'collaboration',

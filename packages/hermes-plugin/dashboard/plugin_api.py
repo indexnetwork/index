@@ -931,8 +931,15 @@ def _negotiator_status() -> dict[str, Any]:
             running = True
         except OSError:
             pass
-    status = "Running" if running else "Stopped" if state["paused"] else "Off"
-    return {"success": True, "running": running, "paused": state["paused"], "status": status}
+    needs_login = state["auth"] == "unauthorized"
+    status = "Signed out" if needs_login else "Running" if running else "Stopped" if state["paused"] else "Off"
+    return {
+        "success": True,
+        "running": running,
+        "paused": state["paused"],
+        "needsLogin": needs_login,
+        "status": status,
+    }
 
 
 @full_router.get("/negotiator")
@@ -952,6 +959,21 @@ def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
         return {"success": False, "error": "This Hermes agent is not the selected negotiator."}
     try:
         negotiator.write_state(_negotiator_state_path(), paused=False)
+    except OSError as exc:
+        return {"success": False, "error": str(exc)}
+    return _negotiator_status()
+
+
+@full_router.post("/negotiator/recheck")
+def negotiator_recheck(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Ask the gateway to test its Index session again, e.g. right after a sign-in.
+
+    The gateway watches this file, rebuilds its client from the env file, and
+    clears `needsLogin` once Index accepts the session.
+    """
+    try:
+        state = negotiator.read_state(_negotiator_state_path())
+        negotiator.write_state(_negotiator_state_path(), recheck=int(state["recheck"]) + 1)
     except OSError as exc:
         return {"success": False, "error": str(exc)}
     return _negotiator_status()

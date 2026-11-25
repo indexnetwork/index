@@ -1,4 +1,4 @@
-// A personal agent. `briefIfMissing` gives a new opportunity the standing
+// An intent agent: it works one intent and reports to its owner's personal agent. `briefIfMissing` gives a new opportunity the standing
 // state a negotiator needs; `wake` is the think pass over one intent;
 // `negotiate` acts on one opportunity from its brief alone and can never
 // wake its principal's agent; `summarize` writes one note about the talks

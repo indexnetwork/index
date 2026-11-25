@@ -38,20 +38,6 @@ export interface NetworkPermissionsState {
   requireAdminApproval?: boolean;
 }
 
-/** An MCP server a network is joined through, stored at `networks.metadata.mcp`. */
-export interface NetworkMcp {
-  url: string;
-  /** The tool that returns the signed-in member's own profile. */
-  profileTool: string;
-  /** Arguments the profile tool requires. */
-  profileArgs?: Record<string, unknown>;
-  /** What to ask the member to grant, when the server requires a scope. */
-  scope?: string;
-  /** For servers that do not register clients dynamically. */
-  clientId?: string;
-  clientSecret?: string;
-}
-
 export type NetworkJoinRequestStatus = 'pending' | 'declined';
 
 /**
@@ -135,6 +121,85 @@ export const userSocials = pgTable('user_socials', {
     .on(table.userId, table.label)
     .where(sql`${table.label} <> 'custom'`),
 }));
+
+/**
+ * People a member knows, imported from their Google contacts. Private to the
+ * owner: only the owner's own introductions read them. `matchedUserId` is set
+ * when the contact's email belongs to an Index account. `embedding` is the
+ * contact's card (name, title, company, email domain); it is cleared whenever
+ * the card changes and rebuilt by the introducer matcher.
+ */
+export const contacts = pgTable('contacts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerUserId: text('owner_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Lowercased. */
+  email: text('email').notNull(),
+  name: text('name'),
+  organization: text('organization'),
+  title: text('title'),
+  /** 'google_contacts' (saved) or 'google_other' (people you've emailed). */
+  source: text('source').notNull(),
+  matchedUserId: text('matched_user_id').references(() => users.id, { onDelete: 'set null' }),
+  embedding: vector('embedding', { dimensions: 2000 }),
+  /** Set when the owner said never to suggest this contact. */
+  excludedAt: timestamp('excluded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  ownerEmailUnique: uniqueIndex('contacts_owner_email_unique').on(table.ownerUserId, table.email),
+  matchedIdx: index('contacts_matched_user_idx').on(table.matchedUserId),
+  embeddingIdx: index('contacts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+}));
+
+export type Contact = typeof contacts.$inferSelect;
+
+export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed';
+
+/**
+ * An opportunity nobody has opened yet, in the opportunity's own format:
+ * `detection`, `actors`, `interpretation`, `context`, `confidence` and
+ * `metadata.introducer` mean what they mean on `opportunities`. It lives here
+ * because an opportunity row is born negotiating with two seats, and a
+ * proposal's second party (the introducer's contact) has no seat yet: its
+ * actor carries `contactId` and `via`, not a `userId`. Opening a proposal
+ * seats the contact and writes the real opportunity, linked by
+ * `opportunityId`. Only the introducer ever reads a proposal.
+ */
+export const opportunityProposals = pgTable('opportunity_proposals', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  introducerUserId: text('introducer_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  contactId: text('contact_id').notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  detection: jsonb('detection').$type<OpportunityDetection>().notNull(),
+  actors: jsonb('actors').$type<OpportunityProposalActor[]>().notNull(),
+  interpretation: jsonb('interpretation').$type<OpportunityInterpretation>().notNull(),
+  context: jsonb('context').$type<OpportunityContext>().notNull(),
+  confidence: numeric('confidence').notNull(),
+  /** `introducer: { userId, context }` (the draft intro) and `card: { member, contact }` (the two lines). */
+  metadata: jsonb('metadata').$type<OpportunityProposalMetadata>().notNull(),
+  status: text('status').$type<OpportunityProposalStatus>().notNull().default('proposed'),
+  /** Why opening failed, in the introducer's terms. */
+  failure: text('failure'),
+  opportunityId: text('opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairUnique: uniqueIndex('opportunity_proposals_pair_unique').on(table.introducerUserId, table.intentId, table.contactId),
+  introducerStatusIdx: index('opportunity_proposals_introducer_status_idx').on(table.introducerUserId, table.status),
+}));
+
+/** A proposal's party: a member seated in a network, or a contact reached `via` the introducer. */
+export type OpportunityProposalActor =
+  | { role: 'party'; userId: string; networkId: string; intent: string }
+  | { role: 'party'; contactId: string; via: string; userId?: string; intent?: string };
+
+export interface OpportunityProposalMetadata {
+  introducer: { userId: string; context: string };
+  card: { member: string; contact: string };
+}
+
+export type OpportunityProposal = typeof opportunityProposals.$inferSelect;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)
@@ -675,5 +740,41 @@ export type Negotiation = typeof negotiations.$inferSelect;
 export type NewNegotiation = typeof negotiations.$inferInsert;
 export type NegotiationTurn = typeof negotiationTurns.$inferSelect;
 export type NewNegotiationTurn = typeof negotiationTurns.$inferInsert;
+
+/**
+ * Open questions from different intent agents that ask the person for the
+ * same fact. The personal agent shows one card per group and fans one answer
+ * out to every member question.
+ */
+export const questionGroups = pgTable('question_groups', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** `held` waits for a slot; `shown` is on Home and its clock runs. */
+  state: text('state').notNull().default('held'),
+  leadQuestionId: text('lead_question_id').notNull(),
+  /** The lead question's words, so an answered group is still known by its question. */
+  leadText: text('lead_text'),
+  answerText: text('answer_text'),
+  answeredAt: timestamp('answered_at'),
+  shownAt: timestamp('shown_at'),
+  emailedAt: timestamp('emailed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userStateIdx: index('question_groups_user_state_idx').on(table.userId, table.state),
+}));
+
+/** One agent question in a group. A question belongs to at most one group. */
+export const questionGroupMembers = pgTable('question_group_members', {
+  questionId: text('question_id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => questionGroups.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull(),
+  scope: text('scope').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  groupIdx: index('question_group_members_group_idx').on(table.groupId),
+}));
+
+export type QuestionGroup = typeof questionGroups.$inferSelect;
+export type QuestionGroupMember = typeof questionGroupMembers.$inferSelect;
 
 export * from './conversation.schema';

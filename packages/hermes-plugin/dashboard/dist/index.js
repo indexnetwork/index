@@ -645,6 +645,24 @@
     }, paths.map(function (d, index) { return React.createElement("path", { key: index, d: d }); }));
   }
 
+  // The header learns whether Index is rejecting this machine's negotiator; the
+  // agent composer listens so it stops offering a send that cannot be answered.
+  const NEGOTIATOR_AUTH_EVENT = "index-network-negotiator-auth";
+  function setNegotiatorSignedOut(value) {
+    if (window.__indexNegotiatorSignedOut === value) return;
+    window.__indexNegotiatorSignedOut = value;
+    window.dispatchEvent(new Event(NEGOTIATOR_AUTH_EVENT));
+  }
+  function useNegotiatorSignedOut() {
+    const state = React.useState(!!window.__indexNegotiatorSignedOut);
+    React.useEffect(function () {
+      function sync() { state[1](!!window.__indexNegotiatorSignedOut); }
+      window.addEventListener(NEGOTIATOR_AUTH_EVENT, sync);
+      return function () { window.removeEventListener(NEGOTIATOR_AUTH_EVENT, sync); };
+    }, []);
+    return state[0];
+  }
+
   function AgentHeader(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -667,13 +685,21 @@
     const knownState = useState(false);
     const known = knownState[0];
     const setKnown = knownState[1];
+    const signInState = useState({ waiting: false, confirming: false, link: null, error: null });
+    const signIn = signInState[0];
+    const setSignIn = signInState[1];
+    const signInPoll = useRef(null);
+    const confirmPoll = useRef(null);
     const dialogRef = useRef(null);
     const returnRef = useRef(null);
 
     function refresh() {
       fetchPluginJSON(API + "/negotiator").then(function (payload) {
         if (!payload || payload.success === false) return;
-        setLocal(payload.running ? "running" : payload.paused ? "paused" : "stopped");
+        // A live process is not a working one: the gateway reports when Index
+        // rejects its session, and the tag has to say so.
+        setLocal(payload.needsLogin ? "signed out" : payload.running ? "running" : payload.paused ? "paused" : "stopped");
+        setNegotiatorSignedOut(!!payload.needsLogin);
       }).catch(function () { /* the tag keeps the last status */ });
       fetchPluginJSON(API + "/agents").then(function (payload) {
         if (!payload || payload.success === false || !Array.isArray(payload.agents)) return;
@@ -685,8 +711,76 @@
     useEffect(function () {
       refresh();
       const timer = window.setInterval(refresh, 5000);
-      return function () { window.clearInterval(timer); };
+      return function () {
+        window.clearInterval(timer);
+        if (signInPoll.current) window.clearInterval(signInPoll.current);
+        if (confirmPoll.current) window.clearInterval(confirmPoll.current);
+      };
     }, []);
+
+    function stopSignInPoll() {
+      if (signInPoll.current) { window.clearInterval(signInPoll.current); signInPoll.current = null; }
+    }
+
+    function stopConfirmPoll() {
+      if (confirmPoll.current) { window.clearInterval(confirmPoll.current); confirmPoll.current = null; }
+    }
+
+    // The login has landed but the gateway still has to test the new session, so
+    // keep the button busy and look every second instead of every five.
+    function confirmSignIn() {
+      stopConfirmPoll();
+      const startedAt = Date.now();
+      confirmPoll.current = window.setInterval(function () {
+        if (Date.now() - startedAt < 20000) { refresh(); return; }
+        stopConfirmPoll();
+        setSignIn({
+          waiting: false, confirming: false, link: null,
+          error: "Signed in, but the negotiator has not confirmed it yet. It checks again every 15 minutes, or restart Hermes.",
+        });
+      }, 1000);
+    }
+
+    function pollSignIn() {
+      fetchPluginJSON(API + "/auth/login/status").then(function (payload) {
+        const status = payload && payload.status;
+        if (status === "success") {
+          stopSignInPoll();
+          setSignIn({ waiting: false, confirming: true, link: null, error: null });
+          confirmSignIn();
+          // The gateway holds its own Index client; have it test the new session now.
+          fetchPluginJSON(API + "/negotiator/recheck", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }).then(refresh).catch(function () { refresh(); });
+        } else if (status === "failed") {
+          stopSignInPoll();
+          setSignIn({ waiting: false, confirming: false, link: null, error: (payload && payload.error) || "Sign-in failed. Try again." });
+        } else if (status === "idle") {
+          stopSignInPoll();
+          setSignIn({ waiting: false, confirming: false, link: null, error: null });
+        }
+      }).catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function startSignIn() {
+      setSignIn({ waiting: true, confirming: false, link: null, error: null });
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).then(function (payload) {
+        if (!payload || payload.success === false) {
+          throw new Error((payload && payload.error) || "Could not start sign-in.");
+        }
+        setSignIn({ waiting: true, confirming: false, link: !payload.opened && payload.authUrl ? payload.authUrl : null, error: null });
+        stopSignInPoll();
+        signInPoll.current = window.setInterval(pollSignIn, 1500);
+      }).catch(function (err) {
+        setSignIn({ waiting: false, confirming: false, link: null, error: err && err.message ? err.message : String(err) });
+      });
+    }
 
     useEffect(function () {
       if (!open) return undefined;
@@ -741,6 +835,7 @@
       const active = row.agent ? !!row.agent.handleNegotiations : !selected;
       if (!active) return "stopped";
       if (row.agent && String(row.agent.name || "").toLowerCase() === "hermes") {
+        if (local === "signed out") return "signed out";
         if (local === "running") return "running";
         if (local === "paused") return "paused";
         return "pending";
@@ -811,7 +906,36 @@
       }, React.createElement("span", { className: "index-agent-header__dot" }), status);
     }
 
-    return React.createElement("header", { className: "index-agent-header" },
+    const needsSignIn = shownStatus === "signed out";
+    useEffect(function () {
+      if (needsSignIn || !signIn.confirming) return;
+      stopConfirmPoll();
+      setSignIn({ waiting: false, confirming: false, link: null, error: null });
+    }, [needsSignIn, signIn.confirming]);
+    const banner = needsSignIn
+      ? React.createElement("div", { className: "index-agent-header__banner", role: "alert", key: "signed-out-banner" },
+        React.createElement("span", { className: "index-agent-header__banner-copy" },
+          React.createElement("strong", null, "Hermes can't negotiate right now."),
+          " Your Index session expired, so no turns are being taken. Sign in to resume the talks that are waiting."),
+        React.createElement(Button, {
+          type: "button",
+          className: "index-agent-header__banner-btn",
+          disabled: signIn.waiting || signIn.confirming,
+          onClick: startSignIn,
+        }, signIn.confirming ? "signed in, checking\u2026" : signIn.waiting ? "waiting for browser\u2026" : "Sign in to Index"),
+        signIn.link
+          ? React.createElement("span", { className: "index-agent-header__banner-note" },
+            "No browser opened here. ",
+            React.createElement("a", { href: signIn.link, target: "_blank", rel: "noopener noreferrer" }, "Open this link to continue"),
+            ".")
+          : null,
+        signIn.error
+          ? React.createElement("span", { className: "index-agent-header__banner-note index-agent-header__banner-note--error" }, signIn.error)
+          : null,
+      )
+      : null;
+
+    const header = React.createElement("header", { className: "index-agent-header", key: "header" },
       props.leading || null,
       React.createElement("div", { className: "index-agent-header__group" },
         React.createElement("button", {
@@ -893,6 +1017,7 @@
         ),
       )) : null,
     );
+    return React.createElement(React.Fragment, null, header, banner);
   }
 
   // Discover lives at `/index-network` (Hermes HashRouter: `#/index-network`).
@@ -3934,6 +4059,7 @@
    * several questions are sent as one write.
    */
   function AgentChat(props) {
+    const signedOut = useNegotiatorSignedOut();
     const useState = React.useState;
     const useEffect = React.useEffect;
     const useRef = React.useRef;
@@ -4314,7 +4440,8 @@
           className: "index-dashboard__textarea index-dashboard__msg-input",
           rows: 1,
           value: draft,
-          placeholder: "message your agent…",
+          disabled: signedOut,
+          placeholder: signedOut ? "sign in to Index to message your agent" : "message your agent…",
           "aria-label": "Message your agent",
           onChange: function (e) { setDraft(e.target.value); },
           onKeyDown: function (e) {
@@ -4328,7 +4455,7 @@
           className: "index-dashboard__agent-send-key",
           "aria-label": "Send message",
           title: "Send",
-          disabled: !draft.trim() || sending,
+          disabled: signedOut || !draft.trim() || sending,
           onClick: send,
         }, ICON_ARROW_UP()),
       ),

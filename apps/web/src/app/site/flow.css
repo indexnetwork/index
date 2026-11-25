@@ -1,0 +1,88 @@
+/* Flow screens (sign-in, install, app handoff, consent, invites, status): the
+   app's quiet hairline look from the intents screen (styles/intents-home.css).
+   Re-points the site tokens these pages read, so site.css components (buttons,
+   type, the sign-in form) follow without touching the marketing pages. One
+   orange button per screen marks the action that needs attention. */
+
+.site.apps,
+.site.invite-wb {
+  --ink: #141414;
+  --bg: #fff;
+  --body: #555;
+  --muted: #777;
+  --green: #3b7a57;
+  --blue: #141414;
+  --divider: #e3e3e0;
+  --flow-control: #ddd;
+  --flow-hover: #f7f7f5;
+  --flow-hover-2: #f3f3f1;
+  --flow-selected: #f0f0ed;
+  --flow-accent: #e8700a;
+  --flow-accent-hover: #f28a2a;
+  --serif: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --sans: "IBM Plex Sans", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.site.apps ::selection,
+.site.invite-wb ::selection { background: var(--flow-selected); color: var(--ink); }
+
+.site.apps a:hover,
+.site.invite-wb a:hover { color: var(--ink); }
+
+/* ---------- type ---------- */
+.site.apps .site-p,
+.site.invite-wb .site-p {
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--body);
+}
+.site.apps .site-h1,
+.site.invite-wb .site-h1 {
+  font: 500 16px/1.4 var(--sans);
+  letter-spacing: 0;
+  color: var(--ink);
+}
+.site.apps .site-arrow-link,
+.site.invite-wb .site-arrow-link {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.site.apps .site-arrow-link:hover,
+.site.invite-wb .site-arrow-link:hover { color: var(--ink); }
+
+/* ---------- buttons ---------- */
+.site.apps .site-btn,
+.site.invite-wb .site-btn {
+  height: 32px;
+  padding: 0 14px;
+  font: 500 12px var(--sans);
+  background: var(--flow-accent);
+  color: var(--ink);
+  border: 1px solid var(--flow-accent);
+  border-radius: 3px;
+}
+.site.apps .site-btn:hover,
+.site.invite-wb .site-btn:hover { background: var(--flow-accent-hover); border-color: var(--flow-accent-hover); color: var(--ink); }
+.site.apps .site-btn--secondary,
+.site.invite-wb .site-btn--secondary {
+  background: #fff;
+  color: var(--body);
+  border: 1px solid var(--flow-control);
+}
+.site.apps .site-btn--secondary:hover,
+.site.invite-wb .site-btn--secondary:hover { background: var(--flow-hover-2); border-color: var(--flow-control); color: var(--ink); }
+.site.apps .site-btn:disabled,
+.site.invite-wb .site-btn:disabled { opacity: .6; cursor: default; }
+.site.apps .site-btn:focus-visible,
+.site.invite-wb .site-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+

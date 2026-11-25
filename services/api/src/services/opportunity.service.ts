@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatContextCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { appendClientOpportunityEvent, committedActorIdsByOpportunity, recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
@@ -128,6 +128,10 @@ interface ChatCardCached {
   peerAvatar: string | null;
   acceptedAt: string | null;
   status?: OpportunityStatus;
+  /** When the match was found. */
+  createdAt?: string;
+  /** One third-person sentence per person, for the note inside their chat. */
+  contextSides?: { viewer: string; peer: string };
 }
 
 /**
@@ -779,15 +783,15 @@ export class OpportunityService {
     const rows = allRows.filter((opp) => opp.status === 'accepted'
       || (commits.get(opp.id) ?? []).some((id) => id === userId || id === peerUserId));
 
-    // Check cache for accepted opportunities only: a pending card's copy goes stale on accept.
+    // The two sentences say what each person is after, not where the match stands,
+    // so one cached copy serves it before and after both accept.
     // Graceful fallback if Redis unavailable.
     let cachedResults: (ChatCardCached | null)[] = [];
     try {
       const cacheKeys = rows.map((opp) =>
-        buildApiChatCardPresentationCacheKey(opp.id, userId)
+        buildApiChatContextCacheKey(opp.id, userId)
       );
-      cachedResults = (await this.cache.mget<ChatCardCached>(cacheKeys))
-        .map((cached, idx) => (rows[idx].status === 'accepted' ? cached : null));
+      cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
     } catch (e) {
       logger.warn('getChatContext cache read failed, skipping', { error: e });
       cachedResults = rows.map(() => null);
@@ -798,7 +802,11 @@ export class OpportunityService {
         // Return cached result if available
         const cached = cachedResults[idx];
         if (cached) {
-          return { ...cached, status: 'accepted' as const };
+          return {
+            ...cached,
+            status: opp.status,
+            acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
+          };
         }
         const accepted = opp.status === 'accepted';
 
@@ -809,22 +817,25 @@ export class OpportunityService {
             userId,
           );
           presenterInput.opportunityStatus = opp.status;
-          presenterInput.matchReasoning += `\n\nCONTEXT: This is shown inside an active chat between the two parties. ${accepted ? 'Both already accepted.' : 'One of them accepted and opened the chat.'} Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.`;
-          const presented = await this.getPresenter().present(presenterInput);
+          presenterInput.matchReasoning += `\n\nCONTEXT: This is shown inside an active chat between the two parties. ${accepted ? 'Both already accepted.' : 'One of them accepted and opened the chat.'}`;
+          // One sentence per person, the same shape for both of them.
+          const presented = await this.getPresenter().presentChatContext(presenterInput);
           const card: ChatCardCached = {
             opportunityId: opp.id,
             headline: presented.headline,
-            personalizedSummary: presented.personalizedSummary,
+            // Kept as one string for clients that only read the summary.
+            personalizedSummary: `${presented.viewerSide} ${presented.otherSide}`,
+            contextSides: { viewer: presented.viewerSide, peer: presented.otherSide },
+            createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : String(opp.createdAt),
             narratorRemark: '',
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
             status: opp.status,
           };
-          if (!accepted) return card;
           try {
             await this.cache.set(
-              buildApiChatCardPresentationCacheKey(opp.id, userId),
+              buildApiChatContextCacheKey(opp.id, userId),
               card,
               { ttl: CHAT_CACHE_TTL },
             );

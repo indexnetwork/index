@@ -1,6 +1,7 @@
 ---
 title: "The Economics of Good Luck"
 date: "2026-11-05"
+authors: "Seref Yarar, Seren Sandikci"
 description: "Bad luck is just search friction."
 image: "coconut.jpg"
 ---

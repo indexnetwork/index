@@ -116,6 +116,19 @@ export class HandleDatabaseAdapter {
     return checked;
   }
   /**
+   * A free handle made from a name (`Rainer Franz` becomes `rainer-franz`,
+   * then `-2`, `-3` when taken). Only a suggestion: nothing is claimed, so
+   * the save still checks it.
+   *
+   * @param name - The name to make it from.
+   * @returns The handle, or null when the name yields none.
+   */
+  async suggest(name: string): Promise<string | null> {
+    const key = await generateUniqueKey(name, async (candidate) => !!(await this.findHolder(candidate, { includeDeleted: true })));
+    return key && !isUUID(key) ? key : null;
+  }
+
+  /**
    * Give a network without a key one made from its title (`Index Early Birds`
    * becomes `index-early-birds`, then `-2`, `-3` when taken). Best effort: a
    * network can live without a key, so failures are logged, not thrown.

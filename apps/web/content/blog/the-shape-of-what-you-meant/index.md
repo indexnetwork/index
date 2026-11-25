@@ -1,6 +1,7 @@
 ---
 title: "The Shape of What You Meant"
 date: "2026-01-27"
+authors: "Seref Yarar, Seren Sandikci"
 description: "What it looks like when privacy and discoverability can coexist online as they do in real life."
 image: "homer.jpg"
 ---

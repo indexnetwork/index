@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 /**
  * Shared opportunity card data structure.
@@ -136,39 +137,9 @@ interface OpportunityCardProps {
   pendingActionable?: boolean;
 }
 
-/**
- * Skeleton loader for opportunity cards.
- * Used during streaming or initial loading.
- */
+/** Placeholder for an opportunity card, used while streaming or on first load. */
 export function OpportunitySkeleton() {
-  return (
-    <div className="bg-[#F8F8F8] rounded-md p-4 animate-pulse">
-      {/* Header Skeleton */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 bg-gray-200 shrink-0" />
-          <div className="space-y-1.5">
-            <div className="h-4 w-24 bg-gray-200 rounded-sm" />
-            <div className="h-3 w-32 bg-gray-200 rounded-sm" />
-          </div>
-        </div>
-        <div className="flex gap-1.5 shrink-0">
-          <div className="h-7 w-20 bg-gray-200 rounded-sm" />
-          <div className="h-7 w-12 bg-gray-200 rounded-sm" />
-        </div>
-      </div>
-
-      {/* Body Skeleton */}
-      <div className="space-y-2">
-        <div className="h-4 w-full bg-gray-200 rounded-sm" />
-        <div className="h-4 w-[90%] bg-gray-200 rounded-sm" />
-        <div className="h-4 w-[40%] bg-gray-200 rounded-sm" />
-      </div>
-
-      {/* Narrator Skeleton */}
-      <div className="mt-4 h-8 w-48 bg-gray-200 rounded-md" />
-    </div>
-  );
+  return <Placeholder.Card label="loading a match" />;
 }
 
 /**
@@ -309,14 +280,14 @@ export default function OpportunityCard({
         {hasActions && (
           <div className="flex gap-1.5 shrink-0">
             {onPrimaryAction && (
-              <button
+              <button aria-busy={isLoading}
                 type="button"
                 disabled={isLoading}
                 className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handlePrimaryAction}
               >
                 {isLoading
-                  ? "On it..."
+                  ? "on it"
                   : card.primaryActionLabel || "Start Chat"}
               </button>
             )}
@@ -383,14 +354,10 @@ export default function OpportunityCard({
         )}
       </div>
 
-      {/* Main Text (Personalized Summary) — shimmer while the presenter text is
-          still being generated. */}
+      {/* Main Text (Personalized Summary): a text placeholder while the presenter
+          text is still being written. */}
       {card.presentationPending ? (
-        <div className="space-y-2 animate-pulse" aria-hidden="true">
-          <div className="h-4 w-full bg-gray-200 rounded-sm" />
-          <div className="h-4 w-[85%] bg-gray-200 rounded-sm" />
-          <div className="h-4 w-[55%] bg-gray-200 rounded-sm" />
-        </div>
+        <Placeholder.Text lines={3} label="writing this up" />
       ) : (
         <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
           <ReactMarkdown

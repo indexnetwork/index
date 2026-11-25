@@ -42,6 +42,14 @@ export function buildOpportunityCardCacheKey(
   return `card:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:${opportunityId}:${viewerId}${scope}`;
 }
 
+/** Cache key for a chat's two-sided context note (one sentence per person). */
+export function buildApiChatContextCacheKey(
+  opportunityId: string,
+  viewerId: string,
+): string {
+  return `chat:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:context:${opportunityId}:${viewerId}`;
+}
+
 export function buildApiChatCardPresentationCacheKey(
   opportunityId: string,
   viewerId: string,
@@ -157,6 +165,26 @@ export type CardPresentationResult = CardLLMResult & {
   secondaryActionLabel: string;
 };
 
+/** The note a chat between two matched people opens with: one line per person. */
+export const ChatContextLLMSchema = z.object({
+  headline: z
+    .string()
+    .describe("A few plain words naming what this connection is about (no names, no 'you')"),
+  viewerSide: z
+    .string()
+    .describe("One sentence in third person that starts with the viewer's first name: what they are doing or looking for that makes this connection relevant now"),
+  otherSide: z
+    .string()
+    .describe("One sentence in third person that starts with the other person's first name: what they are doing or looking for that makes this connection relevant now"),
+});
+
+/** LLM-generated result from presentChatContext. */
+export type ChatContextLLMResult = z.infer<typeof ChatContextLLMSchema>;
+
+const chatContextResponseFormat = z.object({
+  presentation: ChatContextLLMSchema,
+});
+
 const homeCardResponseFormat = z.object({
   presentation: CardLLMSchema,
 });
@@ -252,6 +280,24 @@ When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-t
 
 `;
 
+const chatContextSystemPrompt = `
+You write the short context note that sits inside a chat between two people who were matched. It reminds both of them why they are talking.
+
+Given context about the viewer, the other person, and why they were matched, produce:
+1. headline: a few plain words naming what the connection is about.
+2. viewerSide: one sentence about the viewer.
+3. otherSide: one sentence about the other person.
+
+Rules:
+- Write both sentences in third person and start each with that person's first name. Never use "you" or "your": the note reads the same way for both people.
+- Each sentence says what that person is doing or looking for that makes this connection relevant now (e.g. "Seren will be in SF in March and wants to meet people building agents." / "Xavier hosts a weekly builders dinner there and is looking for new people to invite.").
+- Be concrete and plain. No pitch, no praise, no analysis of the match.
+- Use only the context provided. Do not leak private or confidential details.
+- Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, or shared a session, time, or place with anyone.
+- Never use the words intent or opportunity. Never output internal IDs.
+- At most 30 words per sentence.
+`;
+
 // ──────────────────────────────────────────────────────────────
 // CLASS
 // ──────────────────────────────────────────────────────────────
@@ -259,6 +305,7 @@ When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-t
 export class OpportunityPresenter {
   private model: Runnable;
   private homeCardModel: Runnable;
+  private chatContextModel: Runnable;
 
   constructor() {
     this.model = createStructuredModel("opportunityPresenter", responseFormat, {
@@ -266,6 +313,9 @@ export class OpportunityPresenter {
     });
     this.homeCardModel = createStructuredModel("opportunityPresenter", homeCardResponseFormat, {
       name: "opportunity_presenter_home_card",
+    });
+    this.chatContextModel = createStructuredModel("opportunityPresenter", chatContextResponseFormat, {
+      name: "opportunity_presenter_chat_context",
     });
   }
 
@@ -334,6 +384,39 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     ];
     const result = await this.invokeWithTimeout(this.model, messages, options.signal);
     return responseFormat.parse(result).presentation;
+  }
+
+  /**
+   * Generate the context note shown inside a chat between two matched people:
+   * a headline and one third-person sentence per person.
+   *
+   * @param input - Pre-assembled presenter context.
+   * @returns The headline and the two sentences.
+   * @throws When the LLM call fails, times out, or returns invalid output.
+   */
+  @Timed()
+  public async presentChatContext(input: PresenterInput): Promise<ChatContextLLMResult> {
+    const humanContent = `
+VIEWER:
+${input.viewerContext}
+
+OTHER PERSON:
+${input.otherPartyContext}
+
+MATCH CONTEXT:
+- Why they were matched: ${input.matchReasoning}
+- Intents: ${input.intentsSummary}
+COMMUNITY: ${input.networkName}
+Status: ${input.opportunityStatus ?? "accepted"}
+
+Produce headline, viewerSide and otherSide.
+`;
+    const messages = [
+      new SystemMessage(chatContextSystemPrompt),
+      new HumanMessage(humanContent),
+    ];
+    const result = await this.invokeWithTimeout(this.chatContextModel, messages);
+    return chatContextResponseFormat.parse(result).presentation;
   }
 
   /**

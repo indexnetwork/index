@@ -103,10 +103,13 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/9db20a5fbe/edge-city-metrics", () => import("@/app/edge-city-metrics/page")),
       },
       {
-        // Unlisted: the overview written for community organizers. Kept outside
-        // the dataroom token so sharing it never exposes the dataroom path.
+        path: "/for-networks",
+        lazy: lazyRoute("/for-networks", () => import("@/app/for-networks/page")),
+      },
+      {
+        // The old organizer overview; links to it were shared, so keep them working.
         path: "/communities",
-        lazy: lazyRoute("/communities", () => import("@/app/communities-overview/page")),
+        element: <Navigate to="/for-networks" replace />,
       },
       {
         path: "/blog",
@@ -137,6 +140,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
       },
       {
+        path: "/intents",
+        lazy: lazyRoute("/intents", () => import("@/app/intents/page")),
+      },
+      {
         path: "/i/new",
         lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
       },
@@ -153,6 +160,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/setup", () => import("@/app/download/page")),
       },
       {
+        path: "/q/:id",
+        lazy: lazyRoute("/q/:id", () => import("@/app/q/[id]/page")),
+      },
+      {
         path: "/download",
         element: <Navigate to="/setup" replace />,
       },
@@ -167,6 +178,10 @@ export const router = createBrowserRouter([
       {
         path: "/agents/:id",
         lazy: lazyRoute("/agents/:id", () => import("@/app/agents/[id]/page")),
+      },
+      {
+        path: "/introduce",
+        lazy: lazyRoute("/introduce", () => import("@/app/introduce/page")),
       },
       {
         path: "/networks",

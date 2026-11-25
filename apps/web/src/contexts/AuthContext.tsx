@@ -5,17 +5,11 @@ import { isHandlePath } from '@/lib/handle-route';
 import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
-import SiteLayout from '@/app/site/SiteLayout';
+import { StatusPage } from '@/components/SiteSignIn';
+import { BootSplash } from '@/components/ui/AgentWorking';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
-
-/**
- * The loading splash is light on every route, in the marketing site's
- * background (src/app/site/site.css). The site and the signed-in app (#FDFDFD)
- * are both light, so no route flashes a different colour before painting.
- */
-const SPLASH_BACKGROUND = '#FCFEFB';
 
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
@@ -151,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const publicPrefixes = [
       '/l', '/blog', '/pages', '/about', '/hermes',
       '/login', '/s/', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download', '/setup',
-      '/9db20a5fbe', '/communities',
+      '/9db20a5fbe', '/communities', '/for-networks',
     ];
     // Profile and network links at the root (index.network/<handle>) are public too.
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p)) || isHandlePath(pathname);
@@ -191,34 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {isLoading ? (
-        <div
-          className="min-h-screen flex items-center justify-center"
-          style={{ backgroundColor: SPLASH_BACKGROUND }}
-        >
-          {/* The leaf clip is drawn on pure white; multiply drops the white so
-              only the drawing sits on the off-white ground. It sits a little
-              below centre. */}
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-40 h-40"
-            style={{ mixBlendMode: 'multiply', transform: 'translateY(8vh)' }}
-          >
-            <source src="/loading-leaf.mp4" type="video/mp4" />
-          </video>
-        </div>
+        // The eye on white while auth settles: until then we don't know if this is the site or the app.
+        <BootSplash />
       ) : error ? (
-        <SiteLayout>
-          <section className="site-hero">
-            <h1 className="site-h1">Something went wrong</h1>
-            <p className="site-p">{error}</p>
-            <button type="button" className="site-btn" onClick={() => window.location.reload()}>
-              Refresh
-            </button>
-          </section>
-        </SiteLayout>
+        <StatusPage bar="error" title="Something went wrong" message={error}>
+          <button type="button" className="site-btn" onClick={() => window.location.reload()}>
+            Refresh
+          </button>
+        </StatusPage>
       ) : (
         children
       )}

@@ -19,6 +19,12 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
   },
 
 
+  // A free username made from a name; claims nothing.
+  suggestUsername: async (name: string): Promise<string | null> => {
+    const response = await api.get<{ username: string | null }>(`/auth/username-suggestion?name=${encodeURIComponent(name)}`);
+    return response.username;
+  },
+
   // Permanently delete the authenticated user's account (soft delete)
   deleteAccount: async (): Promise<void> => {
     await api.delete<{ success: boolean }>('/auth/account');

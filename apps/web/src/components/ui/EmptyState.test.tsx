@@ -7,11 +7,6 @@ import { radarEmptyLine } from "@/lib/radar-buckets";
 import { APIError, isNotFoundError } from "@/lib/api";
 
 describe("EmptyState", () => {
-  it("defaults the loading tone to the canonical loading line", () => {
-    render(<EmptyState tone="loading" />);
-    expect(screen.getByRole("status")).toHaveTextContent("loading…");
-  });
-
   it("announces errors and runs the retry action", () => {
     const retry = vi.fn();
     render(<EmptyState tone="error" message="couldn't load members." action={{ label: "try again", onClick: retry }} />);
@@ -40,7 +35,7 @@ describe("EmptyState", () => {
 describe("empty-state copy", () => {
   it("uses the canonical radar lines", () => {
     expect(radarEmptyLine("awaiting you")).toBe("nothing waiting on you right now.");
-    expect(radarEmptyLine("accepted")).toBe("no one accepted yet.");
+    expect(radarEmptyLine("accepted")).toBe("no chats open yet.");
     expect(radarEmptyLine("closed")).toBe("nothing closed.");
   });
 

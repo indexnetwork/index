@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Loader2 } from "lucide-react";
+import { X } from "lucide-react";
+import { Placeholder } from "@/components/ui/Placeholder";
 
 interface InviteMessageModalProps {
   userName: string;
@@ -61,10 +62,7 @@ export default function InviteMessageModal({
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-8 gap-2 text-sm text-gray-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Drafting your invitation message...
-          </div>
+          <Placeholder.Text lines={4} label="drafting your invitation message" style={{ padding: "16px 0" }} />
         ) : (
           <textarea
             ref={textareaRef}

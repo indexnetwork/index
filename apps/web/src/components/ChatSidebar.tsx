@@ -7,6 +7,8 @@ import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useCompact } from '@/hooks/useCompact';
+import { Placeholder } from "@/components/ui/Placeholder";
+import { useChatFilter } from '@/components/chat/ChatFrame';
 
 interface RecentChat {
   groupId: string;
@@ -19,6 +21,7 @@ interface RecentChat {
   unreadCount: number;
   showUnreadCount: boolean;
   sortTimestamp: number;
+  started: boolean;
 }
 
 const formatConversationTime = (timestamp: number) => {
@@ -58,6 +61,7 @@ export default function ChatSidebar({ showEmpty = true }: {
   const { conversations, conversationsStatus, refreshConversations } = useConversation();
 
   const [refreshing, setRefreshing] = useState(true);
+  const filter = useChatFilter();
 
   useEffect(() => {
     if (!user?.id) return;
@@ -78,27 +82,17 @@ export default function ChatSidebar({ showEmpty = true }: {
         name: conv.metadata?.title ?? peer?.name ?? 'someone',
         lastMessage: lastText,
         lastMessageIsInternal: false,
+        started: !!conv.lastMessage,
         viaTitle: conv.via?.[0]?.title,
         unreadCount: conv.unreadCount,
         showUnreadCount: conv.unreadCount > 0,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
-    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp)
+    .filter((chat) => compact || filter === "all" || (filter === "unread" ? chat.unreadCount > 0 : !chat.started));
 
-  const renderSkeleton = () => (
-    /* Cold cache — conversation-row skeletons while the first fetch lands. */
-    <div className="space-y-1" data-testid="chat-sidebar-skeleton" aria-hidden="true">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2 animate-pulse">
-          <div className="h-7 w-7 bg-gray-200 shrink-0" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="h-3.5 w-2/3 rounded bg-gray-200" />
-            <div className="h-3 w-11/12 rounded bg-gray-200" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  /* Cold cache: conversation-row placeholders while the first fetch lands. */
+  const renderSkeleton = () => <Placeholder.Rows count={8} label="loading conversations" />;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -119,13 +113,47 @@ export default function ChatSidebar({ showEmpty = true }: {
             message="no conversations yet. a chat opens when you and someone both accept an intro."
             action={{ label: 'start an intent', to: '/i/new' }}
           />
+        ) : !compact ? (
+          <div>
+            {recentChats.map((chat) => {
+              const preview = resolveConversationPreview({ lastMessage: chat.lastMessage, lastMessageIsInternal: chat.lastMessageIsInternal });
+              return (
+                <button
+                  key={chat.groupId}
+                  type="button"
+                  className={`sv-row${chat.peerUserId === activePeerId ? " on" : ""}`}
+                  data-sv-item={chat.groupId}
+                  aria-current={chat.peerUserId === activePeerId ? "page" : undefined}
+                  style={{ width: "100%", textAlign: "left", background: undefined, border: 0, borderBottom: "1px solid var(--sv-line)" }}
+                  onClick={() => {
+                    const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
+                    if (to === pathname) return;
+                    navigate(to, { replace: pathname === "/chat" || activePeerId !== null });
+                  }}
+                >
+                  <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={36} />
+                  <span className="sv-row-t">
+                    <span className="sv-row-n" style={{ display: "block" }}>{chat.name}</span>
+                    <span className="sv-row-pv" style={{ display: "block", color: preview.kind === "empty" ? "var(--sv-dim)" : undefined }}>
+                      {preview.kind === "empty" ? "not started yet. say hi." : preview.text}
+                    </span>
+                  </span>
+                  <span style={{ display: "grid", justifyItems: "end", gap: 4 }}>
+                    {chat.lastMessage && <span className="sv-row-tm">{formatConversationTime(chat.sortTimestamp)}</span>}
+                    {chat.showUnreadCount && <span className="sv-badge" data-testid={`chat-unread-${chat.groupId}`}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>}
+                  </span>
+                </button>
+              );
+            })}
+            {recentChats.length === 0 && <div className="sv-empty">nothing here.</div>}
+          </div>
         ) : (
           <div>
             {recentChats.map((chat) => (
               <button
                 key={chat.groupId}
                 type="button"
-                className="wb-link-row"
+                className="wb-link-row pl-row"
                 aria-current={chat.peerUserId === activePeerId ? "page" : undefined}
                 onClick={() => {
                   const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
@@ -136,21 +164,21 @@ export default function ChatSidebar({ showEmpty = true }: {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "auto minmax(0, 1fr) auto",
-                  gap: 10,
                   alignItems: "center",
                   width: "100%",
                   textAlign: "left",
-                  padding: "10px 12px",
+                  gap: 12,
+                  padding: "12px 16px",
                   border: "none",
-                  borderBottom: "1px solid var(--ink-4)",
+                  borderBottom: "1px solid var(--pl-line, #e6e6e6)",
                 }}
               >
-                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={32} />
+                <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={36} />
                 <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
                   <span style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 14, fontWeight: 600, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.name}</span>
                     {chat.lastMessage && (
-                      <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>{formatConversationTime(chat.sortTimestamp)}</span>
+                      <span style={{ flex: "0 0 auto", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#8a8578" }}>{formatConversationTime(chat.sortTimestamp)}</span>
                     )}
                   </span>
                   {(() => {
@@ -160,11 +188,11 @@ export default function ChatSidebar({ showEmpty = true }: {
                     });
                     if (preview.kind === "empty") {
                       return (
-                        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{`${preview.text.toLowerCase()}.`}</span>
+                        <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#8a8578" }}>{`${preview.text.toLowerCase()}.`}</span>
                       );
                     }
                     return (
-                      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
+                      <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#555", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
                     );
                   })()}
                 </span>
@@ -172,7 +200,6 @@ export default function ChatSidebar({ showEmpty = true }: {
                   {chat.showUnreadCount && (
                     <span data-testid={`chat-unread-${chat.groupId}`} style={{ fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700, background: "#FF8A00", color: "#000", border: "1px solid #000", padding: "0 6px" }}>{chat.unreadCount > 99 ? "99+" : chat.unreadCount}</span>
                   )}
-                  <span aria-hidden="true" className="wb-row-chevron">›</span>
                 </span>
               </button>
             ))}

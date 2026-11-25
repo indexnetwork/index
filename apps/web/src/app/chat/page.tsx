@@ -5,6 +5,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 import ChatSidebar from "@/components/ChatSidebar";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { ChatFrame } from "@/components/chat/ChatFrame";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCompact } from "@/hooks/useCompact";
 
@@ -50,29 +51,20 @@ export default function ChatLandingPage() {
   const listColumn = hasConversations || conversationsStatus !== "ready";
 
   return (
-    <Stage width={860} height="min(660px, calc(100vh - 112px))">
-      <Window title="conversations" onClose={() => navigate("/")} style={{ height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: listColumn ? "280px minmax(0, 1fr)" : "minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
-          {listColumn && (
-            <div style={{ borderRight: "2px solid #000", minHeight: 0 }}>
-              <ChatSidebar showEmpty={false} />
-            </div>
-          )}
-          <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: 24, minHeight: 0, overflow: "auto" }}>
-            {hasConversations ? (
-              <EmptyState message="pick a conversation." />
-            ) : conversationsStatus === "ready" ? (
-              <EmptyState
-                framed
-                style={{ maxWidth: 360 }}
-                message="no conversations yet. a chat opens when you and someone both accept an intro."
-                action={{ label: "start an intent", to: "/i/new" }}
-              />
-            ) : null}
-          </div>
-        </div>
-      </Window>
-    </Stage>
+    <ChatFrame list={listColumn ? <ChatSidebar showEmpty={false} /> : undefined} onClose={() => navigate("/")}>
+      <div style={{ flex: 1, display: "grid", placeItems: "center", alignContent: "center", padding: 24, minHeight: 0, overflow: "auto" }}>
+        {hasConversations ? (
+          <EmptyState message="pick a conversation." />
+        ) : conversationsStatus === "ready" ? (
+          <EmptyState
+            framed
+            style={{ maxWidth: 360 }}
+            message="no conversations yet. a chat opens when you and someone both accept an intro."
+            action={{ label: "start an intent", to: "/i/new" }}
+          />
+        ) : null}
+      </div>
+    </ChatFrame>
   );
 }
 

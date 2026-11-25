@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { ensureLandingFonts } from '@/app/landing/fonts';
 import { protocolOrigin } from '@/lib/protocol-origin';
+import { signInBrowserKeyHash } from '@/lib/sign-in-browser-key';
 import './AuthModal.css';
 
 const PROTOCOL_BASE = protocolOrigin();
@@ -97,9 +98,11 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
     setError(null);
 
     try {
+      const browserKeyHash = await signInBrowserKeyHash();
       const { error: magicLinkError } = await authClient.signIn.magicLink({
         email,
         callbackURL: resolvedCallbackURL,
+        ...(browserKeyHash ? { metadata: { browserKeyHash } } : {}),
       });
       if (magicLinkError) {
         setError(magicLinkError.message || 'Failed to send sign-in link');
@@ -257,8 +260,8 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
             {error && <p className="av-error">{error}</p>}
 
-            <button type="submit" disabled={loading} className="av-submit">
-              {loading ? "Sending…" : "Send sign-in link"}
+            <button aria-busy={loading} type="submit" disabled={loading} className="av-submit">
+              {loading ? "Sending" : "Send sign-in link"}
             </button>
           </form>
 
@@ -331,8 +334,8 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
             {error && <p className="av-error">{error}</p>}
 
-            <button type="submit" disabled={loading} className="av-submit">
-              {loading ? "Loading…" : isSignUp ? "Create account" : "Sign in"}
+            <button aria-busy={loading} type="submit" disabled={loading} className="av-submit">
+              {loading ? (isSignUp ? "Creating account" : "Signing in") : isSignUp ? "Create account" : "Sign in"}
             </button>
           </form>
 

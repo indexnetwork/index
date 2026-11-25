@@ -163,6 +163,16 @@ export class UserService {
     }
 
     /**
+     * A free username made from a name, for the first-run form to prefill.
+     *
+     * @param name - Usually the name the person just confirmed.
+     * @returns The username, or null when the name yields none.
+     */
+    async suggestUsername(name: string): Promise<string | null> {
+        return handleDatabaseAdapter.suggest(name);
+    }
+
+    /**
      * Ensure notification settings exist for a user
      */
     async ensureNotificationSettings(userId: string) {
