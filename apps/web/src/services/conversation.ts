@@ -35,7 +35,8 @@ export interface PrincipalQuestion {
   question: string;
   options?: string[];
   scope: 'intent' | 'match';
-  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
+  /** `wants`: what they're after, from their intent, when Index knows it. */
+  matches: { opportunityId: string; counterparty: { id: string; name: string | null; wants?: string } }[];
 }
 
 export interface PersonalAgentState {

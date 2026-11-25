@@ -488,7 +488,16 @@ export class ConversationService {
   async questionCards(userId: string): Promise<GroupCard[]> {
     await this.groupNewQuestions(userId, { decide: false });
     const open = await QuestionGroupsDatabaseAdapter.listOpenQuestions(userId);
-    return shownCards(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), open);
+    const cards = shownCards(await QuestionGroupsDatabaseAdapter.listGroups(userId, open), open);
+    // Each card says who it's asking for and what they're after.
+    const wants = await QuestionGroupsDatabaseAdapter.counterpartWants(userId, cards.flatMap((card) => card.matches.map((match) => match.opportunityId)));
+    return cards.map((card) => ({
+      ...card,
+      matches: card.matches.map((match) => {
+        const text = wants.get(match.opportunityId);
+        return text ? { ...match, counterparty: { ...match.counterparty, wants: text } } : match;
+      }),
+    }));
   }
 
   /**

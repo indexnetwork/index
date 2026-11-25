@@ -6,12 +6,24 @@ import { questionAsker } from "@/components/IntentNegotiatorChat";
 import UserAvatar from "@/components/UserAvatar";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { intentTitle } from "@/lib/intent-display";
 import { useUndo } from "@/components/intents-home/undo";
 
 /** What "skip" sends the agent in place of an answer (there is no skip endpoint). */
 export const SKIP_ANSWER = "skip this one. use your best judgement.";
 
 type Question = PrincipalQuestion & { intentId: string; groupId?: string };
+
+/** Their intent opens with what they're looking for: "looking for x", "find x", "meet x". */
+const SEEKING = /^(?:i\s*(?:'m|am)\s+)?(?:looking\s+for|look\s+for|searching\s+for|seeking|seek|finding|find|meeting|meet|connecting\s+with|connect\s+with)\s+/i;
+
+/** "asking for Boris, who's looking for agent-searchable indexes", or "asking for Boris: raise a seed round". */
+function askingFor(first: string, wants: string): string {
+  const text = wants.trim().replace(/\s+/g, " ");
+  const lead = text.match(SEEKING);
+  const what = intentTitle(lead ? text.slice(lead[0].length) : text);
+  return lead ? `asking for ${first}, who's looking for ${what}` : `asking for ${first}: ${what}`;
+}
 
 /** "40 minutes", "3 hours", "2 days": how long two agents have been at it. */
 function talkingFor(since: string, now = Date.now()): string {
@@ -67,7 +79,8 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
     ? <Link to={`/u/${owner.id}`} title={`${owner.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={owner.id} name={owner.name} avatar={owner.avatar ?? null} size={36} /></Link>
     : <span className="sv-mine" aria-hidden>ix</span>;
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
-  // How long their agent and yours have been talking, from the opportunity the question is about.
+  // Who it's asking for and what they're after; failing that, how long their agent and yours have been talking.
+  const wants = owner ? question.matches?.[0]?.counterparty.wants : undefined;
   const opportunityId = question.matches?.[0]?.opportunityId;
   const since = owner && opportunityId
     ? Object.values(entriesByIntent).flat().find((entry) => entry.item.opportunityId === opportunityId)?.item.createdAt
@@ -79,7 +92,9 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <span><b>{label}</b>{since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
+          <span><b>{label}</b>{owner && wants
+            ? <span className="sv-via"> · {askingFor(owner.name.split(" ")[0], wants)}</span>
+            : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
         <div className="sv-blurb">{question.question}</div>
