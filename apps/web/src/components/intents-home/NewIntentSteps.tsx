@@ -152,7 +152,9 @@ export function Recovery({ fields, feedback, onSubmit }: { fields: RecoveryField
                         setOwn((current) => ({ ...current, [field.id]: value }));
                         if (value.trim() && !writing[field.id]) toggleOwn(field);
                       }}
-                      placeholder="something else"
+                      placeholder="something else…"
+                      // Grows with what's typed, like the "something else…" chip on Home's questions.
+                      size={Math.max(15, (own[field.id] ?? "").length + 1)}
                       aria-label={`${field.label}: something else`}
                     />
                   </label>

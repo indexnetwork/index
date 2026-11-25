@@ -543,3 +543,27 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* what the agent is picking up, docked on the right like the agent window on home and an intent */
 .sv.sv-ni-warm { flex: none; width: var(--sv-list-w); display: flex; flex-direction: column; background: var(--sv-paper); }
 .sv-ni-warm-head { flex: none; padding: 14px 20px 10px; border-bottom: 1px solid var(--sv-line); font: 500 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink); }
+/* follow-up answers, as on Home's questions: one answer is a pill, several are square-cornered
+   chips; orange on hover, black once picked. The native radio or box is there for the keyboard
+   and screen readers, not drawn. */
+.sv .sv-ni .pl-q-options.pl-chips { gap: 6px; margin-top: 8px; }
+.sv .sv-ni .pl-chips > label { position: relative; gap: 0; padding: 4px 11px; border: 1px solid var(--sv-ink); border-radius: 2px; background: var(--sv-paper); box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.125); font: 400 12.5px/1.35 var(--sv-sans); color: var(--sv-ink); transition: none; }
+.sv .sv-ni .pl-chips > label:has(input[type="radio"]) { border-radius: 999px; }
+.sv .sv-ni .pl-chips > label:has(input[type="checkbox"]) { border-radius: 2px; }
+.sv .sv-ni .pl-chips > label:hover { border-color: var(--sv-ink); background: var(--sv-orange); }
+.sv .sv-ni .pl-chips > label:has(input:checked) { border-color: var(--sv-ink); background: var(--sv-ink); color: var(--sv-paper); box-shadow: none; }
+.sv .sv-ni .pl-chips > label:focus-within { outline: none; }
+.sv .sv-ni .pl-chips > label:has(input[type="radio"]:focus-visible, input[type="checkbox"]:focus-visible) { outline: 2px solid var(--sv-orange); outline-offset: 1px; }
+.sv .sv-ni .pl-chips > label > input[type="radio"],
+.sv .sv-ni .pl-chips > label > input[type="checkbox"] { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+/* "something else…": Home's quiet chip you type straight into */
+.sv .sv-ni .pl-chips > label.pl-ni-else { border-color: var(--sv-edge); box-shadow: none; color: var(--sv-ink2); cursor: text; }
+.sv .sv-ni .pl-chips > label.pl-ni-else:hover { border-color: var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.sv .sv-ni .pl-chips > label.pl-ni-else:has(input:checked),
+.sv .sv-ni .pl-chips > label.pl-ni-else:focus-within { border-color: var(--sv-ink); background: var(--sv-paper); color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-q-options.pl-chips .pl-ni-else input[type="text"],
+.ih:not(#_) .sv .sv-ni .pl-q-options.pl-chips .pl-ni-else input[type="text"]:focus { width: auto; min-width: 0; max-width: 46ch; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent; font: inherit; color: var(--sv-ink); }
+.ih:not(#_) .sv .sv-ni .pl-ni-else input[type="text"]::placeholder { color: var(--sv-ink2); opacity: 1; }
+/* a question with no options: one line in the app's field */
+.ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child { width: 100%; max-width: 420px; height: auto; margin: 0; padding: 6px 10px; border: 1px solid var(--sv-edge); border-radius: 2px; box-shadow: none; background: var(--sv-paper); font: 400 14px/1.45 var(--sv-sans); color: var(--sv-ink); outline: none; }
+.ih:not(#_) .sv .sv-ni .pl-q-options > input[type="text"]:only-child:focus { border-color: var(--sv-ink); }
