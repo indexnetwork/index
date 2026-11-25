@@ -6,7 +6,6 @@ import { questionAsker } from "@/components/IntentNegotiatorChat";
 import UserAvatar from "@/components/UserAvatar";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { intentTitle } from "@/lib/intent-display";
 import { useUndo } from "@/components/intents-home/undo";
 
 /** What "skip" sends the agent in place of an answer (there is no skip endpoint). */
@@ -14,15 +13,25 @@ export const SKIP_ANSWER = "skip this one. use your best judgement.";
 
 type Question = PrincipalQuestion & { intentId: string; groupId?: string };
 
-/** Their intent opens with what they're looking for: "looking for x", "find x", "meet x". */
-const SEEKING = /^(?:i\s*(?:'m|am)\s+)?(?:looking\s+for|look\s+for|searching\s+for|seeking|seek|finding|find|meeting|meet|connecting\s+with|connect\s+with)\s+/i;
+/** Where an intent says what it's after: "looking for", "looking to connect … with", "want to meet", "seeking", "hire". */
+const SEEK = /\b(?:looking\s+for|looking\s+to\s+(?:connect|meet)(?:\s+[^,.;]*?)?\s+with|looking\s+to\s+(?:meet|hire|find)|seeking|searching\s+for|(?:want|wants|hoping|hope)\s+to\s+(?:meet|find|hire|connect\s+with)|^(?:meet|find|hire|connect\s+with))\s+/i;
+/** What they're after ends at the first break: punctuation, or a clause that says why, when or how. */
+const STOP = /\s*(?:[,.;:—–(]|\s(?:who|that|which|for|to|in\s+the\s+next|within|especially|specifically|interested\s+in|so|because)\s)/i;
 
-/** "asking for Boris, who's looking for agent-searchable indexes", or "asking for Boris: raise a seed round". */
-function askingFor(first: string, wants: string): string {
-  const text = wants.trim().replace(/\s+/g, " ");
-  const lead = text.match(SEEKING);
-  const what = intentTitle(lead ? text.slice(lead[0].length) : text);
-  return lead ? `asking for ${first}, who's looking for ${what}` : `asking for ${first}: ${what}`;
+/**
+ * "web search providers" from "Looking for web search providers for agentic
+ * usage that …": the whole of what they're after, never cut mid-thought.
+ * @returns null when the intent doesn't say it in a few words.
+ */
+function lookingFor(wants: string): string | null {
+  const text = wants.replace(/\s+/g, " ").trim();
+  const lead = SEEK.exec(text);
+  if (!lead) return null;
+  const rest = text.slice(lead.index + lead[0].length);
+  const stop = STOP.exec(rest);
+  const what = (stop ? rest.slice(0, stop.index) : rest).replace(/^(?:a|an|the|some)\s+/i, "").trim();
+  const words = what.split(" ").filter(Boolean).length;
+  return words > 0 && words <= 9 ? what : null;
 }
 
 /** "40 minutes", "3 hours", "2 days": how long two agents have been at it. */
@@ -81,6 +90,7 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
   // Who it's asking for and what they're after; failing that, how long their agent and yours have been talking.
   const wants = owner ? question.matches?.[0]?.counterparty.wants : undefined;
+  const after = wants ? lookingFor(wants) : null;
   const opportunityId = question.matches?.[0]?.opportunityId;
   const since = owner && opportunityId
     ? Object.values(entriesByIntent).flat().find((entry) => entry.item.opportunityId === opportunityId)?.item.createdAt
@@ -92,8 +102,8 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
       {face}
       <div className="sv-card-body">
         <div className="sv-qhead">
-          <span><b>{label}</b>{owner && wants
-            ? <span className="sv-via"> · {askingFor(owner.name.split(" ")[0], wants)}</span>
+          <span><b>{label}</b>{after
+            ? <span className="sv-via"> · looking for {after}</span>
             : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}</span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>
