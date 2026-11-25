@@ -286,34 +286,34 @@ export default function HomeDashboard() {
       ) : (
         <>
           {waitingList.shown.map(({ person, decision }) => {
-            if (decision) {
-              const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
-              const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
-              return (
-                <div key={person.key} className={`sv-card done${chatOpen ? " on" : ""}`}>
-                  <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={32} />
-                  <div className="sv-card-body">{decision === "accepted" ? "you accepted" : "you passed on"} <b>{person.name}</b>.</div>
-                  {canChat && !chatOpen && <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>}
-                  {decision === "accepted" && person.notOnIndex && (
-                    <button type="button" className="sv-btn sm" onClick={() => navigate(`/i/${person.entries[0].intentId}`)}>send invite</button>
-                  )}
-                </div>
-              );
-            }
             const lead = person.entries[0];
             const blurb = lead.item.headline || lead.item.mainText || "";
             const busy = person.entries.some((e) => opportunityActionLoading[e.item.opportunityId]);
+            // Once you decide, the card stays as it was; only its buttons change.
+            const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
+            const chatOpen = canChat && openLog?.view === "chat" && openLog.userId === person.userId;
             return (
               <div key={person.key} {...cardProps(person, "sv-card")}>
                 <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
                 <div className="sv-card-body">
-                  <b>{person.name}</b>
-                  {person.notOnIndex && <span className="sv-via"> · not on index</span>}
-                  {blurb && <div className="sv-blurb">{blurb}</div>}
-                  <div className="sv-actions">
-                    <button type="button" className="sv-btn go" data-sv-key="accept" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
-                    <button type="button" className="sv-btn" data-sv-key="pass" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                  <div className="sv-mrow">
+                    <b>{person.name}</b>
+                    {person.notOnIndex && <span className="sv-via"> · not on index</span>}
+                    {canChat && !chatOpen
+                      ? <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>
+                      : decision === "rejected" && <span className="sv-mchip">passed</span>}
                   </div>
+                  {blurb && <div className="sv-blurb">{blurb}</div>}
+                  {!decision ? (
+                    <div className="sv-actions">
+                      <button type="button" className="sv-btn go" data-sv-key="accept" disabled={busy} onClick={() => act(person, "accepted")}>accept</button>
+                      <button type="button" className="sv-btn" data-sv-key="pass" disabled={busy} onClick={() => act(person, "rejected")}>pass</button>
+                    </div>
+                  ) : decision === "accepted" && person.notOnIndex && (
+                    <div className="sv-actions">
+                      <button type="button" className="sv-btn" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
