@@ -2854,7 +2854,10 @@
   width: 100%;
   border-bottom: 1px solid #000;
 }
-.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button {
+/* Tabs sit on the rule in every state; hover and press would otherwise reset the margin and drop the rule 1px. */
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button,
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:hover:not(:disabled),
+.ih:not(#_) .pl :is(.pl-netlist, .pl-netdetail, .pl-settings) .pl-tabs > button:active:not(:disabled) {
   margin-bottom: -1px;
 }
 .pl-netlist .pl-tabbar, .pl-settings .pl-tabbar {
