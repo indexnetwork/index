@@ -15,8 +15,8 @@ export const useChatFilter = () => useContext(ChatFilterContext);
 
 /**
  * The box chat pages sit in. Desktop is a plain page like Home and Intents:
- * a head, then the conversation list beside the thread in the same centered
- * body, split by thin grey rules. Compact keeps its own window, since it has
+ * a head, then the conversation list beside the thread across the full page
+ * width, split by thin grey rules. Compact keeps its own window, since it has
  * no desktop shell.
  */
 export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClose?: () => void; children: ReactNode }) {

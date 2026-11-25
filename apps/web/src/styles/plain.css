@@ -1427,12 +1427,15 @@
 }
 
 /* conversations: a plain page like Home and Intents. The head, then the list
-   beside the thread in the same centered body, split by thin grey rules. The
+   beside the thread across the full page, split by thin grey rules. The
    page itself doesn't scroll; the list and the thread do. */
 .ih .pl.pl-chat-page {
   overflow: hidden;
 }
+/* No right window here, so the column takes the whole page instead of the
+   reading width: the list and thread fill it like an intent beside its agent. */
 .pl-col.pl-chat-col {
+  max-width: none;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1449,9 +1452,8 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  margin: 4px 28px 24px;
-  border: 1px solid var(--pl-line);
-  border-radius: 2px;
+  /* No box of its own: the page is the box. One rule under the head, then edge to edge. */
+  border-top: 1px solid var(--pl-line);
   background: #fff;
   color: #000;
   overflow: hidden;
