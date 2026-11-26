@@ -3257,7 +3257,9 @@ button.st-copy {
   text-align: left;
   cursor: pointer;
 }
-.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line { border-top: 1px solid #e6e6e6; }
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line,
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line:hover:not(:disabled),
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line:active:not(:disabled) { border-top: 1px solid #e6e6e6; }
 .ih:not(#_) .pl button.ag-pick-line[aria-checked="false"]:hover:not(:disabled) { background: #ecebe6; }
 .ih:not(#_) .pl button.ag-pick-line[aria-checked="true"],
 .ih:not(#_) .pl button.ag-pick-line[aria-checked="true"]:hover:not(:disabled) { background: transparent; cursor: default; }
