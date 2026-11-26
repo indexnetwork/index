@@ -39,6 +39,7 @@ const secondaryStorage: AuthSecondaryStorage | undefined = isRedisConfigured()
   : undefined;
 
 const edgeCityNetworkId = process.env.EDGE_CITY_NETWORK_ID;
+const bonfiresNetworkId = process.env.BONFIRES_NETWORK_ID?.trim();
 const indexEarlyNetworkId = process.env.INDEX_EARLY_NETWORK_ID?.trim();
 const networkDb = new ChatDatabaseAdapter();
 
@@ -51,6 +52,11 @@ export const auth = createAuth({
   onEdgeCitySignIn: edgeCityNetworkId
     ? async (userId) => {
         await networkDb.addMemberToNetwork(edgeCityNetworkId, userId, 'member');
+      }
+    : undefined,
+  onBonfiresSignIn: bonfiresNetworkId
+    ? async (userId) => {
+        await networkDb.addMemberToNetwork(bonfiresNetworkId, userId, 'member');
       }
     : undefined,
   onIndexSignIn: indexEarlyNetworkId
