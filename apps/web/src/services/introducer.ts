@@ -38,6 +38,13 @@ export interface ContactEntry {
   proposals: number;
 }
 
+/** A member of your networks you said never to suggest. */
+export interface ExcludedMember {
+  userId: string;
+  name: string;
+  avatar: string | null;
+}
+
 export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded';
 
 export interface IntroductionPerson {
@@ -79,6 +86,10 @@ export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedA
   contacts: (q: string, filter: ContactFilter, offset: number) =>
     api.get<{ contacts: ContactEntry[]; total: number }>(`/introducer/contacts?${new URLSearchParams({ q, filter, offset: String(offset) })}`),
   setExcluded: (id: string, excluded: boolean) => api.post<{ ok: true }>(`/introducer/contacts/${id}/exclude`, { excluded }),
+  /** Members you said never to suggest. */
+  excludedMembers: () => api.get<{ members: ExcludedMember[] }>('/introducer/members/excluded').then((r) => r.members),
+  /** Never pair this member with your contacts, or allow them again. */
+  setMemberExcluded: (userId: string, excluded: boolean) => api.post<{ ok: true }>(`/introducer/members/${encodeURIComponent(userId)}/exclude`, { excluded }),
   /** Remove one contact for good: hidden, never suggested, and not brought back by the daily sync. */
   removeContact: (id: string) => api.delete<{ ok: true }>(`/introducer/contacts/${id}`),
   deleteContacts: () => api.delete<{ deleted: number }>('/introducer/contacts'),

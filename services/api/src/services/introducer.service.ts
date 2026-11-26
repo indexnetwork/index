@@ -442,6 +442,16 @@ export class IntroducerService {
     return this.adapter.setExcluded(userId, contactId, excluded);
   }
 
+  /** Members this introducer said never to suggest. */
+  async excludedMembers(userId: string): Promise<{ userId: string; name: string; avatar: string | null }[]> {
+    return this.adapter.excludedMembers(userId);
+  }
+
+  /** Never propose pairs with this member, or allow them again. */
+  async setMemberExcluded(userId: string, memberUserId: string, excluded: boolean): Promise<boolean> {
+    return this.adapter.setMemberExcluded(userId, memberUserId, excluded);
+  }
+
   /** Remove one contact from the owner's list for good; a later sync won't bring it back. */
   async removeContact(userId: string, contactId: string): Promise<boolean> {
     return this.adapter.removeContact(userId, contactId);

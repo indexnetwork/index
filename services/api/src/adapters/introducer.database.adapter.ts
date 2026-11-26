@@ -4,7 +4,7 @@ import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import type { OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
 
-const { contacts, users, opportunityProposals } = schema;
+const { contacts, users, opportunityProposals, introducerExclusions } = schema;
 
 export interface ContactInput {
   email: string;
@@ -254,6 +254,10 @@ export class IntroducerDatabaseAdapter {
         select 1 from opportunity_proposals s
         where s.introducer_user_id = c.owner_user_id and s.intent_id = it.id and s.contact_id = c.id
       )
+        and not exists (
+          select 1 from introducer_exclusions x
+          where x.introducer_user_id = c.owner_user_id and x.excluded_user_id = it.user_id
+        )
       order by c.embedding <=> it.embedding
       limit ${limit}
     `);
@@ -285,6 +289,8 @@ export class IntroducerDatabaseAdapter {
         from intents i join users u on u.id = i.user_id
         where ${LIVE_PUBLIC_INTENT}
           and i.user_id <> ${ownerUserId}
+          and not exists (select 1 from introducer_exclusions x
+                          where x.introducer_user_id = ${ownerUserId} and x.excluded_user_id = i.user_id)
           and exists (select 1 from intent_networks inw join nets on nets.network_id = inw.network_id
                       where inw.intent_id = i.id and inw.visibility = 'networks_only')
         order by i.embedding <=> c.embedding
@@ -356,6 +362,8 @@ export class IntroducerDatabaseAdapter {
         ${id ? sql`and p.id = ${id}` : sql`
         and p.status in ('proposed', 'opening', 'failed')
         and c.excluded_at is null and c.matched_user_id is null
+        and not exists (select 1 from introducer_exclusions x
+                        where x.introducer_user_id = p.introducer_user_id and x.excluded_user_id = u.id)
         and (p.status <> 'proposed' or (i.archived_at is null and (i.status is null or i.status = 'active')))`}
       order by (p.status = 'proposed') desc, p.confidence desc
       limit 50
@@ -459,6 +467,41 @@ export class IntroducerDatabaseAdapter {
       await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: new Date() })
         .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
     }
+    return true;
+  }
+
+  /** Members you said never to suggest, newest first. */
+  async excludedMembers(introducerUserId: string): Promise<{ userId: string; name: string; avatar: string | null }[]> {
+    return db
+      .select({ userId: users.id, name: users.name, avatar: users.avatar })
+      .from(introducerExclusions)
+      .innerJoin(users, eq(users.id, introducerExclusions.excludedUserId))
+      .where(eq(introducerExclusions.introducerUserId, introducerUserId))
+      .orderBy(sql`${introducerExclusions.createdAt} desc`);
+  }
+
+  /**
+   * Never suggest pairs with this member (or allow them again). Excluding also
+   * takes the waiting proposals built on their intents off the desk.
+   */
+  async setMemberExcluded(introducerUserId: string, memberUserId: string, excluded: boolean): Promise<boolean> {
+    if (!excluded) {
+      await db.delete(introducerExclusions).where(and(
+        eq(introducerExclusions.introducerUserId, introducerUserId),
+        eq(introducerExclusions.excludedUserId, memberUserId),
+      ));
+      return true;
+    }
+    if (introducerUserId === memberUserId) return false;
+    const [member] = await db.select({ id: users.id }).from(users).where(eq(users.id, memberUserId));
+    if (!member) return false;
+    await db.insert(introducerExclusions).values({ introducerUserId, excludedUserId: memberUserId }).onConflictDoNothing();
+    await db.execute(sql`
+      update opportunity_proposals p set status = 'skipped', updated_at = now()
+      from intents i
+      where i.id = p.intent_id and i.user_id = ${memberUserId}
+        and p.introducer_user_id = ${introducerUserId} and p.status in ('proposed', 'failed')
+    `);
     return true;
   }
 

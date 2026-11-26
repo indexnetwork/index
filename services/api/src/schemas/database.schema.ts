@@ -159,6 +159,18 @@ export const contacts = pgTable('contacts', {
 
 export type Contact = typeof contacts.$inferSelect;
 
+/**
+ * Members an introducer said never to suggest: no pair on their desk is made
+ * from these people's intents. Private to the introducer.
+ */
+export const introducerExclusions = pgTable('introducer_exclusions', {
+  introducerUserId: text('introducer_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  excludedUserId: text('excluded_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.introducerUserId, t.excludedUserId] }),
+}));
+
 export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed';
 
 /**

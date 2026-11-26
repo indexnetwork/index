@@ -116,6 +116,24 @@ export class IntroducerController {
     return Response.json({ ok: true });
   }
 
+  /** GET /introducer/members/excluded — members you said never to suggest. */
+  @Get('/members/excluded')
+  @UseGuards(AuthGuard)
+  async excludedMembers(_req: Request, user: AuthenticatedUser) {
+    return Response.json({ members: await introducerService.excludedMembers(user.id) });
+  }
+
+  /** POST /introducer/members/:userId/exclude — `{ excluded }`: never pair this member with your contacts, or allow them again. */
+  @Post('/members/:userId/exclude')
+  @UseGuards(AuthGuard)
+  async excludeMember(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const memberId = z.string().min(1).max(200).safeParse(params?.userId);
+    const body = z.object({ excluded: z.boolean() }).safeParse(await req.json().catch(() => null));
+    if (!memberId.success || !body.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+    if (!await introducerService.setMemberExcluded(user.id, memberId.data, body.data.excluded)) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ ok: true });
+  }
+
   /** DELETE /introducer/contacts/:id — remove one contact; the daily sync won't bring it back. */
   @Delete('/contacts/:id')
   @UseGuards(AuthGuard)
