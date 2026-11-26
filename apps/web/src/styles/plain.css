@@ -3233,6 +3233,8 @@ button.st-copy {
   color: #8a8578;
 }
 .ag-tray-foot:first-child { padding-top: 0; border-top: 0; }
+.ag-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.ag-tray-note { margin: 0; font: 400 12px "IBM Plex Sans", sans-serif; color: #5a5548; }
 .ag-tray-foot button.st-copy { margin-left: 4px; text-decoration: underline; text-underline-offset: 3px; }
 .ag-opt {
   display: flex;

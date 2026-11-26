@@ -14,16 +14,11 @@ import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
+import ChoiceCard from "@/components/ui/ChoiceCard";
 import { shortDay } from "@/lib/short-day";
 import { settingsPath } from "@/lib/settings-tabs";
 
 const logger = log.page.from("agents");
-
-function NegotiatorBadge() {
-  return (
-    <span className="ih-badge" style={{ flex: "0 0 auto" }}>speaks for you</span>
-  );
-}
 
 function NegotiatorMark() {
   return <span title="speaks for you" style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, color: "#ff8a00", fontWeight: 700 }}>*</span>;
@@ -323,7 +318,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                 one agent speaks for you in the network. index takes over if it&apos;s offline.
               </p>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px", borderBottom: picking ? "1px solid #e6e6e6" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px" }}>
                   <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className="st-name">{selectedNegotiator?.name || "Index"}</div>
@@ -331,13 +326,17 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                   </div>
                   <button type="button" className="pl-plain-btn ag-link" disabled={selecting} aria-expanded={picking} onClick={() => setPicking((open) => !open)}>change {picking ? "▴" : "▾"}</button>
                 </div>
+                {/* The same tray as an agent's settings: pick one, like a radio. */}
                 {picking && (
-                  <>
-                    <RosterRow name="Index" badge={selectedNegotiator === null ? <NegotiatorBadge /> : null} detail="hosted by index" last={personalAgents.length === 0} onClick={() => void handleSelectNegotiator(null)} />
-                    {personalAgents.map((agent, i) => (
-                      <RosterRow key={agent.id} name={agent.name} badge={agent.handleNegotiations ? <NegotiatorBadge /> : null} detail="registered manually" last={i === personalAgents.length - 1} onClick={() => void handleSelectNegotiator(agent)} />
-                    ))}
-                  </>
+                  <div className="ag-tray">
+                    <div className="ag-pick" role="radiogroup" aria-label="which agent speaks for you">
+                      <ChoiceCard title="Index" sub="hosted by index" selected={selectedNegotiator === null} disabled={selecting} onClick={() => void handleSelectNegotiator(null)} />
+                      {personalAgents.map((agent) => (
+                        <ChoiceCard key={agent.id} title={agent.name} sub="registered manually" selected={selectedNegotiator?.id === agent.id} disabled={selecting} onClick={() => void handleSelectNegotiator(agent)} />
+                      ))}
+                    </div>
+                    {personalAgents.length === 0 && <p className="ag-tray-note">add your own agent below and it can speak for you here.</p>}
+                  </div>
                 )}
               </div>
 
