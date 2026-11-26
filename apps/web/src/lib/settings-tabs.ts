@@ -4,7 +4,7 @@
  */
 export const SETTINGS_TABS = ["agents", "notifications", "access", "advanced"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
-export const DEFAULT_SETTINGS_TAB: SettingsTab = "notifications";
+export const DEFAULT_SETTINGS_TAB: SettingsTab = "agents";
 
 export function isSettingsTab(value: string | null | undefined): value is SettingsTab {
   return value != null && (SETTINGS_TABS as readonly string[]).includes(value);
