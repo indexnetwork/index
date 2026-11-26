@@ -10,6 +10,7 @@ import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbe
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatChatClock } from "@/lib/utils";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { markAnswered } from "@/components/intents-home/usePersonalQuestions";
 
 type Provenance = {
   kind?: string;
@@ -359,6 +360,7 @@ export function useIntentAgentChat(intentId: string) {
     setSending(true);
     try {
       mergeMessages(await conversations.sendAnswers(intentId, answers));
+      markAnswered(answers.map((a) => a.questionId));
     } catch {
       // Put the answers back so they can be sent again.
       setSelections(previous.selections);
@@ -385,6 +387,7 @@ export function useIntentAgentChat(intentId: string) {
   /** One question answered on its own, as on Home; a failure throws so the card can say so. */
   const answerOne = async (questionId: string, text: string) => {
     mergeMessages(await conversations.sendAnswers(intentId, [{ questionId, text }]));
+    markAnswered([questionId]);
     void refresh();
   };
 

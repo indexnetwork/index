@@ -27,7 +27,7 @@ export type McpConsentDetails = {
 export async function getMcpConsentDetails(code: string): Promise<McpConsentDetails> {
   const url = `${authBaseURL}/mcp/consent-details?${new URLSearchParams({ consent_code: code })}`;
   const response = await fetch(url, { credentials: 'include' });
-  if (!response.ok) throw new Error('This authorization request is no longer available for this account.');
+  if (!response.ok) throw new Error('this request has expired, or belongs to another account.');
   return response.json();
 }
 
@@ -38,7 +38,7 @@ export async function decideMcpConsent(code: string, accept: boolean): Promise<s
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ consent_code: code, accept }),
   });
-  if (!response.ok) throw new Error('Could not complete authorization. Please try again.');
+  if (!response.ok) throw new Error('couldn\'t finish that. try again.');
   const result = await response.json() as { redirectURI: string };
   return result.redirectURI;
 }

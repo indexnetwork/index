@@ -38,7 +38,7 @@ export default function SkipOpportunityPage() {
           navigate("/", { replace: true });
           return;
         }
-        const message = err instanceof Error ? err.message : "Something went wrong";
+        const message = err instanceof Error ? err.message : "something went wrong. try again from home.";
         setError(message);
       }
     })();
@@ -47,17 +47,17 @@ export default function SkipOpportunityPage() {
 
   if (error) {
     return (
-      <StatusPage bar="opportunity" title="Couldn’t skip that" message={error}>
+      <StatusPage bar="opportunity" title="couldn’t skip that" message={error}>
         <button type="button" className="site-btn" onClick={() => navigate("/")}>
-          Go home
+          go home →
         </button>
       </StatusPage>
     );
   }
 
   return (
-    <StatusPage bar="opportunity" title="Skip this opportunity">
-      <button type="button" className="site-btn" disabled aria-busy="true">Skipping</button>
+    <StatusPage bar="opportunity" title="skipping this opportunity">
+      <button type="button" className="site-btn" disabled aria-busy="true">skipping…</button>
     </StatusPage>
   );
 }

@@ -48,6 +48,29 @@ export interface Entry {
 
 export const personKey = (item: RadarCardItem) => item.userId || item.peer?.userId || `name:${item.name || item.peer?.name}`;
 
+/**
+ * Home's people counts, one per person across intents at their best stage:
+ * who is waiting on you (less anyone you just accepted or passed on) and who
+ * your agent is still talking with. Home and the sidebar both count this way.
+ */
+export function countPeople(entriesByIntent: Record<string, Entry[]>, decided: Record<string, unknown> = {}) {
+  const best = new Map<string, Stage>();
+  for (const entries of Object.values(entriesByIntent)) {
+    for (const entry of entries) {
+      const key = personKey(entry.item);
+      const now = best.get(key);
+      if (!now || RANK[entry.stage] < RANK[now]) best.set(key, entry.stage);
+    }
+  }
+  let waiting = 0;
+  let talking = 0;
+  for (const [key, stage] of best) {
+    if (stage === "awaiting" && !decided[key]) waiting++;
+    if (stage === "talks") talking++;
+  }
+  return { waiting, talking };
+}
+
 export function intentRank(status?: string) {
   const value = (status || "active").toLowerCase();
   if (value === "active") return 0;
