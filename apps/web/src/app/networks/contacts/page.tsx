@@ -1,58 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { PageView } from "@/components/intents-home/SplitView";
 import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { ContactsSetup } from "@/components/ContactsImport";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
-import { authClient } from "@/lib/auth-client";
+import { useContactsImport } from "@/hooks/useContactsImport";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { since } from "@/lib/since";
-import { CONTACT_SCOPES, createIntroducerService, type ContactEntry, type ContactFilter, type IntroducerStatus } from "@/services/introducer";
+import { createIntroducerService, type ContactEntry, type ContactFilter, type IntroducerStatus } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
 type Service = ReturnType<typeof createIntroducerService>;
 
 const HERE = "/networks/contacts";
-
-function Setup({ status, importing, error, onConnect, onImport }: {
-  status: IntroducerStatus;
-  importing: boolean;
-  error: string | null;
-  onConnect: () => void;
-  onImport: () => void;
-}) {
-  const googleDone = status.google.linked && status.google.contactsScope;
-  return (
-    <div className="idk-setup">
-      <p><b>Bring the people you know.</b> Index reads your saved Google contacts and the people you&apos;ve emailed, and marks who is already on Index. Introduce uses them to suggest pairs.</p>
-      <ol className="idk-steps">
-        <li className={googleDone ? "done" : ""}>
-          <span className="n">{googleDone ? "✓" : "1"}</span>
-          <div>
-            <b>Connect Google contacts</b>
-            <small>{googleDone ? "Connected." : status.google.linked ? "Your Google account is linked. Allow Index to read your contacts." : "Sign in with Google and allow Index to read your contacts."}</small>
-          </div>
-          {!googleDone && <button type="button" className="idk-btn go" onClick={onConnect}>Connect Google ▸</button>}
-        </li>
-        <li className={googleDone ? "" : "todo"}>
-          <span className="n">2</span>
-          <div>
-            <b>Read your contacts</b>
-            <small>Your saved contacts and the people you&apos;ve emailed. Index reads them again once a day.</small>
-          </div>
-          {googleDone && <button type="button" className="idk-btn go" disabled={importing} onClick={onImport}>{importing ? "Reading…" : "Read contacts ▸"}</button>}
-        </li>
-      </ol>
-      <div className="idk-note">Your contacts stay private to you. Nobody else sees them, they are never reached through a network, and never passed on.</div>
-      {error && <div className="idk-error">{error}</div>}
-    </div>
-  );
-}
 
 const FILTERS: { key: ContactFilter; label: string }[] = [
   { key: "all", label: "all" },
@@ -178,61 +144,15 @@ export default function ContactsPage() {
   const plain = useInAppFrame();
   const compact = useCompact();
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
 
   const [status, setStatus] = useState<IntroducerStatus | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(params.get("error") ? "Google didn't connect. Use the Google account with the same email as your Index account." : null);
-  const autoImported = useRef(false);
-
   const load = useCallback(async () => setStatus(await service.status()), [service]);
-
-  const doImport = useCallback(async () => {
-    setImporting(true);
-    setError(null);
-    try {
-      await service.importContacts();
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImporting(false);
-    }
-  }, [service, load]);
+  const { importing, error, setError, connect, doImport } = useContactsImport({ service, status, reload: load, here: HERE });
 
   useEffect(() => {
     if (!isAuthenticated) return;
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
-  }, [load, isAuthenticated]);
-
-  // Back from Google with the contacts scope: read contacts straight away, once.
-  useEffect(() => {
-    if (!status || autoImported.current || params.get("connected") !== "1") return;
-    autoImported.current = true;
-    setParams((p) => { p.delete("connected"); return p; }, { replace: true });
-    if (status.google.contactsScope) void doImport();
-  }, [status, params, setParams, doImport]);
-
-  const connect = async () => {
-    const { data, error: linkError } = await authClient.linkSocial({
-      provider: "google",
-      scopes: CONTACT_SCOPES,
-      callbackURL: `${window.location.origin}${HERE}?connected=1`,
-      errorCallbackURL: `${window.location.origin}${HERE}?error=1`,
-      disableRedirect: true,
-    });
-    if (linkError || !data?.url) {
-      setError(linkError?.message || "Couldn't reach Google");
-      return;
-    }
-    // Google hands out a refresh token only from its consent screen, and skips
-    // that screen for scopes already granted. Without one, the grant dies
-    // after an hour, so always show it here.
-    const url = new URL(data.url);
-    url.searchParams.set("prompt", "consent");
-    url.searchParams.set("access_type", "offline");
-    window.location.href = url.toString();
-  };
+  }, [load, isAuthenticated, setError]);
 
   if (!authLoading && !isAuthenticated) return <Navigate to={`/login?next=${HERE}`} replace />;
 
@@ -242,7 +162,9 @@ export default function ContactsPage() {
   const body = !status ? (
     error ? <div className="idk-error">{error}</div> : <p className="idk-dim">loading…</p>
   ) : !ready ? (
-    <Setup status={status} importing={importing} error={error} onConnect={() => void connect()} onImport={() => void doImport()} />
+    <ContactsSetup status={status} importing={importing} error={error} onConnect={() => void connect()} onImport={() => void doImport()}>
+      <p><b>Bring the people you know.</b> Index reads your saved Google contacts and the people you&apos;ve emailed, and marks who is already on Index. Introduce uses them to suggest pairs.</p>
+    </ContactsSetup>
   ) : (
     <>
       {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}

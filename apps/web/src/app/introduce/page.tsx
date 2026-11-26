@@ -7,8 +7,10 @@ import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
+import { ContactsSetup } from "@/components/ContactsImport";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
+import { useContactsImport } from "@/hooks/useContactsImport";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { since } from "@/lib/since";
@@ -343,14 +345,19 @@ function RunColumn({ runs, opening, freshId, never, neverMembers, neverTotal, on
   );
 }
 
-/** Before contacts are read: what introducing is, and where to start. */
-function NeedsContacts({ onOpen }: { onOpen: () => void }) {
+/** Before contacts are read: what introducing is, and reading them right here. */
+function NeedsContacts({ status, importing, error, onConnect, onImport }: {
+  status: IntroducerStatus;
+  importing: boolean;
+  error: string | null;
+  onConnect: () => void;
+  onImport: () => void;
+}) {
   return (
-    <div className="idk-setup">
+    <ContactsSetup status={status} importing={importing} error={error} onConnect={onConnect} onImport={onImport}>
       <p><b>Introduce people you know to people on Index.</b> When someone in your networks wants something one of your contacts could help with, you see the pair here. You write why they should meet and wake both agents. They meet only if both say yes.</p>
       <p className="idk-dim">Pairs come from your contacts, so read them first. A contact hears from Index only after you wake the pair and the other person says yes, and then the email comes from you.</p>
-      <button type="button" className="idk-open" onClick={onOpen}>open my contacts ›</button>
-    </div>
+    </ContactsSetup>
   );
 }
 
@@ -432,6 +439,8 @@ export default function IntroducePage() {
     if (!isAuthenticated) return;
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
   }, [load, isAuthenticated]);
+
+  const contactsImport = useContactsImport({ service, status, reload: load, here: "/introduce" });
 
   // Keep the page fresh while anything is moving: proposals being opened, agents talking.
   const opening = (proposals ?? []).filter((p) => p.status === "opening");
@@ -538,7 +547,7 @@ export default function IntroducePage() {
         {!status ? (
           <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
         ) : !ready ? (
-          <div className="idk sv-idk-page"><NeedsContacts onOpen={toContacts} /></div>
+          <div className="idk sv-idk-page"><NeedsContacts status={status} importing={contactsImport.importing} error={contactsImport.error} onConnect={() => void contactsImport.connect()} onImport={() => void contactsImport.doImport()} /></div>
         ) : (
           <div className="sv-intro-cols">
             <section className="sv-intro-pairs">
@@ -562,7 +571,7 @@ export default function IntroducePage() {
       {!status ? (
         error ? <div className="idk-error">{error}</div> : <p className="idk-dim">loading…</p>
       ) : !ready ? (
-        <NeedsContacts onOpen={toContacts} />
+        <NeedsContacts status={status} importing={contactsImport.importing} error={contactsImport.error} onConnect={() => void contactsImport.connect()} onImport={() => void contactsImport.doImport()} />
       ) : (
         <>
           <div className="idk-bar">
