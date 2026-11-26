@@ -62,20 +62,48 @@ interface PeerProfile {
 /** Icons the "something else" pill rolls through: a new one on every press. */
 const START_ICONS = ["✦", "⚡", "☀", "✺", "❖"];
 
-/** First lines for an empty chat. A pill puts one in the box; nothing goes until you press send. */
-function startLines(first: string) {
+type StartKey = "hi" | "call" | "other";
+
+/** First lines for an empty chat, a pile per pill: every press picks another. Nothing goes until you press send. */
+function startLines(n: string): Record<StartKey, string[]> {
   return {
-    hi: `Hi ${first}! Our agents matched us, nice to meet you.`,
-    call: `Hi ${first}, up for a 20-minute call this week?`,
+    hi: [
+      `hey ${n}! our agents think we should talk. they're usually right, so: hi 👋`,
+      `hi ${n}, the robots matched us. figured i'd say hi before they start talking about us behind our backs`,
+      `hey ${n}, saw we got matched. what's good?`,
+      `${n}! hi. my agent's been hyping you up, had to see for myself`,
+      `hey hey ${n} 👋 matched by agents, greeted by a human. how's your week going?`,
+      `hi ${n}, apparently we have stuff in common. tell me one thing that isn't on your profile`,
+      `yo ${n}, our agents did the awkward part. i'll take it from here: hi!`,
+      `hey ${n}! new match unlocked. what are you deep in right now?`,
+      `hi ${n} 🙂 always fun when the agents get it right. how's it going?`,
+      `${n}, hello from the other side of the match`,
+    ],
+    call: [
+      `hey ${n}, want to hop on a 20 min call this week? low stakes, high vibes`,
+      `${n}, call this week? i'll bring questions, you bring opinions`,
+      `hi ${n}! quick call sometime soon? 15–20 min, no slides, promise`,
+      `hey ${n}, i'm better on voice than in DMs. free for a quick call this week?`,
+      `${n}, coffee chat but make it remote? 20 min this week?`,
+      `hey ${n}, wanna skip 40 messages and do a 15 min call instead?`,
+      `hi ${n}, got 20 min this week? i'll send a link, you pick the time`,
+      `${n}! let's do a quick call before our agents schedule it for us`,
+      `hey ${n}, short call this week? happy to work around your timezone`,
+      `hi ${n}, a call > a thread. when works for you this week?`,
+    ],
     other: [
-      `Hi ${first}, coffee or a quick video call sometime? I'd love to compare notes.`,
-      `Hi ${first}, what are you working on right now?`,
-      `Hi ${first}, a quick idea: `,
-      `Hi ${first}, what's the hardest part of what you're working on right now?`,
-      `Hi ${first}, who else should I be talking to about this?`,
-      `Hi ${first}, want to trade notes? Happy to share what I've learned so far.`,
-      `Hi ${first}, what's gone well for you lately?`,
-      `Hi ${first}, what got you into this in the first place?`,
+      `hey ${n}, what are you obsessed with right now?`,
+      `${n}, hot take time: what's the most overrated thing in your space?`,
+      `hi ${n}, what are you working on that nobody's asked you about yet?`,
+      `hey ${n}, what's been the hardest part of your week? asking out of pure curiosity`,
+      `${n}, if you could get one intro this month, who would it be?`,
+      `hey ${n}, what's something you changed your mind on recently?`,
+      `hi ${n}, quick one: what does a win look like for you this quarter?`,
+      `${n}, best thing you've read or watched lately? need a new rabbit hole`,
+      `hey ${n}, what got you into this in the first place?`,
+      `hi ${n}, trade notes? i'll share what's working for me if you share yours`,
+      `${n}, what's one thing you wish someone would just build already?`,
+      `hey ${n}, who else should i be talking to? feels like you'd know`,
     ],
   };
 }
@@ -145,8 +173,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const scrolledConversationRef = useRef<string | null>(null);
   const scrolledCountRef = useRef(0);
   // The pill that last filled the box, and what it put there: a pill only replaces its own text, never yours.
-  const [startPicked, setStartPicked] = useState<{ key: string; text: string } | null>(null);
-  const startOtherRef = useRef(-1);
+  const [startPicked, setStartPicked] = useState<{ key: StartKey; text: string } | null>(null);
+  const startLastRef = useRef<Record<StartKey, number>>({ hi: -1, call: -1, other: -1 });
   const [startIcon, setStartIcon] = useState({ glyph: START_ICONS[0], rolls: 0 });
 
   // Route param changes reuse this instance. Adjust before paint so the previous
@@ -341,8 +369,19 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
   const firstName = userName.split(" ")[0];
   const lines = useMemo(() => startLines(firstName), [firstName]);
-  const fillStart = useCallback((key: string, text: string) => {
+  // Each press puts a different line from that pill's pile in the box, but never over something you typed.
+  const fillStart = useCallback((key: StartKey) => {
     if (messageText.trim() && messageText !== startPicked?.text) return;
+    const pile = lines[key];
+    const next = rollOther(pile.length, startLastRef.current[key]);
+    startLastRef.current[key] = next;
+    const text = pile[next];
+    if (key === 'other') {
+      setStartIcon((icon) => {
+        const pool = START_ICONS.filter((glyph) => glyph !== icon.glyph);
+        return { glyph: pool[Math.floor(Math.random() * pool.length)], rolls: icon.rolls + 1 };
+      });
+    }
     setStartPicked({ key, text });
     setMessageText(text);
     requestAnimationFrame(() => {
@@ -351,25 +390,15 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       el.focus();
       el.setSelectionRange(text.length, text.length);
     });
-  }, [messageText, startPicked]);
-  const fillOther = useCallback(() => {
-    if (messageText.trim() && messageText !== startPicked?.text) return;
-    const next = rollOther(lines.other.length, startOtherRef.current);
-    startOtherRef.current = next;
-    setStartIcon((icon) => {
-      const pool = START_ICONS.filter((glyph) => glyph !== icon.glyph);
-      return { glyph: pool[Math.floor(Math.random() * pool.length)], rolls: icon.rolls + 1 };
-    });
-    fillStart('other', lines.other[next]);
-  }, [messageText, startPicked, lines, fillStart]);
+  }, [messageText, startPicked, lines]);
   // Only while the chat is empty: the first message sent takes them away.
   const showStarts = !messagesLoading && messages.length === 0 && !footer && !sending && !(autoSend && initialMessage?.trim());
-  const startPressed = (key: string) => startPicked?.key === key && messageText === startPicked.text;
+  const startPressed = (key: StartKey) => startPicked?.key === key && messageText === startPicked.text;
   const starts = showStarts ? (
     <div className="pl-dm-starts">
-      <button type="button" className="pl-dm-start" aria-pressed={startPressed('hi')} onClick={() => fillStart('hi', lines.hi)}>say hi</button>
-      <button type="button" className="pl-dm-start" aria-pressed={startPressed('call')} onClick={() => fillStart('call', lines.call)}>suggest a call</button>
-      <button type="button" className="pl-dm-start" aria-pressed={startPressed('other')} onClick={fillOther}>
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('hi')} onClick={() => fillStart('hi')}>say hi</button>
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('call')} onClick={() => fillStart('call')}>suggest a call</button>
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('other')} onClick={() => fillStart('other')}>
         <span key={startIcon.rolls} className={startIcon.rolls ? "pl-dm-start-ic roll" : "pl-dm-start-ic"} aria-hidden="true">{startIcon.glyph}</span>
         something else
       </button>
