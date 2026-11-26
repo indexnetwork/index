@@ -143,6 +143,12 @@ export const contacts = pgTable('contacts', {
   embedding: vector('embedding', { dimensions: 2000 }),
   /** Set when the owner said never to suggest this contact. */
   excludedAt: timestamp('excluded_at', { withTimezone: true }),
+  /**
+   * Set when the owner removed this contact. The row stays so the daily
+   * Google sync doesn't bring it back; it is hidden everywhere and, being
+   * excluded too, never suggested.
+   */
+  removedAt: timestamp('removed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -152,6 +158,18 @@ export const contacts = pgTable('contacts', {
 }));
 
 export type Contact = typeof contacts.$inferSelect;
+
+/**
+ * Members an introducer said never to suggest: no pair on their desk is made
+ * from these people's intents. Private to the introducer.
+ */
+export const introducerExclusions = pgTable('introducer_exclusions', {
+  introducerUserId: text('introducer_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  excludedUserId: text('excluded_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.introducerUserId, t.excludedUserId] }),
+}));
 
 export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed';
 
@@ -543,6 +561,8 @@ export const networks = pgTable('networks', {
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),
+  // Set by Index staff. Only featured public networks are listed under "discover".
+  featured: boolean('featured').notNull().default(false),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',

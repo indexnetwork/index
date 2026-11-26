@@ -14,6 +14,9 @@ import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { ConfirmButton } from "@/components/settings/SettingsList";
+import { shortDay } from "@/lib/short-day";
+import { settingsPath } from "@/lib/settings-tabs";
 
 const logger = log.page.from("agents");
 
@@ -36,27 +39,8 @@ function LineButton({ children, onClick, disabled, primary, "aria-busy": busy }:
   );
 }
 
-function RemoveButton({ onRemove, disabled }: { onRemove: () => void; disabled?: boolean }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => { if (armed) onRemove(); else setArmed(true); }}
-      onBlur={() => setArmed(false)}
-      className={`wb-btn danger${armed ? " on" : ""}`}>{armed ? "confirm" : "remove"}</button>
-  );
-}
-
-function activeDay(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "unknown"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function BandHead({ label, first }: { label: string; first?: boolean }) {
-  return <h2 className="st-h" style={{ marginTop: first ? 0 : 30 }}>{label}</h2>;
+function BandHead({ label }: { label: string }) {
+  return <h2 className="st-h">{label}</h2>;
 }
 function CopyId({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
@@ -65,7 +49,7 @@ function CopyId({ id }: { id: string }) {
       type="button"
       title={copied ? "copied" : id}
       aria-label="copy agent id"
-      className="pl-plain-btn"
+      className="pl-plain-btn st-copy"
       onClick={(e) => {
         e.stopPropagation();
         const write = navigator.clipboard?.writeText(id);
@@ -74,8 +58,7 @@ function CopyId({ id }: { id: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         }).catch(() => {});
-      }}
-      style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578", whiteSpace: "nowrap" }}>
+      }}>
       {copied ? "copied" : `${id.slice(0, 8)}…`}
     </button>
   );
@@ -98,60 +81,46 @@ function RosterRow({
   const compact = useCompact();
   const opens = !!(onClick || onToggle);
   const columns = id != null;
-  // Compact: name over detail, the id column drops, aside and chevron stay.
-  const stacked = compact && columns;
+  // Like every settings list: the name over its detail line, then what you can do on the right.
   const row: React.CSSProperties = {
-    display: columns ? "grid" : "flex",
-    gridTemplateColumns: stacked ? "minmax(0,1fr) auto 18px" : columns ? "minmax(0,1fr) 290px 84px 90px 18px" : undefined,
-    alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
-    padding: "14px 12px", textAlign: "left", borderRadius: 0,
-    border: "none", borderBottom: last && !expanded ? "none" : "1px solid #e6e6e6",
-    background: (opens && (hover || expanded)) ? "#f7f7f5" : "transparent",
+    display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
+    margin: 0, padding: "14px 0", textAlign: "left", borderRadius: 0,
+    border: "none", background: "transparent",
     cursor: opens ? "pointer" : "default",
     font: "inherit", color: "inherit",
   };
-  const nameDetail = (
-    <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
-      <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-        {badge}
-      </span>
-      <span style={{ minWidth: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
-    </span>
-  );
-  const body = stacked ? (
+  const body = (
     <>
-      {nameDetail}
-      <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
-      <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
-    </>
-  ) : (
-    <>
-      <span style={{ flex: columns ? undefined : "1 1 34%", minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ minWidth: 0, fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-        {badge}
+      <span className="st-item-text">
+        <span className="st-item-head">
+          <span className={`st-name${opens && hover ? " hot" : ""}`}>{name}</span>
+          {badge}
+        </span>
+        <span className="st-detail">{detail}</span>
       </span>
-      <span style={{ flex: columns ? undefined : "1 1 40%", minWidth: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
-      {columns && <span style={{ minWidth: 0 }}>{id ? <CopyId id={id} /> : null}</span>}
+      {columns && !compact && id ? <CopyId id={id} /> : null}
       {aside != null && aside !== "" && (
-        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: columns ? 0 : 108, display: "flex", justifyContent: "flex-end", alignItems: "center", overflow: "hidden", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
+        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ flex: "none", display: "flex", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
       )}
       {(onToggle || columns) && (
-        <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+        <span aria-hidden="true" style={{ flex: "none", width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
       )}
     </>
   );
   const hoverProps = { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) };
+  const line: React.CSSProperties = { borderBottom: last && !expanded ? "none" : "1px solid #e6e6e6" };
   if (onToggle) {
     return (
-      <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={!!expanded} onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
-      }} {...hoverProps} style={row}>{body}</div>
+      <div style={line}>
+        <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={!!expanded} onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+        }} {...hoverProps} style={row}>{body}</div>
+      </div>
     );
   }
-  if (!onClick) return <div style={row}>{body}</div>;
-  return <button type="button" className="pl-plain-btn" onClick={onClick} {...hoverProps} style={row}>{body}</button>;
+  if (!onClick) return <div style={line}><div style={row}>{body}</div></div>;
+  return <div style={line}><button type="button" className="pl-plain-btn" onClick={onClick} {...hoverProps} style={row}>{body}</button></div>;
 }
 
 function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: string; blurb: string; onClick: () => void }) {
@@ -325,16 +294,16 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
             />
           ) : (
             <>
-              <BandHead label="which agent speaks for you" first />
-              <p className="st-note" style={{ marginBottom: 12 }}>
+              <BandHead label="which agent speaks for you" />
+              <p className="st-note">
                 one agent speaks for you in the network. index takes over if it&apos;s offline.
               </p>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px", borderBottom: picking ? "1px solid #e6e6e6" : "none" }}>
                   <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 16, fontWeight: 600, color: "#000" }}>{selectedNegotiator?.name || "Index"}</div>
-                    <div style={{ marginTop: 2, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: "0.5px", color: "#8a8578" }}>{kind}</div>
+                    <div className="st-name">{selectedNegotiator?.name || "Index"}</div>
+                    <div className="st-detail" style={{ marginTop: 3 }}>{kind}</div>
                   </div>
                   <LineButton disabled={selecting} onClick={() => setPicking((open) => !open)}>{picking ? "cancel" : "change"}</LineButton>
                 </div>
@@ -349,7 +318,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
               </div>
 
               <BandHead label="connected agents" />
-              <p className="st-note" style={{ marginBottom: 12 }}>
+              <p className="st-note">
                 everything that can act for you, from any device.
               </p>
               <div className="ag-roster">
@@ -367,15 +336,15 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                         badge={selectedNegotiator?.id === agent.id ? <NegotiatorMark /> : null}
                         detail="registered manually"
                         id={agent.id}
-                        aside={<RemoveButton disabled={selecting} onRemove={() => void handleDeleteAgent(agent)} />}
+                        aside={<ConfirmButton label="remove" disabled={selecting} onConfirm={() => void handleDeleteAgent(agent)} />}
                       />
                       {open && (
-                        <div style={{ background: "#f7f7f5", borderBottom: last ? "none" : "1px solid #e6e6e6", padding: "0 12px 4px" }}>
+                        <div style={{ borderBottom: last ? "none" : "1px solid #e6e6e6" }}><div style={{ padding: "0 0 6px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
                             <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
                             {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>id <CopyId id={agent.id} /></div>}
                           </div>
-                        </div>
+                        </div></div>
                       )}
                     </div>
                   );
@@ -384,21 +353,21 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                   <RosterRow
                     key={connection.clientId}
                     name={connection.name || "mcp agent"}
-                    detail={`connected over mcp · active ${activeDay(connection.lastActiveAt)}`}
+                    detail={`connected over mcp · active ${shortDay(connection.lastActiveAt, "unknown")}`}
                     id=""
                     last={i === connections.length - 1}
-                    aside={<RemoveButton onRemove={() => void handleRevokeConnection(connection)} />}
+                    aside={<ConfirmButton label="remove" onConfirm={() => void handleRevokeConnection(connection)} />}
                   />
                 ))}
               </div>
-              <div style={{ marginTop: 30 }}>
+              <div style={{ marginTop: 22 }}>
                 <AddYourAgent
                   linkToPage={false}
                   onRegister={() => setRegisterOpen(true)}
                   registerForm={registerOpen ? (
                     <div style={{ display: "grid", gap: 10, padding: "14px 0", borderTop: "1px solid #e6e6e6" }}>
                       <label style={{ display: "block", maxWidth: 420 }}>
-                        <span className="st-label">name your agent<span style={{ color: "#8a8578", marginLeft: 4 }}>*</span></span>
+                        <span className="st-label">name your agent<span className="st-req">*</span></span>
                         <span className="st-well">
                         <input
                           autoFocus
@@ -426,13 +395,13 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
   if (embedded) return <div className="pl-agents">{content}</div>;
 
   // Signed in on desktop, agents live in Settings as their own tab.
-  if (plain) return <Navigate to="/settings?tab=agents" replace />;
+  if (plain) return <Navigate to={settingsPath("agents")} replace />;
 
   return (
     <Stage width={860} height="min(880px, calc(100vh - 96px))">
       <Window title="agents" onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
         <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: compact ? '14px 16px 22px' : '18px 24px 22px' }}>
-          {content}
+          <div className="pl-agents">{content}</div>
         </div>
       </Window>
     </Stage>

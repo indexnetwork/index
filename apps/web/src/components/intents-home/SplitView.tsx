@@ -79,8 +79,10 @@ export function Blank({ children }: { children: ReactNode }) {
  * `fill` gives the column the full height instead, for a pane with its own
  * scroll and footer, like writing a new intent.
  */
-export function PageView({ title, actions, sub, seg, fill = false, children }: {
+export function PageView({ title, actions, sub, seg, back, fill = false, children }: {
   title?: ReactNode;
+  /** A text link above the title back out of a drill-in page, like a network's "◂ networks". */
+  back?: { label: string; onClick: () => void };
   actions?: ReactNode;
   /** A line under the title, e.g. an intent's status. */
   sub?: ReactNode;
@@ -95,6 +97,7 @@ export function PageView({ title, actions, sub, seg, fill = false, children }: {
         <div className={`sv-page-col${fill ? " sv-fill" : ""}`}>
           {title !== undefined && (
             <header className="sv-page-head">
+              {back && <button type="button" className="sv-back" onClick={back.onClick}>◂ {back.label}</button>}
               <div className="sv-title"><span className="sv-page-t">{title}</span>{actions}</div>
               {sub && <div className="sv-page-sub">{sub}</div>}
               {seg && <div className="sv-page-seg">{seg}</div>}

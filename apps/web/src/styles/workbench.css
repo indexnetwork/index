@@ -90,6 +90,16 @@
   flex-direction: column;
 }
 
+/* Signed out, nothing sits beside the page column: it sits in the middle of
+   the page, and with nothing to separate it from, it carries no side hairlines. */
+@media (min-width: 721px) {
+  .wb-norail .wb-stage { justify-content: center; }
+  .wb-norail .wb-column > .amiga-window { border-right: none; }
+  /* A signed-out profile opens on the person's own header, no title bar above it. */
+  .wb-norail .amiga-window.wb-titleless > .mac-titlebar { display: none; }
+  .wb-norail .amiga-window.wb-titleless { padding-top: 32px; }
+}
+
 /* Onboarding has no rail beside it: the column sits in the middle of the
    page, and with nothing to separate it from, it carries no hairlines. */
 .wb-onboarding .wb-stage { justify-content: center; }

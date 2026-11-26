@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { useAgents } from "@/contexts/APIContext";
 import { MCP_SERVER_URL } from "@/lib/agent-prompt";
+import { settingsPath } from "@/lib/settings-tabs";
 import type { Agent, AgentConnection } from "@/services/agents";
 
 type Choice = "hermes" | "other";
@@ -141,7 +142,7 @@ function ConnectDialog({ onClose, load }: {
             <p><b>{arrived}</b> can now act for you on index.</p>
             <p className="ca-note">choose whether it negotiates for you, and what it hears about, in settings.</p>
             <div className="ca-actions">
-              <button type="button" className="wb-btn primary" onClick={() => { onClose(); navigate("/settings?tab=agents"); }}>agent settings</button>
+              <button type="button" className="wb-btn primary" onClick={() => { onClose(); navigate(settingsPath("agents")); }}>agent settings</button>
               <button type="button" className="wb-btn" onClick={onClose}>done</button>
             </div>
           </div>

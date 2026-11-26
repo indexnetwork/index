@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -21,20 +21,13 @@ import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
 import { assembleFirstRunProfile, lookupFoundNothing, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 import { Placeholder } from "@/components/ui/Placeholder";
-
-// The profile editor lives at /profile/edit; settings is the account panes only.
-const SETTINGS_TABS = ["agents", "notifications", "access", "advanced"] as const;
+import { DEFAULT_SETTINGS_TAB, SETTINGS_TABS, isSettingsTab, legacySettingsRedirect, settingsPath, type SettingsTab } from "@/lib/settings-tabs";
 
 const PROTOCOL_PRESETS = [
   { value: "main", label: "main", url: "https://protocol.index.network", web: "https://index.network" },
   { value: "dev", label: "dev", url: "https://protocol.dev.index.network", web: "https://dev.index.network" },
   { value: "local", label: "local", url: "http://localhost:3001", web: "http://localhost:3000" },
 ] as const;
-type SettingsTab = (typeof SETTINGS_TABS)[number];
-
-function isSettingsTab(v: string | null): v is SettingsTab {
-  return v !== null && (SETTINGS_TABS as readonly string[]).includes(v);
-}
 
 /**
  * First run: the getting-started review the Mac app shows after the lookup.
@@ -51,7 +44,13 @@ export interface FirstRunReview {
   onDone: () => void;
 }
 
+/** /settings/<tab>; old ?tab= links and bare /settings move to their path first. */
 export default function SettingsPage() {
+  const { tab } = useParams();
+  const [searchParams] = useSearchParams();
+  const { hash } = useLocation();
+  const moved = legacySettingsRedirect(tab, searchParams);
+  if (moved) return <Navigate to={moved + hash} replace />;
   return <ProfileSettings />;
 }
 
@@ -68,7 +67,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
   // The edit form is pushed on top of the profile. Leaving it pops back, so the
   // profile's own close box doesn't land on the form again.
   const leaveEdit = useBack("/profile");
-  const [searchParams] = useSearchParams();
+  const { tab: tabParam } = useParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
@@ -99,13 +98,9 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     morningBrief?: boolean;
   }>({});
 
-  const tabParam = searchParams.get("tab");
   const profileOnly = !!firstRun || !!editProfile;
-  const activeTab: SettingsTab | "profile" = profileOnly ? "profile" : isSettingsTab(tabParam) ? tabParam : "notifications";
-  // Old links to the settings profile tab land on the profile editor.
-  useEffect(() => {
-    if (!profileOnly && tabParam === "profile") navigate("/profile/edit", { replace: true });
-  }, [profileOnly, tabParam, navigate]);
+  const settingsTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : DEFAULT_SETTINGS_TAB;
+  const activeTab: SettingsTab | "profile" = profileOnly ? "profile" : settingsTab;
 
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -373,19 +368,9 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
       {activeTab === "notifications" && (
         <div className="st-stack">
-          <p className="st-note">index works in the background. choose what&apos;s worth interrupting you for.</p>
-          <div>
-            <label htmlFor="timezone" className="st-label">timezone</label>
-            <div className="st-well">
-              <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }}>
-                {Intl.supportedValuesOf("timeZone").map((tz) => (
-                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-                ))}
-              </select>
-            </div>
-          </div>
           <div>
             <h2 className="st-h">tell me when</h2>
+            <p className="st-note">index works in the background. choose what&apos;s worth interrupting you for.</p>
             <ul className="st-rows">
               {NOTIFY.map(({ key, title, body: text }) => (
                 <li key={key}>
@@ -403,6 +388,17 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                 </li>
               ))}
             </ul>
+          </div>
+          <div>
+            <h2 className="st-h">timezone</h2>
+            <p className="st-note">the 08:00 daily brief follows it.</p>
+            <div className="st-well st-narrow">
+              <select id="timezone" aria-label="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }}>
+                {Intl.supportedValuesOf("timeZone").map((tz) => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       )}
@@ -429,7 +425,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                     role="tab"
                     aria-selected={tab === activeTab}
                     className={tab === activeTab ? "on" : undefined}
-                    onClick={() => navigate(tab === "notifications" ? "/settings" : `/settings?tab=${tab}`)}
+                    onClick={() => navigate(settingsPath(tab))}
                   >{tab}</button>
                 ))}
               </div>
@@ -468,12 +464,13 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
         <div className="mac-scroll" style={{ flex: firstRun && !compact ? "0 1 auto" : 1, minHeight: 0, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
           {!profileOnly && (
             <div style={{ marginBottom: 18 }}>
-              <SettingsTabs />
+              <SettingsTabs active={settingsTab} />
             </div>
           )}
           {body}
         </div>
-        <div style={{
+        {/* Agents, access and advanced act as you go: no footer to save. */}
+        {savable && <div style={{
           borderTop: firstRun ? "none" : "1px solid var(--wb-hairline)", padding: "11px 24px",
           // First run: the main button on the left, as on every onboarding card.
           display: "flex", alignItems: "center", justifyContent: "flex-end", gap: firstRun ? 14 : 10,
@@ -491,7 +488,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
             <button type="button" onClick={editProfile ? leaveEdit : () => navigate("/")} disabled={saving} className="wb-btn">cancel</button>
           )}
           <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} aria-busy={saving} className="wb-btn primary">{saveLabel}</button>
-        </div>
+        </div>}
       </Window>
     </Stage>
   );
@@ -585,7 +582,7 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
           ))}
         </div>
         {choice === "custom" && (
-          <div style={{ marginTop: 12, maxWidth: 360 }}>
+          <div className="st-narrow" style={{ marginTop: 12 }}>
             <div className="st-label">origin</div>
             <div className="st-well">
               <input
@@ -609,7 +606,7 @@ function MacField({ label, value, onChange, disabled, required, prefix, placehol
   return (
     <div style={{ minWidth: 0 }}>
       <div className="st-label">
-        {label}{required && <span style={{ color: "#8a8578", marginLeft: 4 }}>*</span>}
+        {label}{required && <span className="st-req">*</span>}
       </div>
       <div className={`st-well${disabled ? " off" : ""}${prefix ? " st-prefixed" : ""}`}>
         {prefix && <span className="st-prefix">{prefix}</span>}

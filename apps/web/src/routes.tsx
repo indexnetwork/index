@@ -188,6 +188,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/networks", () => import("@/app/networks/page")),
       },
       {
+        path: "/networks/contacts",
+        lazy: lazyRoute("/networks/contacts", () => import("@/app/networks/contacts/page")),
+      },
+      {
         path: "/networks/:id/*",
         lazy: lazyRoute("/networks/:id/*", () => import("@/app/networks/[id]/page")),
       },
@@ -202,6 +206,10 @@ export const router = createBrowserRouter([
       {
         path: "/settings",
         lazy: lazyRoute("/settings", () => import("@/app/settings/page")),
+      },
+      {
+        path: "/settings/:tab",
+        lazy: lazyRoute("/settings/:tab", () => import("@/app/settings/page")),
       },
       {
         path: "/profile",

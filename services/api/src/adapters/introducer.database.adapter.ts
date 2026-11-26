@@ -4,7 +4,7 @@ import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import type { OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
 
-const { contacts, users, opportunityProposals } = schema;
+const { contacts, users, opportunityProposals, introducerExclusions } = schema;
 
 export interface ContactInput {
   email: string;
@@ -166,18 +166,29 @@ export class IntroducerDatabaseAdapter {
         lastImportAt: sql<Date | null>`max(${contacts.updatedAt})`,
       })
       .from(contacts)
-      .where(eq(contacts.ownerUserId, ownerUserId));
+      .where(and(eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)));
     return { total: row?.total ?? 0, onIndex: row?.onIndex ?? 0, lastImportAt: row?.lastImportAt ? new Date(row.lastImportAt) : null };
   }
 
-  /** The viewer's Google account scope string, if they linked Google. */
-  async googleScope(userId: string): Promise<string | null | undefined> {
+  /**
+   * The viewer's Google account, if they linked Google: its scope string and
+   * whether we can still reach Google for them (a refresh token, or an access
+   * token that has not expired yet).
+   */
+  async googleAccount(userId: string): Promise<{ scope: string | null; usable: boolean } | undefined> {
     const [row] = await db
-      .select({ scope: schema.accounts.scope })
+      .select({
+        scope: schema.accounts.scope,
+        hasRefreshToken: sql<boolean>`${schema.accounts.refreshToken} is not null`,
+        accessTokenExpiresAt: schema.accounts.accessTokenExpiresAt,
+      })
       .from(schema.accounts)
       .where(and(eq(schema.accounts.userId, userId), eq(schema.accounts.providerId, 'google')))
       .limit(1);
-    return row ? row.scope : undefined;
+    if (!row) return undefined;
+    const expiresAt = row.accessTokenExpiresAt ? new Date(row.accessTokenExpiresAt).getTime() : null;
+    const usable = row.hasRefreshToken || expiresAt === null || expiresAt > Date.now();
+    return { scope: row.scope, usable };
   }
 
   // ─── matching ──────────────────────────────────────────────────────────────
@@ -243,6 +254,10 @@ export class IntroducerDatabaseAdapter {
         select 1 from opportunity_proposals s
         where s.introducer_user_id = c.owner_user_id and s.intent_id = it.id and s.contact_id = c.id
       )
+        and not exists (
+          select 1 from introducer_exclusions x
+          where x.introducer_user_id = c.owner_user_id and x.excluded_user_id = it.user_id
+        )
       order by c.embedding <=> it.embedding
       limit ${limit}
     `);
@@ -274,6 +289,8 @@ export class IntroducerDatabaseAdapter {
         from intents i join users u on u.id = i.user_id
         where ${LIVE_PUBLIC_INTENT}
           and i.user_id <> ${ownerUserId}
+          and not exists (select 1 from introducer_exclusions x
+                          where x.introducer_user_id = ${ownerUserId} and x.excluded_user_id = i.user_id)
           and exists (select 1 from intent_networks inw join nets on nets.network_id = inw.network_id
                       where inw.intent_id = i.id and inw.visibility = 'networks_only')
         order by i.embedding <=> c.embedding
@@ -345,6 +362,8 @@ export class IntroducerDatabaseAdapter {
         ${id ? sql`and p.id = ${id}` : sql`
         and p.status in ('proposed', 'opening', 'failed')
         and c.excluded_at is null and c.matched_user_id is null
+        and not exists (select 1 from introducer_exclusions x
+                        where x.introducer_user_id = p.introducer_user_id and x.excluded_user_id = u.id)
         and (p.status <> 'proposed' or (i.archived_at is null and (i.status is null or i.status = 'active')))`}
       order by (p.status = 'proposed') desc, p.confidence desc
       limit 50
@@ -412,7 +431,7 @@ export class IntroducerDatabaseAdapter {
   async listContacts(ownerUserId: string, options: { q?: string; filter: ContactFilter; limit: number; offset: number }): Promise<{ rows: ContactListRow[]; total: number }> {
     const q = options.q?.trim();
     const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
-    const where = sql`c.owner_user_id = ${ownerUserId}
+    const where = sql`c.owner_user_id = ${ownerUserId} and c.removed_at is null
       ${like ? sql`and (c.name ilike ${like} or c.email ilike ${like} or c.organization ilike ${like} or c.title ilike ${like})` : sql``}
       ${options.filter === 'not_on_index' ? sql`and c.matched_user_id is null and c.excluded_at is null`
         : options.filter === 'on_index' ? sql`and c.matched_user_id is not null`
@@ -441,13 +460,64 @@ export class IntroducerDatabaseAdapter {
   async setExcluded(ownerUserId: string, contactId: string, excluded: boolean): Promise<boolean> {
     const rows = await db.update(contacts)
       .set({ excludedAt: excluded ? new Date() : null })
-      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId)))
+      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)))
       .returning({ id: contacts.id });
     if (!rows.length) return false;
     if (excluded) {
       await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: new Date() })
         .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
     }
+    return true;
+  }
+
+  /** Members you said never to suggest, newest first. */
+  async excludedMembers(introducerUserId: string): Promise<{ userId: string; name: string; avatar: string | null }[]> {
+    return db
+      .select({ userId: users.id, name: users.name, avatar: users.avatar })
+      .from(introducerExclusions)
+      .innerJoin(users, eq(users.id, introducerExclusions.excludedUserId))
+      .where(eq(introducerExclusions.introducerUserId, introducerUserId))
+      .orderBy(sql`${introducerExclusions.createdAt} desc`);
+  }
+
+  /**
+   * Never suggest pairs with this member (or allow them again). Excluding also
+   * takes the waiting proposals built on their intents off the desk.
+   */
+  async setMemberExcluded(introducerUserId: string, memberUserId: string, excluded: boolean): Promise<boolean> {
+    if (!excluded) {
+      await db.delete(introducerExclusions).where(and(
+        eq(introducerExclusions.introducerUserId, introducerUserId),
+        eq(introducerExclusions.excludedUserId, memberUserId),
+      ));
+      return true;
+    }
+    if (introducerUserId === memberUserId) return false;
+    const [member] = await db.select({ id: users.id }).from(users).where(eq(users.id, memberUserId));
+    if (!member) return false;
+    await db.insert(introducerExclusions).values({ introducerUserId, excludedUserId: memberUserId }).onConflictDoNothing();
+    await db.execute(sql`
+      update opportunity_proposals p set status = 'skipped', updated_at = now()
+      from intents i
+      where i.id = p.intent_id and i.user_id = ${memberUserId}
+        and p.introducer_user_id = ${introducerUserId} and p.status in ('proposed', 'failed')
+    `);
+    return true;
+  }
+
+  /**
+   * Remove one contact. The row stays, marked removed and excluded, so the
+   * next Google sync doesn't bring it back; its waiting proposals are skipped.
+   */
+  async removeContact(ownerUserId: string, contactId: string): Promise<boolean> {
+    const now = new Date();
+    const rows = await db.update(contacts)
+      .set({ removedAt: now, excludedAt: sql`coalesce(${contacts.excludedAt}, ${now})` })
+      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)))
+      .returning({ id: contacts.id });
+    if (!rows.length) return false;
+    await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: now })
+      .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
     return true;
   }
 

@@ -168,6 +168,9 @@ export function createAuth(deps: AuthDeps) {
             google: {
               clientId: process.env.GOOGLE_CLIENT_ID,
               clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+              // Ask for a refresh token. Google access tokens last an hour, and
+              // the contacts sync reads Google again long after sign-in.
+              accessType: "offline",
             },
           }
         : {}),

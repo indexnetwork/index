@@ -21,7 +21,7 @@ export default function EmailSection({ email }: { email: string }) {
       const address = newEmail.trim().toLowerCase();
       const result = await authClient.changeEmail({
         newEmail: address,
-        callbackURL: `${window.location.origin}/settings?tab=access&emailChange=1`,
+        callbackURL: `${window.location.origin}/profile/edit?emailChange=1`,
       });
       if (result.error) throw new Error(result.error.message || 'Could not request email change.');
       setSentTo(address);

@@ -103,16 +103,13 @@
 .idk-card.opening { opacity: 0.75; }
 .idk-woke { cursor: default; }
 
-/* views: pairs | contacts */
-/* views: text tabs, as on the networks page */
-.idk-views { display: inline-flex; gap: 20px; }
-.ih .idk .idk-views > button, .ih .idk .idk-views > button:hover, .ih .idk .idk-views > button:active {
-  height: auto; margin: 0; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+/* navigation between My contacts and Introduce: text ending in ›, never a box */
+.idk .idk-open, .ih .idk .idk-open, .ih .idk .idk-open:hover, .ih .idk .idk-open:active {
+  height: auto; margin: 0; padding: 0; border: 0; border-radius: 0;
   background: none; box-shadow: none; transform: none; cursor: pointer;
-  color: var(--idk-ink3); font: 500 12px var(--idk-mono); letter-spacing: 0.5px; text-transform: none;
+  color: #000; font: 500 12px var(--idk-mono); letter-spacing: 0; text-transform: none; white-space: nowrap;
 }
-.ih .idk .idk-views > button:hover { color: #000; }
-.ih .idk .idk-views > button[aria-selected="true"] { color: #000; border-bottom-color: #000; }
+.idk .idk-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* contacts */
 .idk-contacts-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
@@ -142,3 +139,20 @@
 }
 
 @keyframes idk-pulse { 50% { background: #fff; } }
+
+/* never suggest ▾: a small menu under the button, one row per person in the pair */
+.idk-never { position: relative; display: inline-flex; }
+.idk-never-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  min-width: 100%; display: flex; flex-direction: column; padding: 3px 0;
+  background: var(--sv-paper, #fff); border: 1px solid var(--sv-ink, #000); border-radius: 1px;
+  box-shadow: var(--sv-sh-pop, 4px 4px 0 #000);
+}
+.idk-never-menu button {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  width: 100%; height: auto; padding: 7px 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  text-align: left; white-space: nowrap; cursor: pointer;
+  font: 500 12.5px var(--sv-sans, inherit); color: var(--sv-ink, #000);
+}
+.idk-never-menu button small { font: 400 10.5px var(--sv-mono, ui-monospace, monospace); color: var(--sv-dim, #888); }
+.idk-never-menu button:hover { background: var(--sv-sel, #f4f4f1); }

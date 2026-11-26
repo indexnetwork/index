@@ -279,16 +279,13 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           {!signedIn && (
             <>
               <h4 className="sv-h4">opportunities</h4>
-              <EmptyState
-                framed
-                message={
-                  <>
-                    Pair your agent with mine. They'll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.
-                    {pairError && <div>no discoverable intents in a shared network.</div>}
-                  </>
-                }
-                action={{ label: pairing ? "pairing" : "pair agents", onClick: pair, primary: true, large: true, busy: pairing }}
-              />
+              <div className="sv-pairme">
+                <p>Pair your agent with mine. They&apos;ll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.</p>
+                <button type="button" className="sv-btn go" onClick={pair} disabled={pairing} aria-busy={pairing}>
+                  {pairing ? "pairing…" : "pair agents"}
+                </button>
+                {pairError && <div className="sv-pair-err" role="alert">no discoverable intents in a shared network.</div>}
+              </div>
             </>
           )}
 
@@ -327,11 +324,14 @@ export const Component = UserProfilePage;
  */
 function PersonFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const inFrame = useInAppFrame();
+  const { isAuthenticated } = useAuthContext();
   const pane = <div className="sv"><section className="sv-pane">{children}</section></div>;
   if (inFrame) return pane;
+  // Signed out, the page is usually where a shared link landed: nothing behind it to close back to,
+  // and on desktop no title bar either; the person's own header opens the page.
   return (
     <Stage width={720} height="min(720px, calc(100vh - 112px))">
-      <Window title="profile" onClose={onClose} style={{ height: "100%" }}>{pane}</Window>
+      <Window title="profile" onClose={isAuthenticated ? onClose : undefined} className={isAuthenticated ? undefined : "wb-titleless"} style={{ height: "100%" }}>{pane}</Window>
     </Stage>
   );
 }
@@ -343,6 +343,7 @@ function PersonFrame({ onClose, children }: { onClose: () => void; children: Rea
  */
 function ProfileFrame({ title = "profile", width, height, onClose, children }: { title?: string; width: number; height?: string; onClose: () => void; children: ReactNode }) {
   const inFrame = useInAppFrame();
+  const { isAuthenticated } = useAuthContext();
   if (inFrame) {
     return (
       <div className="ih-view pl">
@@ -352,7 +353,7 @@ function ProfileFrame({ title = "profile", width, height, onClose, children }: {
   }
   return (
     <Stage width={width} height={height}>
-      <Window title={title} onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
+      <Window title={title} onClose={isAuthenticated ? onClose : undefined} className={isAuthenticated ? undefined : "wb-titleless"} style={height ? { height: "100%" } : undefined}>{children}</Window>
     </Stage>
   );
 }

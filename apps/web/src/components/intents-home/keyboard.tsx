@@ -202,12 +202,3 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
     </ZoneContext.Provider>
   );
 }
-
-/** "jump to… ⌘K" in the menu. */
-export function JumpButton() {
-  return (
-    <button type="button" className="sv-jumpbtn" onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}>
-      <span>jump to…</span><kbd>⌘K</kbd>
-    </button>
-  );
-}

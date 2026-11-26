@@ -19,6 +19,8 @@ import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { useShowMore } from "@/components/ui/ShowMore";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { createIntroducerService } from "@/services/introducer";
 
 const logger = log.page.from('networks');
 
@@ -52,6 +54,31 @@ function PlainMark({ id, name, photo, index }: { id?: string; name?: string; pho
   return <span className={`pl-net-mark c${index % 4}`} aria-hidden>{String(name || id || "#").trim().charAt(0).toUpperCase()}</span>;
 }
 
+/** Your Google contacts, shown as a network only you are in: how many. Introducing them is /introduce. */
+type MyContacts = { ready: boolean; total: number };
+
+function useMyContacts(): MyContacts | null {
+  const api = useAuthenticatedAPI();
+  const [mine, setMine] = useState<MyContacts | null>(null);
+  useEffect(() => {
+    let live = true;
+    const service = createIntroducerService(api);
+    (async () => {
+      const status = await service.status();
+      if (live) setMine({ ready: status.contacts.lastImportAt !== null, total: status.contacts.total });
+    })().catch((err: unknown) => {
+      logger.warn('Error loading my contacts', { error: String(err) });
+      if (live) setMine({ ready: false, total: 0 });
+    });
+    return () => { live = false; };
+  }, [api]);
+  return mine;
+}
+
+const MY_CONTACTS = 'My contacts';
+const myContactsLine = (mine: MyContacts | null) =>
+  !mine ? '…' : mine.ready ? `${mine.total} people · only you see this` : 'connect Google to start';
+
 export default function NetworksPage() {
   const navigate = useNavigate();
   const compact = useCompact();
@@ -62,6 +89,7 @@ export default function NetworksPage() {
   const networksService = useNetworks();
   const networkRequestsService = useNetworkRequests();
   const { networks: rawNetworks, loading: networksLoading, error: networksError, refreshNetworks, addNetwork } = useNetworksState();
+  const myContacts = useMyContacts();
 
   // Staff capability is decided by the server (covers STAFF_EMAILS and mixed-case
   // addresses), not inferred from the email on the client.
@@ -73,7 +101,10 @@ export default function NetworksPage() {
   const [editingRequest, setEditingRequest] = useState<NetworkRequest | null>(null);
   const [myRequests, setMyRequests] = useState<NetworkRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<NetworkRequest[]>([]);
-  const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
+  const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean; featured?: boolean })[]>([]);
+  // Staff see every public network under discover and pick which are featured;
+  // everyone else sees only the featured ones.
+  const [canFeature, setCanFeature] = useState(false);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [publicError, setPublicError] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
@@ -137,6 +168,7 @@ export default function NetworksPage() {
       setPublicError(false);
       const response = await networksService.discoverPublicNetworks(1, 50);
       setPublicNetworks(response.data);
+      setCanFeature(response.canFeature);
     } catch (err) {
       logger.error('Error loading public networks', { error: err });
       setPublicError(true);
@@ -161,6 +193,18 @@ export default function NetworksPage() {
       error('Failed to join network');
     } finally {
       setJoiningNetwork(null);
+    }
+  };
+
+  const handleToggleFeatured = async (networkId: string, featured: boolean) => {
+    const flip = (value: boolean) => setPublicNetworks((prev) => prev.map((n) => (n.id === networkId ? { ...n, featured: value } : n)));
+    flip(featured);
+    try {
+      await networksService.setNetworkFeatured(networkId, featured);
+    } catch (err) {
+      logger.error('Error setting featured', { error: err });
+      flip(!featured);
+      error(featured ? 'Failed to feature network' : 'Failed to unfeature network');
     }
   };
 
@@ -302,8 +346,19 @@ export default function NetworksPage() {
                   <p>couldn&apos;t load your networks.</p>
                   <button type="button" onClick={() => void refreshNetworks()}>try again</button>
                 </div>
-              ) : allNetworks.length > 0 ? (
+              ) : (
+                <>
                 <ul className="pl-nets big">
+                  {/* Your contacts first: a network only you are in. */}
+                  <li>
+                    <a href="/networks/contacts" className="pl-net" onClick={(event) => { event.preventDefault(); navigate('/networks/contacts'); }}>
+                      <span className="pl-net-mark mine" aria-hidden>@</span>
+                      <span className="pl-net-text">
+                        <span className="pl-net-name">{MY_CONTACTS}</span>
+                        <span className="pl-net-n">{myContactsLine(myContacts)}</span>
+                      </span>
+                    </a>
+                  </li>
                   {allNetworks.map((network, index) => {
                     const viewerRole = (network as { role?: 'owner' | 'member' }).role;
                     const isOwner = viewerRole === 'owner' || (viewerRole !== 'member' && user?.id === network.user?.id);
@@ -322,14 +377,16 @@ export default function NetworksPage() {
                     );
                   })}
                 </ul>
-              ) : (
-                <div className="pl-profile-empty">
-                  <p>{myRequests.length > 0 ? "no networks yet. yours shows up here once it's approved." : "you're not in any networks yet."}</p>
-                  <div className="pl-actions">
-                    {myRequests.length === 0 && <button type="button" className="go" onClick={openCreate}>+ new network</button>}
-                    <button type="button" onClick={openDiscover}>discover networks</button>
+                {allNetworks.length === 0 && (
+                  <div className="pl-profile-empty">
+                    <p>{myRequests.length > 0 ? "no networks yet. yours shows up here once it's approved." : "you're not in any networks yet."}</p>
+                    <div className="pl-actions">
+                      {myRequests.length === 0 && <button type="button" className="go" onClick={openCreate}>+ new network</button>}
+                      <button type="button" onClick={openDiscover}>discover networks</button>
+                    </div>
                   </div>
-                </div>
+                )}
+                </>
               )}
             </>
           )}
@@ -344,6 +401,8 @@ export default function NetworksPage() {
                   <button type="button" onClick={() => void loadPublicNetworks()}>try again</button>
                 </div>
               ) : publicNetworks.length > 0 ? (
+                <>
+                {canFeature && <p className="pl-dim">you see every public network. only the featured ones show to everyone else.</p>}
                 <ul className="pl-nets big">
                   {publicNetworks.map((network, index) => (
                     <li key={network.id}>
@@ -353,6 +412,11 @@ export default function NetworksPage() {
                           <span className="pl-net-name" title={network.title}>{network.title}</span>
                           <span className="pl-net-n">{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} people</span>
                         </span>
+                        {canFeature && (
+                          <button type="button" aria-pressed={!!network.featured} title={network.featured ? 'shown to everyone under discover' : 'only staff see this under discover'} onClick={() => void handleToggleFeatured(network.id, !network.featured)}>
+                            {network.featured ? 'featured' : 'feature'}
+                          </button>
+                        )}
                         {network.isMember ? (
                           <span className="pl-net-n">member</span>
                         ) : (
@@ -364,6 +428,7 @@ export default function NetworksPage() {
                     </li>
                   ))}
                 </ul>
+                </>
               ) : (
                 <p className="pl-dim">no public networks to discover right now.</p>
               )}
@@ -469,8 +534,17 @@ export default function NetworksPage() {
                     message="couldn't load your networks."
                     action={{ label: "try again", onClick: () => void refreshNetworks() }}
                   />
-                ) : allNetworks.length > 0 ? (
+                ) : (
+                  <>
                   <div>
+                    <button type="button" className="wb-link-row" onClick={() => navigate('/networks/contacts')} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", textAlign: "left", border: "none", borderBottom: "1px solid #DDD8CC", font: "inherit" }}>
+                      <span aria-hidden style={{ flex: "0 0 auto", width: 28, height: 28, borderRadius: "50%", border: "1px dashed #888", color: "#555", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500 }}>@</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "inherit" }}>{MY_CONTACTS}</span>
+                        <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{myContactsLine(myContacts)}</span>
+                      </span>
+                      <span aria-hidden="true" className="wb-row-chevron">›</span>
+                    </button>
                     {allNetworks.map((network) => {
                       // Prefer viewer membership `role` from GET /networks; the
                       // network.user.id compare is wrong for multi-owner nets.
@@ -492,22 +566,24 @@ export default function NetworksPage() {
                       );
                     })}
                   </div>
-                ) : myRequests.length > 0 ? (
-                  // The request card above already says it's in review; this only says where the network lands.
-                  <EmptyState
-                    style={{ padding: "32px 12px" }}
-                    message="no networks yet. yours shows up here once it's approved."
-                    action={{ label: "discover networks", onClick: openDiscover }}
-                  />
-                ) : (
-                  <EmptyState
-                    style={{ padding: "64px 12px" }}
-                    message="you're not in any networks yet."
-                    action={[
-                      { label: "create a network", onClick: openCreate, primary: true },
-                      { label: "discover networks", onClick: openDiscover },
-                    ]}
-                  />
+                  {allNetworks.length === 0 && (myRequests.length > 0 ? (
+                    // The request card above already says it's in review; this only says where the network lands.
+                    <EmptyState
+                      style={{ padding: "32px 12px" }}
+                      message="no networks yet. yours shows up here once it's approved."
+                      action={{ label: "discover networks", onClick: openDiscover }}
+                    />
+                  ) : (
+                    <EmptyState
+                      style={{ padding: "48px 12px" }}
+                      message="you're not in any networks yet."
+                      action={[
+                        { label: "create a network", onClick: openCreate, primary: true },
+                        { label: "discover networks", onClick: openDiscover },
+                      ]}
+                    />
+                  ))}
+                  </>
                 )}
                 </>
               )}
@@ -532,6 +608,11 @@ export default function NetworksPage() {
                           <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{network.title}</span>
                           <span style={{ display: "block", marginTop: 1, fontSize: 12, color: "#666" }}>{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members</span>
                         </span>
+                        {canFeature && (
+                          <button type="button" className="wb-btn small" aria-pressed={!!network.featured} onClick={() => void handleToggleFeatured(network.id, !network.featured)}>
+                            {network.featured ? 'featured' : 'feature'}
+                          </button>
+                        )}
                         {network.isMember ? (
                           <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12 }}>member</span>
                         ) : (

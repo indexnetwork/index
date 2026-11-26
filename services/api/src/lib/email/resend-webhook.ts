@@ -16,7 +16,7 @@ export const TRACKED_EVENTS = [
  * The flows whose email is tracked. A send carries its kind as a Resend tag,
  * which comes back on every event; events of any other kind are not stored.
  */
-export const TRACKED_KINDS = ['message', 'morning_brief', 'network_invitation'] as const;
+export const TRACKED_KINDS = ['message', 'morning_brief', 'network_invitation', 'agent_reply'] as const;
 
 export type EmailKind = (typeof TRACKED_KINDS)[number];
 

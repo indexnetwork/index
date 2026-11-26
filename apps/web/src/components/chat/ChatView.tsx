@@ -238,7 +238,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     const el = inputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    // scrollHeight leaves out the border; add it back so one more line never needs a scrollbar
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
   }, [messageText]);
 
   // Auto-send initialMessage once the conversation is ready

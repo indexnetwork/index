@@ -1,6 +1,6 @@
 import { SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { HISTORY_TURNS, messageText, runPersonalAgent } from '../lib/personal-agent/personal-agent';
 import { PERSONAL_PAST_SCOPE, PERSONAL_SCOPE } from '../lib/personal-agent/personal-agent.instructions';
+import { isTurnRunning, MAX_TURN_TEXT, takePersonalTurn } from '../lib/personal-agent/turn';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AGENT_DM_ID, ConversationService } from '../services/conversation.service';
@@ -8,7 +8,7 @@ import { intentService } from '../services/intent.service';
 
 const logger = log.controller.from('personal-agent');
 
-const MAX_TEXT = 4000;
+const MAX_TEXT = MAX_TURN_TEXT;
 const PAGE = 60;
 /** Words of an intent kept in the agent's "started …" line. */
 const LABEL_WORDS = 6;
@@ -27,9 +27,6 @@ function intentLabel(intent: { summary?: string | null; payload?: string | null 
  */
 @Controller('/personal-agent')
 export class PersonalAgentController {
-  /** Owners with a turn running; a second send waits for the first. */
-  private readonly busy = new Set<string>();
-
   constructor(private readonly conversationService: ConversationService) {}
 
   /** The chat so far, oldest first. */
@@ -40,7 +37,7 @@ export class PersonalAgentController {
       const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
       const messages = await this.conversationService.getMessages(resolved.id, { userId: user.id, scope: PERSONAL_SCOPE, limit: PAGE });
-      return Response.json({ messages, busy: this.busy.has(user.id) });
+      return Response.json({ messages, busy: isTurnRunning(user.id) });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getMessages failed', { userId: user.id, error: message });
@@ -69,7 +66,7 @@ export class PersonalAgentController {
   @Post('/new')
   @UseGuards(SessionOnlyGuard)
   async newChat(_req: Request, user: AuthenticatedUser) {
-    if (this.busy.has(user.id)) return Response.json({ error: 'Your agent is still working on your last message.' }, { status: 409 });
+    if (isTurnRunning(user.id)) return Response.json({ error: 'Your agent is still working on your last message.' }, { status: 409 });
     try {
       const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
       if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
@@ -139,42 +136,19 @@ export class PersonalAgentController {
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     if (!text) return Response.json({ error: 'text is required' }, { status: 400 });
     if (text.length > MAX_TEXT) return Response.json({ error: `text must be at most ${MAX_TEXT} characters` }, { status: 400 });
-    if (this.busy.has(user.id)) return Response.json({ error: 'Your agent is still working on your last message.' }, { status: 409 });
+    if (isTurnRunning(user.id)) return Response.json({ error: 'Your agent is still working on your last message.' }, { status: 409 });
 
-    this.busy.add(user.id);
     try {
-      const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
-      if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
-      const conversationId = resolved.id;
-
-      const history = await this.conversationService.getMessages(conversationId, { userId: user.id, scope: PERSONAL_SCOPE, limit: HISTORY_TURNS });
-      const message = await this.conversationService.sendMessage(conversationId, user.id, 'user', [{ kind: 'text', text }], { metadata: { scope: PERSONAL_SCOPE } });
-
-      let reply;
-      try {
-        reply = await runPersonalAgent({
-          userId: user.id,
-          userName: user.name,
-          turns: [
-            ...history.map((entry) => ({ role: entry.role, text: messageText(entry.parts) })),
-            { role: 'user' as const, text },
-          ],
-        });
-      } catch (err: unknown) {
-        logger.error('personal agent turn failed', { userId: user.id, error: err instanceof Error ? err.message : String(err) });
-        return Response.json({ message, error: "I couldn't finish that. Try again in a moment." }, { status: 502 });
+      const turn = await takePersonalTurn(this.conversationService, { userId: user.id, userName: user.name, text });
+      if (!turn.ok) {
+        logger.error('personal agent turn failed', { userId: user.id, error: turn.error });
+        return Response.json({ message: turn.message, error: "I couldn't finish that. Try again in a moment." }, { status: 502 });
       }
-
-      const answer = await this.conversationService.sendAgentMessage(conversationId, [{ kind: 'text', text: reply.text }], {
-        metadata: { scope: PERSONAL_SCOPE, ...(reply.changed.length ? { changed: reply.changed } : {}) },
-      });
-      return Response.json({ message, reply: answer, changed: reply.changed }, { status: 201 });
+      return Response.json({ message: turn.message, reply: turn.reply, changed: turn.changed }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('sendMessage failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
-    } finally {
-      this.busy.delete(user.id);
     }
   }
 }

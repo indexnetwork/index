@@ -102,7 +102,7 @@ export interface OpportunityProposalView {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { name: string; line: string; detail: string | null };
+  contact: { id: string; name: string; line: string; detail: string | null };
   /** The draft intro, `metadata.introducer.context` once opened. */
   draft: string;
 }
@@ -187,15 +187,17 @@ export class IntroducerService {
   // ─── contacts ──────────────────────────────────────────────────────────────
 
   async status(userId: string): Promise<IntroducerStatus> {
-    const [scope, counts] = await Promise.all([
-      this.adapter.googleScope(userId),
+    const [account, counts] = await Promise.all([
+      this.adapter.googleAccount(userId),
       this.adapter.contactCounts(userId),
     ]);
-    const granted = (scope ?? '').split(/[,\s]+/);
+    const granted = (account?.scope ?? '').split(/[,\s]+/);
     return {
       google: {
-        linked: scope !== undefined,
-        contactsScope: CONTACT_SCOPES.every((s) => granted.includes(s)),
+        linked: account !== undefined,
+        // Google access tokens last an hour. Without a refresh token the grant
+        // is spent once that hour is up, so ask the member to connect again.
+        contactsScope: !!account?.usable && CONTACT_SCOPES.every((s) => granted.includes(s)),
       },
       contacts: {
         total: counts.total,
@@ -270,11 +272,11 @@ export class IntroducerService {
     };
 
     const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations' }, 'connections');
-    if ('status' in saved) return { kind: 'google_error', status: saved.status };
+    if ('status' in saved) return saved.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: saved.status };
     add(saved.people, 'google_contacts');
 
     const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses' }, 'otherContacts');
-    if ('status' in other) return { kind: 'google_error', status: other.status };
+    if ('status' in other) return other.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: other.status };
     add(other.people, 'google_other');
 
     await this.adapter.replaceContacts(userId, [...rows.values()]);
@@ -440,6 +442,21 @@ export class IntroducerService {
     return this.adapter.setExcluded(userId, contactId, excluded);
   }
 
+  /** Members this introducer said never to suggest. */
+  async excludedMembers(userId: string): Promise<{ userId: string; name: string; avatar: string | null }[]> {
+    return this.adapter.excludedMembers(userId);
+  }
+
+  /** Never propose pairs with this member, or allow them again. */
+  async setMemberExcluded(userId: string, memberUserId: string, excluded: boolean): Promise<boolean> {
+    return this.adapter.setMemberExcluded(userId, memberUserId, excluded);
+  }
+
+  /** Remove one contact from the owner's list for good; a later sync won't bring it back. */
+  async removeContact(userId: string, contactId: string): Promise<boolean> {
+    return this.adapter.removeContact(userId, contactId);
+  }
+
   /**
    * Delete every imported contact and the proposals made from them. Nothing
    * syncs again until the member reads their contacts again; introductions
@@ -585,7 +602,7 @@ function toProposalView(row: ProposalRow): OpportunityProposalView {
     opportunityId: row.opportunityId,
     networkTitle: row.networkTitle,
     member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.card.member, intentText: row.member.intentText },
-    contact: { name: contactName(row.contact), line: row.card.contact, detail: detail || null },
+    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null },
     draft: row.draft,
   };
 }

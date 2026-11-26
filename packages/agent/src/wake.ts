@@ -45,6 +45,9 @@ const WAKE_PROMPT = [
 export const MORNING =
   "It is morning. Anyone new along this intent's earlier queries has already been reached. Call reach_counterparties only if your principal's message asks for new people; otherwise do not discover. Ask only when a missing fact would change who you reach out to. Your note is a report your principal's personal agent reads, not a greeting. Write it only when this morning decided something: the plan you pass to reach_counterparties, or a decision, or why a question matters. Do not recap who you discovered. Otherwise stop.";
 
+/** The longest answer option a question may offer: a tap, not a sentence. */
+const OPTION_MAX = 40;
+
 /** How many focused passes a wake makes over the stalls it still owes. */
 const STALL_PASSES = 3;
 
@@ -420,13 +423,20 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "ask_principal",
       description:
-        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms — or any approval — is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first.",
+        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms — or any approval — is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first. Write it the way a friend would ask in a text: one short question, never naming what your principal already knows, such as their own company. Its options are the answers they would tap, not sentences.",
       parameters: {
         type: "object",
         additionalProperties: false,
         properties: {
-          question: { type: "string", minLength: 1 },
-          options: { type: "array", minItems: 2, maxItems: 4, uniqueItems: true, items: { type: "string", minLength: 1 } },
+          question: { type: "string", minLength: 1, description: "One short, plain question. \"Does your work involve AI orchestration or online trust?\", not \"Does your work on <their company> intersect with AI orchestration or online trust?\"" },
+          options: {
+            type: "array",
+            minItems: 2,
+            maxItems: 4,
+            uniqueItems: true,
+            items: { type: "string", minLength: 1, maxLength: OPTION_MAX },
+            description: "Two to four answers, one to three words each, never repeating the question's words back and never explaining themselves. Each must mean something different. Cover how they could really answer, not a false yes or no: a question naming two things offers each, both and neither, e.g. [\"Both\", \"Orchestration\", \"Online trust\", \"Neither\"], not [\"Yes, my work intersects with orchestration or trust\", \"No, it is focused on discovery\"]. Never add \"Other\": they can always type their own answer.",
+          },
           scope: { type: "string", enum: ["intent", "opportunity"] },
           opportunityId: { type: "string", description: "Required when scope is opportunity." },
           stalled: {
@@ -441,6 +451,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       run: (argument: { question: string; options: string[]; scope: "intent" | "opportunity"; opportunityId?: string; stalled?: string[] }) => {
         if (!noted) {
           throw new Error("Write the note first with note_principal: your principal reads why you are asking before the question itself.");
+        }
+        const wordy = argument.options.filter((option) => option.trim().length > OPTION_MAX);
+        if (wordy.length) {
+          throw new Error(`Options are answers your principal taps, one to three words each, never sentences. Shorten: ${wordy.map((option) => JSON.stringify(option)).join(", ")}.`);
         }
         if (argument.scope === "opportunity") {
           if (!argument.opportunityId) throw new Error("An opportunity-scoped question needs its opportunityId.");

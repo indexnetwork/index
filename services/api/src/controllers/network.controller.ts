@@ -368,9 +368,32 @@ export class NetworkController {
   @Get('/discovery/public')
   @UseGuards(AuthGuard)
   async getPublicNetworks(_req: Request, user: AuthenticatedUser) {
-    const result = await networkService.getPublicNetworks(user.id);
+    const staff = isStaff(user);
+    const result = await networkService.getPublicNetworks(user.id, { includeUnfeatured: staff });
     logger.verbose('Public networks listed for user', { userId: user.id, count: result.networks.length });
-    return Response.json(result);
+    return Response.json({ ...result, canFeature: staff });
+  }
+
+  /**
+   * Feature or unfeature a network under "discover". Staff-only.
+   * IMPORTANT: This must come before routes matching /:id.
+   */
+  @Patch('/:id/featured')
+  @UseGuards(AuthGuard)
+  async setFeatured(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    if (!isStaff(user)) {
+      return Response.json({ error: 'Only Index staff can feature networks' }, { status: 403 });
+    }
+    const body = await req.json().catch(() => ({})) as { featured?: unknown };
+    if (typeof body.featured !== 'boolean') {
+      return Response.json({ error: 'featured must be true or false' }, { status: 400 });
+    }
+    const found = await networkService.setFeatured(params.id, body.featured);
+    if (!found) {
+      return Response.json({ error: 'Network not found' }, { status: 404 });
+    }
+    logger.verbose('Network featured set', { networkId: params.id, featured: body.featured, userId: user.id });
+    return Response.json({ id: params.id, featured: body.featured });
   }
 
   /**

@@ -13,6 +13,8 @@ export interface MorningBriefParams {
   /** Question groups not emailed before, each linked to Home with /q/<id>. */
   questions: { text: string; url: string }[];
   appUrl: string;
+  /** True when a reply to this email reaches the personal agent. */
+  replyable?: boolean;
 }
 
 export interface MorningBriefEmail {
@@ -79,7 +81,7 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
   ${more ? `<p>${small(p.appUrl, 'and more')}</p>` : ''}
   ${connected.length ? `<p>From someone you're already connected with:</p>
   ${connected.map((person) => `<p style="margin: 0 0 14px;"><b>${escapeHtml(person.name)}</b>${person.context ? `<span style="color: #666;">: ${escapeHtml(person.context)}</span>` : ''}<br /><span style="color: #666; font-size: 12px;">${escapeHtml(person.status)}</span> ${act(person.url, escapeHtml(person.label))}</p>`).join('\n  ')}` : ''}
-  <p>I'll keep going in the background.<br />Your agent</p>
+  <p>${p.replyable ? 'Reply to this email to answer me. ' : ''}I'll keep going in the background.<br />Your agent</p>
   <p style="color: #999; font-size: 11px; margin-top: 28px;">I only write when I need you. <a href="${href(offUrl)}" style="color: #999;">Turn off the daily brief</a></p>
 </div>`;
 
@@ -91,7 +93,7 @@ export const morningBriefTemplate = (p: MorningBriefParams): MorningBriefEmail |
     ...(more ? ['', `and more: ${p.appUrl}`] : []),
     ...(connected.length ? ['', "From someone you're already connected with:", ...connected.flatMap((person) => ['', `${person.name}${person.context ? `: ${person.context}` : ''}`, person.status, `${person.label}: ${person.url}`])] : []),
     '',
-    "I'll keep going in the background.",
+    `${p.replyable ? 'Reply to this email to answer me. ' : ''}I'll keep going in the background.`,
     'Your agent',
     '',
     `I only write when I need you. Turn off the daily brief: ${offUrl}`,
