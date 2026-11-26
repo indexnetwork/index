@@ -73,7 +73,10 @@ export default function NetworksPage() {
   const [editingRequest, setEditingRequest] = useState<NetworkRequest | null>(null);
   const [myRequests, setMyRequests] = useState<NetworkRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<NetworkRequest[]>([]);
-  const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
+  const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean; featured?: boolean })[]>([]);
+  // Staff see every public network under discover and pick which are featured;
+  // everyone else sees only the featured ones.
+  const [canFeature, setCanFeature] = useState(false);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [publicError, setPublicError] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
@@ -137,6 +140,7 @@ export default function NetworksPage() {
       setPublicError(false);
       const response = await networksService.discoverPublicNetworks(1, 50);
       setPublicNetworks(response.data);
+      setCanFeature(response.canFeature);
     } catch (err) {
       logger.error('Error loading public networks', { error: err });
       setPublicError(true);
@@ -161,6 +165,18 @@ export default function NetworksPage() {
       error('Failed to join network');
     } finally {
       setJoiningNetwork(null);
+    }
+  };
+
+  const handleToggleFeatured = async (networkId: string, featured: boolean) => {
+    const flip = (value: boolean) => setPublicNetworks((prev) => prev.map((n) => (n.id === networkId ? { ...n, featured: value } : n)));
+    flip(featured);
+    try {
+      await networksService.setNetworkFeatured(networkId, featured);
+    } catch (err) {
+      logger.error('Error setting featured', { error: err });
+      flip(!featured);
+      error(featured ? 'Failed to feature network' : 'Failed to unfeature network');
     }
   };
 
@@ -344,6 +360,8 @@ export default function NetworksPage() {
                   <button type="button" onClick={() => void loadPublicNetworks()}>try again</button>
                 </div>
               ) : publicNetworks.length > 0 ? (
+                <>
+                {canFeature && <p className="pl-dim">you see every public network. only the featured ones show to everyone else.</p>}
                 <ul className="pl-nets big">
                   {publicNetworks.map((network, index) => (
                     <li key={network.id}>
@@ -353,6 +371,11 @@ export default function NetworksPage() {
                           <span className="pl-net-name" title={network.title}>{network.title}</span>
                           <span className="pl-net-n">{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} people</span>
                         </span>
+                        {canFeature && (
+                          <button type="button" aria-pressed={!!network.featured} title={network.featured ? 'shown to everyone under discover' : 'only staff see this under discover'} onClick={() => void handleToggleFeatured(network.id, !network.featured)}>
+                            {network.featured ? 'featured' : 'feature'}
+                          </button>
+                        )}
                         {network.isMember ? (
                           <span className="pl-net-n">member</span>
                         ) : (
@@ -364,6 +387,7 @@ export default function NetworksPage() {
                     </li>
                   ))}
                 </ul>
+                </>
               ) : (
                 <p className="pl-dim">no public networks to discover right now.</p>
               )}
@@ -532,6 +556,11 @@ export default function NetworksPage() {
                           <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{network.title}</span>
                           <span style={{ display: "block", marginTop: 1, fontSize: 12, color: "#666" }}>{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members</span>
                         </span>
+                        {canFeature && (
+                          <button type="button" className="wb-btn small" aria-pressed={!!network.featured} onClick={() => void handleToggleFeatured(network.id, !network.featured)}>
+                            {network.featured ? 'featured' : 'feature'}
+                          </button>
+                        )}
                         {network.isMember ? (
                           <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontSize: 12 }}>member</span>
                         ) : (

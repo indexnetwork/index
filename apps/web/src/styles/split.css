@@ -275,9 +275,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .ih .ih-rail .ih-account-btn:hover, .ih .ih-rail .ih-account-btn.open { background: none; }
 .ih .ih-rail .ih-account-name { font: 600 13px "IBM Plex Sans", sans-serif; }
 .ih .ih-rail .ih-account-sub, .ih .ih-rail .ih-account-more { display: none; }
-.ih .sv-jumpbtn { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 0 0 10px; padding: 7px 10px; border: 1px dashed #cfcfcf; background: #fff; font: 500 12px "JetBrains Mono", ui-monospace, monospace; color: #555; cursor: pointer; border-radius: 2px; }
-.ih .sv-jumpbtn:hover { border-color: #000; color: #000; }
-.sv-jumpbtn kbd, .sv-hrow kbd { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; border: 1px solid #cfcfcf; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; background: #fff; color: #000; white-space: nowrap; }
+.sv-hrow kbd { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; border: 1px solid #cfcfcf; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; background: #fff; color: #000; white-space: nowrap; }
 
 .sv-layer { position: fixed; inset: 0; z-index: 1000; }
 .sv-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); }

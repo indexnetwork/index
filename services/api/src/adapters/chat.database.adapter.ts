@@ -629,8 +629,9 @@ export class ChatDatabaseAdapter {
 
   /**
    * Get public networks that the user has not joined (for discovery).
+   * Only featured ones, unless `includeUnfeatured` (staff curating the list).
    */
-  async getPublicNetworksNotJoined(userId: string) {
+  async getPublicNetworksNotJoined(userId: string, opts: { includeUnfeatured?: boolean } = {}) {
     const userNetworkIds = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
@@ -643,6 +644,9 @@ export class ChatDatabaseAdapter {
       // Unapproved network requests are inert rows, never discoverable.
       isNull(schema.networks.requestStatus),
     ];
+    if (!opts.includeUnfeatured) {
+      whereConditions.push(eq(schema.networks.featured, true));
+    }
 
     if (excludeIds.length > 0) {
       whereConditions.push(notInArray(schema.networks.id, excludeIds));
@@ -656,10 +660,11 @@ export class ChatDatabaseAdapter {
         imageUrl: schema.networks.imageUrl,
         createdAt: schema.networks.createdAt,
         permissions: schema.networks.permissions,
+        featured: schema.networks.featured,
       })
       .from(schema.networks)
       .where(and(...whereConditions))
-      .orderBy(desc(schema.networks.createdAt));
+      .orderBy(desc(schema.networks.featured), desc(schema.networks.createdAt));
 
     const result = [];
     for (const row of publicNetworks) {
@@ -694,6 +699,7 @@ export class ChatDatabaseAdapter {
         imageUrl: row.imageUrl,
         createdAt: row.createdAt,
         permissions,
+        featured: row.featured,
         memberCount: Number(countResult?.count ?? 0),
         owner: ownerMember ? {
           id: ownerMember.userId,
@@ -712,6 +718,16 @@ export class ChatDatabaseAdapter {
         totalCount: result.length,
       },
     };
+  }
+
+  /** Feature or unfeature a network in discovery. Callers must check staff first. */
+  async setNetworkFeatured(networkId: string, featured: boolean): Promise<boolean> {
+    const rows = await db
+      .update(schema.networks)
+      .set({ featured, updatedAt: new Date() })
+      .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
+      .returning({ id: schema.networks.id });
+    return rows.length > 0;
   }
 
   async getUserNetworkIds(userId: string): Promise<string[]> {

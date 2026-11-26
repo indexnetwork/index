@@ -22,7 +22,7 @@ import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections, usePublishHomeSections 
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import { personKey, RANK, type Stage } from "@/components/intents-home/stages";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { KeyboardProvider, JumpButton, useZone } from "@/components/intents-home/keyboard";
+import { KeyboardProvider, useZone } from "@/components/intents-home/keyboard";
 import { UndoProvider } from "@/components/intents-home/undo";
 
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
@@ -114,7 +114,6 @@ function AppRail({ here }: { here: RailKey }) {
         {item("chat", "conversations", "/chat", unread)}
 
         <div className="ih-foot">
-          <JumpButton />
           <ConnectAgent />
           <div className="ih-menu">
             {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}

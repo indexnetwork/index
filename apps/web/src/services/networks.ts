@@ -73,13 +73,20 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
     return response.networks || [];
   },
 
-  // Discover public networks (networks that anyone can join)
-  discoverPublicNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean }>> => {
-    const response = await api.get<APIResponse<Network & { isMember?: boolean }>>(`/networks/discovery/public?page=${page}&limit=${limit}`);
+  // Discover public networks (anyone can join). Everyone gets the featured ones;
+  // staff (canFeature) get every public network, to pick which are featured.
+  discoverPublicNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean; featured?: boolean }> & { canFeature: boolean }> => {
+    const response = await api.get<APIResponse<Network & { isMember?: boolean; featured?: boolean }> & { canFeature?: boolean }>(`/networks/discovery/public?page=${page}&limit=${limit}`);
     return {
       data: response.networks || [],
-      pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
+      pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 },
+      canFeature: !!response.canFeature,
     };
+  },
+
+  // Staff only: show or hide a public network under "discover".
+  setNetworkFeatured: async (networkId: string, featured: boolean): Promise<{ id: string; featured: boolean }> => {
+    return api.patch<{ id: string; featured: boolean }>(`/networks/${networkId}/featured`, { featured });
   },
 
   // Get single network by ID

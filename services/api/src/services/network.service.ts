@@ -264,10 +264,20 @@ export class NetworkService {
 
   /**
    * Get public networks that the user has not joined (for discovery).
+   * Everyone sees the featured ones; staff also see the rest, to pick from.
    */
-  async getPublicNetworks(userId: string) {
-    logger.verbose('Getting public networks for user', { userId });
-    return this.adapter.getPublicNetworksNotJoined(userId);
+  async getPublicNetworks(userId: string, opts: { includeUnfeatured?: boolean } = {}) {
+    logger.verbose('Getting public networks for user', { userId, includeUnfeatured: !!opts.includeUnfeatured });
+    return this.adapter.getPublicNetworksNotJoined(userId, opts);
+  }
+
+  /**
+   * Feature or unfeature a network in discovery. Staff-only; the controller checks.
+   * @returns false when the network doesn't exist
+   */
+  async setFeatured(networkId: string, featured: boolean) {
+    logger.verbose('Setting network featured', { networkId, featured });
+    return this.adapter.setNetworkFeatured(networkId, featured);
   }
 
   /**

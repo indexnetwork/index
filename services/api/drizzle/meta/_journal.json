@@ -176,6 +176,13 @@
       "when": 1795147137672,
       "tag": "0024_drop_intro_suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795665643024,
+      "tag": "0025_network_featured",
+      "breakpoints": true
     }
   ]
 }

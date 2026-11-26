@@ -543,6 +543,8 @@ export const networks = pgTable('networks', {
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),
+  // Set by Index staff. Only featured public networks are listed under "discover".
+  featured: boolean('featured').notNull().default(false),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',

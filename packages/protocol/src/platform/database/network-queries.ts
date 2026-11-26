@@ -114,7 +114,7 @@ export interface DatabaseNetworkQueries {
   getOwnedNetworks(userId: string): Promise<OwnedNetwork[]>;
 
   /**
-   * Get public networks (joinPolicy 'anyone') that the user has not joined.
+   * Get featured public networks (joinPolicy 'anyone') that the user has not joined.
    * Used for discovering communities available to join.
    *
    * @param userId - The user ID to check memberships against
