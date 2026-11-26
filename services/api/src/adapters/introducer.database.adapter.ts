@@ -443,7 +443,10 @@ export class IntroducerDatabaseAdapter {
              (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals
       from contacts c
       where ${where}
-      order by proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc
+      order by ${options.filter === 'excluded'
+        // Never-suggest reads newest first, so a fresh pick sits on the first page.
+        ? sql`c.excluded_at desc, c.id`
+        : sql`proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc`}
       limit ${options.limit} offset ${options.offset}
     `);
     return {

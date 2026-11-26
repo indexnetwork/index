@@ -21,6 +21,8 @@ import "@/styles/introduce.css";
 const logger = log.page.from("introduce");
 
 const POLL_MS = 5000;
+/** The never-suggest list reads at most this many contacts. */
+const NEVER_MAX = 500;
 const MAX_CONTEXT = 2000;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
@@ -384,17 +386,30 @@ export default function IntroducePage() {
   const later = useUndo();
   // Skips wait behind "undo" for a few seconds before they reach the server.
   const [skipping, setSkipping] = useState<Set<string>>(() => new Set());
-  // Contacts you said never to suggest; their pairs hide at once, the change waits behind "undo".
+  // Contacts you said never to suggest. Their pairs hide and they join the list at once;
+  // the change itself waits behind "undo". `hiding` holds the ones not yet saved.
   const [never, setNever] = useState<{ people: ContactEntry[]; total: number }>({ people: [], total: 0 });
-  const [hiding, setHiding] = useState<Set<string>>(() => new Set());
+  const [hiding, setHiding] = useState<Map<string, ContactEntry>>(() => new Map());
   // Members of your networks you said never to suggest; same undo, keyed by their user id.
   const [neverMembers, setNeverMembers] = useState<ExcludedMember[]>([]);
-  const [hidingMembers, setHidingMembers] = useState<Set<string>>(() => new Set());
+  const [hidingMembers, setHidingMembers] = useState<Map<string, ExcludedMember>>(() => new Map());
+  // Picks still inside their undo window, so "allow" can call them off before they're sent.
+  const unsent = useRef(new Set<string>());
+  // Only the newest list read lands; an older one finishing late would drop a fresh pick.
+  const neverRead = useRef(0);
 
   const refreshNever = useCallback(async () => {
+    const read = ++neverRead.current;
     try {
-      const [res, members] = await Promise.all([service.contacts("", "excluded", 0), service.excludedMembers()]);
-      setNever({ people: res.contacts, total: res.total });
+      const [head, members] = await Promise.all([service.contacts("", "excluded", 0), service.excludedMembers()]);
+      const people = [...head.contacts];
+      while (people.length < head.total && people.length < NEVER_MAX) {
+        const page = await service.contacts("", "excluded", people.length);
+        if (!page.contacts.length) break;
+        people.push(...page.contacts);
+      }
+      if (read !== neverRead.current) return;
+      setNever({ people, total: head.total });
       setNeverMembers(members);
     } catch (err) {
       logger.warn("never-suggest list failed", { error: String(err) });
@@ -465,39 +480,54 @@ export default function IntroducePage() {
     service.skip(proposal.id).catch((err: unknown) => logger.warn("skip failed", { error: String(err) }));
   };
 
-  const unhide = (contactId: string) => setHiding((all) => { const next = new Set(all); next.delete(contactId); return next; });
+  const unhide = (contactId: string) => setHiding((all) => { const next = new Map(all); next.delete(contactId); return next; });
 
-  const unhideMember = (userId: string) => setHidingMembers((all) => { const next = new Set(all); next.delete(userId); return next; });
+  const unhideMember = (userId: string) => setHidingMembers((all) => { const next = new Map(all); next.delete(userId); return next; });
 
   const neverSuggest = (p: OpportunityProposal, who: NeverWho) => {
     if (who === "member") {
       const userId = p.member.userId;
-      setHidingMembers((all) => new Set(all).add(userId));
+      const key = `m:${userId}`;
+      setHidingMembers((all) => new Map(all).set(userId, { userId, name: p.member.name, avatar: p.member.avatar }));
+      unsent.current.add(key);
       later(`won't suggest ${p.member.name} again`, () => {
+        if (!unsent.current.delete(key)) return;
         service.setMemberExcluded(userId, true)
           .then(async () => {
             setProposals((all) => all?.filter((x) => x.member.userId !== userId) ?? all);
             await refreshNever();
           })
-          .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't save"))
-          .finally(() => unhideMember(userId));
-      }, () => unhideMember(userId));
+          // Saved: it stays in `hiding`, so neither the pair nor the name blinks before the list reads back.
+          .catch((err: unknown) => {
+            setError(err instanceof Error ? err.message : "Couldn't save");
+            unhideMember(userId);
+          });
+      }, () => { unsent.current.delete(key); unhideMember(userId); });
       return;
     }
     const id = p.contact.id;
-    setHiding((all) => new Set(all).add(id));
+    const key = `c:${id}`;
+    setHiding((all) => new Map(all).set(id, { id, name: p.contact.name, email: "", detail: p.contact.detail, source: "saved", onIndex: false, excluded: true, proposals: 0 }));
+    unsent.current.add(key);
     later(`won't suggest ${p.contact.name} again`, () => {
+      if (!unsent.current.delete(key)) return;
       service.setExcluded(id, true)
         .then(async () => {
           setProposals((all) => all?.filter((x) => x.contact.id !== id) ?? all);
           await refreshNever();
         })
-        .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't save"))
-        .finally(() => unhide(id));
-    }, () => unhide(id));
+        // Saved: it stays in `hiding`, so neither the pair nor the name blinks before the list reads back.
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Couldn't save");
+          unhide(id);
+        });
+    }, () => { unsent.current.delete(key); unhide(id); });
   };
 
   const allow = (c: ContactEntry) => {
+    // Still inside its undo window: call it off instead of saving twice.
+    if (unsent.current.delete(`c:${c.id}`)) { unhide(c.id); return; }
+    unhide(c.id);
     setNever((n) => ({ people: n.people.filter((x) => x.id !== c.id), total: Math.max(0, n.total - 1) }));
     service.setExcluded(c.id, false).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Couldn't save");
@@ -506,6 +536,8 @@ export default function IntroducePage() {
   };
 
   const allowMember = (m: ExcludedMember) => {
+    if (unsent.current.delete(`m:${m.userId}`)) { unhideMember(m.userId); return; }
+    unhideMember(m.userId);
     setNeverMembers((all) => all.filter((x) => x.userId !== m.userId));
     service.setMemberExcluded(m.userId, false)
       .then(() => refreshProposals())
@@ -520,7 +552,12 @@ export default function IntroducePage() {
 
   const toContacts = () => navigate("/networks/contacts");
   const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id) && !hidingMembers.has(p.member.userId));
-  const neverTotal = never.total + neverMembers.length;
+  // Fresh picks first, then what's saved; a pick the saved list already has shows once.
+  const pickedPeople = [...hiding.values()].filter((c) => !never.people.some((x) => x.id === c.id));
+  const pickedMembers = [...hidingMembers.values()].filter((m) => !neverMembers.some((x) => x.userId === m.userId));
+  const neverPeople = [...pickedPeople, ...never.people];
+  const neverMemberList = [...pickedMembers, ...neverMembers];
+  const neverTotal = never.total + pickedPeople.length + neverMemberList.length;
   const ready = !!status?.contacts.lastImportAt;
   const contactsLink = ready && status
     ? <button type="button" className="idk-open" onClick={toContacts}>from {status.contacts.total} contacts ›</button>
@@ -559,7 +596,7 @@ export default function IntroducePage() {
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
               ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} />)}
             </section>
-            <RunColumn runs={runs} opening={opening} freshId={freshId} never={never.people} neverMembers={neverMembers} neverTotal={neverTotal} onAllow={allow} onAllowMember={allowMember} />
+            <RunColumn runs={runs} opening={opening} freshId={freshId} never={neverPeople} neverMembers={neverMemberList} neverTotal={neverTotal} onAllow={allow} onAllowMember={allowMember} />
           </div>
         )}
       </PageView>
@@ -593,7 +630,7 @@ export default function IntroducePage() {
                 waiting.map((p) => <ProposalCard key={p.id} proposal={p} onOpen={open} onSkip={skip} onNever={neverSuggest} />)
               )}
             </section>
-            <Running runs={runs} opening={opening} freshId={freshId} never={<NeverList members={neverMembers} people={never.people} total={neverTotal} onAllow={allow} onAllowMember={allowMember} />} />
+            <Running runs={runs} opening={opening} freshId={freshId} never={<NeverList members={neverMemberList} people={neverPeople} total={neverTotal} onAllow={allow} onAllowMember={allowMember} />} />
           </div>
         </>
       )}
