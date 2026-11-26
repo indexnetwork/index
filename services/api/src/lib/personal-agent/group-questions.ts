@@ -44,18 +44,28 @@ export interface ShownGroup {
   lead: OpenQuestion;
 }
 
-const SAME_FACT = 'Does the new question ask the person for the same fact about themselves as one of these? Wording, and who wants to know, may differ; the fact must be the same, so that one answer fully answers both. Dates, places and amounts must match. A question about one particular person, such as whether they would meet her or want his offer, is never the same fact as another.';
+const SAME_FACT = [
+  'Does the new question ask the person for exactly the same fact about themselves as one of these?',
+  'Wording, and who wants to know, may differ. The person\'s answer to either must fully answer the other: a yes or no never answers an open question, and an answer to a broader question does not answer a narrower one unless it states that part.',
+  'When a question asks two things, both must match. Dates, places, events and amounts must match. Two questions that ask whether the person\'s work touches a list of areas match only when the lists name the same areas.',
+  'A question about someone else\'s offer, product, event or trip (testing their tool, attending their meetup, meeting during their visit) is about that one person, never the same fact as another.',
+  'When unsure, it is a different fact.',
+].join(' ');
+
+/** How sure the model must be that two questions share a fact. A wrong merge sends the wrong answer, so unsure is no. */
+const SAME_FACT_CONFIDENCE = 0.8;
 
 /**
  * Ask the decision model which group, if any, asks the same fact. A failure
  * is no match: the question is then shown alone, which is always safe.
  */
 async function sameFact(decide: Decide, question: OpenQuestion, candidates: GroupState[], leads: Map<string, OpenQuestion>): Promise<GroupState | null> {
-  const options: Record<string, string> = { none: 'A different fact' };
+  const options: Record<string, string> = { none: 'A different fact, or not sure' };
   // Always by its question: an answer alone ("Berlin", "yes") would match the wrong fact.
   for (const group of candidates) options[group.id] = group.leadText ?? leads.get(group.leadQuestionId)?.text ?? 'an earlier question';
   try {
-    const { choice } = await decide({ state: { question: question.text, options: question.options ?? [] }, question: SAME_FACT, options });
+    const { choice, probabilities } = await decide({ state: { question: question.text, options: question.options ?? [] }, question: SAME_FACT, options });
+    if (probabilities && (probabilities[choice] ?? 0) < SAME_FACT_CONFIDENCE) return null;
     return candidates.find((group) => group.id === choice) ?? null;
   } catch {
     return null;
@@ -148,7 +158,9 @@ export async function mergeSoloGroups(userId: string, deps: Omit<GroupingDeps, '
 
   let moved = 0;
   for (const solo of solos) {
-    if (!groups.includes(solo)) continue;
+    // A solo another question already joined is a group now: moving its lead
+    // would delete it with that question inside.
+    if (!groups.includes(solo) || solo.members.length !== 1) continue;
     const question = byId.get(solo.members[0]!.questionId);
     if (!question) continue;
     const candidates = joinableGroups(question, groups.filter((group) => group !== solo));
