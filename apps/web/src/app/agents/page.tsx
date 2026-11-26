@@ -14,7 +14,6 @@ import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
-import ChoiceCard from "@/components/ui/ChoiceCard";
 import { shortDay } from "@/lib/short-day";
 import { settingsPath } from "@/lib/settings-tabs";
 
@@ -326,15 +325,33 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                   </div>
                   <button type="button" className="pl-plain-btn ag-link" disabled={selecting} aria-expanded={picking} onClick={() => setPicking((open) => !open)}>change {picking ? "▴" : "▾"}</button>
                 </div>
-                {/* The same tray as an agent's settings: pick one, like a radio. */}
+                {/* The same tray as an agent's settings: one agent per line, like a radio. */}
                 {picking && (
-                  <div className="ag-tray">
-                    <div className="ag-pick" role="radiogroup" aria-label="which agent speaks for you">
-                      <ChoiceCard title="Index" sub="hosted by index" selected={selectedNegotiator === null} disabled={selecting} onClick={() => void handleSelectNegotiator(null)} />
-                      {personalAgents.map((agent) => (
-                        <ChoiceCard key={agent.id} title={agent.name} sub="registered manually" selected={selectedNegotiator?.id === agent.id} disabled={selecting} onClick={() => void handleSelectNegotiator(agent)} />
-                      ))}
-                    </div>
+                  <div className="ag-tray ag-pick" role="radiogroup" aria-label="which agent speaks for you">
+                    {[
+                      { key: "index", name: "Index", detail: "hosted by index · always on", agent: null as Agent | null },
+                      ...personalAgents.map((agent) => ({ key: agent.id, name: agent.name, detail: "registered manually", agent })),
+                    ].map((option) => {
+                      const on = option.agent ? selectedNegotiator?.id === option.agent.id : selectedNegotiator === null;
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          className="pl-plain-btn ag-pick-line"
+                          disabled={selecting}
+                          onClick={() => void handleSelectNegotiator(option.agent)}
+                        >
+                          <span className="ag-radio" aria-hidden="true" />
+                          <span className="ag-pick-text">
+                            <span className="st-name">{option.name}</span>
+                            <span className="st-detail">{option.detail}</span>
+                          </span>
+                          <span className="ag-pick-state">{on ? "speaks for you" : "switch ›"}</span>
+                        </button>
+                      );
+                    })}
                     {personalAgents.length === 0 && <p className="ag-tray-note">add your own agent below and it can speak for you here.</p>}
                   </div>
                 )}
