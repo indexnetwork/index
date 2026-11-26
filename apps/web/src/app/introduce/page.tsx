@@ -111,12 +111,11 @@ function Running({ runs, opening, freshId, never }: { runs: IntroductionProgress
 /** Which side of a pair to never suggest again: the member, or your contact. */
 type NeverWho = "member" | "contact";
 
-/** "never suggest ▾": a small menu naming both people, one option each. */
-function NeverMenu({ proposal, disabled, onNever, className }: {
+/** "⋯" in the card's top-right corner: a small menu to never suggest either person again. */
+function NeverMenu({ proposal, disabled, onNever }: {
   proposal: OpportunityProposal;
   disabled: boolean;
   onNever: (p: OpportunityProposal, who: NeverWho) => void;
-  className: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -131,11 +130,12 @@ function NeverMenu({ proposal, disabled, onNever, className }: {
   const pick = (who: NeverWho) => { setOpen(false); onNever(proposal, who); };
   return (
     <div className="idk-never" ref={ref}>
-      <button type="button" className={className} disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        never suggest ▾
+      <button type="button" className="idk-never-dots" disabled={disabled} aria-label="More" title="More" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        ⋯
       </button>
       {open && (
-        <div className="idk-never-menu" role="menu">
+        <div className="idk-never-menu" role="menu" aria-label="Never suggest">
+          <div className="idk-never-head">never suggest</div>
           <button type="button" role="menuitem" onClick={() => pick("member")} title={`No more pairs with ${proposal.member.name}`}>
             {proposal.member.name}<small>in your networks</small>
           </button>
@@ -161,7 +161,8 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
   const opening = proposal.status === "opening";
 
   return (
-    <div className={`idk-card${opening ? " opening" : ""}`}>
+    <div className={`idk-card idk-has-never${opening ? " opening" : ""}`}>
+      {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <div className="idk-pair">
         <div className="idk-who">
           <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
@@ -205,7 +206,6 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
               }}
             >{busy ? "Waking…" : proposal.status === "failed" ? "Try again ▸" : "Wake both agents ▸"}</button>
             <button type="button" className="idk-btn small" disabled={busy} onClick={() => onSkip(proposal)}>Skip</button>
-            <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} className="idk-btn small" />
           </div>
           {(error ?? proposal.failure) && <div className="idk-error">{error ?? proposal.failure}</div>}
         </>
@@ -244,10 +244,11 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
   const opening = proposal.status === "opening";
   const A = first(proposal.member.name), B = first(proposal.contact.name);
   return (
-    <div className="sv-card sv-static sv-pair" data-sv-item={proposal.id}>
+    <div className="sv-card sv-static sv-pair idk-has-never" data-sv-item={proposal.id}>
+      {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <PairFace proposal={proposal} />
       <div className="sv-card-body">
-        <b>{A} ⇄ {B}</b><span className="sv-via"> · via {proposal.networkTitle}</span>
+        <div className="idk-never-room"><b>{A} ⇄ {B}</b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
@@ -275,7 +276,6 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
                 }}
               >{busy ? "waking…" : proposal.status === "failed" ? "try again" : "wake both agents"}</button>
               <button type="button" className="sv-btn" disabled={busy} onClick={() => onSkip(proposal)}>skip</button>
-              <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} className="sv-btn" />
             </div>
             {(error ?? proposal.failure) && <div className="sv-pair-err">{error ?? proposal.failure}</div>}
           </>
