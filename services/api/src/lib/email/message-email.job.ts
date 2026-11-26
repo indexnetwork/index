@@ -111,7 +111,7 @@ async function sendDue(member: string): Promise<void> {
     recipientName: due.name,
     messages: messages.map((message) => ({ senderName: message.senderName?.trim() || 'Someone', text: message.text ?? '' })),
     url: `${APP_URL}/u/${encodeURIComponent(latest.senderId ?? '')}/chat`,
-    settingsUrl: `${APP_URL}/settings?tab=notifications`,
+    settingsUrl: `${APP_URL}/settings/notifications`,
   });
   await executeSendEmail({ to: due.email, from: fromHeader(senderName), kind: 'message', userId: recipientId, ...email });
 }

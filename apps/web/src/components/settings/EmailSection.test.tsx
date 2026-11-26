@@ -15,7 +15,7 @@ it('requests verification without displaying the new address as the current emai
   fireEvent.change(screen.getByLabelText('new email'), { target: { value: 'NEW@example.com' } });
   fireEvent.click(screen.getByText('continue'));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('current email stays active'));
-  expect(changeEmail).toHaveBeenCalledWith({ newEmail: 'new@example.com', callbackURL: `${window.location.origin}/settings?tab=access&emailChange=1` });
+  expect(changeEmail).toHaveBeenCalledWith({ newEmail: 'new@example.com', callbackURL: `${window.location.origin}/profile/edit?emailChange=1` });
   expect(screen.getByText('old@example.com')).toBeInTheDocument();
 });
 
@@ -30,6 +30,6 @@ it('keeps the form open after a failed request', async () => {
 });
 
 it('explains verification callback failures', () => {
-  render(<MemoryRouter initialEntries={['/settings?tab=access&emailChange=1&error=TOKEN_EXPIRED']}><EmailSection email="old@example.com" /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/profile/edit?emailChange=1&error=TOKEN_EXPIRED']}><EmailSection email="old@example.com" /></MemoryRouter>);
   expect(screen.getByRole('alert')).toHaveTextContent('request a new link');
 });

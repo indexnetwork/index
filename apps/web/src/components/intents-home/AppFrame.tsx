@@ -30,17 +30,14 @@ import { UndoProvider } from "@/components/intents-home/undo";
 type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
-function railKey(pathname: string, search: string, me?: string, username?: string | null): RailKey {
+function railKey(pathname: string, me?: string, username?: string | null): RailKey {
   if (pathname === "/profile" || pathname.startsWith("/profile/") || (username && (pathname === `/${username}` || pathname === `/${username}/`))) return "profile";
   if (me && (pathname === `/u/${me}` || pathname === `/u/${me}/`)) return "profile";
   if (pathname === "/") return "home";
   if (pathname === "/intents" || pathname.startsWith("/i/")) return "intents";
   if (pathname.startsWith("/chat") || /^\/u\/[^/]+\/chat(\/|$)/.test(pathname)) return "chat";
   if (pathname === "/introduce" || pathname.startsWith("/introduce/")) return "introduce";
-  if (pathname.startsWith("/settings")) {
-    const tab = new URLSearchParams(search).get("tab");
-    return tab === "profile" ? "profile" : "settings";
-  }
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) return "settings";
   if (pathname.startsWith("/networks")) return "networks";
   if (pathname.startsWith("/agents")) return "settings";
   if (pathname.startsWith("/negotiations")) return "settings";
@@ -134,9 +131,9 @@ function AppRail({ here }: { here: RailKey }) {
         <div className="ih-foot">
           <ConnectAgent />
           <div className="ih-menu">
-            {item("profile", "profile", user?.id ? `/u/${user.id}` : "/settings")}
+            {item("profile", "profile", user?.id ? `/u/${user.id}` : "/profile")}
             {item("networks", "networks", "/networks")}
-            {item("settings", "settings", "/settings?tab=notifications")}
+            {item("settings", "settings", "/settings")}
             <AccountMenu />
           </div>
         </div>
@@ -279,9 +276,9 @@ function RightWindow({ intentId }: { intentId?: string }) {
 
 /** The signed-in desktop shell on the blue desktop: the sidebar window, the page window, and on Home the agent's window. */
 export default function AppFrame({ children }: { children: ReactNode }) {
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const { user } = useAuthContext();
-  const here = railKey(pathname, search, user?.id, user?.username);
+  const here = railKey(pathname, user?.id, user?.username);
   // Home and an intent's page have their agent docked on the right.
   const intentId = /^\/i\/([^/]+)\/?$/.exec(pathname)?.[1];
   const withRight = pathname === "/" || (!!intentId && intentId !== "new");

@@ -23,7 +23,7 @@ describe('account email change', () => {
   test.each([true, false])('requires verification and preserves identity (previously verified: %s)', async (verified) => {
     const { auth, db, mail, headers, id } = await setup();
     db.user[0].emailVerified = verified;
-    await auth.api.changeEmail({ headers, body: { newEmail: 'new@example.com', callbackURL: 'http://localhost:3000/settings?tab=access&emailChange=1' } });
+    await auth.api.changeEmail({ headers, body: { newEmail: 'new@example.com', callbackURL: 'http://localhost:3000/profile/edit?emailChange=1' } });
     expect(db.user[0].email).toBe('old@example.com');
     expect(mail).toHaveLength(1);
     expect(mail[0].email).toBe('new@example.com');

@@ -1,47 +1,14 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Placeholder } from "@/components/ui/Placeholder";
-
-const th: CSSProperties = {
-  textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, fontWeight: 400,
-  letterSpacing: "0.5px", color: "#8a8578",
-};
-const td: CSSProperties = {
-  padding: "12px 12px 12px 0", borderBottom: "1px solid #e6e6e6",
-  fontFamily: "var(--mac-sans)", fontSize: 14, color: "#000", whiteSpace: "nowrap",
-};
-const note: CSSProperties = {
-  margin: "0 0 10px", maxWidth: 560,
-  fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#5a5548",
-};
-
-function accessDay(value: string | null): string {
-  if (!value) return "never";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "never"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
+import { ConfirmButton, SettingsItem } from "@/components/settings/SettingsList";
+import { shortDay } from "@/lib/short-day";
 
 function maskKey(start: string): string {
-  return start ? `${start}${"*".repeat(24)}` : "unavailable";
-}
-
-function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
-      onBlur={() => setArmed(false)}
-      disabled={busy}
-      className={`wb-btn danger${armed ? " on" : ""}`}
-    >{armed ? "sure?" : "revoke"}</button>
-  );
+  return start ? `${start}${"•".repeat(8)}` : "unavailable";
 }
 
 function generateDefaultKeyName(keys: ApiKeyInfo[]): string {
@@ -117,70 +84,45 @@ export default function ApiKeysSection() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-        <h2 className="st-h" style={{ flex: 1, margin: 0 }}>api keys</h2>
-        <button
-          type="button"
-          onClick={() => void handleGenerateKey()}
-          disabled={generating}
-          className="wb-btn primary"
-        >generate key</button>
+      <h2 className="st-h">api keys</h2>
+      <div className="st-lead">
+        <p className="st-note">a key authenticates you in personal agents, CLI clients, and any other client.</p>
+        <button type="button" onClick={() => void handleGenerateKey()} disabled={generating} aria-busy={generating} className="wb-btn">
+          {generating ? "generating" : "generate key"}
+        </button>
       </div>
 
-      <p style={note}>
-        a key authenticates you in personal agents, CLI clients, and any other client.
-      </p>
+      {mintedKey && (
+        <div className="st-reveal">
+          <p>copy this key now. it won&apos;t be shown again.</p>
+          <code>{mintedKey}</code>
+          <button type="button" onClick={() => setMintedKey(null)} className="pl-plain-btn st-link">dismiss</button>
+        </div>
+      )}
 
       {loadError ? (
         <EmptyState
           tone="error"
           align="start"
-          style={{ padding: 0, margin: "0 0 10px" }}
+          style={{ padding: 0 }}
           message="couldn't load api keys."
           action={{ label: "try again", onClick: () => void reload() }}
         />
       ) : keys === null ? (
         <Placeholder.Rows count={2} avatar={false} label="loading api keys" />
       ) : keys.length === 0 ? (
-        <EmptyState
-          align="start"
-          style={{ maxWidth: 520, margin: "0 0 10px" }}
-          message="no api keys yet."
-          action={{ label: generating ? "generating" : "generate key", busy: generating, onClick: () => { if (!generating) void handleGenerateKey(); } }}
-        />
+        <p className="st-note">no api keys yet.</p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
-            <thead>
-              <tr>
-                <th style={th}>key</th>
-                <th style={th}>created</th>
-                <th style={th}>last used</th>
-                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((key) => (
-                <tr key={key.id}>
-                  <td style={{ ...td, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, color: "#5a5548" }}>{maskKey(key.start)}</td>
-                  <td style={td}>{accessDay(key.createdAt)}</td>
-                  <td style={td}>{accessDay(key.lastUsedAt)}</td>
-                  <td style={{ ...td, textAlign: "right", paddingRight: 0 }}>
-                    <RevokeButton busy={busy || generating} onConfirm={() => void revoke(key.id)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {mintedKey && (
-        <div style={{ marginTop: 10, borderRadius: 2, background: "#f7f7f5", padding: "12px 14px" }}>
-          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-sans)", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>copy this key now. it won&apos;t be shown again.</p>
-          <code style={{ display: "block", fontFamily: "var(--wb-code)", fontSize: 12, wordBreak: "break-all", userSelect: "text" }}>{mintedKey}</code>
-          <button type="button" onClick={() => setMintedKey(null)} className="pl-plain-btn st-link" style={{ marginTop: 8 }}>dismiss</button>
-        </div>
+        <ul className="st-list">
+          {keys.map((key) => (
+            <SettingsItem
+              key={key.id}
+              name={key.name || "api key"}
+              detail={`${maskKey(key.start)} · created ${shortDay(key.createdAt)} · ${key.lastUsedAt ? `used ${shortDay(key.lastUsedAt)}` : "never used"}`}
+              action={<ConfirmButton label="revoke" disabled={busy || generating} onConfirm={() => void revoke(key.id)} />}
+            />
+          ))}
+        </ul>
       )}
     </div>
   );

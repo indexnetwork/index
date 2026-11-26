@@ -3110,6 +3110,114 @@ button.st-danger-toggle {
   padding-top: 14px;
   border-top: 1px solid #e6e6e6;
 }
+/* a section's note with its one action beside it (api keys) */
+.st-lead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.st-lead > .st-note {
+  flex: 1;
+}
+/* a field that holds one short value (timezone, server origin) */
+.st-narrow {
+  max-width: 360px;
+}
+.st-req {
+  margin-left: 4px;
+  color: #8a8578;
+}
+/* lists of things you hold (agents, api keys, devices): a name over a mono detail line,
+   the action on the right, hairlines between */
+.st-list,
+.pl .st-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #e6e6e6;
+}
+.pl .st-list > li.st-item,
+.st-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid #e6e6e6;
+}
+.st-item-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.st-item-head {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.st-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 15px/1.35 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.st-detail,
+.st-tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  color: #8a8578;
+}
+.st-tag {
+  flex: none;
+}
+/* in a list row the detail wraps rather than hide its end on a narrow screen */
+.st-item .st-detail {
+  white-space: normal;
+}
+.ih:not(#_) .pl button.st-copy,
+button.st-copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* a secret shown once (a new api key) */
+.st-reveal {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 2px;
+  background: #f7f7f5;
+}
+.pl .st-reveal > p,
+.st-reveal > p {
+  margin: 0;
+  font: 500 13px/1.5 "IBM Plex Sans", sans-serif;
+  color: #000;
+}
+.st-reveal > code {
+  font: 400 12px "JetBrains Mono", ui-monospace, monospace;
+  word-break: break-all;
+  user-select: text;
+}
+/* the agents pane: sections spaced like the other panes' */
+.pl-agents > .st-h:not(:first-child) {
+  margin-top: 22px;
+}
 .st-options label {
   display: inline-flex;
   align-items: center;

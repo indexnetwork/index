@@ -353,7 +353,7 @@ window.IndexApp = (function () {
   function changeEmail(newEmail) {
     return accessRequest("POST", "/auth/change-email", {
       newEmail,
-      callbackURL: `${webBaseUrl()}/settings?tab=access&emailChange=1`,
+      callbackURL: `${webBaseUrl()}/profile/edit?emailChange=1`,
     });
   }
   function listApiKeys() { return accessRequest("GET", "/auth/api-key/list"); }

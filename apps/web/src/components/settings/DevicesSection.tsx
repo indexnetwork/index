@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -6,20 +6,8 @@ import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Placeholder } from "@/components/ui/Placeholder";
-
-const th: CSSProperties = {
-  textAlign: "left", padding: "0 12px 6px 0", borderBottom: "1px solid #e6e6e6",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, fontWeight: 400,
-  letterSpacing: "0.5px", color: "#8a8578",
-};
-const td: CSSProperties = {
-  padding: "12px 12px 12px 0", borderBottom: "1px solid #e6e6e6",
-  fontFamily: "var(--mac-sans)", fontSize: 14, color: "#000", whiteSpace: "nowrap",
-};
-const note: CSSProperties = {
-  margin: "0 0 10px", maxWidth: 560,
-  fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#5a5548",
-};
+import { ConfirmButton, SettingsItem } from "@/components/settings/SettingsList";
+import { shortDay } from "@/lib/short-day";
 
 interface DeviceSession {
   id: string;
@@ -29,14 +17,6 @@ interface DeviceSession {
   expiresAt: string;
 }
 
-function accessDay(value: string | null): string {
-  if (!value) return "never";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "never"
-    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function describeDevice(userAgent: string | null): string {
   if (!userAgent) return "unknown device";
   if (isMacUserAgent(userAgent)) return "index for mac";
@@ -44,19 +24,6 @@ function describeDevice(userAgent: string | null): string {
   if (isHermesUserAgent(userAgent)) return "hermes agent";
   if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
   return userAgent.slice(0, 32);
-}
-
-function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
-      onBlur={() => setArmed(false)}
-      disabled={busy}
-      className={`wb-btn danger${armed ? " on" : ""}`}
-    >{armed ? "sure?" : "revoke"}</button>
-  );
 }
 
 /**
@@ -131,7 +98,7 @@ export default function DevicesSection() {
   return (
     <div>
       <h2 className="st-h">devices</h2>
-      <p style={note}>
+      <p className="st-note">
         where you are signed in. the mac app, cli and personal agents each hold their own session, so signing one out here leaves the others alone.
       </p>
 
@@ -139,44 +106,26 @@ export default function DevicesSection() {
         <EmptyState
           tone="error"
           align="start"
-          style={{ padding: 0, margin: "0 0 10px" }}
+          style={{ padding: 0 }}
           message="couldn't load devices."
           action={{ label: "try again", onClick: () => void reload() }}
         />
       ) : sessions === null ? (
         <Placeholder.Rows count={2} avatar={false} label="loading devices" />
       ) : sessions.length === 0 ? (
-        <p style={note}>no active devices.</p>
+        <p className="st-note">no active devices.</p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", border: "none" }}>
-            <thead>
-              <tr>
-                <th style={th}>device</th>
-                <th style={th}>signed in</th>
-                <th style={th}>expires</th>
-                <th style={{ ...th, textAlign: "right", paddingRight: 0 }} aria-label="actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <tr key={session.id}>
-                  <td style={td}>
-                    {describeDevice(session.userAgent)}
-                    {session.token === currentToken && (
-                      <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "#8a8578" }}>this browser</span>
-                    )}
-                  </td>
-                  <td style={td}>{accessDay(session.createdAt)}</td>
-                  <td style={td}>{accessDay(session.expiresAt)}</td>
-                  <td style={{ ...td, textAlign: "right", paddingRight: 0 }}>
-                    <RevokeButton busy={busy} onConfirm={() => void revoke(session)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="st-list">
+          {sessions.map((session) => (
+            <SettingsItem
+              key={session.id}
+              name={describeDevice(session.userAgent)}
+              tag={session.token === currentToken ? "this browser" : undefined}
+              detail={`signed in ${shortDay(session.createdAt)} · expires ${shortDay(session.expiresAt)}`}
+              action={<ConfirmButton label={session.token === currentToken ? "sign out" : "revoke"} disabled={busy} onConfirm={() => void revoke(session)} />}
+            />
+          ))}
+        </ul>
       )}
     </div>
   );

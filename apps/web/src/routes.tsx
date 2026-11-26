@@ -208,6 +208,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/settings", () => import("@/app/settings/page")),
       },
       {
+        path: "/settings/:tab",
+        lazy: lazyRoute("/settings/:tab", () => import("@/app/settings/page")),
+      },
+      {
         path: "/profile",
         lazy: lazyRoute("/profile", () => import("@/app/profile/page")),
       },
