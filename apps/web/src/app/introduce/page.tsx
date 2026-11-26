@@ -297,6 +297,7 @@ function RunColumn({ runs, opening, freshId, never, neverMembers, neverTotal, on
 }) {
   const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
   const live = opening.length + runs.filter((r) => !isFinal(r)).length;
+  const [neverOpen, setNeverOpen] = useState(false);
   return (
     <aside className="sv-intro-run" aria-live="polite">
       <ListHead id="running">running · {live}</ListHead>
@@ -323,14 +324,14 @@ function RunColumn({ runs, opening, freshId, never, neverMembers, neverTotal, on
       <div className="sv-run-foot">🔒 You see where each ends up, never what the agents say.</div>
       {never.length + neverMembers.length > 0 && (
         <>
-          <ListHead id="never">never suggest · {neverTotal}</ListHead>
-          {neverMembers.map((m) => (
+          <ListHead id="never" fold={{ open: neverOpen, toggle: () => setNeverOpen((v) => !v), more: "show ›", less: "hide" }}>never suggest · {neverTotal}</ListHead>
+          {neverOpen && neverMembers.map((m) => (
             <div key={m.userId} className="sv-runrow sv-never" title="in your networks">
               <span className="p">{m.name}</span>
               <button type="button" className="sv-btn sm" onClick={() => onAllowMember(m)}>allow</button>
             </div>
           ))}
-          {never.map((c) => (
+          {neverOpen && never.map((c) => (
             <div key={c.id} className="sv-runrow sv-never" title={c.detail ?? c.email}>
               <span className="p">{c.name}</span>
               <button type="button" className="sv-btn sm" onClick={() => onAllow(c)}>allow</button>
