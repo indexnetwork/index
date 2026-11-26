@@ -14,7 +14,6 @@ import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { ConfirmButton } from "@/components/settings/SettingsList";
 import { shortDay } from "@/lib/short-day";
 import { settingsPath } from "@/lib/settings-tabs";
 
@@ -42,7 +41,7 @@ function LineButton({ children, onClick, disabled, primary, "aria-busy": busy }:
 function BandHead({ label }: { label: string }) {
   return <h2 className="st-h">{label}</h2>;
 }
-function CopyId({ id }: { id: string }) {
+function CopyId({ id, label }: { id: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -59,18 +58,17 @@ function CopyId({ id }: { id: string }) {
           setTimeout(() => setCopied(false), 1200);
         }).catch(() => {});
       }}>
-      {copied ? "copied" : `${id.slice(0, 8)}…`}
+      {copied ? "copied" : label ?? `${id.slice(0, 8)}…`}
     </button>
   );
 }
 
 function RosterRow({
-  name, badge, detail, id, aside, last, onClick, expanded, onToggle,
+  name, badge, detail, aside, last, onClick, expanded, onToggle,
 }: {
   name: string;
   badge?: ReactNode;
   detail: string;
-  id?: string;
   aside?: ReactNode;
   last?: boolean;
   onClick?: () => void;
@@ -78,9 +76,7 @@ function RosterRow({
   onToggle?: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const compact = useCompact();
   const opens = !!(onClick || onToggle);
-  const columns = id != null;
   // Like every settings list: the name over its detail line, then what you can do on the right.
   const row: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
@@ -98,21 +94,20 @@ function RosterRow({
         </span>
         <span className="st-detail">{detail}</span>
       </span>
-      {columns && !compact && id ? <CopyId id={id} /> : null}
-      {aside != null && aside !== "" && (
-        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ flex: "none", display: "flex", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
-      )}
-      {(onToggle || columns) && (
-        <span aria-hidden="true" style={{ flex: "none", width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+      {onToggle ? (
+        // A text toggle, not a box: it opens the agent's tray under the row.
+        <span className="ag-link" aria-hidden="true">settings {expanded ? "▴" : "▾"}</span>
+      ) : aside != null && aside !== "" && (
+        <span style={{ flex: "none", display: "flex", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
       )}
     </>
   );
   const hoverProps = { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) };
-  const line: React.CSSProperties = { borderBottom: last && !expanded ? "none" : "1px solid #e6e6e6" };
+  const line: React.CSSProperties = { borderBottom: last || expanded ? "none" : "1px solid #e6e6e6" };
   if (onToggle) {
     return (
       <div style={line}>
-        <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={!!expanded} onKeyDown={(e) => {
+        <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={!!expanded} aria-label={`${name} settings`} onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
         }} {...hoverProps} style={row}>{body}</div>
@@ -123,14 +118,43 @@ function RosterRow({
   return <div style={line}><button type="button" className="pl-plain-btn" onClick={onClick} {...hoverProps} style={row}>{body}</button></div>;
 }
 
+/** Remove as red text: the first click arms it, the second removes. */
+function RemoveLink({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button
+      type="button"
+      className="pl-plain-btn ag-link ag-danger"
+      disabled={disabled}
+      onBlur={() => setArmed(false)}
+      onClick={() => { if (armed) { setArmed(false); onConfirm(); } else setArmed(true); }}
+    >{armed ? "click again to remove" : label}</button>
+  );
+}
+
+/** What opens under an agent's row: its settings, then its id and remove. */
+function AgentTray({ last, id, children, onRemove, disabled }: { last: boolean; id?: string; children?: ReactNode; onRemove: () => void; disabled?: boolean }) {
+  return (
+    <div style={{ padding: "0 0 12px", borderBottom: last ? "none" : "1px solid #e6e6e6" }}>
+      <div className="ag-tray">
+        {children}
+        <div className="ag-tray-foot">
+          {id ? <span>id {id.slice(0, 13)}… <CopyId id={id} label="copy" /></span> : <span />}
+          <RemoveLink label="remove this agent" onConfirm={onRemove} disabled={disabled} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: string; blurb: string; onClick: () => void }) {
   return (
-    <label className="st-row" style={{ margin: 0 }}>
-      <span className="st-row-text">
-        <b style={{ fontSize: 14 }}>{title}</b>
-        <span>{blurb}</span>
-      </span>
+    <label className="ag-opt">
       <input type="checkbox" checked={on} onChange={onClick} />
+      <span>
+        <b>{title}</b>
+        <small>{blurb}</small>
+      </span>
     </label>
   );
 }
@@ -305,7 +329,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                     <div className="st-name">{selectedNegotiator?.name || "Index"}</div>
                     <div className="st-detail" style={{ marginTop: 3 }}>{kind}</div>
                   </div>
-                  <LineButton disabled={selecting} onClick={() => setPicking((open) => !open)}>{picking ? "cancel" : "change"}</LineButton>
+                  <button type="button" className="pl-plain-btn ag-link" disabled={selecting} aria-expanded={picking} onClick={() => setPicking((open) => !open)}>change {picking ? "▴" : "▾"}</button>
                 </div>
                 {picking && (
                   <>
@@ -322,7 +346,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                 everything that can act for you, from any device.
               </p>
               <div className="ag-roster">
-                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" id="" aside="always on" last={personalAgents.length === 0 && connections.length === 0} />
+                <RosterRow name="Index" badge={!selectedNegotiator ? <NegotiatorMark /> : null} detail="hosted by index" aside="always on" last={personalAgents.length === 0 && connections.length === 0} />
                 {personalAgents.map((agent, i) => {
                   const open = expanded === agent.id;
                   const last = i === personalAgents.length - 1 && connections.length === 0;
@@ -335,30 +359,32 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                         name={agent.name}
                         badge={selectedNegotiator?.id === agent.id ? <NegotiatorMark /> : null}
                         detail="registered manually"
-                        id={agent.id}
-                        aside={<ConfirmButton label="remove" disabled={selecting} onConfirm={() => void handleDeleteAgent(agent)} />}
                       />
                       {open && (
-                        <div style={{ borderBottom: last ? "none" : "1px solid #e6e6e6" }}><div style={{ padding: "0 0 6px" }}>
-                          <div style={{ display: "grid", gap: 8 }}>
-                            <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
-                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>id <CopyId id={agent.id} /></div>}
-                          </div>
-                        </div></div>
+                        <AgentTray last={last} id={agent.id} disabled={selecting} onRemove={() => void handleDeleteAgent(agent)}>
+                          <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
+                        </AgentTray>
                       )}
                     </div>
                   );
                 })}
-                {connections.map((connection, i) => (
-                  <RosterRow
-                    key={connection.clientId}
-                    name={connection.name || "mcp agent"}
-                    detail={`connected over mcp · active ${shortDay(connection.lastActiveAt, "unknown")}`}
-                    id=""
-                    last={i === connections.length - 1}
-                    aside={<ConfirmButton label="remove" onConfirm={() => void handleRevokeConnection(connection)} />}
-                  />
-                ))}
+                {connections.map((connection, i) => {
+                  const key = `mcp:${connection.clientId}`;
+                  const open = expanded === key;
+                  const last = i === connections.length - 1;
+                  return (
+                    <div key={connection.clientId}>
+                      <RosterRow
+                        last={last}
+                        expanded={open}
+                        onToggle={() => setExpanded((id) => id === key ? null : key)}
+                        name={connection.name || "mcp agent"}
+                        detail={`connected over mcp · active ${shortDay(connection.lastActiveAt, "unknown")}`}
+                      />
+                      {open && <AgentTray last={last} onRemove={() => void handleRevokeConnection(connection)} />}
+                    </div>
+                  );
+                })}
               </div>
               <div style={{ marginTop: 22 }}>
                 <AddYourAgent
