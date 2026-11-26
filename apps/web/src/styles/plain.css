@@ -3234,23 +3234,23 @@ button.st-copy {
 }
 .ag-tray-foot:first-child { padding-top: 0; border-top: 0; }
 /* who speaks for you: one agent per line in the tray; the line is the radio */
-.ag-tray.ag-pick { gap: 0; padding: 4px 0; }
-.ag-pick > .ag-tray-note { padding: 10px 14px 8px; }
+.ag-tray.ag-pick { gap: 0; padding: 0; background: #fff; overflow: hidden; }
+.ag-pick > .ag-tray-note { padding: 10px 14px; border-top: 1px solid #e6e6e6; background: #f7f7f5; }
 .ih:not(#_) .pl button.ag-pick-line,
-.ih:not(#_) .pl button.ag-pick-line:hover:not(:disabled),
 .ih:not(#_) .pl button.ag-pick-line:active:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   padding: 12px 14px;
-  background: none;
+  background: #fff;
   text-align: left;
   cursor: pointer;
 }
 .ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line { border-top: 1px solid #e6e6e6; }
-.ag-pick-line[aria-checked="false"]:hover:not(:disabled) .ag-radio { background: #ffe2bd; }
-.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"] { cursor: default; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="false"]:hover:not(:disabled) { background: #f7f7f5; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"],
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"]:hover:not(:disabled) { background: #fff; cursor: default; }
 .ih:not(#_) .pl button.ag-pick-line:disabled { cursor: wait; opacity: 0.6; }
 .ag-radio {
   flex: none;
@@ -3261,13 +3261,8 @@ button.st-copy {
 }
 .ag-pick-line[aria-checked="true"] .ag-radio { background: #FF8A00; box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.3); }
 .ag-pick-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
-.ag-pick-state { flex: none; font: 500 11px "JetBrains Mono", ui-monospace, monospace; color: #5a5548; white-space: nowrap; }
+.ag-pick-state { flex: none; font: 500 11.5px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; white-space: nowrap; }
 .ag-pick-line[aria-checked="false"] .ag-pick-state { color: #000; text-decoration: underline; text-underline-offset: 3px; }
-@media (hover: hover) {
-  .ag-pick-line[aria-checked="false"] .ag-pick-state { visibility: hidden; }
-  .ag-pick-line[aria-checked="false"]:hover .ag-pick-state,
-  .ag-pick-line[aria-checked="false"]:focus-visible .ag-pick-state { visibility: visible; }
-}
 .ag-tray-note { margin: 0; font: 400 12px "IBM Plex Sans", sans-serif; color: #5a5548; }
 .ag-tray-foot button.st-copy { margin-left: 4px; text-decoration: underline; text-underline-offset: 3px; }
 .ag-opt {
