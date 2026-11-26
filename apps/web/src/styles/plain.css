@@ -3213,12 +3213,12 @@ button.st-copy {
   cursor: pointer;
 }
 .ih:not(#_) .pl button.ag-link.ag-danger { color: #8a0000; }
-/* a white list under the row: one line per option, each line clickable end to end */
+/* a grey list under the row: one line per option, each line clickable end to end */
 .ag-tray {
   display: grid;
   gap: 0;
   padding: 0;
-  background: #fff;
+  background: #f7f7f5;
   border: 1px solid #e6e6e6;
   border-radius: 2px;
   overflow: hidden;
@@ -3231,7 +3231,6 @@ button.st-copy {
   gap: 10px;
   padding: 10px 14px;
   border-top: 1px solid #e6e6e6;
-  background: #f7f7f5;
   font: 400 11px "JetBrains Mono", ui-monospace, monospace;
   color: #8a8578;
 }
@@ -3247,7 +3246,7 @@ button.st-copy {
 .ag-head-row:hover .st-name { text-decoration: underline; text-underline-offset: 3px; }
 .ag-head-row:focus-visible { outline: 2px solid #000; outline-offset: 2px; }
 /* who speaks for you: one agent per line in the tray; the line is the radio */
-.ag-pick > .ag-tray-note { padding: 10px 14px; border-top: 1px solid #e6e6e6; background: #f7f7f5; }
+.ag-pick > .ag-tray-note { padding: 10px 14px; border-top: 1px solid #e6e6e6; }
 .ih:not(#_) .pl button.ag-pick-line,
 .ih:not(#_) .pl button.ag-pick-line:active:not(:disabled) {
   display: flex;
@@ -3255,14 +3254,14 @@ button.st-copy {
   gap: 12px;
   width: 100%;
   padding: 12px 14px;
-  background: #fff;
+  background: transparent;
   text-align: left;
   cursor: pointer;
 }
 .ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line { border-top: 1px solid #e6e6e6; }
-.ih:not(#_) .pl button.ag-pick-line[aria-checked="false"]:hover:not(:disabled) { background: #f7f7f5; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="false"]:hover:not(:disabled) { background: #ecebe6; }
 .ih:not(#_) .pl button.ag-pick-line[aria-checked="true"],
-.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"]:hover:not(:disabled) { background: #fff; cursor: default; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"]:hover:not(:disabled) { background: transparent; cursor: default; }
 .ih:not(#_) .pl button.ag-pick-line:disabled { cursor: wait; opacity: 0.6; }
 .ag-radio {
   flex: none;
@@ -3286,7 +3285,7 @@ button.st-copy {
   cursor: pointer;
 }
 .ag-opt + .ag-opt { border-top: 1px solid #e6e6e6; }
-.ag-opt:hover { background: #f7f7f5; }
+.ag-opt:hover { background: #ecebe6; }
 .ag-opt-text { flex: 1; min-width: 0; }
 .ag-opt > input[type="checkbox"] {
   flex: none;
