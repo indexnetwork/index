@@ -9,6 +9,8 @@ import { awaitsFirstIntent } from "@/services/onboarding";
 import UserAvatar from "@/components/UserAvatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { createIntroducerService } from "@/services/introducer";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { AgentWindowProvider } from "@/components/intents-home/agentWindow";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
@@ -25,7 +27,7 @@ import { Placeholder } from "@/components/ui/Placeholder";
 import { KeyboardProvider, useZone } from "@/components/intents-home/keyboard";
 import { UndoProvider } from "@/components/intents-home/undo";
 
-type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
+type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
 function railKey(pathname: string, search: string, me?: string, username?: string | null): RailKey {
@@ -34,6 +36,7 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
   if (pathname === "/") return "home";
   if (pathname === "/intents" || pathname.startsWith("/i/")) return "intents";
   if (pathname.startsWith("/chat") || /^\/u\/[^/]+\/chat(\/|$)/.test(pathname)) return "chat";
+  if (pathname === "/introduce" || pathname.startsWith("/introduce/")) return "introduce";
   if (pathname.startsWith("/settings")) {
     const tab = new URLSearchParams(search).get("tab");
     return tab === "profile" ? "profile" : "settings";
@@ -68,6 +71,20 @@ function RailCounts() {
   return null;
 }
 
+/** Pairs you could introduce and haven't opened: Introduce's count in the sidebar. Re-read as you move between places. */
+function usePairsWaiting(here: RailKey): number {
+  const api = useAuthenticatedAPI();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let live = true;
+    createIntroducerService(api).proposals()
+      .then((all) => { if (live) setCount(all.filter((p) => p.status !== "opening").length); })
+      .catch(() => { /* the count is a hint; leave it as it was */ });
+    return () => { live = false; };
+  }, [api, here]);
+  return count;
+}
+
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
 function AppRail({ here }: { here: RailKey }) {
   const navigate = useNavigate();
@@ -80,6 +97,7 @@ function AppRail({ here }: { here: RailKey }) {
     .filter(isVisibleH2HConversation)
     .reduce((total, conv) => total + (conv.unreadCount > 0 ? conv.unreadCount : 0), 0);
   const waiting = Object.values(entriesByIntent).reduce((sum, entries) => sum + entries.filter((e) => e.stage === "awaiting").length, 0);
+  const pairs = usePairsWaiting(here);
 
   const item = (key: Exclude<RailKey, "">, label: string, to: string, count = 0) => (
     <button type="button" className={`ih-nav${here === key ? " on" : ""}`} aria-current={here === key ? "page" : undefined} onClick={() => navigate(to)}>
@@ -111,6 +129,7 @@ function AppRail({ here }: { here: RailKey }) {
         </ul>
         {item("intents", "intents", "/intents", waiting)}
         {item("chat", "conversations", "/chat", unread)}
+        {item("introduce", "introduce", "/introduce", pairs)}
 
         <div className="ih-foot">
           <ConnectAgent />

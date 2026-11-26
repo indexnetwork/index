@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet, ScrollRestoration, useLocation } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
@@ -28,12 +28,6 @@ function RootLayout() {
       </APIProvider>
     </AuthProvider>
   );
-}
-
-/** Old /introduce links (and Google's return trip) land on My contacts, query kept. */
-function IntroduceRedirect() {
-  const { search } = useLocation();
-  return <Navigate to={`/networks/contacts${search}`} replace />;
 }
 
 /** A conversation alone cannot identify an owner task; use the task index. */
@@ -186,9 +180,8 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/agents/:id", () => import("@/app/agents/[id]/page")),
       },
       {
-        // Introduce now lives in the networks list, as My contacts.
         path: "/introduce",
-        element: <IntroduceRedirect />,
+        lazy: lazyRoute("/introduce", () => import("@/app/introduce/page")),
       },
       {
         path: "/networks",
@@ -196,7 +189,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/networks/contacts",
-        lazy: lazyRoute("/networks/contacts", () => import("@/app/introduce/page")),
+        lazy: lazyRoute("/networks/contacts", () => import("@/app/networks/contacts/page")),
       },
       {
         path: "/networks/:id/*",

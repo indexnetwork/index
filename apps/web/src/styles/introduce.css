@@ -103,16 +103,13 @@
 .idk-card.opening { opacity: 0.75; }
 .idk-woke { cursor: default; }
 
-/* views: pairs | contacts */
-/* views: text tabs, as on the networks page */
-.idk-views { display: inline-flex; gap: 20px; }
-.ih .idk .idk-views > button, .ih .idk .idk-views > button:hover, .ih .idk .idk-views > button:active {
-  height: auto; margin: 0; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+/* navigation between My contacts and Introduce: text ending in ›, never a box */
+.idk .idk-open, .ih .idk .idk-open, .ih .idk .idk-open:hover, .ih .idk .idk-open:active {
+  height: auto; margin: 0; padding: 0; border: 0; border-radius: 0;
   background: none; box-shadow: none; transform: none; cursor: pointer;
-  color: var(--idk-ink3); font: 500 12px var(--idk-mono); letter-spacing: 0.5px; text-transform: none;
+  color: #000; font: 500 12px var(--idk-mono); letter-spacing: 0; text-transform: none; white-space: nowrap;
 }
-.ih .idk .idk-views > button:hover { color: #000; }
-.ih .idk .idk-views > button[aria-selected="true"] { color: #000; border-bottom-color: #000; }
+.idk .idk-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* contacts */
 .idk-contacts-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }

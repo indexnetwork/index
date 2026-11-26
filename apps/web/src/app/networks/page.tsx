@@ -54,8 +54,8 @@ function PlainMark({ id, name, photo, index }: { id?: string; name?: string; pho
   return <span className={`pl-net-mark c${index % 4}`} aria-hidden>{String(name || id || "#").trim().charAt(0).toUpperCase()}</span>;
 }
 
-/** Your Google contacts, shown as a network only you are in: how many, and pairs waiting on you. */
-type MyContacts = { ready: boolean; total: number; pairs: number };
+/** Your Google contacts, shown as a network only you are in: how many. Introducing them is /introduce. */
+type MyContacts = { ready: boolean; total: number };
 
 function useMyContacts(): MyContacts | null {
   const api = useAuthenticatedAPI();
@@ -65,12 +65,10 @@ function useMyContacts(): MyContacts | null {
     const service = createIntroducerService(api);
     (async () => {
       const status = await service.status();
-      const ready = status.contacts.lastImportAt !== null;
-      const pairs = ready ? (await service.proposals()).filter((p) => p.status !== 'opening').length : 0;
-      if (live) setMine({ ready, total: status.contacts.total, pairs });
+      if (live) setMine({ ready: status.contacts.lastImportAt !== null, total: status.contacts.total });
     })().catch((err: unknown) => {
       logger.warn('Error loading my contacts', { error: String(err) });
-      if (live) setMine({ ready: false, total: 0, pairs: 0 });
+      if (live) setMine({ ready: false, total: 0 });
     });
     return () => { live = false; };
   }, [api]);
@@ -351,7 +349,7 @@ export default function NetworksPage() {
               ) : (
                 <>
                 <ul className="pl-nets big">
-                  {/* Your contacts first: a network only you are in, where you introduce them. */}
+                  {/* Your contacts first: a network only you are in. */}
                   <li>
                     <a href="/networks/contacts" className="pl-net" onClick={(event) => { event.preventDefault(); navigate('/networks/contacts'); }}>
                       <span className="pl-net-mark mine" aria-hidden>@</span>
@@ -359,7 +357,6 @@ export default function NetworksPage() {
                         <span className="pl-net-name">{MY_CONTACTS}</span>
                         <span className="pl-net-n">{myContactsLine(myContacts)}</span>
                       </span>
-                      {!!myContacts?.pairs && <span className="ih-badge" title={`${myContacts.pairs} pair${myContacts.pairs === 1 ? '' : 's'} you could introduce`}>{myContacts.pairs}</span>}
                     </a>
                   </li>
                   {allNetworks.map((network, index) => {
@@ -546,7 +543,6 @@ export default function NetworksPage() {
                         <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "inherit" }}>{MY_CONTACTS}</span>
                         <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{myContactsLine(myContacts)}</span>
                       </span>
-                      {!!myContacts?.pairs && <span className="wb-count">{myContacts.pairs}</span>}
                       <span aria-hidden="true" className="wb-row-chevron">›</span>
                     </button>
                     {allNetworks.map((network) => {
