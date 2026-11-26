@@ -3026,17 +3026,20 @@ button.st-link {
 .st-rows > li + li {
   border-top: 1px solid #e6e6e6;
 }
+/* rows sit between hairlines with no fill or rounding; a row you can act on
+   underlines its name on hover, as on the other screens */
 .st-row {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin: 0 -12px;
-  padding: 14px 12px;
-  border-radius: 4px;
+  margin: 0;
+  padding: 14px 0;
   cursor: pointer;
 }
-.st-row:hover {
-  background: #f7f7f5;
+.st-row:hover .st-row-text > b,
+.st-name.hot {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .st-row-text {
   flex: 1;
@@ -3180,7 +3183,7 @@ button.st-danger-toggle {
   flex: none;
 }
 /* in a list row the detail wraps rather than hide its end on a narrow screen */
-.st-item .st-detail {
+.st-item-text .st-detail {
   white-space: normal;
 }
 .ih:not(#_) .pl button.st-copy,

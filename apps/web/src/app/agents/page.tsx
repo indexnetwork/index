@@ -81,46 +81,29 @@ function RosterRow({
   const compact = useCompact();
   const opens = !!(onClick || onToggle);
   const columns = id != null;
-  // Compact: name over detail, the id column drops, aside and chevron stay.
-  const stacked = compact && columns;
+  // Like every settings list: the name over its detail line, then what you can do on the right.
   const row: React.CSSProperties = {
-    display: columns ? "grid" : "flex",
-    gridTemplateColumns: stacked ? "minmax(0,1fr) auto 18px" : columns ? "minmax(0,1fr) 290px 84px 90px 18px" : undefined,
-    alignItems: "center", gap: 12, width: "calc(100% + 24px)", boxSizing: "border-box",
-    margin: "0 -12px", padding: "14px 12px", textAlign: "left", borderRadius: 4,
-    border: "none",
-    background: (opens && (hover || expanded)) ? "#f7f7f5" : "transparent",
+    display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
+    margin: 0, padding: "14px 0", textAlign: "left", borderRadius: 0,
+    border: "none", background: "transparent",
     cursor: opens ? "pointer" : "default",
     font: "inherit", color: "inherit",
   };
-  const nameDetail = (
-    <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
-      <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="st-name">{name}</span>
-        {badge}
-      </span>
-      <span className="st-detail">{detail}</span>
-    </span>
-  );
-  const body = stacked ? (
+  const body = (
     <>
-      {nameDetail}
-      <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
-      <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
-    </>
-  ) : (
-    <>
-      <span style={{ flex: columns ? undefined : "1 1 34%", minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="st-name">{name}</span>
-        {badge}
+      <span className="st-item-text">
+        <span className="st-item-head">
+          <span className={`st-name${opens && hover ? " hot" : ""}`}>{name}</span>
+          {badge}
+        </span>
+        <span className="st-detail">{detail}</span>
       </span>
-      <span className="st-detail" style={{ flex: columns ? undefined : "1 1 40%" }}>{detail}</span>
-      {columns && <span style={{ minWidth: 0 }}>{id ? <CopyId id={id} /> : null}</span>}
+      {columns && !compact && id ? <CopyId id={id} /> : null}
       {aside != null && aside !== "" && (
-        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: columns ? 0 : 108, display: "flex", justifyContent: "flex-end", alignItems: "center", overflow: "hidden", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
+        <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ flex: "none", display: "flex", alignItems: "center", fontSize: 12, color: "var(--ink-3)" }}>{aside}</span>
       )}
       {(onToggle || columns) && (
-        <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+        <span aria-hidden="true" style={{ flex: "none", width: 18, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
       )}
     </>
   );
@@ -356,7 +339,7 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                         aside={<ConfirmButton label="remove" disabled={selecting} onConfirm={() => void handleDeleteAgent(agent)} />}
                       />
                       {open && (
-                        <div style={{ borderBottom: last ? "none" : "1px solid #e6e6e6" }}><div style={{ background: "#f7f7f5", margin: "0 -12px", padding: "0 12px 4px", borderRadius: "0 0 4px 4px" }}>
+                        <div style={{ borderBottom: last ? "none" : "1px solid #e6e6e6" }}><div style={{ padding: "0 0 6px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
                             <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
                             {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--ink-3)" }}>id <CopyId id={agent.id} /></div>}
