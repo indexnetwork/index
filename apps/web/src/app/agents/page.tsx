@@ -145,7 +145,7 @@ function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: strin
   return (
     <label className="ag-opt">
       <input type="checkbox" checked={on} onChange={onClick} />
-      <span>
+      <span className="ag-opt-text">
         <b>{title}</b>
         <small>{blurb}</small>
       </span>
@@ -317,13 +317,25 @@ export default function AgentsPage({ embedded = false }: { embedded?: boolean } 
                 one agent speaks for you in the network. index takes over if it&apos;s offline.
               </p>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "4px 0 14px" }}>
+                {/* The whole row opens the picker, like an agent's row opens its settings. */}
+                <div
+                  className="ag-head-row"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={picking}
+                  aria-label="change which agent speaks for you"
+                  onClick={() => { if (!selecting) setPicking((open) => !open); }}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || selecting) return;
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicking((open) => !open); }
+                  }}
+                >
                   <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className="st-name">{selectedNegotiator?.name || "Index"}</div>
                     <div className="st-detail" style={{ marginTop: 3 }}>{kind}</div>
                   </div>
-                  <button type="button" className="pl-plain-btn ag-link" disabled={selecting} aria-expanded={picking} onClick={() => setPicking((open) => !open)}>change {picking ? "▴" : "▾"}</button>
+                  <span className="ag-link" aria-hidden="true">change {picking ? "▴" : "▾"}</span>
                 </div>
                 {/* The same tray as an agent's settings: one agent per line, like a radio. */}
                 {picking && (
