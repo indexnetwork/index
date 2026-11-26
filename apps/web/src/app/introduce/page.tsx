@@ -134,13 +134,12 @@ function NeverMenu({ proposal, disabled, onNever }: {
         <svg width="15" height="3" viewBox="0 0 15 3" aria-hidden><circle cx="1.5" cy="1.5" r="1.5" /><circle cx="7.5" cy="1.5" r="1.5" /><circle cx="13.5" cy="1.5" r="1.5" /></svg>
       </button>
       {open && (
-        <div className="idk-never-menu" role="menu" aria-label="Never suggest">
-          <div className="idk-never-head">never suggest</div>
+        <div className="idk-never-menu" role="menu">
           <button type="button" role="menuitem" onClick={() => pick("member")} title={`No more pairs with ${proposal.member.name}`}>
-            {proposal.member.name}<small>in your networks</small>
+            never suggest {first(proposal.member.name)}
           </button>
-          <button type="button" role="menuitem" onClick={() => pick("contact")} title={`Never pair ${proposal.contact.name} with anyone`}>
-            {proposal.contact.name}<small>your contact</small>
+          <button type="button" role="menuitem" onClick={() => pick("contact")} title={`Never pair ${proposal.contact.name}, your contact, with anyone`}>
+            never suggest {first(proposal.contact.name)}
           </button>
         </div>
       )}

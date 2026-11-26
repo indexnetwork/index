@@ -160,16 +160,13 @@
 .idk-never .idk-never-dots:disabled { opacity: 0.4; cursor: default; }
 .idk-never-menu {
   position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
-  min-width: 200px; display: flex; flex-direction: column; padding: 3px 0;
-  background: var(--sv-paper, #fff); border: 1px solid var(--sv-ink, #000); border-radius: 1px;
-  box-shadow: var(--sv-sh-pop, 4px 4px 0 #000);
+  display: flex; flex-direction: column; padding: 4px 0;
+  background: #fff; border: 1px solid var(--sv-line, #e6e6e6); border-radius: 3px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
-.idk-never-head { padding: 6px 12px 4px; font: 700 10px var(--sv-mono, ui-monospace, monospace); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-dim, #888); }
 .idk-never .idk-never-menu button {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
-  width: 100%; height: auto; padding: 7px 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  display: block; width: 100%; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
   text-align: left; white-space: nowrap; cursor: pointer;
-  font: 500 12.5px var(--sv-sans, inherit); color: var(--sv-ink, #000);
+  font: 500 12px var(--sv-mono, ui-monospace, monospace); color: var(--sv-ink, #000);
 }
-.idk-never .idk-never-menu button small { font: 400 10.5px var(--sv-mono, ui-monospace, monospace); color: var(--sv-dim, #888); }
-.idk-never .idk-never-menu button:hover { background: var(--sv-sel, #f4f4f1); }
+.idk-never .idk-never-menu button:hover { background: #f7f7f5; }
