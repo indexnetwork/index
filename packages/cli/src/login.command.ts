@@ -251,35 +251,37 @@ export async function handleLogin(
   };
 }
 
-/** Loopback page after CLI sign-in: the same dotted desktop and window as the web app. */
+/**
+ * Loopback page after CLI sign-in. Mirrors the web app's sign-in status page
+ * (/cli-auth "Authentication complete"): the title and message standing on a
+ * plain page in a narrow centred column, a green check when it worked.
+ */
 function callbackHtml(title: string, message: string, ok = false): string {
-  const bar = ok ? "signed in" : "index";
+  const check = ok
+    ? `<div class="check" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>`
+    : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title} · Index</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
 <style>
 *{box-sizing:border-box}
 html,body{margin:0}
 body{
-  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
-  background-color:#0055aa;background-image:radial-gradient(rgba(255,255,255,.22) 1px,transparent 1px);background-size:4px 4px;
-  color:#000;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;-webkit-font-smoothing:antialiased;
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px 16px;
+  background:#fdfdfd;color:#141414;
+  font:400 13px/1.4 "IBM Plex Sans","Helvetica Neue",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;
 }
-.win{width:100%;max-width:520px;background:#fff;color:#000;border:2px solid #000}
-.bar{
-  height:24px;margin:0;display:flex;align-items:center;border-bottom:2px solid #000;
-  background-image:repeating-linear-gradient(0deg,#000 0 2px,transparent 2px 6px);background-position:0 4px;
-  font-size:13px;font-weight:500;letter-spacing:.3px;line-height:1;
-}
-.bar span{background:#fff;padding:0 12px 0 8px;margin-left:4px;height:100%;display:flex;align-items:center}
-.body{padding:28px;display:flex;flex-direction:column;gap:16px}
-h1{margin:0;font-size:28px;font-weight:500;line-height:1.25;letter-spacing:-.03em}
-p{margin:0;font-size:14px;line-height:1.6;font-weight:400;color:#000}
+main{width:100%;max-width:432px;display:flex;flex-direction:column;gap:24px}
+h1{margin:0;font-size:22px;font-weight:600;line-height:1.3;text-wrap:pretty}
+.status{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.check{width:28px;height:28px;border-radius:3px;background:#3b7a57;color:#fff;display:flex;align-items:center;justify-content:center}
+p{margin:0;font-size:13px;line-height:1.6;color:#555}
+@media (max-width:600px){main{gap:20px}}
 </style></head>
 <body>
-<main><section class="win"><h2 class="bar"><span>${bar}</span></h2><div class="body"><h1>${title}</h1><p>${message}</p></div></section></main>
+<main><h1>${title}</h1><div class="status">${check}<p>${message}</p></div></main>
 </body></html>`;
 }
