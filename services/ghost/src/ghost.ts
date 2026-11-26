@@ -225,9 +225,10 @@ export async function seedPass(): Promise<number> {
  */
 export async function outreachPass(): Promise<number> {
   const networkId = ghostNetworkId();
-  const rows = await db.execute<{ id: string; email: string; member_name: string; member_intent: string; reason: string | null }>(sql`
+  const rows = await db.execute<{ id: string; email: string; member_id: string; member_name: string; member_intent: string; reason: string | null }>(sql`
     select o.id,
       case when not iu.email_verified then iu.email else ru.email end as email,
+      case when iu.email_verified then iu.id else ru.id end as member_id,
       case when iu.email_verified then iu.name else ru.name end as member_name,
       case when iu.email_verified then ii.payload else ri.payload end as member_intent,
       coalesce(o.metadata->'introducer'->>'context',
@@ -255,7 +256,7 @@ export async function outreachPass(): Promise<number> {
   let sent = 0;
   for (const row of rows) {
     try {
-      const email = ghostOutreachTemplate({ memberName: row.member_name, memberIntent: row.member_intent, reason: row.reason });
+      const email = ghostOutreachTemplate({ memberId: row.member_id, memberName: row.member_name, memberIntent: row.member_intent, reason: row.reason });
       const result = await executeSendEmail({ to: row.email, ...email }) as { skipped?: boolean };
       if (result.skipped) continue;
       await db.execute(sql`

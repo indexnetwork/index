@@ -1,6 +1,8 @@
 import { escapeHtml } from '@indexnetwork/api/src/lib/escapeHtml';
 
 export interface GhostOutreachParams {
+  /** The member who wants to connect; the link signs in straight to them. */
+  memberId: string;
   memberName: string;
   memberIntent: string;
   reason: string | null;
@@ -14,6 +16,11 @@ export interface GhostOutreachEmail {
 
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
 
+/** Sign-in that lands on the member, not the marketing page; the page names them. */
+export function signInToMember(memberId: string): string {
+  return `${WEB_APP_URL}/login?next=${encodeURIComponent(`/u/${memberId}`)}`;
+}
+
 /**
  * First contact with someone Index found on the public web, sent only after a
  * member accepted the match. Signing in with this address claims the profile.
@@ -23,7 +30,8 @@ const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
  */
 export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmail => {
   const subjectName = p.memberName.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 200);
-  const safeUrl = escapeHtml(WEB_APP_URL);
+  const link = signInToMember(p.memberId);
+  const safeUrl = escapeHtml(link);
   const reasonHtml = p.reason ? `<p>Why we introduced you: ${escapeHtml(p.reason)}</p>` : '';
   const reasonText = p.reason ? `\nWhy we introduced you: ${p.reason}\n` : '';
 
@@ -33,8 +41,7 @@ export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmai
   <p><strong>${escapeHtml(p.memberName)}</strong> would like to connect with you on Index Network.</p>
   <p>They're working on: ${escapeHtml(p.memberIntent)}</p>
   ${reasonHtml}
-  <p>Sign in with this email to see it and reply:</p>
-  <p><a href="${safeUrl}">${safeUrl}</a></p>
+  <p><a href="${safeUrl}">Sign in with this email to see it and reply</a></p>
   <p style="color: #666; font-size: 12px;">We found you through public information. Not interested? Reply "stop" and we'll delete it and never contact you again.</p>
   <div style="margin-top: 20px; text-align: center;">
     <img src="https://index.network/logo.png" alt="Index" style="height: 24px; opacity: 0.5;" />
@@ -44,7 +51,7 @@ export const ghostOutreachTemplate = (p: GhostOutreachParams): GhostOutreachEmai
 
 They're working on: ${p.memberIntent}
 ${reasonText}
-Sign in with this email to see it and reply: ${WEB_APP_URL}
+Sign in with this email to see it and reply: ${link}
 
 We found you through public information. Not interested? Reply "stop" and we'll delete it and never contact you again.`,
   };

@@ -644,12 +644,14 @@ function profileLinks(urls: string[]): { label: string; value: string }[] {
 }
 
 /** The first email the contact gets: from the person who introduced them, after the member said yes. */
-function introEmail(row: { introducerName: string; memberName: string; memberIntent: string; context: string; contactName: string | null }) {
+function introEmail(row: { introducerName: string; memberId: string; memberName: string; memberIntent: string; context: string; contactName: string | null }) {
   const oneLine = (s: string) => s.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 120);
   const intro = oneLine(row.introducerName);
   const member = oneLine(row.memberName);
   const hello = row.contactName ? `Hi ${firstName(row.contactName)},` : 'Hi,';
-  const url = escapeHtml(WEB_APP_URL);
+  // Sign-in that lands on the member, not the marketing page; the page names them.
+  const link = `${WEB_APP_URL}/login?next=${encodeURIComponent(`/u/${row.memberId}`)}`;
+  const url = escapeHtml(link);
   const contextHtml = row.context ? `<blockquote style="margin: 12px 0; padding-left: 12px; border-left: 3px solid #ddd;">${escapeHtml(row.context)}</blockquote>` : '';
   return {
     subject: `${intro} introduced you to ${member}`,
@@ -658,7 +660,7 @@ function introEmail(row: { introducerName: string; memberName: string; memberInt
   <p><strong>${escapeHtml(intro)}</strong> thinks you should meet <strong>${escapeHtml(member)}</strong>, and ${escapeHtml(firstName(member))} said yes.</p>
   ${contextHtml}
   <p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(clip(row.memberIntent, 300))}</p>
-  <p>Sign in with this email to see it and reply: <a href="${url}">${url}</a></p>
+  <p><a href="${url}">Sign in with this email to see it and reply</a></p>
   <p style="color: #666; font-size: 12px;">Not interested? Reply "stop" and Index will delete it and never contact you again.</p>
 </div>`,
     text: `${hello}
@@ -667,7 +669,7 @@ ${intro} thinks you should meet ${member}, and ${firstName(member)} said yes.
 ${row.context ? `\n"${row.context}"\n` : ''}
 ${firstName(member)} is working on: ${clip(row.memberIntent, 300)}
 
-Sign in with this email to see it and reply: ${WEB_APP_URL}
+Sign in with this email to see it and reply: ${link}
 
 Not interested? Reply "stop" and Index will delete it and never contact you again.`,
   };

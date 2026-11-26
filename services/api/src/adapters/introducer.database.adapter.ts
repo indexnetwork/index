@@ -85,6 +85,8 @@ export interface OutreachRow {
   email: string;
   contactName: string | null;
   introducerName: string;
+  /** The member who said yes; the email's link signs in straight to them. */
+  memberId: string;
   memberName: string;
   memberIntent: string;
   context: string;
@@ -597,7 +599,7 @@ export class IntroducerDatabaseAdapter {
   async outreachDue(limit: number): Promise<OutreachRow[]> {
     const result = await db.execute(sql`
       select o.id as opportunity_id, seat.id as seat_id, seat.email, c.name as contact_name,
-             intro.name as introducer_name, mu.name as member_name,
+             intro.name as introducer_name, mu.id as member_id, mu.name as member_name,
              coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
       from opportunity_proposals s
@@ -621,6 +623,7 @@ export class IntroducerDatabaseAdapter {
       email: String(r.email),
       contactName: (r.contact_name as string | null) ?? null,
       introducerName: String(r.introducer_name),
+      memberId: String(r.member_id),
       memberName: String(r.member_name),
       memberIntent: String(r.member_intent),
       context: String(r.context),
