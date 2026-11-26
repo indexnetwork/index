@@ -69,7 +69,6 @@ function RosterRow({
   expanded?: boolean;
   onToggle?: () => void;
 }) {
-  const [hover, setHover] = useState(false);
   const opens = !!(onClick || onToggle);
   // Like every settings list: the name over its detail line, then what you can do on the right.
   const row: React.CSSProperties = {
@@ -83,7 +82,7 @@ function RosterRow({
     <>
       <span className="st-item-text">
         <span className="st-item-head">
-          <span className={`st-name${opens && hover ? " hot" : ""}`}>{name}</span>
+          <span className="st-name">{name}</span>
           {badge}
         </span>
         <span className="st-detail">{detail}</span>
@@ -96,7 +95,6 @@ function RosterRow({
       )}
     </>
   );
-  const hoverProps = { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) };
   const line: React.CSSProperties = { borderBottom: last || expanded ? "none" : "1px solid #e6e6e6" };
   if (onToggle) {
     return (
@@ -104,12 +102,12 @@ function RosterRow({
         <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={!!expanded} aria-label={`${name} settings`} onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
-        }} {...hoverProps} style={row}>{body}</div>
+        }} style={row}>{body}</div>
       </div>
     );
   }
   if (!onClick) return <div style={line}><div style={row}>{body}</div></div>;
-  return <div style={line}><button type="button" className="pl-plain-btn" onClick={onClick} {...hoverProps} style={row}>{body}</button></div>;
+  return <div style={line}><button type="button" className="pl-plain-btn" onClick={onClick} style={row}>{body}</button></div>;
 }
 
 /** Remove as red text: the first click arms it, the second removes. */
