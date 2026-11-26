@@ -170,14 +170,25 @@ export class IntroducerDatabaseAdapter {
     return { total: row?.total ?? 0, onIndex: row?.onIndex ?? 0, lastImportAt: row?.lastImportAt ? new Date(row.lastImportAt) : null };
   }
 
-  /** The viewer's Google account scope string, if they linked Google. */
-  async googleScope(userId: string): Promise<string | null | undefined> {
+  /**
+   * The viewer's Google account, if they linked Google: its scope string and
+   * whether we can still reach Google for them (a refresh token, or an access
+   * token that has not expired yet).
+   */
+  async googleAccount(userId: string): Promise<{ scope: string | null; usable: boolean } | undefined> {
     const [row] = await db
-      .select({ scope: schema.accounts.scope })
+      .select({
+        scope: schema.accounts.scope,
+        hasRefreshToken: sql<boolean>`${schema.accounts.refreshToken} is not null`,
+        accessTokenExpiresAt: schema.accounts.accessTokenExpiresAt,
+      })
       .from(schema.accounts)
       .where(and(eq(schema.accounts.userId, userId), eq(schema.accounts.providerId, 'google')))
       .limit(1);
-    return row ? row.scope : undefined;
+    if (!row) return undefined;
+    const expiresAt = row.accessTokenExpiresAt ? new Date(row.accessTokenExpiresAt).getTime() : null;
+    const usable = row.hasRefreshToken || expiresAt === null || expiresAt > Date.now();
+    return { scope: row.scope, usable };
   }
 
   // ─── matching ──────────────────────────────────────────────────────────────

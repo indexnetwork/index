@@ -490,13 +490,25 @@ export default function IntroducePage() {
     return () => clearInterval(t);
   }, [anyLive, opening.length, refreshProposals, refreshRuns]);
 
-  const connect = () => {
-    void authClient.linkSocial({
+  const connect = async () => {
+    const { data, error: linkError } = await authClient.linkSocial({
       provider: "google",
       scopes: CONTACT_SCOPES,
       callbackURL: `${window.location.origin}/networks/contacts?connected=1`,
       errorCallbackURL: `${window.location.origin}/networks/contacts?error=1`,
+      disableRedirect: true,
     });
+    if (linkError || !data?.url) {
+      setError(linkError?.message || "Couldn't reach Google");
+      return;
+    }
+    // Google hands out a refresh token only from its consent screen, and skips
+    // that screen for scopes already granted. Without one, the grant dies
+    // after an hour, so always show it here.
+    const url = new URL(data.url);
+    url.searchParams.set("prompt", "consent");
+    url.searchParams.set("access_type", "offline");
+    window.location.href = url.toString();
   };
 
   const open = async (proposal: OpportunityProposal, context: string) => {
@@ -524,7 +536,7 @@ export default function IntroducePage() {
       {!status ? (
         error ? <div className="idk-error">{error}</div> : <p className="idk-dim">loading…</p>
       ) : !ready ? (
-        <Setup status={status} importing={importing} error={error} onConnect={connect} onImport={() => void doImport()} />
+        <Setup status={status} importing={importing} error={error} onConnect={() => void connect()} onImport={() => void doImport()} />
       ) : (
         <>
           <div className="idk-bar">
@@ -599,7 +611,7 @@ export default function IntroducePage() {
         {!status ? (
           <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
         ) : !ready ? (
-          <div className="idk sv-idk-page"><Setup status={status} importing={importing} error={error} onConnect={connect} onImport={() => void doImport()} /></div>
+          <div className="idk sv-idk-page"><Setup status={status} importing={importing} error={error} onConnect={() => void connect()} onImport={() => void doImport()} /></div>
         ) : view === "contacts" ? (
           <div className="idk sv-idk-page">
             {error && <div className="idk-error">{error}</div>}

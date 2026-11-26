@@ -187,15 +187,17 @@ export class IntroducerService {
   // ─── contacts ──────────────────────────────────────────────────────────────
 
   async status(userId: string): Promise<IntroducerStatus> {
-    const [scope, counts] = await Promise.all([
-      this.adapter.googleScope(userId),
+    const [account, counts] = await Promise.all([
+      this.adapter.googleAccount(userId),
       this.adapter.contactCounts(userId),
     ]);
-    const granted = (scope ?? '').split(/[,\s]+/);
+    const granted = (account?.scope ?? '').split(/[,\s]+/);
     return {
       google: {
-        linked: scope !== undefined,
-        contactsScope: CONTACT_SCOPES.every((s) => granted.includes(s)),
+        linked: account !== undefined,
+        // Google access tokens last an hour. Without a refresh token the grant
+        // is spent once that hour is up, so ask the member to connect again.
+        contactsScope: !!account?.usable && CONTACT_SCOPES.every((s) => granted.includes(s)),
       },
       contacts: {
         total: counts.total,
@@ -270,11 +272,11 @@ export class IntroducerService {
     };
 
     const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations' }, 'connections');
-    if ('status' in saved) return { kind: 'google_error', status: saved.status };
+    if ('status' in saved) return saved.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: saved.status };
     add(saved.people, 'google_contacts');
 
     const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses' }, 'otherContacts');
-    if ('status' in other) return { kind: 'google_error', status: other.status };
+    if ('status' in other) return other.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: other.status };
     add(other.people, 'google_other');
 
     await this.adapter.replaceContacts(userId, [...rows.values()]);
