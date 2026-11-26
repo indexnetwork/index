@@ -3513,3 +3513,23 @@ button.pl-more:hover,
   border: 1px dashed #888;
   border-radius: 50%;
 }
+
+/* ways to start an empty chat: pills over the message box (ChatView). Each fills the box; send stays yours. */
+.pl-agent-compose:has(> .pl-dm-starts) { flex-wrap: wrap; }
+.pl-dm-starts { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.pl .pl-dm-starts > button.pl-dm-start,
+.pl-dm-starts > button.pl-dm-start {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px;
+  border: 1px solid #cfcfcf; border-radius: 999px; background: #fff; color: #000; box-shadow: none;
+  font: 400 12px "JetBrains Mono", ui-monospace, Menlo, monospace; letter-spacing: 0; white-space: nowrap; cursor: pointer;
+}
+.pl .pl-dm-starts > button.pl-dm-start:hover:not(:disabled),
+.pl-dm-starts > button.pl-dm-start:hover { border-color: #000; background: #fff; }
+.pl .pl-dm-starts > button.pl-dm-start:active:not(:disabled) { background: #fff; color: #000; box-shadow: none; transform: none; }
+.pl .pl-dm-starts > button.pl-dm-start[aria-pressed="true"],
+.pl .pl-dm-starts > button.pl-dm-start[aria-pressed="true"]:hover:not(:disabled),
+.pl-dm-starts > button.pl-dm-start[aria-pressed="true"] { border-color: #000; background: #000; color: #fff; }
+.pl-dm-start-ic { display: inline-block; width: 14px; text-align: center; font-size: 13px; line-height: 1; }
+.pl-dm-start-ic.roll { animation: pl-dm-roll 0.35s ease; }
+@keyframes pl-dm-roll { from { transform: rotate(-180deg) scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pl-dm-start-ic.roll { animation: none; } }

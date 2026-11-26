@@ -1,6 +1,5 @@
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
@@ -60,6 +59,35 @@ interface PeerProfile {
   socials?: SocialEntry[] | null;
 }
 
+/** Icons the "something else" pill rolls through: a new one on every press. */
+const START_ICONS = ["✦", "⚡", "☀", "✺", "❖"];
+
+/** First lines for an empty chat. A pill puts one in the box; nothing goes until you press send. */
+function startLines(first: string) {
+  return {
+    hi: `Hi ${first}! Our agents matched us, nice to meet you.`,
+    call: `Hi ${first}, up for a 20-minute call this week?`,
+    other: [
+      `Hi ${first}, coffee or a quick video call sometime? I'd love to compare notes.`,
+      `Hi ${first}, what are you working on right now?`,
+      `Hi ${first}, a quick idea: `,
+      `Hi ${first}, what's the hardest part of what you're working on right now?`,
+      `Hi ${first}, who else should I be talking to about this?`,
+      `Hi ${first}, want to trade notes? Happy to share what I've learned so far.`,
+      `Hi ${first}, what's gone well for you lately?`,
+      `Hi ${first}, what got you into this in the first place?`,
+    ],
+  };
+}
+
+/** A random index below `size` that isn't `last`. */
+function rollOther(size: number, last: number) {
+  if (size < 2) return 0;
+  let next = Math.floor(Math.random() * (size - 1));
+  if (next >= last && last >= 0) next += 1;
+  return next;
+}
+
 function normText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -116,6 +144,10 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const menuRef = useRef<HTMLDivElement>(null);
   const scrolledConversationRef = useRef<string | null>(null);
   const scrolledCountRef = useRef(0);
+  // The pill that last filled the box, and what it put there: a pill only replaces its own text, never yours.
+  const [startPicked, setStartPicked] = useState<{ key: string; text: string } | null>(null);
+  const startOtherRef = useRef(-1);
+  const [startIcon, setStartIcon] = useState({ glyph: START_ICONS[0], rolls: 0 });
 
   // Route param changes reuse this instance. Adjust before paint so the previous
   // thread never flashes, and keep a cached thread on screen instead of a spinner.
@@ -131,6 +163,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     setAcceptedOpportunities([]);
     setAcceptedOpportunitiesLoading(true);
     setPeer(null);
+    setStartPicked(null);
     hasAutoSentRef.current = false;
     hasFiredFirstMessageRef.current = false;
   }
@@ -305,6 +338,43 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }, [handleSend]);
+
+  const firstName = userName.split(" ")[0];
+  const lines = useMemo(() => startLines(firstName), [firstName]);
+  const fillStart = useCallback((key: string, text: string) => {
+    if (messageText.trim() && messageText !== startPicked?.text) return;
+    setStartPicked({ key, text });
+    setMessageText(text);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  }, [messageText, startPicked]);
+  const fillOther = useCallback(() => {
+    if (messageText.trim() && messageText !== startPicked?.text) return;
+    const next = rollOther(lines.other.length, startOtherRef.current);
+    startOtherRef.current = next;
+    setStartIcon((icon) => {
+      const pool = START_ICONS.filter((glyph) => glyph !== icon.glyph);
+      return { glyph: pool[Math.floor(Math.random() * pool.length)], rolls: icon.rolls + 1 };
+    });
+    fillStart('other', lines.other[next]);
+  }, [messageText, startPicked, lines, fillStart]);
+  // Only while the chat is empty: the first message sent takes them away.
+  const showStarts = !messagesLoading && messages.length === 0 && !footer && !sending && !(autoSend && initialMessage?.trim());
+  const startPressed = (key: string) => startPicked?.key === key && messageText === startPicked.text;
+  const starts = showStarts ? (
+    <div className="pl-dm-starts">
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('hi')} onClick={() => fillStart('hi', lines.hi)}>say hi</button>
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('call')} onClick={() => fillStart('call', lines.call)}>suggest a call</button>
+      <button type="button" className="pl-dm-start" aria-pressed={startPressed('other')} onClick={fillOther}>
+        <span key={startIcon.rolls} className={startIcon.rolls ? "pl-dm-start-ic roll" : "pl-dm-start-ic"} aria-hidden="true">{startIcon.glyph}</span>
+        something else
+      </button>
+    </div>
+  ) : null;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -488,13 +558,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               <span>{openerBody}</span>
             </div>
           )}
-          {messagesLoading ? (
-            <Placeholder.Thread label="loading messages" />
-          ) : !footer && messages.length === 0 && via.length > 0 && !openerBody ? (
-            <p className="pl-dim pl-small">agents matched you on this intent. say hi.</p>
-          ) : !footer && messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading ? (
-            <p className="pl-dim pl-small">no messages yet. say hello.</p>
-          ) : null}
+          {messagesLoading && <Placeholder.Thread label="loading messages" />}
 
           {timeline.map((item, index) => {
             if (item.type === 'opportunity') return null;
@@ -525,6 +589,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
         {footer ? <div className="pl-agent-compose pl-dm-decide">{footer}</div> : (
           <form className="pl-agent-compose" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+            {starts}
             <textarea
               ref={inputRef}
               rows={2}
@@ -575,13 +640,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{openerBody}</span>
               </div>
             )}
-            {messagesLoading ? (
-              <Placeholder.Thread label="loading messages" />
-            ) : messages.length === 0 && via.length > 0 && !openerBody ? (
-              <EmptyState message="agents matched you on this intent. say hi." style={{ padding: "20px 0" }} />
-            ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
-              <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
-            ) : null}
+            {messagesLoading && <Placeholder.Thread label="loading messages" />}
 
             {timeline.map((item, index) => {
                 if (item.type === 'opportunity') return renderOpportunities(item.opportunities);
@@ -638,7 +697,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           </div>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} style={{ borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px", display: "flex", gap: 10, alignItems: "flex-end" }}>
+      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} style={{ borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+        {starts}
         <textarea
           ref={inputRef}
           rows={1}
