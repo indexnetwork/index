@@ -79,7 +79,7 @@ export class QuestionGroupsDatabaseAdapter {
     const members = await db.select().from(questionGroupMembers)
       .where(inArray(questionGroupMembers.groupId, groups.map((group) => group.id)))
       .orderBy(asc(questionGroupMembers.createdAt));
-    const waiting = new Set(open.map((question) => question.questionId));
+    const waiting = new Map(open.map((question) => [question.questionId, question]));
     return groups.map((group) => ({
       id: group.id,
       state: group.state === 'shown' ? 'shown' : 'held',
@@ -94,6 +94,7 @@ export class QuestionGroupsDatabaseAdapter {
         intentId: member.intentId,
         scope: member.scope as QuestionScope,
         open: waiting.has(member.questionId),
+        opportunityIds: waiting.get(member.questionId)?.matches.map((match) => match.opportunityId) ?? [],
       })),
     }));
   }
@@ -121,6 +122,22 @@ export class QuestionGroupsDatabaseAdapter {
     await db.insert(questionGroupMembers)
       .values({ questionId: question.questionId, groupId, intentId: question.intentId, scope: question.scope })
       .onConflictDoNothing();
+  }
+
+  /** Move a question into another group. */
+  static async moveMember(questionId: string, groupId: string): Promise<void> {
+    await db.update(questionGroupMembers).set({ groupId }).where(eq(questionGroupMembers.questionId, questionId));
+  }
+
+  /** Delete a group, with any members still in it. */
+  static async deleteGroup(groupId: string): Promise<void> {
+    await db.delete(questionGroups).where(eq(questionGroups.id, groupId));
+  }
+
+  /** @returns Every person with a group still waiting on them. */
+  static async usersWithOpenGroups(): Promise<string[]> {
+    const rows = await db.selectDistinct({ userId: questionGroups.userId }).from(questionGroups).where(isNull(questionGroups.answerText));
+    return rows.map((row) => row.userId);
   }
 
   /** Put held groups on Home. Their clock starts now. */

@@ -14,7 +14,7 @@ import { queueMessageEmails } from '../lib/email/message-email.job';
 import { log } from '../lib/log';
 import { prepareAnswers } from '../lib/personal-agent/answers';
 import { fanOutAnswer } from '../lib/personal-agent/fan-out';
-import { groupQuestions, type ShownGroup } from '../lib/personal-agent/group-questions';
+import { groupQuestions, mergeSoloGroups, type ShownGroup } from '../lib/personal-agent/group-questions';
 import { distinctiveWants } from '../lib/personal-agent/wants';
 import { shownCards, visibleQuestionIds, type GroupCard, type OpenQuestion } from '../lib/personal-agent/question-groups';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
@@ -24,8 +24,12 @@ export type { PrincipalMessage } from '../adapters/agent-session.database.adapte
 const logger = log.service.from('ConversationService');
 
 let decision: Decide | null = null;
+
+/** How long a new question waits for the grouping pass that asks the model, before Home groups it alone. */
+const UNGROUPED_GRACE_MS = 2 * 60_000;
 /** The decision model the personal agent groups questions with, or none without an OpenRouter key. */
-function groupingDecide(): Decide | undefined {
+/** The decision model grouping asks, or undefined when none is configured. */
+export function groupingDecide(): Decide | undefined {
   if (!process.env.OPENROUTER_API_KEY) return undefined;
   decision ??= createDecide({
     apiKey: process.env.OPENROUTER_API_KEY,
@@ -474,12 +478,30 @@ export class ConversationService {
       return await groupQuestions(userId, {
         store: QuestionGroupsDatabaseAdapter,
         answer: (question, text) => this.answerAsOwner(userId, question, text),
-        ...(options.decide ? { decide: groupingDecide(), ...(options.decideFor ? { decideFor: options.decideFor } : {}) } : {}),
+        // Without the model, a question just raised is left for the pass that
+        // asks it, which runs right after the question is written.
+        ...(options.decide ? { decide: groupingDecide(), ...(options.decideFor ? { decideFor: options.decideFor } : {}) } : { holdNewerThanMs: UNGROUPED_GRACE_MS }),
       });
     } catch (error) {
       logger.warn('Question grouping failed', { userId, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
+  }
+
+  /**
+   * Ask the model again about the owner's groups that hold one question, and
+   * merge the ones that ask the same fact as another group.
+   *
+   * @returns How many questions moved, or 0 when no model is configured.
+   */
+  async mergeSoloGroups(userId: string): Promise<number> {
+    const decide = groupingDecide();
+    if (!decide) return 0;
+    return mergeSoloGroups(userId, {
+      store: QuestionGroupsDatabaseAdapter,
+      decide,
+      answer: (question, text) => this.answerAsOwner(userId, question, text),
+    });
   }
 
   /**
