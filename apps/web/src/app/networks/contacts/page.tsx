@@ -148,7 +148,6 @@ function Contacts({ service, status, onDeleted, onRemoved }: { service: Service;
                 <div className="tags">
                   {c.onIndex && <span className="idk-tag">on Index</span>}
                   {c.excluded && <span className="idk-faint">never suggested</span>}
-                  {c.proposals > 0 && <span className="idk-faint">{c.proposals} pair{c.proposals === 1 ? "" : "s"} waiting</span>}
                 </div>
                 <button type="button" className="idk-btn small" onClick={() => remove(c)} title="Take them off your contacts. The daily sync won't bring them back.">remove</button>
               </li>
