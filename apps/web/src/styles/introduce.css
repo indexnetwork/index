@@ -151,10 +151,12 @@
 .idk-never { position: absolute; top: 8px; right: 10px; z-index: 5; display: inline-flex; }
 .idk-card .idk-never { right: 0; }
 .idk-never .idk-never-dots {
+  display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 22px; padding: 0; border: 0; border-radius: 2px; background: transparent; box-shadow: none;
-  font: 700 16px/1 var(--sv-sans, inherit); color: var(--sv-dim, #888); cursor: pointer;
+  color: var(--sv-dim, #888); cursor: pointer;
 }
-.idk-never .idk-never-dots:hover, .idk-never .idk-never-dots[aria-expanded="true"] { color: var(--sv-ink, #000); background: var(--sv-sel, #f4f4f1); }
+.idk-never .idk-never-dots svg { display: block; fill: currentColor; }
+.idk-never .idk-never-dots:hover, .idk-never .idk-never-dots[aria-expanded="true"] { color: var(--sv-ink, #000); }
 .idk-never .idk-never-dots:disabled { opacity: 0.4; cursor: default; }
 .idk-never-menu {
   position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;

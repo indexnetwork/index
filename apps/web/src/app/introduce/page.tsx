@@ -131,7 +131,7 @@ function NeverMenu({ proposal, disabled, onNever }: {
   return (
     <div className="idk-never" ref={ref}>
       <button type="button" className="idk-never-dots" disabled={disabled} aria-label="More" title="More" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        ⋯
+        <svg width="15" height="3" viewBox="0 0 15 3" aria-hidden><circle cx="1.5" cy="1.5" r="1.5" /><circle cx="7.5" cy="1.5" r="1.5" /><circle cx="13.5" cy="1.5" r="1.5" /></svg>
       </button>
       {open && (
         <div className="idk-never-menu" role="menu" aria-label="Never suggest">
