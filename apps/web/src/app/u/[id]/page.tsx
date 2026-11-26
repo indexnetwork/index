@@ -327,11 +327,13 @@ export const Component = UserProfilePage;
  */
 function PersonFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const inFrame = useInAppFrame();
+  const { isAuthenticated } = useAuthContext();
   const pane = <div className="sv"><section className="sv-pane">{children}</section></div>;
   if (inFrame) return pane;
+  // Signed out, the page is usually where a shared link landed: nothing behind it to close back to.
   return (
     <Stage width={720} height="min(720px, calc(100vh - 112px))">
-      <Window title="profile" onClose={onClose} style={{ height: "100%" }}>{pane}</Window>
+      <Window title="profile" onClose={isAuthenticated ? onClose : undefined} style={{ height: "100%" }}>{pane}</Window>
     </Stage>
   );
 }
@@ -343,6 +345,7 @@ function PersonFrame({ onClose, children }: { onClose: () => void; children: Rea
  */
 function ProfileFrame({ title = "profile", width, height, onClose, children }: { title?: string; width: number; height?: string; onClose: () => void; children: ReactNode }) {
   const inFrame = useInAppFrame();
+  const { isAuthenticated } = useAuthContext();
   if (inFrame) {
     return (
       <div className="ih-view pl">
@@ -352,7 +355,7 @@ function ProfileFrame({ title = "profile", width, height, onClose, children }: {
   }
   return (
     <Stage width={width} height={height}>
-      <Window title={title} onClose={onClose} style={height ? { height: "100%" } : undefined}>{children}</Window>
+      <Window title={title} onClose={isAuthenticated ? onClose : undefined} style={height ? { height: "100%" } : undefined}>{children}</Window>
     </Stage>
   );
 }
