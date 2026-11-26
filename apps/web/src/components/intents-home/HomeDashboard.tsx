@@ -6,7 +6,7 @@ import "@/styles/plain.css";
 import { PageView, ListHead } from "@/components/intents-home/SplitView";
 import QuestionCard from "@/components/intents-home/QuestionCard";
 import { useUndo } from "@/components/intents-home/undo";
-import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
+import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { focusedGroup, intentsToRefresh } from "@/components/intents-home/personal-questions";
@@ -196,15 +196,16 @@ export default function HomeDashboard() {
   };
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
-  const moving = [...byStage.talks, ...byStage.chat];
+  // Chats have their own page (conversations), so this section is only people your agent is still talking with.
+  const talking = byStage.talks;
   // At most 3 question cards before "show all ›"; one opened from a /q/ link stays in view past them.
   const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup, 3);
   const waitingList = useShowMore(waitingRows);
-  const movingList = useShowMore(moving);
+  const talkingList = useShowMore(talking, undefined, 0);
   usePublishHomeSections([
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
-        ...(moving.length || refreshingIds.length ? [{ id: "progress", label: "in progress", count: moving.length, loading: refreshingIds.length > 0 }] : []),
+        ...(talking.length || refreshingIds.length ? [{ id: "progress", label: "in progress", count: talking.length, loading: refreshingIds.length > 0 }] : []),
   ]);
 
   // A card opens its match beside Home; links and buttons inside it keep their own jobs.
@@ -310,17 +311,31 @@ export default function HomeDashboard() {
         </>
       )}
 
-      {(moving.length > 0 || refreshingIds.length > 0) && (
+      {(talking.length > 0 || refreshingIds.length > 0) && (
         <>
-          <ListHead id="progress" fold={movingList.fold}>
-            {refreshingIds.length > 0
-              ? <>agents talking · <Placeholder.Count label="updating" /></>
-              : <>agents talking · {byStage.talks.length}{byStage.chat.length > 0 && <> · chatting · {byStage.chat.length}</>}</>}
-          </ListHead>
-          {movingList.shown.map((person) => {
+          <ListHead id="progress">in progress</ListHead>
+          <div className="sv-strip">
+            <span className="sv-stack">
+              {talking.slice(0, 5).map((person) => (
+                <UserAvatar key={person.key} id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={22} />
+              ))}
+            </span>
+            <span className="sv-strip-t">
+              {refreshingIds.length > 0
+                ? <>your agent is talking with <Placeholder.Count label="updating" /> people</>
+                : <>your agent is talking with {talking.length} {talking.length === 1 ? "person" : "people"}</>}
+            </span>
+            {talkingList.fold && (
+              <button type="button" className="sv-open" aria-expanded={talkingList.fold.open} onClick={talkingList.fold.toggle}>
+                {talkingList.fold.open ? "show fewer" : "see all ›"}
+              </button>
+            )}
+          </div>
+          {talkingList.shown.map((person) => {
             const lead = person.entries[0];
-            const talking = lead.stage === "talks";
-            const blurb = lead.item.headline || lead.item.mainText || "";
+            // While agents talk the headline is only "Agents are talking"; the intent says why they're talking.
+            const intent = intents.find((i) => i.id === lead.intentId);
+            const blurb = intent ? `for ${intentLabel(intent)}` : lead.item.headline || lead.item.mainText || "";
             return (
               <div key={person.key} {...cardProps(person, "sv-row")}>
                 <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
@@ -328,7 +343,6 @@ export default function HomeDashboard() {
                   <div className="sv-row-n">{person.name}</div>
                   <div className="sv-row-pv">{blurb}</div>
                 </div>
-                <span className="sv-row-tm">{talking ? "agents talking" : person.notOnIndex ? "not on index" : "chatting"}</span>
               </div>
             );
           })}

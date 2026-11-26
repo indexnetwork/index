@@ -649,3 +649,10 @@ a.sv-soc:hover { background: var(--sv-sel); }
    the rows' left edge (other pages; the intent page and Home put it in the heading) */
 .sv-page-col > button.pl-more:not(#_) { display: block; margin: 0; padding: 12px 20px; border: 0; box-shadow: none; background: none; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
 .sv-page-col > button.pl-more:not(#_):hover { background: none; color: var(--sv-ink); }
+
+/* Home "in progress": one line with the faces your agent is talking with. */
+.sv-strip { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }
+.sv-strip-t { flex: 1; min-width: 0; }
+.sv-stack { display: flex; flex: none; }
+.sv-stack > * { box-shadow: 0 0 0 2px var(--sv-paper); }
+.sv-stack > * + * { margin-left: -6px; }
