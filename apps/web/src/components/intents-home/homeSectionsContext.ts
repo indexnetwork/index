@@ -20,11 +20,17 @@ export const DEFAULT_HOME_SECTIONS: HomeSection[] = [
   { id: "progress", label: "in progress" },
 ];
 
-/** Publish Home's sections. The last ones stay after leaving Home so the sidebar keeps them. */
+/**
+ * Publish Home's sections. The last ones stay after leaving Home so the sidebar
+ * keeps them; nothing yet (still loading) leaves them as they were.
+ */
 export function usePublishHomeSections(sections: HomeSection[]) {
   const set = useContext(SetSectionsContext);
   const key = JSON.stringify(sections);
-  useEffect(() => { set(JSON.parse(key) as HomeSection[]); }, [key, set]);
+  useEffect(() => {
+    const next = JSON.parse(key) as HomeSection[];
+    if (next.length) set(next);
+  }, [key, set]);
 }
 
 /**

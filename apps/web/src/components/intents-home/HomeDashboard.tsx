@@ -6,7 +6,7 @@ import "@/styles/plain.css";
 import { PageView, ListHead } from "@/components/intents-home/SplitView";
 import QuestionCard from "@/components/intents-home/QuestionCard";
 import { useUndo } from "@/components/intents-home/undo";
-import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
+import { RANK, countPeople, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { focusedGroup, intentsToRefresh } from "@/components/intents-home/personal-questions";
@@ -151,7 +151,8 @@ export default function HomeDashboard() {
     }
     setPinned(next);
   }
-  const waitingCount = waitingRows.filter((row) => !row.decision).length;
+  // Counted the same way as the sidebar, so the two never disagree.
+  const { waiting: waitingCount } = countPeople(entriesByIntent, decisions);
 
   // The chat with someone you accepted opens beside Home, where their match was.
   const openChat = (person: Person) => {

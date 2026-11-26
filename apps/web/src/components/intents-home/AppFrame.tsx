@@ -9,8 +9,6 @@ import { awaitsFirstIntent } from "@/services/onboarding";
 import UserAvatar from "@/components/UserAvatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
-import { useAuthenticatedAPI } from "@/lib/api";
-import { createIntroducerService } from "@/services/introducer";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { AgentWindowProvider } from "@/components/intents-home/agentWindow";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
@@ -22,7 +20,7 @@ import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
 import { HomeSectionsProvider } from "@/components/intents-home/homeSections";
 import { DEFAULT_HOME_SECTIONS, jumpTo, useHomeSections, usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
-import { personKey, RANK, type Stage } from "@/components/intents-home/stages";
+import { countPeople } from "@/components/intents-home/stages";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { KeyboardProvider, useZone } from "@/components/intents-home/keyboard";
 import { UndoProvider } from "@/components/intents-home/undo";
@@ -46,40 +44,20 @@ function railKey(pathname: string, me?: string, username?: string | null): RailK
 
 /**
  * Opened somewhere other than Home first: count Home's sections here so the
- * sidebar shows them anyway. Home takes over once it draws.
+ * sidebar shows them anyway, the same way Home counts them. Home takes over once it draws.
  */
 function RailCounts() {
-  const { entriesByIntent } = useIntentsData();
+  const { entriesByIntent, intents, radar, radarFailed } = useIntentsData();
+  const { decisions } = useAgentWindow();
   const { questions, loaded } = usePersonalQuestions();
-  const best = new Map<string, Stage>();
-  for (const entries of Object.values(entriesByIntent)) {
-    for (const entry of entries) {
-      const key = personKey(entry.item);
-      const now = best.get(key);
-      if (!now || RANK[entry.stage] < RANK[now]) best.set(key, entry.stage);
-    }
-  }
-  const stages = [...best.values()];
+  const { waiting, talking } = countPeople(entriesByIntent, decisions);
+  const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   usePublishHomeSections(loaded ? [
     { id: "questions", label: "questions", count: questions.length },
-    { id: "waiting", label: "waiting on you", count: stages.filter((s) => s === "awaiting").length },
-    { id: "progress", label: "in progress", count: stages.filter((s) => s === "talks" || s === "chat").length },
+    { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waiting },
+    ...(talking ? [{ id: "progress", label: "in progress", count: talking }] : []),
   ] : []);
   return null;
-}
-
-/** Pairs you could introduce and haven't opened: Introduce's count in the sidebar. Re-read as you move between places. */
-function usePairsWaiting(here: RailKey): number {
-  const api = useAuthenticatedAPI();
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let live = true;
-    createIntroducerService(api).proposals()
-      .then((all) => { if (live) setCount(all.filter((p) => p.status !== "opening").length); })
-      .catch(() => { /* the count is a hint; leave it as it was */ });
-    return () => { live = false; };
-  }, [api, here]);
-  return count;
 }
 
 /** The sidebar beside every signed-in desktop page: plain links, the three places, then you. */
@@ -87,14 +65,13 @@ function AppRail({ here }: { here: RailKey }) {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { conversations } = useConversation();
-  const { entriesByIntent } = useIntentsData();
   const sections = useHomeSections();
 
   const unread = conversations
     .filter(isVisibleH2HConversation)
     .reduce((total, conv) => total + (conv.unreadCount > 0 ? conv.unreadCount : 0), 0);
-  const waiting = Object.values(entriesByIntent).reduce((sum, entries) => sum + entries.filter((e) => e.stage === "awaiting").length, 0);
-  const pairs = usePairsWaiting(here);
+  // Home's badge is what needs you: questions to answer and people waiting on you, as listed under it.
+  const needsYou = sections.reduce((sum, section) => sum + (section.id === "progress" ? 0 : section.count ?? 0), 0);
 
   const item = (key: Exclude<RailKey, "">, label: string, to: string, count = 0) => (
     <button type="button" className={`ih-nav${here === key ? " on" : ""}`} aria-current={here === key ? "page" : undefined} onClick={() => navigate(to)}>
@@ -110,7 +87,7 @@ function AppRail({ here }: { here: RailKey }) {
     <nav className={`ih-rail${zone === "rail" ? " sv-focus" : ""}`} aria-label="main" data-zone="rail">
       <div className="ih-brand">index</div>
       <div className="ih-rail-body">
-        {item("home", "home", "/", waiting)}
+        {item("home", "home", "/", needsYou)}
         {/* Home's sections stay listed on every page; from elsewhere they open Home there. */}
         <ul className="ih-sub" aria-label="jump to">
             {(sections.length ? sections : DEFAULT_HOME_SECTIONS).map((section) => (
@@ -124,9 +101,9 @@ function AppRail({ here }: { here: RailKey }) {
               </li>
             ))}
         </ul>
-        {item("intents", "intents", "/intents", waiting)}
+        {item("intents", "intents", "/intents")}
         {item("chat", "conversations", "/chat", unread)}
-        {item("introduce", "introduce", "/introduce", pairs)}
+        {item("introduce", "introduce", "/introduce")}
 
         <div className="ih-foot">
           <ConnectAgent />

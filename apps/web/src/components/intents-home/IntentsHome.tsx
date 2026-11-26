@@ -47,7 +47,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
   const intentsService = useIntents();
   const { conversations } = useConversation();
   const { error: showError } = useNotifications();
-  const { log, setLog } = useAgentWindow();
+  const { log, setLog, decide } = useAgentWindow();
   const {
     intents: visible, intentsLoaded, updateIntents, radar, radarFailed, loadRadar,
     entriesByIntent, opportunityActionLoading, handleOpportunityAction,
@@ -134,19 +134,21 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
 
   const [passed, setPassed] = useState<Set<string>>(() => new Set());
   const act = (person: Person, action: "accepted" | "rejected") => {
-    const send = () => {
-      for (const entry of person.entries.filter((e) => e.stage === "awaiting")) {
-        if (opportunityActionLoading[entry.item.opportunityId]) continue;
-        void handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
-          notOnIndex: person.notOnIndex,
-          scope: { intentId: entry.intentId },
-        }).then(() => loadRadar(entry.intentId));
-      }
-    };
+    const unpass = () => setPassed((prev) => { const next = new Set(prev); next.delete(person.key); return next; });
+    // Recorded with Home's decisions too, so "waiting on you" in the sidebar drops at once.
+    decide(person.key, action);
+    const send = () => void Promise.all(person.entries
+      .filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId])
+      .map((entry) => handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
+        notOnIndex: person.notOnIndex,
+        scope: { intentId: entry.intentId },
+      }).then((ok) => { void loadRadar(entry.intentId); return ok; })))
+      // It didn't go through: the error is already shown, so give them back.
+      .then((results) => { if (results.includes(false)) { decide(person.key, null); unpass(); } });
     if (action === "accepted") { send(); return; }
     // A pass waits a few seconds behind "undo"; the card steps aside meanwhile.
     setPassed((prev) => new Set(prev).add(person.key));
-    later(`passed on ${person.name.split(" ")[0]}`, send, () => setPassed((prev) => { const next = new Set(prev); next.delete(person.key); return next; }));
+    later(`passed on ${person.name.split(" ")[0]}`, send, () => { decide(person.key, null); unpass(); });
   };
 
   const openMatch = (person: Person, view?: "chat") => {
