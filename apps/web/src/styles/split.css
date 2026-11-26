@@ -416,7 +416,9 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-iagent form.pl-agent-compose button[type="submit"]:disabled, .sv .sv-agent form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; }
 .sv .sv-chat .pl-agent-log.pl-dm-tl { background: var(--sv-well); }
 .sv .sv-chat .pl-agent-line:not(.mine) .pl-agent-bubble { width: 78%; }
-.sv .sv-chat form.pl-agent-compose textarea { height: 40px; min-height: 40px; max-height: 40px; }
+.sv .sv-chat form.pl-agent-compose { align-items: flex-end; }
+.sv .sv-chat form.pl-agent-compose textarea { height: 40px; min-height: 40px; max-height: 180px; overflow-y: auto; }
+.sv .sv-chat form.pl-agent-compose button[type="submit"] { margin-bottom: 7px; }
 .sv .sv-chat form.pl-agent-compose button[type="submit"]:disabled { background: var(--sv-orange); color: var(--sv-ink); opacity: 1; box-shadow: var(--sv-sh-btn); }
 .sv .sv-x { display: grid; place-items: center; line-height: 1; text-align: center; }
 
