@@ -11,6 +11,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import { useBack, atHistoryEntry } from "@/hooks/useBack";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
+import { networkPath } from "@/lib/network-path";
 import type { resolveSocials } from "@/lib/socials";
 import type { RadarCardItem } from "@/services/opportunities";
 import { useShowMore } from "@/components/ui/ShowMore";
@@ -45,7 +46,7 @@ export default function PlainProfile({
   profile: Profile;
   socials: ReturnType<typeof resolveSocials>;
   isOwn: boolean;
-  networks: Array<{ id: string; title: string; _count: { members: number } }>;
+  networks: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>;
   matches: RadarCardItem[];
   matchesLoaded: boolean;
   pairing: boolean;
@@ -145,7 +146,7 @@ export default function PlainProfile({
               <ul className="pl-nets">
                 {networkList.shown.map((network, index) => (
                   <li key={network.id}>
-                    <Link to={`/networks/${network.id}`} className="pl-net">
+                    <Link to={networkPath(network)} className="pl-net">
                       <span className={`pl-net-mark c${index % 4}`} aria-hidden>{network.title.trim().charAt(0).toUpperCase() || "#"}</span>
                       <span className="pl-net-text">
                         <span className="pl-net-name" title={network.title}>{network.title}</span>

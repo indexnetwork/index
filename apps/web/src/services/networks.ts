@@ -63,13 +63,13 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
    * Make sure the viewer and this person share a network: if they share none,
    * both join Index Early and their agents are paired. Returns what they share now.
    */
-  ensureSharedNetwork: async (userId: string): Promise<{ networks: Array<{ id: string; title: string; _count: { members: number } }>; joined: boolean }> => {
-    const response = await api.post<{ networks?: Array<{ id: string; title: string; _count: { members: number } }>; joined?: boolean }>(`/networks/shared/${userId}/ensure`, {});
+  ensureSharedNetwork: async (userId: string): Promise<{ networks: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>; joined: boolean }> => {
+    const response = await api.post<{ networks?: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>; joined?: boolean }>(`/networks/shared/${userId}/ensure`, {});
     return { networks: response.networks || [], joined: !!response.joined };
   },
 
-  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
-    const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/networks/shared/${userId}`);
+  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>> => {
+    const response = await api.get<{ networks: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }> }>(`/networks/shared/${userId}`);
     return response.networks || [];
   },
 

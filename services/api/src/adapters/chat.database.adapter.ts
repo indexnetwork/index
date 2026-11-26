@@ -15,6 +15,8 @@ import { _convDb } from './conversation.database.adapter';
 export interface NetworkShareResponseRow {
   id: string;
   title: string;
+  /** The network's address, index.network/<key>; null until the owner names it. */
+  key?: string | null;
   prompt: string | null;
   imageUrl: string | null;
   permissions: unknown;
@@ -45,6 +47,7 @@ export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCo
   return {
     id: row.id,
     title: row.title,
+    key: row.key ?? null,
     prompt: row.prompt,
     imageUrl: row.imageUrl,
     joinPolicy: permissions.joinPolicy,
@@ -592,7 +595,7 @@ export class ChatDatabaseAdapter {
   }
 
   /** Get networks that both users share membership in. */
-  async getSharedNetworks(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; _count: { members: number } }[]> {
+  async getSharedNetworks(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; key: string | null; _count: { members: number } }[]> {
     const currentUserNetworkIds = db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
@@ -607,6 +610,7 @@ export class ChatDatabaseAdapter {
       .select({
         id: schema.networks.id,
         title: schema.networks.title,
+        key: schema.networks.key,
         memberCount: count(schema.networkMembers.networkId),
       })
       .from(schema.networks)
@@ -618,11 +622,12 @@ export class ChatDatabaseAdapter {
           inArray(schema.networks.id, targetUserNetworkIds),
         )
       )
-      .groupBy(schema.networks.id, schema.networks.title);
+      .groupBy(schema.networks.id, schema.networks.title, schema.networks.key);
 
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
+      key: row.key,
       _count: { members: Number(row.memberCount) },
     }));
   }
@@ -1933,6 +1938,7 @@ export class ChatDatabaseAdapter {
       .select({
         id: networks.id,
         title: networks.title,
+        key: networks.key,
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,

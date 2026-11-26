@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { APIError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { networkPath } from "@/lib/network-path";
 import { Network } from "@/lib/types";
 import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
@@ -63,7 +64,7 @@ export default function NetworkWebInviteLanding() {
   const [loginRequested, setLoginRequested] = useState(false);
   // Set once the join lands. Where to go next depends on the account, which
   // may still be loading right after an inline sign-in.
-  const [joinedNetworkId, setJoinedNetworkId] = useState<string | null>(null);
+  const [joinedNetwork, setJoinedNetwork] = useState<Network | null>(null);
   // Set once this tab mails a sign-in link. The link opens a new tab that
   // signs in, joins and moves on; this tab stays on "check your
   // email" even after the shared session arrives, rather than joining twice.
@@ -165,7 +166,7 @@ export default function NetworkWebInviteLanding() {
     try {
       const result = await networkService.acceptInvitation(code);
       if (result.status === "already_member") {
-        navigate(`/networks/${result.network.id}`, { replace: true });
+        navigate(networkPath(result.network), { replace: true });
         return;
       }
       if (result.status === "pending") {
@@ -175,7 +176,7 @@ export default function NetworkWebInviteLanding() {
       }
       // Membership now exists, so /auth/me can report a pending consent before we leave this page.
       await refetchUser();
-      setJoinedNetworkId(result.network.id);
+      setJoinedNetwork(result.network);
     } catch (err) {
       setJoining(false);
       if (err instanceof APIError && err.status === 403) {
@@ -195,9 +196,9 @@ export default function NetworkWebInviteLanding() {
   }, [previewStep, isReady, isAuthenticated, loginRequested, linkSentTo, attemptJoin]);
 
   useEffect(() => {
-    if (!joinedNetworkId || !user) return;
-    navigate(needsOnboarding(user) ? "/onboarding" : `/networks/${joinedNetworkId}`, { replace: true });
-  }, [joinedNetworkId, user, navigate]);
+    if (!joinedNetwork || !user) return;
+    navigate(needsOnboarding(user) ? "/onboarding" : networkPath(joinedNetwork), { replace: true });
+  }, [joinedNetwork, user, navigate]);
 
   const callbackURL =
     typeof window !== "undefined" ? window.location.href : "/";

@@ -8,6 +8,7 @@ import { useNetworks, useOpportunities, useUsers } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
+import { networkPath } from "@/lib/network-path";
 import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import type { OpportunityLifecycleStatus, RadarCardItem } from "@/services/opportunities";
@@ -205,7 +206,7 @@ export function PersonSummary({ userId, name, avatar, focusId, why, intentId, no
   const opportunitiesApi = useOpportunities();
   const { conversations } = useConversation();
   const { intents } = useIntentsData();
-  const [nets, setNets] = useState<{ id: string; list: Array<{ id: string; title: string; _count: { members: number } }> } | null>(null);
+  const [nets, setNets] = useState<{ id: string; list: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }> } | null>(null);
   const [opps, setOpps] = useState<{ id: string; list: RadarCardItem[] } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   /** Closed rows folded or not, for whose pane; another person's starts from the default. */
@@ -310,7 +311,7 @@ export function PersonSummary({ userId, name, avatar, focusId, why, intentId, no
         <>
           <h4 className="sv-h4">networks</h4>
           <div className="sv-socials">
-            {shared.map((n) => <Link key={n.id} className="sv-soc" to={`/networks/${n.id}`}>{n.title} · {compact(n._count.members)}</Link>)}
+            {shared.map((n) => <Link key={n.id} className="sv-soc" to={networkPath(n)}>{n.title} · {compact(n._count.members)}</Link>)}
           </div>
         </>
       )}
