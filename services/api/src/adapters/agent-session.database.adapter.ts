@@ -14,7 +14,8 @@ export type QuestionScope = 'intent' | 'match';
 
 export interface MatchReference {
   opportunityId: string;
-  counterparty: { id: string; name: string | null };
+  /** `wants` completes "looking for …" from their intent, added on read for Home; it is never stored. */
+  counterparty: { id: string; name: string | null; wants?: string };
 }
 
 /** One human-facing entry on the agent DM, which can concern several negotiations. */

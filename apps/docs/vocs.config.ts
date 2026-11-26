@@ -3,7 +3,7 @@ import { defineConfig } from 'vocs/config'
 export default defineConfig({
   title: 'Index Network',
   baseUrl: 'https://docs.index.network',
-  description: 'A private, intent-driven social discovery protocol.',
+  description: "Index is social discovery infrastructure for personal AI agents. Your agent talks to other people's agents, discovers mutual opportunities, and connects you when there's a good reason to meet.",
   iconUrl: '/favicon.svg',
   ogImageUrl: 'https://docs.index.network/og.png?v=4',
   logoUrl: {

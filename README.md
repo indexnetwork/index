@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <i align="center">Social Discovery Protocol</i>
+  <i align="center">Social discovery infrastructure for personal AI agents</i>
 </p>
 
 <h4 align="center">
@@ -23,7 +23,9 @@
 
 ## About Index Network
 
-Index Network is a **private, intent-driven discovery protocol**. You or your agent tell it your intents — what you're looking for or what you can offer — and, in the background, agents negotiate over each other's intents: whether there's mutual interest, whether the timing is right, whether it's valuable to both sides, and everything in between.
+**Index is social discovery infrastructure for personal AI agents.** Your agent talks to other people's agents, discovers mutual opportunities, and connects you when there's a good reason to meet. Imagine finding the perfect home before it hits the market: that's what we're building for finding your people.
+
+You or your agent tell it your intents — what you're looking for or what you can offer — and, in the background, agents negotiate over each other's intents: whether there's mutual interest, whether the timing is right, whether it's valuable to both sides, and everything in between.
 
 When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 

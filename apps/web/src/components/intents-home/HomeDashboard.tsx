@@ -6,10 +6,10 @@ import "@/styles/plain.css";
 import { PageView, ListHead } from "@/components/intents-home/SplitView";
 import QuestionCard from "@/components/intents-home/QuestionCard";
 import { useUndo } from "@/components/intents-home/undo";
-import { RANK, intentLabel, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
+import { RANK, personKey, type Entry, type Stage } from "@/components/intents-home/stages";
 import { useAgentWindow, type Decision } from "@/components/intents-home/agentWindowContext";
 import { usePublishHomeSections } from "@/components/intents-home/homeSectionsContext";
-import { focusedGroup, intentsToRefresh, type PersonalQuestion as AgentQuestion } from "@/components/intents-home/personal-questions";
+import { focusedGroup, intentsToRefresh } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -72,10 +72,6 @@ export default function HomeDashboard() {
   useEffect(() => {
     if (linkedGroup) document.getElementById(`q-card-${linkedGroup}`)?.scrollIntoView({ block: "center" });
   }, [linkedGroup]);
-  /** "for: …" under a card that stands for more than one intent. */
-  const forLine = (question: AgentQuestion) => question.intentIds.length > 1
-    ? `for: ${question.intentIds.map((id) => intentLabel(intents.find((intent) => intent.id === id))).filter(Boolean).join(", ")}`
-    : undefined;
 
   // After an answer my agent goes back to work on that intent, so "in progress"
   // shows as loading until its people change (or a while passes), rereading
@@ -253,7 +249,7 @@ export default function HomeDashboard() {
 
   return split(
     <>
-      <ListHead id="questions">questions · {questionsLoaded ? questions.length : "…"}</ListHead>
+      <ListHead id="questions" fold={questionList.fold}>agents are asking you · {questionsLoaded ? questions.length : "…"}</ListHead>
       {staleLink && <div className="sv-empty">that question was already answered.</div>}
       {!questionsLoaded ? (
         <div className="sv-empty"><Placeholder.Rows count={2} avatar={false} label="loading questions" /></div>
@@ -261,24 +257,18 @@ export default function HomeDashboard() {
         <div className="sv-empty">no questions right now.</div>
       ) : (
         <>
-          {questionList.shown.map((question) => {
-            const one = question.intentIds.length <= 1;
-            return (
-              <QuestionCard
-                key={question.groupId}
-                question={question}
-                intentLabel={one ? intentLabel(intents.find((intent) => intent.id === question.intentId)) : forLine(question)?.replace(/^for: /, "")}
-                intentHref={one ? `/i/${question.intentId}` : undefined}
-                selected={question.groupId === linkedGroup}
-                onAnswer={answerAndRefresh}
-              />
-            );
-          })}
-          {questionList.more}
+          {questionList.shown.map((question) => (
+            <QuestionCard
+              key={question.groupId}
+              question={question}
+              selected={question.groupId === linkedGroup}
+              onAnswer={answerAndRefresh}
+            />
+          ))}
         </>
       )}
 
-      <ListHead id="waiting">waiting on you · {loadingPeople ? "…" : waitingCount}</ListHead>
+      <ListHead id="waiting" fold={waitingList.fold}>agents agreed. your call · {loadingPeople ? "…" : waitingCount}</ListHead>
       {loadingPeople && !waitingRows.length ? (
         <div className="sv-empty"><Placeholder.Rows count={3} label="loading people" /></div>
       ) : waitingRows.length === 0 ? (
@@ -317,13 +307,16 @@ export default function HomeDashboard() {
               </div>
             );
           })}
-          {waitingList.more}
         </>
       )}
 
       {(moving.length > 0 || refreshingIds.length > 0) && (
         <>
-          <ListHead id="progress">in progress · {refreshingIds.length > 0 ? <Placeholder.Count label="updating" /> : moving.length}</ListHead>
+          <ListHead id="progress" fold={movingList.fold}>
+            {refreshingIds.length > 0
+              ? <>agents talking · <Placeholder.Count label="updating" /></>
+              : <>agents talking · {byStage.talks.length}{byStage.chat.length > 0 && <> · chatting · {byStage.chat.length}</>}</>}
+          </ListHead>
           {movingList.shown.map((person) => {
             const lead = person.entries[0];
             const talking = lead.stage === "talks";
@@ -339,7 +332,6 @@ export default function HomeDashboard() {
               </div>
             );
           })}
-          {movingList.more}
         </>
       )}
     </>,

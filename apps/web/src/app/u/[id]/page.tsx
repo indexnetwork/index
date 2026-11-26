@@ -1,22 +1,18 @@
 import { useState, useEffect } from "react";
-import "./profile.css";
+import "@/styles/split.css";
 import { Check, Copy } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useConversation } from "@/contexts/ConversationContext";
 import { useUsers, useNetworks, useOpportunities } from "@/contexts/APIContext";
-import type { RadarCardItem } from "@/services/opportunities";
-import { radarBucketForOpportunity } from "@/lib/radar-buckets";
 import AppHandoff from "@/components/AppHandoff";
-import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import type { ReactNode } from "react";
-import { NotOnIndexTag } from "@/components/workbench/mac-blocks";
 import NegotiationHistory from "@/components/NegotiationHistory";
-import NegotiationConversation from "@/components/NegotiationConversation";
+import ChatView from "@/components/chat/ChatView";
+import { PersonHead, PersonPane, PersonSummary, type PersonTab } from "@/components/intents-home/PersonPane";
 import { getPublicUserProfile, type AgentStats } from "@/services/users";
 import { log } from "@/lib/logger";
 import { APIError, isNotFoundError } from "@/lib/api";
@@ -31,8 +27,6 @@ import { Placeholder } from "@/components/ui/Placeholder";
 import "@/styles/plain.css";
 
 const logger = log.page.from("u/[id]");
-
-const sectionLabel = { fontFamily: "var(--amiga-sans)", fontSize: 11, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-2)", marginBottom: 8 } as const;
 
 /** /u/:id, the old profile address. It still opens, and moves to /:username when there is one. */
 export default function UserProfilePage() {
@@ -58,27 +52,22 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   const opportunitiesService = useOpportunities();
 
   const [profileData, setProfileData] = useState<User | null>(null);
-  const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
-  const [sharedOpportunities, setSharedOpportunities] = useState<RadarCardItem[]>([]);
-  const [openOpportunityId, setOpenOpportunityId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<"notFound" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [oppKey, setOppKey] = useState(0);
-  const [oppsLoaded, setOppsLoaded] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState(false);
   const [agentStats, setAgentStats] = useState<AgentStats | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [tab, setTab] = useState<PersonTab>("summary");
+  const [chatCount, setChatCount] = useState(0);
+  const inFrame = useInAppFrame();
 
   // `id` is a user id or a username; the loaded profile says whose page this is.
   const profileId = profileData?.id;
   const isSelf = signedIn && !!user?.id && !!profileId && user.id === profileId;
   const isOtherUser = signedIn && !!user?.id && !!profileId && user.id !== profileId;
-  const { conversations } = useConversation();
-  // A match with someone you already chat with is not awaiting you.
-  const chatOpen = isOtherUser && conversations.some((conv) =>
-    (conv.participants ?? []).some((p) => p.participantType === "user" && p.participantId === profileId));
 
   useEffect(() => {
     // /u/ is a public route, so authLoading clears before /auth/me resolves; wait for the viewer too.
@@ -102,21 +91,19 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
         }
         setProfileData(profile);
 
-        let networks: typeof sharedNetworks = [];
+        // Signed in, someone else: no network in common means both join Index Early, which pairs the agents.
+        // The page waits for it, so the summary's networks and opportunities load after.
         if (signedIn && user?.id && user.id !== profile.id) {
           try {
-            networks = await networksService.getSharedNetworks(profile.id);
-            // No network in common: both join Index Early, which pairs the agents.
+            const networks = await networksService.getSharedNetworks(profile.id);
             if (networks.length === 0) {
               const ensured = await networksService.ensureSharedNetwork(profile.id);
-              networks = ensured.networks;
               if (ensured.joined && active) setOppKey((k) => k + 1);
             }
           } catch (err) {
             logger.error('Failed to fetch shared networks', { error: err });
           }
         }
-        if (active) setSharedNetworks(networks);
       } catch (err) {
         if (!active) return;
         logger.error('Failed to fetch profile', { error: err });
@@ -131,19 +118,6 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
     fetchData();
     return () => { active = false; };
   }, [id, atRoot, navigate, user?.id, isAuthenticated, signedIn, authLoading, usersService, networksService, reloadKey]);
-
-  useEffect(() => {
-    setSharedOpportunities([]);
-    setOppsLoaded(false);
-    if (!isOtherUser || !profileId) return;
-    let active = true;
-    opportunitiesService
-      .getRadarView({ peerUserId: profileId, statuses: ["negotiating", "pending", "accepted", "rejected", "expired"], noCache: oppKey > 0 })
-      .then((res) => { if (active) setSharedOpportunities(res.items); })
-      .catch((err) => logger.error('Failed to fetch shared opportunities', { error: err }))
-      .finally(() => { if (active) setOppsLoaded(true); });
-    return () => { active = false; };
-  }, [profileId, isOtherUser, opportunitiesService, oppKey]);
 
   // Agent analytics are the owner's alone: only fetched on your own profile.
   useEffect(() => {
@@ -239,81 +213,72 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
     );
   }
 
+  const person = { name: profileData.name, userId: profileData.id, avatar: profileData.avatar, notOnIndex: profileData.emailVerified === false };
+
+  // Someone else, signed in: the very pane the app opens for them (summary · chat), filling the page.
+  if (isOtherUser) {
+    return (
+      <PersonFrame onClose={back}>
+        <PersonPane
+          person={person}
+          tab={tab}
+          onTab={(next) => (next === "chat" && !inFrame ? navigate(`/u/${profileData.id}/chat`) : setTab(next))}
+          chatCount={chatCount || undefined}
+          linked={false}
+          summary={<PersonSummary key={oppKey} userId={profileData.id} name={profileData.name} avatar={profileData.avatar} fresh={oppKey > 0} none={(
+            <p className="sv-dimp">our agents are already paired. they&apos;re talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over.</p>
+          )} />}
+          chat={<ChatView key={profileData.id} userId={profileData.id} userName={profileData.name} userAvatar={profileData.avatar ?? undefined} onClose={() => setTab("summary")} bare onCount={setChatCount} />}
+        />
+      </PersonFrame>
+    );
+  }
+
   // Sorted on where each link actually points rather than on its stored label,
   // so a LinkedIn URL filed under 'custom' shows as LinkedIn instead of
   // vanishing, and anything that resolves to no address is left out entirely.
   const socialLinks = resolveSocials(profileData.socials);
+  const handle = profileData.username
+    ? `@${profileData.username}`
+    : isSelf ? <Link to="/profile/edit" className="loc" style={{ textDecoration: "underline" }}>set a username</Link> : null;
 
-
+  // Your own profile, or anyone's when signed out: the same header and sections as the pane.
   return (
-      <ProfileFrame width={720} height="min(720px, calc(100vh - 112px))" onClose={back}>
-      <div className="mac-scroll profile-content">
-
-          {/* Avatar, Name, Location, Socials */}
-          <div className="profile-header">
-            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
-            <div className="profile-identity">
-              <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
-              {profileData.username ? (
-                <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12 }}>@{profileData.username}</div>
-              ) : isSelf && (
-                <Link to="/profile/edit" style={{ display: "inline-block", marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>set a username</Link>
-              )}
-              {profileData.emailVerified === false && <NotOnIndexTag />}
-              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--amiga-sans)", fontSize: 12, color: "#666" }}>{profileData.location}</div>}
-            </div>
-            {isOtherUser && (
-              <button type="button" className="wb-btn primary small profile-message" onClick={() => navigate(`/u/${profileData.id}/chat`)}>send message</button>
-            )}
-            {isSelf && (
-              <div className="profile-actions">
-                <button type="button" className="wb-btn small" onClick={() => navigate("/profile/edit")}>edit profile</button>
-                <button type="button" className="wb-btn small" onClick={copyProfileLink} aria-label={linkCopied ? "link copied" : "copy link"} title={linkCopied ? "copied" : "copy link"} style={{ display: "inline-flex", alignItems: "center" }}>
-                  {linkCopied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-                </button>
-                <button type="button" className="wb-btn primary small" onClick={shareProfile}>share on X</button>
-              </div>
-            )}
-          </div>
-
-          {profileData.intro && (
-            <div>
-              <h3 style={sectionLabel}>bio</h3>
-              <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{profileData.intro}</p>
-            </div>
+    <PersonFrame onClose={back}>
+      <div className="sv-person" aria-label={profileData.name}>
+        <PersonHead
+          person={person}
+          handle={handle}
+          location={profileData.location}
+          linked={false}
+          actions={isSelf && (
+            <>
+              <button type="button" className="sv-btn sm" onClick={copyProfileLink} aria-label={linkCopied ? "link copied" : "copy link"} title={linkCopied ? "copied" : "copy link"}>
+                {linkCopied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+              </button>
+              <button type="button" className="sv-btn sm" onClick={shareProfile}>share on X</button>
+              <button type="button" className="sv-open" onClick={() => navigate("/profile/edit")}>edit profile ›</button>
+            </>
           )}
+        />
+        <div className="sv-body sv-sum">
+          <h4 className="sv-h4">bio</h4>
+          {profileData.intro ? <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{profileData.intro}</p> : <p className="sv-dimp">no bio yet.</p>}
 
           {socialLinks.length > 0 && (
-            <div>
-              <h3 style={sectionLabel}>elsewhere</h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <>
+              <h4 className="sv-h4">elsewhere</h4>
+              <div className="sv-socials">
                 {socialLinks.map((s) => (
-                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
-                    {SOCIAL_ICONS[s.platform]}
-                    <span>{s.handle}</span>
-                  </a>
+                  <a className="sv-soc" key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" title={s.platform}>{SOCIAL_ICONS[s.platform]}<span>{s.handle}</span></a>
                 ))}
               </div>
-            </div>
-          )}
-
-          {isOtherUser && (
-            <div>
-              <h3 style={sectionLabel}>networks</h3>
-              {sharedNetworks.length === 0 && <div style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>no shared networks.</div>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid var(--wb-control)", borderRadius: 2, padding: "4px 9px", fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink)", textDecoration: "none" }}>
-                    {network.title} · {network._count.members}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            </>
           )}
 
           {!signedIn && (
-            <div>
-              <h3 style={sectionLabel}>opportunities</h3>
+            <>
+              <h4 className="sv-h4">opportunities</h4>
               <EmptyState
                 framed
                 message={
@@ -324,85 +289,52 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
                 }
                 action={{ label: pairing ? "pairing" : "pair agents", onClick: pair, primary: true, large: true, busy: pairing }}
               />
-            </div>
-          )}
-
-          {/* Signed in, nothing between us yet. Opening the profile already made
-              sure we share a network, so our agents are paired: nothing to click. */}
-          {isOtherUser && oppsLoaded && sharedOpportunities.length === 0 && (
-            <div>
-              <h3 style={sectionLabel}>opportunities</h3>
-              <div style={{ border: "1px solid #000", background: "#fff", padding: "14px 16px", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }}>
-                <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>our agents are already paired.</div>
-                they&apos;re talking in the background, and we&apos;ll both hear about it the moment something&apos;s worth meeting over. until then, enjoy connecting with others.
-              </div>
-            </div>
-          )}
-
-          {sharedOpportunities.length > 0 && (
-            <div>
-              <h3 style={sectionLabel}>opportunities</h3>
-              <div style={{ display: "grid", gap: 8 }}>
-                {sharedOpportunities.map((o) => {
-                  const bucket = radarBucketForOpportunity(o.status, o.viewerCommitted, chatOpen);
-                  const open = openOpportunityId === o.opportunityId;
-                  const toggle = () => setOpenOpportunityId(open ? null : o.opportunityId);
-                  return (
-                    <div key={o.opportunityId} style={{ border: "1px solid var(--wb-hairline)", borderRadius: 3, background: "#fff", overflow: "hidden" }}>
-                      <div role="button" tabIndex={0} onClick={toggle}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
-                        style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "baseline", background: open ? "var(--wb-selected)" : "#fff" }}>
-                        <div style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{o.headline || o.mainText}</div>
-                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-                          {bucket === "closed" ? (o.status === "rejected" ? "not a fit" : "missed") : bucket === "negotiating" ? "in progress" : bucket}
-                        </span>
-                        <span style={{ fontFamily: "var(--amiga-sans)", fontSize: 12, color: "var(--ink-3)" }}>{open ? "▾" : "›"}</span>
-                      </div>
-                      {open && (
-                        <div style={{ borderTop: "1px solid var(--wb-hairline)" }}>
-                          <NegotiationConversation opportunityId={o.opportunityId} expanded onToggle={toggle} />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            </>
           )}
 
           {isSelf && (
-            <div style={{ borderTop: "1px solid #000", paddingTop: 16 }}>
-              <h3 style={sectionLabel}>agent analytics</h3>
-              <div className="profile-stats">
+            <>
+              <h4 className="sv-h4">agent analytics</h4>
+              <div className="sv-stats">
                 {([
                   { label: "paired agents", value: agentStats?.pairedAgents, hint: "people your agent has negotiated with" },
                   { label: "negotiations", value: agentStats?.negotiations, hint: "every conversation, all time" },
                   { label: "in progress", value: agentStats?.inProgress, hint: "still talking" },
                   { label: "connections", value: agentStats?.connected, hint: "both of you said yes" },
                 ]).map((tile) => (
-                  <div className="profile-stat" key={tile.label} title={tile.hint}>
-                    <span style={{ fontFamily: "var(--amiga-title)", fontSize: 16, fontWeight: 600 }}>{tile.value ?? "–"}</span>
-                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>{tile.label}</span>
+                  <div className="sv-stat" key={tile.label} title={tile.hint}>
+                    <b>{tile.value ?? "–"}</b>
+                    <span>{tile.label}</span>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
 
-          {/* Past Negotiations — only for authenticated users */}
-          {isSelf && (
-            <div>
-              <h3 style={sectionLabel}>agent log</h3>
+              <h4 className="sv-h4">agent log</h4>
               <NegotiationHistory userId={profileData.id} />
-            </div>
+            </>
           )}
-
+        </div>
       </div>
-      </ProfileFrame>
+    </PersonFrame>
   );
 }
 
 export const Component = UserProfilePage;
+
+/**
+ * Where a loaded profile sits: in the app it fills the page like the
+ * conversations pane; elsewhere (phones, signed out) it gets its own window.
+ */
+function PersonFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const inFrame = useInAppFrame();
+  const pane = <div className="sv"><section className="sv-pane">{children}</section></div>;
+  if (inFrame) return pane;
+  return (
+    <Stage width={720} height="min(720px, calc(100vh - 112px))">
+      <Window title="profile" onClose={onClose} style={{ height: "100%" }}>{pane}</Window>
+    </Stage>
+  );
+}
 
 /**
  * Where the profile sits. Signed in on desktop, the app's main window already

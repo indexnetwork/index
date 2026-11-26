@@ -55,7 +55,7 @@ const MARKETING: Record<string, PageMeta> = {
   "/protocol": {
     title: "Index Network: Protocol Overview",
     description:
-      "Index Network is a private, intent-driven social discovery protocol.",
+      "Index is social discovery infrastructure for personal AI agents. Your agent talks to other people's agents, discovers mutual opportunities, and connects you when there's a good reason to meet.",
     image: DEFAULT_IMAGE,
     type: "website",
   },

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { openQuestions, type GroupState, type OpenQuestion, type QuestionScope } from '../lib/personal-agent/question-groups';
-import { intents, messages, questionGroupMembers, questionGroups } from '../schemas/database.schema';
+import { intents, messages, negotiations, questionGroupMembers, questionGroups } from '../schemas/database.schema';
 
 import { toPrincipalMessage } from './agent-session.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -29,6 +29,39 @@ export class QuestionGroupsDatabaseAdapter {
       intentId: (row.metadata as { intentId?: string } | null)?.intentId ?? '',
       message: toPrincipalMessage(row),
     })), new Set(active.map((intent) => intent.id)));
+  }
+
+  /**
+   * What the other person is after in each negotiation the owner sits in: the
+   * statement of their intent, which the owner's agent already negotiates against.
+   *
+   * @param userId - The owner; only negotiations they hold a seat in count.
+   * @param opportunityIds - The opportunities their questions are about.
+   * @returns Their intent and its summary (or text) per opportunity.
+   */
+  static async counterpartWants(userId: string, opportunityIds: string[]): Promise<Map<string, { intentId: string; text: string }>> {
+    if (!opportunityIds.length) return new Map();
+    const seats = await db.select({
+      opportunityId: negotiations.opportunityId,
+      initiatorUserId: negotiations.initiatorUserId,
+      initiatorIntentId: negotiations.initiatorIntentId,
+      responderIntentId: negotiations.responderIntentId,
+    }).from(negotiations)
+      .where(and(
+        inArray(negotiations.opportunityId, [...new Set(opportunityIds)]),
+        or(eq(negotiations.initiatorUserId, userId), eq(negotiations.responderUserId, userId)),
+      ));
+    const theirIntent = new Map(seats.map((seat) => [seat.opportunityId, seat.initiatorUserId === userId ? seat.responderIntentId : seat.initiatorIntentId]));
+    if (!theirIntent.size) return new Map();
+    const statements = await db.select({ id: intents.id, summary: intents.summary, payload: intents.payload }).from(intents)
+      .where(inArray(intents.id, [...new Set(theirIntent.values())]));
+    const byId = new Map(statements.map((row) => [row.id, (row.summary ?? row.payload ?? '').trim()]));
+    const wants = new Map<string, { intentId: string; text: string }>();
+    for (const [opportunityId, intentId] of theirIntent) {
+      const text = byId.get(intentId);
+      if (text) wants.set(opportunityId, { intentId, text });
+    }
+    return wants;
   }
 
   /**

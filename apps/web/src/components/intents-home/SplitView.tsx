@@ -48,9 +48,23 @@ export function Seg({ items }: { items: Array<{ label: string; n?: number; on?: 
   );
 }
 
-/** A heading inside the list, e.g. "waiting on you · 3". */
-export function ListHead({ id, children }: { id?: string; children: ReactNode }) {
-  return <div className="sv-lh" id={id}>{children}</div>;
+/** A list's fold switch, carried by its heading: "show all ›" opens it, `less` folds it back. */
+export type HeadFold = { open: boolean; toggle: () => void; more?: string; less?: string };
+
+/**
+ * A heading inside the list, e.g. "waiting on you · 3". With `fold`, the
+ * heading carries the list's "show all ›" on its right, so nothing trails the list.
+ */
+export function ListHead({ id, fold, children }: { id?: string; fold?: HeadFold | null; children: ReactNode }) {
+  if (!fold) return <div className="sv-lh" id={id}>{children}</div>;
+  return (
+    <div className="sv-lh sv-lh-fold" id={id}>
+      <span>{children}</span>
+      <button type="button" className="sv-open" aria-expanded={fold.open} onClick={fold.toggle}>
+        {fold.open ? (fold.less ?? "show fewer") : (fold.more ?? "show all ›")}
+      </button>
+    </div>
+  );
 }
 
 /** The right side when nothing is picked. */

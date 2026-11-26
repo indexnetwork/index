@@ -25,6 +25,8 @@
   --sv-sel: #f3f2ee;
   --sv-sel-focus: #e6e5df;
   --sv-sel-pane: #ebeae5;
+  /* hover: a whisper, so it never reads as the selected one */
+  --sv-tint: #faf9f6;
   /* shadows: A, hard offset */
   --sv-sh-btn: 1px 1px 0 #000;
   --sv-sh-chip: 1px 1px 0 rgba(0, 0, 0, 0.25);
@@ -80,11 +82,11 @@
 /* section heading inside a list */
 .sv-lh { padding: 14px 20px 6px; font: 700 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink2); border-bottom: 1px solid var(--sv-line); scroll-margin-top: 0; }
 .sv-empty { padding: 12px 20px 16px; color: var(--sv-ink2); font-size: 13.5px; }
-.sv-more { display: block; padding: 10px 20px; font: 500 11px var(--sv-mono); text-decoration: underline; color: var(--sv-ink2); background: none; border: 0; }
 
 /* a card: avatar, name, a line, buttons */
 .sv-card { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; }
-.sv-card:hover, .sv-card.on { background: var(--sv-hover); }
+.sv-card:hover { background: var(--sv-tint); }
+.sv-card.on { background: var(--sv-hover); }
 .sv-card.sv-static { cursor: default; }
 .sv-card.sv-static:hover { background: none; }
 .sv-card-body { min-width: 0; flex: 1; }
@@ -92,12 +94,22 @@
 .sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; }
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-via a { text-decoration: underline; }
+/* a question card: the question is the headline, who's asking is the quiet line above it */
+/* who's asking, what they're after, then skip, all on one quiet line */
+.sv-qcard .sv-qhead { display: block; }
+.sv-qcard .sv-qhead .sv-link { font-weight: 400; color: var(--sv-dim); }
+.sv-qcard .sv-qhead .sv-link:hover { color: var(--sv-ink); }
+.sv-qcard .sv-qhead b { font-weight: 400; font-size: 13px; color: var(--sv-ink2); }
+.sv .sv-qcard .sv-chip:not(.ghost) { border-color: #999; }
+.sv .sv-qcard .sv-chip:not(.ghost):hover { border-color: var(--sv-ink); }
+.sv-qcard .sv-blurb { font-weight: 500; font-size: 14px; color: var(--sv-ink); }
 .sv-card.done { color: var(--sv-ink2); font-size: 13.5px; align-items: center; cursor: default; }
 .sv-card.done:hover { background: none; }
 
 /* a row: avatar, name + one line, something on the right */
 .sv-row { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; align-items: flex-start; }
-.sv-row:hover, .sv-row.on { background: var(--sv-hover); }
+.sv-row:hover { background: var(--sv-tint); }
+.sv-row.on { background: var(--sv-hover); }
 .sv-row-t { flex: 1; min-width: 0; }
 .sv-row-n { font-weight: 600; font-size: 14px; }
 .sv-row-pv { font-size: 13px; color: var(--sv-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -146,6 +158,20 @@
 .sv-ph { flex: none; position: relative; border-bottom: 1px solid var(--sv-line); background: var(--sv-paper); }
 .sv-pid { display: flex; gap: 14px; align-items: center; padding: 18px 60px 6px 22px; min-height: 72px; }
 .sv-pid .who { flex: 1; min-width: 0; }
+/* beside the name, e.g. your own profile's "edit profile"; a header with no tabs under it keeps its breath at the bottom */
+.sv-pact { flex: none; display: flex; align-items: center; gap: 8px; }
+.sv-pact .sv-btn { display: inline-flex; align-items: center; }
+.sv-ph > .sv-pid:last-child { padding-bottom: 18px; }
+/* your own profile's agent analytics: four tiles in a ruled row */
+.sv-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--sv-ink); background: var(--sv-ink); }
+.sv-stat { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; padding: 8px 10px; background: var(--sv-paper); }
+.sv-stat b { font: 600 16px var(--sv-sans); }
+.sv-stat span { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+@media (max-width: 720px) {
+  .sv-pid:has(.sv-pact) { flex-wrap: wrap; }
+  .sv-pid .sv-pact { width: 100%; padding-left: 62px; }
+  .sv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .sv-pn { font: 600 20px var(--sv-sans); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sv-pn a { text-decoration: none; }
 .sv-pu { font: 400 12.5px var(--sv-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -173,13 +199,22 @@ a.sv-soc:hover { background: var(--sv-sel); }
 
 /* opportunities between you two: one row each; open shows why and the agents' log */
 .sv-olist { display: grid; gap: 8px; }
+/* "Bob's agent and yours are still talking": their face, a line, your agent's square. */
+.sv-agtalk { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 13.5px; color: var(--sv-ink2); }
+.sv-agfaces { flex: none; display: flex; align-items: center; }
+.sv-agfaces .sv-mine { width: 20px; height: 20px; font-size: 8px; }
+.sv-agline { width: 14px; border-top: 1px dashed var(--sv-dim); margin: 0 3px; }
 .sv-orow { border: 1px solid var(--sv-ink); background: var(--sv-paper); overflow: hidden; }
 .sv .sv-orh { display: flex; gap: 12px; align-items: baseline; padding: 11px 14px; width: 100%; text-align: left; background: none; border: 0; }
-.sv-orh:hover, .sv-orow.open .sv-orh { background: var(--sv-hover); }
+.sv-orh:hover { background: var(--sv-tint); }
+.sv-orow.open .sv-orh { background: var(--sv-hover); }
 .sv-oh { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
 .sv-oc { font: 400 12px var(--sv-mono); color: var(--sv-dim); }
 .sv-olog { border-top: 1px solid var(--sv-line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
 .sv-olog .sv-via { color: var(--sv-ink2); }
+/* the missed and not-a-fit rows fold under one line of text, never a box */
+.sv .sv-ofold { justify-self: start; background: none; border: 0; padding: 6px 0; font: 500 11px var(--sv-mono); color: var(--sv-ink2); cursor: pointer; }
+.sv .sv-ofold:hover { color: var(--sv-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* bottom bar: accept / pass, or a note */
 .sv-bar { flex: none; display: flex; gap: 10px; align-items: center; padding: 12px 22px 14px; border-top: 1px solid var(--sv-line); background: var(--sv-paper); }
@@ -308,11 +343,21 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-alh { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
 .sv-alh a { color: inherit; text-decoration: underline; }
 .sv-body p.sv-owhy { margin: 0 0 2px; font-size: 14px; line-height: 1.5; }
-.sv-turn { display: grid; gap: 4px; }
-.sv-turn .tl { font: 400 10.5px var(--sv-mono); color: var(--sv-ink2); letter-spacing: 0.06em; }
-.sv-turn .tl a { color: inherit; text-decoration: none; }
-.sv-turn .tm { border: 1px solid var(--sv-line); border-radius: 3px; padding: 8px 11px; font-size: 13.5px; line-height: 1.45; background: var(--sv-paper); white-space: pre-wrap; word-break: break-word; }
-.sv-turn.own .tm { background: var(--sv-well); }
+/* the agent log: entries on a dashed timeline, mono like a log, no boxes.
+   your agent's turns hang off a filled square, theirs off a hollow one. */
+.sv-alog { position: relative; display: flex; flex-direction: column; gap: 14px; margin-top: 4px; padding-left: 18px; }
+.sv-alog::before { content: ""; position: absolute; left: 3px; top: 8px; bottom: 8px; border-left: 1px dashed var(--sv-edge); }
+.sv-alog .le { position: relative; }
+.sv-alog .le::before { content: ""; position: absolute; left: -18px; top: 3px; width: 7px; height: 7px; border: 1px solid var(--sv-ink); background: var(--sv-paper); }
+.sv-alog .le.own::before { background: var(--sv-ink); }
+.sv-alog .lh { display: flex; gap: 10px; align-items: baseline; font: 400 10.5px var(--sv-mono); letter-spacing: 0.06em; }
+.sv-alog .lw { color: var(--sv-ink); font-weight: 500; }
+.sv-alog .lw a { color: inherit; text-decoration: none; }
+.sv-alog .lw a:hover { text-decoration: underline; }
+.sv-alog .la { color: var(--sv-dim); text-transform: uppercase; letter-spacing: 0.14em; }
+.sv-alog time { margin-left: auto; color: var(--sv-dim); white-space: nowrap; }
+.sv-alog .lm { margin-top: 5px; font: 400 12.5px/1.65 var(--sv-mono); color: var(--sv-ink2); white-space: pre-wrap; word-break: break-word; }
+.sv-alog .le.own .lm { color: var(--sv-ink); }
 
 /* the chat tab before it opens: the warm box says when, accept and pass are its foot */
 .sv-well { flex: 1 0 auto; padding: 14px 16px 16px; background: var(--sv-well); border: 1px solid var(--sv-well-line); border-bottom: 0; border-radius: 4px 4px 0 0; }
@@ -418,7 +463,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-page-list { border-top: 1px solid var(--sv-line); }
 .sv-page-gap { padding-top: 28px; }
 .sv-page-col.sv-fill { padding: 0; }
-.sv .sv-page-col > .sv-more { padding: 12px 20px; }
 .sv-page-sub .sv-sdot { margin-right: -2px; }
 .sv-page .sv-lh { padding-top: 26px; }
 .sv-page .sv-lh:first-of-type { padding-top: 10px; }
@@ -584,7 +628,15 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-open { margin-left: auto; flex: none; background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink); white-space: nowrap; cursor: pointer; }
 .sv .sv-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 .sv-card.done .sv-open { margin-left: auto; }
+/* a heading that carries its list's "show all ›" on the right */
+.sv-lh-fold { display: flex; align-items: baseline; gap: 12px; }
+.sv .sv-lh-fold .sv-open { text-transform: none; letter-spacing: 0; }
 .sv-card:not(.done):not(.sv-static):hover .sv-mrow > b,
 .sv-card:not(.done):not(.sv-static):hover > .sv-card-body > b,
 .sv-row:hover .sv-row-n { text-decoration: underline; text-underline-offset: 3px; }
 .sv .sv-x.inline { position: static; }
+
+/* "show N more" under a list in the new look: the quiet link, lined up with
+   the rows' left edge (other pages; the intent page and Home put it in the heading) */
+.sv-page-col > button.pl-more:not(#_) { display: block; margin: 0; padding: 12px 20px; border: 0; box-shadow: none; background: none; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
+.sv-page-col > button.pl-more:not(#_):hover { background: none; color: var(--sv-ink); }

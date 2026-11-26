@@ -35,7 +35,8 @@ export interface PrincipalQuestion {
   question: string;
   options?: string[];
   scope: 'intent' | 'match';
-  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
+  /** `wants` completes "looking for …": the most distinctive part of their intent, once written. */
+  matches: { opportunityId: string; counterparty: { id: string; name: string | null; wants?: string } }[];
 }
 
 export interface PersonalAgentState {
