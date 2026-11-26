@@ -8,7 +8,13 @@
  *   bun run maintenance:merge-question-groups -- --dry-run   # log merges, write nothing
  *   bun run maintenance:merge-question-groups                 # merge
  *   bun run maintenance:merge-question-groups -- --user <id>  # one person
+ *
+ * A real run appends every move to merge-question-groups.<time>.jsonl: the
+ * question, the group it left (its whole row) and the group it joined, so
+ * any merge can be split back by hand.
  */
+import { appendFileSync } from 'node:fs';
+
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -18,6 +24,7 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 import { QuestionGroupsDatabaseAdapter } from '../adapters/question-groups.database.adapter';
 import { closeDb } from '../lib/drizzle/drizzle';
 import { mergeSoloGroups, type MergeStore } from '../lib/personal-agent/group-questions';
+import type { GroupState } from '../lib/personal-agent/question-groups';
 import { ConversationService, groupingDecide } from '../services/conversation.service';
 
 const args = process.argv.slice(2);
@@ -50,10 +57,39 @@ function dryStore(userId: string): MergeStore {
   };
 }
 
+/** The real store, with every move and deleted group written to `logPath` first. */
+function loggedStore(logPath: string): MergeStore {
+  const store = QuestionGroupsDatabaseAdapter;
+  const groups = new Map<string, GroupState & { userId: string }>();
+  const left = new Map<string, string>();
+  return {
+    listOpenQuestions: (owner) => store.listOpenQuestions(owner),
+    listGroups: async (owner, open) => {
+      const read = await store.listGroups(owner, open);
+      for (const group of read) {
+        groups.set(group.id, { ...group, userId: owner });
+        for (const member of group.members) left.set(member.questionId, group.id);
+      }
+      return read;
+    },
+    groupedQuestionIds: (ids) => store.groupedQuestionIds(ids),
+    createGroup: async () => { throw new Error('a merge never creates a group'); },
+    addMember: (groupId, question) => store.addMember(groupId, question),
+    show: (ids, at) => store.show(ids, at),
+    moveMember: async (questionId, groupId) => {
+      const from = groups.get(left.get(questionId) ?? '');
+      appendFileSync(logPath, JSON.stringify({ at: new Date().toISOString(), questionId, from, to: groupId }) + '\n');
+      await store.moveMember(questionId, groupId);
+    },
+    deleteGroup: (groupId) => store.deleteGroup(groupId),
+  };
+}
+
 async function main() {
   const decide = groupingDecide();
   if (!decide) throw new Error('OPENROUTER_API_KEY is not set: merging needs the decision model.');
   const conversations = new ConversationService();
+  const logPath = path.resolve(process.cwd(), `merge-question-groups.${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
   const users = only ? [only] : await QuestionGroupsDatabaseAdapter.usersWithOpenGroups();
   console.log(`[merge-question-groups] ${users.length} people${dryRun ? ' (dry run)' : ''}`);
   let total = 0;
@@ -61,14 +97,18 @@ async function main() {
     try {
       const moved = dryRun
         ? await mergeSoloGroups(userId, { store: dryStore(userId), decide, answer: async () => {} })
-        : await conversations.mergeSoloGroups(userId);
+        : await mergeSoloGroups(userId, {
+          store: loggedStore(logPath),
+          decide,
+          answer: (question, text) => conversations.answerAsOwner(userId, question, text),
+        });
       if (moved) console.log(`[merge-question-groups] ${userId}: ${moved} merged`);
       total += moved;
     } catch (error) {
       console.error(`[merge-question-groups] ${userId} failed:`, error instanceof Error ? error.message : error);
     }
   }
-  console.log(`[merge-question-groups] done: ${total} question(s) ${dryRun ? 'would move' : 'moved'}.`);
+  console.log(`[merge-question-groups] done: ${total} question(s) ${dryRun ? 'would move' : 'moved'}.${!dryRun && total ? ` Log: ${logPath}` : ''}`);
   await closeDb();
   process.exit(0);
 }
