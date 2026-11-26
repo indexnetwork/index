@@ -128,6 +128,11 @@
 .idk-clist .tags .idk-tag { margin-left: 0; }
 .idk-contacts-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid #000; font-size: 11.5px; color: var(--idk-ink2); }
 .idk-btn.danger { color: #a30000; }
+/* remove shows only on the row you're pointing at; touch screens and keyboard focus still see it */
+@media (hover: hover) {
+  .idk-clist li > .idk-btn { opacity: 0; transition: opacity 0.12s; }
+  .idk-clist li:hover > .idk-btn, .idk-clist li > .idk-btn:focus-visible { opacity: 1; }
+}
 @media (max-width: 640px) {
   .idk-clist li { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .idk-clist .tags { grid-column: 2; }
