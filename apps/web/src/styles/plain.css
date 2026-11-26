@@ -3292,3 +3292,11 @@ button.pl-more:hover,
 .pl-q-options.pl-chips + .pl-actions {
   margin-top: 8px;
 }
+
+/* My contacts in the networks list: a dashed circle, like a contact who isn't on Index. */
+.pl-net-mark.mine {
+  background: #fff;
+  color: #555;
+  border: 1px dashed #888;
+  border-radius: 50%;
+}

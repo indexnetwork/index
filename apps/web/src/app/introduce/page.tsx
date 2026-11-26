@@ -494,8 +494,8 @@ export default function IntroducePage() {
     void authClient.linkSocial({
       provider: "google",
       scopes: CONTACT_SCOPES,
-      callbackURL: `${window.location.origin}/introduce?connected=1`,
-      errorCallbackURL: `${window.location.origin}/introduce?error=1`,
+      callbackURL: `${window.location.origin}/networks/contacts?connected=1`,
+      errorCallbackURL: `${window.location.origin}/networks/contacts?error=1`,
     });
   };
 
@@ -528,7 +528,7 @@ export default function IntroducePage() {
       ) : (
         <>
           <div className="idk-bar">
-            <div className="idk-views" role="tablist" aria-label="Introduce">
+            <div className="idk-views" role="tablist" aria-label="My contacts">
               <button type="button" role="tab" aria-selected={view === "pairs"} onClick={() => setView("pairs")}>pairs ({waiting.length})</button>
               <button type="button" role="tab" aria-selected={view === "contacts"} onClick={() => setView("contacts")}>contacts ({status.contacts.total})</button>
             </div>
@@ -565,7 +565,7 @@ export default function IntroducePage() {
   );
 
   // Signed out: sign in first, then come back here.
-  if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
+  if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/networks/contacts" replace />;
 
   const count = waiting.length;
   const headStatus = !ready ? "connect your contacts to start"
@@ -595,7 +595,7 @@ export default function IntroducePage() {
       ]} />
     ) : undefined;
     return (
-      <PageView title="introduce" sub={sub} seg={seg}>
+      <PageView title="My contacts" sub={sub} seg={seg}>
         {!status ? (
           <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
         ) : !ready ? (
@@ -627,7 +627,7 @@ export default function IntroducePage() {
     return (
       <div className="ih-view pl">
         <div className="pl-col">
-          <PageHead title="introduce" status={headStatus} />
+          <PageHead title="My contacts" status={headStatus} back={{ label: "networks", onClick: () => navigate("/networks") }} />
           <div className="pl-page">{desk}</div>
         </div>
       </div>
@@ -636,7 +636,7 @@ export default function IntroducePage() {
 
   return (
     <Stage width={1040} height="min(880px, calc(100vh - 96px))">
-      <Window title="introduce" onClose={compact ? undefined : () => navigate("/")} style={{ height: "100%" }}>
+      <Window title="my contacts" onClose={() => navigate("/networks")} style={{ height: "100%" }}>
         <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
           {desk}
         </div>

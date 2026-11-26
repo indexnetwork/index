@@ -25,7 +25,7 @@ import { Placeholder } from "@/components/ui/Placeholder";
 import { KeyboardProvider, useZone } from "@/components/intents-home/keyboard";
 import { UndoProvider } from "@/components/intents-home/undo";
 
-type RailKey = "home" | "intents" | "chat" | "introduce" | "profile" | "networks" | "settings" | "";
+type RailKey = "home" | "intents" | "chat" | "profile" | "networks" | "settings" | "";
 
 /** Which sidebar row the current page belongs to. */
 function railKey(pathname: string, search: string, me?: string, username?: string | null): RailKey {
@@ -38,7 +38,6 @@ function railKey(pathname: string, search: string, me?: string, username?: strin
     const tab = new URLSearchParams(search).get("tab");
     return tab === "profile" ? "profile" : "settings";
   }
-  if (pathname.startsWith("/introduce")) return "introduce";
   if (pathname.startsWith("/networks")) return "networks";
   if (pathname.startsWith("/agents")) return "settings";
   if (pathname.startsWith("/negotiations")) return "settings";

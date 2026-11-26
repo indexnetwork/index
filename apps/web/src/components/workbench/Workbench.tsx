@@ -57,12 +57,14 @@ export function Window({
   dismiss = false,
   children,
   style,
+  className,
 }: {
   title: string;
   onClose?: () => void;
   dismiss?: boolean;
   children: ReactNode;
   style?: CSSProperties;
+  className?: string;
 }) {
   const compact = useCompact();
   const closeRef = useRef(onClose);
@@ -86,7 +88,7 @@ export function Window({
     : !isTabRoot(pathname) && !pathname.startsWith("/onboarding"));
 
   return (
-    <div className="amiga-window" style={{ height: "100%", ...style }}>
+    <div className={className ? `amiga-window ${className}` : "amiga-window"} style={{ height: "100%", ...style }}>
       <div className="mac-titlebar">
         {/* Compact: the close box reads as back, and tab roots (no onClose) drop it. */}
         {/* Nothing to close (a tab root, a side panel) means no close box. */}
