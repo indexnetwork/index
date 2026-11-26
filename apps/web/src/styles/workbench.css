@@ -90,11 +90,11 @@
   flex-direction: column;
 }
 
-/* Signed out, nothing sits beside the page column, so it sits in the middle
-   of the page with a hairline on each side. */
+/* Signed out, nothing sits beside the page column: it sits in the middle of
+   the page, and with nothing to separate it from, it carries no side hairlines. */
 @media (min-width: 721px) {
   .wb-norail .wb-stage { justify-content: center; }
-  .wb-norail .wb-column > .amiga-window { border-left: 1px solid var(--wb-hairline); }
+  .wb-norail .wb-column > .amiga-window { border-right: none; }
 }
 
 /* Onboarding has no rail beside it: the column sits in the middle of the
