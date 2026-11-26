@@ -82,7 +82,6 @@
 /* section heading inside a list */
 .sv-lh { padding: 14px 20px 6px; font: 700 10.5px var(--sv-mono); letter-spacing: 2px; text-transform: uppercase; color: var(--sv-ink2); border-bottom: 1px solid var(--sv-line); scroll-margin-top: 0; }
 .sv-empty { padding: 12px 20px 16px; color: var(--sv-ink2); font-size: 13.5px; }
-.sv-more { display: block; padding: 10px 20px; font: 500 11px var(--sv-mono); text-decoration: underline; color: var(--sv-ink2); background: none; border: 0; }
 
 /* a card: avatar, name, a line, buttons */
 .sv-card { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); cursor: pointer; }
@@ -464,7 +463,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-page-list { border-top: 1px solid var(--sv-line); }
 .sv-page-gap { padding-top: 28px; }
 .sv-page-col.sv-fill { padding: 0; }
-.sv .sv-page-col > .sv-more { padding: 12px 20px; }
 .sv-page-sub .sv-sdot { margin-right: -2px; }
 .sv-page .sv-lh { padding-top: 26px; }
 .sv-page .sv-lh:first-of-type { padding-top: 10px; }
@@ -630,12 +628,15 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv .sv-open { margin-left: auto; flex: none; background: none; border: 0; padding: 0; font: 500 11px var(--sv-mono); color: var(--sv-ink); white-space: nowrap; cursor: pointer; }
 .sv .sv-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 .sv-card.done .sv-open { margin-left: auto; }
+/* a heading that carries its list's "show all ›" on the right */
+.sv-lh-fold { display: flex; align-items: baseline; gap: 12px; }
+.sv .sv-lh-fold .sv-open { text-transform: none; letter-spacing: 0; }
 .sv-card:not(.done):not(.sv-static):hover .sv-mrow > b,
 .sv-card:not(.done):not(.sv-static):hover > .sv-card-body > b,
 .sv-row:hover .sv-row-n { text-decoration: underline; text-underline-offset: 3px; }
 .sv .sv-x.inline { position: static; }
 
 /* "show N more" under a list in the new look: the quiet link, lined up with
-   the rows' left edge (same as "show N closed") */
+   the rows' left edge (other pages; the intent page and Home put it in the heading) */
 .sv-page-col > button.pl-more:not(#_) { display: block; margin: 0; padding: 12px 20px; border: 0; box-shadow: none; background: none; font: 500 11px var(--sv-mono); color: var(--sv-ink2); text-decoration: underline; }
 .sv-page-col > button.pl-more:not(#_):hover { background: none; color: var(--sv-ink); }

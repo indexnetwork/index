@@ -256,7 +256,6 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
   const found = sections.matches.length + sections["in progress"].length + sections.closed.length;
   const matchList = useShowMore(sections.matches.filter((person) => !passed.has(person.key)));
   const progressList = useShowMore(sections["in progress"]);
-  const closedList = useShowMore(sections.closed);
   const created = current?.createdAt
     ? `since ${new Date(current.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }).toLowerCase()}`
     : "";
@@ -299,9 +298,9 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
         <div className="sv-empty sv-page-gap"><Placeholder.Rows count={3} label="loading people" /></div>
       ) : (
         <>
-          <ListHead>waiting on you · {waitingNow}</ListHead>
+          <ListHead fold={matchList.fold}>waiting on you · {waitingNow}</ListHead>
           {waitingNow > 0 ? (
-            <>{matchList.shown.map(renderCard)}{matchList.more}</>
+            <>{matchList.shown.map(renderCard)}</>
           ) : (
             <div className="sv-empty">
               {found > 0 ? "good things are in the works. your agent is talking with people right now and will bring them to you as soon as they're ready." : paused ? "this intent is paused, so your agent isn't looking right now." : "nobody yet. your agent is still looking."}
@@ -309,17 +308,15 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
           )}
           {sections["in progress"].length > 0 && (
             <>
-              <ListHead>in progress · {sections["in progress"].length}</ListHead>
-              {progressList.shown.map(renderCard)}{progressList.more}
+              <ListHead fold={progressList.fold}>in progress · {sections["in progress"].length}</ListHead>
+              {progressList.shown.map(renderCard)}
             </>
           )}
           {sections.closed.length > 0 && (
-            showClosed ? (
-              <>
-                <ListHead>closed · {sections.closed.length}</ListHead>
-                {closedList.shown.map(renderCard)}{closedList.more}
-              </>
-            ) : <button type="button" className="sv-more" onClick={() => setShowClosed(true)}>show {sections.closed.length} closed</button>
+            <>
+              <ListHead fold={{ open: showClosed, toggle: () => setShowClosed((v) => !v), less: "hide" }}>closed · {sections.closed.length}</ListHead>
+              {showClosed && sections.closed.map(renderCard)}
+            </>
           )}
         </>
       )}

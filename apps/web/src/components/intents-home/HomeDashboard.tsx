@@ -249,7 +249,7 @@ export default function HomeDashboard() {
 
   return split(
     <>
-      <ListHead id="questions">agents are asking you · {questionsLoaded ? questions.length : "…"}</ListHead>
+      <ListHead id="questions" fold={questionList.fold}>agents are asking you · {questionsLoaded ? questions.length : "…"}</ListHead>
       {staleLink && <div className="sv-empty">that question was already answered.</div>}
       {!questionsLoaded ? (
         <div className="sv-empty"><Placeholder.Rows count={2} avatar={false} label="loading questions" /></div>
@@ -265,11 +265,10 @@ export default function HomeDashboard() {
               onAnswer={answerAndRefresh}
             />
           ))}
-          {questionList.more}
         </>
       )}
 
-      <ListHead id="waiting">agents agreed. your call · {loadingPeople ? "…" : waitingCount}</ListHead>
+      <ListHead id="waiting" fold={waitingList.fold}>agents agreed. your call · {loadingPeople ? "…" : waitingCount}</ListHead>
       {loadingPeople && !waitingRows.length ? (
         <div className="sv-empty"><Placeholder.Rows count={3} label="loading people" /></div>
       ) : waitingRows.length === 0 ? (
@@ -308,13 +307,12 @@ export default function HomeDashboard() {
               </div>
             );
           })}
-          {waitingList.more}
         </>
       )}
 
       {(moving.length > 0 || refreshingIds.length > 0) && (
         <>
-          <ListHead id="progress">
+          <ListHead id="progress" fold={movingList.fold}>
             {refreshingIds.length > 0
               ? <>agents talking · <Placeholder.Count label="updating" /></>
               : <>agents talking · {byStage.talks.length}{byStage.chat.length > 0 && <> · chatting · {byStage.chat.length}</>}</>}
@@ -334,7 +332,6 @@ export default function HomeDashboard() {
               </div>
             );
           })}
-          {movingList.more}
         </>
       )}
     </>,
