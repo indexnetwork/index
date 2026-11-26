@@ -8,8 +8,11 @@
   gap: 28px;
 }
 
-.invite-head { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
-.invite-hero { display: flex; flex-direction: column; gap: 8px; }
+.invite-intro { display: flex; flex-direction: column; gap: 14px; }
+/* Avatar and name on one row, the name block centred on the avatar. */
+.invite-head { display: flex; align-items: center; gap: 14px; }
+.invite-head > :first-child:not(.invite-hero) { flex: none; }
+.invite-hero { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .invite-kicker {
   margin: 0;
   font: 400 12px var(--sans);

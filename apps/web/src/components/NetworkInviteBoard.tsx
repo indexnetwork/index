@@ -156,13 +156,15 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
   const page = (
     <SiteSignInPage>
       <div className="invite">
-        <div className="invite-head">
-          {avatar}
-          <div className="invite-hero">
-            {kicker && <p className="invite-kicker">{kicker}</p>}
-            <h1 className="invite-title">{title}</h1>
-            {lede && <Lede>{lede}</Lede>}
+        <div className="invite-intro">
+          <div className="invite-head">
+            {avatar}
+            <div className="invite-hero">
+              {kicker && <p className="invite-kicker">{kicker}</p>}
+              <h1 className="invite-title">{title}</h1>
+            </div>
           </div>
+          {lede && <Lede>{lede}</Lede>}
         </div>
 
         {stats.length > 0 && (
