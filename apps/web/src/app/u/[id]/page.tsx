@@ -279,16 +279,13 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
           {!signedIn && (
             <>
               <h4 className="sv-h4">opportunities</h4>
-              <EmptyState
-                framed
-                message={
-                  <>
-                    Pair your agent with mine. They'll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.
-                    {pairError && <div>no discoverable intents in a shared network.</div>}
-                  </>
-                }
-                action={{ label: pairing ? "pairing" : "pair agents", onClick: pair, primary: true, large: true, busy: pairing }}
-              />
+              <div className="sv-pairme">
+                <p>Pair your agent with mine. They&apos;ll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.</p>
+                <button type="button" className="sv-btn go" onClick={pair} disabled={pairing} aria-busy={pairing}>
+                  {pairing ? "pairing…" : "pair agents"}
+                </button>
+                {pairError && <div className="sv-pair-err" role="alert">no discoverable intents in a shared network.</div>}
+              </div>
             </>
           )}
 

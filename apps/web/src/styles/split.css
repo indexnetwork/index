@@ -480,6 +480,11 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-pair-lab { display: flex; justify-content: space-between; margin-bottom: 4px; font: 700 10px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-dim); }
 .sv textarea.sv-pair-text { display: block; width: 100%; box-sizing: border-box; height: 72px; min-height: 52px; margin-bottom: 10px; padding: 7px 9px; resize: vertical; border: 1px solid var(--sv-edge); border-radius: 2px; outline: none; background: var(--sv-paper); color: var(--sv-ink); font: 400 13px/1.45 var(--sv-sans); }
 .sv textarea.sv-pair-text:focus { border-color: var(--sv-ink); }
+/* a signed-out profile's one ask: the owner's pitch on a warm well, the orange box beside it */
+.sv-pairme { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; padding: 16px 18px; border: 1px solid var(--sv-well-line); border-radius: 2px; background: var(--sv-well); }
+.sv-pairme > p { flex: 1 1 260px; margin: 0; font-size: 14px; line-height: 1.5; color: var(--sv-ink); }
+.sv .sv-pairme > .sv-btn { flex: none; height: 34px; padding: 0 18px; font-size: 12.5px; }
+.sv-pairme > .sv-pair-err { flex-basis: 100%; margin-top: 0; }
 .sv-pair-err { margin-top: 8px; font-size: 12px; color: var(--sv-danger); }
 .sv-runrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }
 .sv-runrow .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
