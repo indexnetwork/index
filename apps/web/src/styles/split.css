@@ -454,6 +454,9 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-page-col { max-width: 880px; margin: 0 auto; padding: 0 8px 56px; }
 .sv-page-col.sv-fill { height: 100%; padding-bottom: 0; display: flex; flex-direction: column; border-left: 1px solid var(--sv-line); border-right: 1px solid var(--sv-line); }
 .sv-page-head { padding: 28px 20px 14px; }
+/* back out of a drill-in page, as on a network's page: a text link, never a box */
+.sv .sv-back { display: block; margin: 0 0 8px; padding: 2px 0; border: none; box-shadow: none; background: none; font: 500 11.5px var(--sv-mono); color: #0000ee; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.sv .sv-back:hover { background: #ffff66; }
 .sv-page-head .sv-title { margin: 0; align-items: flex-start; }
 .sv-page-t { font: 600 20px/1.35 var(--sv-sans); }
 .sv-page-head .sv-title > :not(.sv-page-t) { flex: none; margin-top: 2px; }
@@ -493,6 +496,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-runrow .t { width: 24px; text-align: right; font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-runrow.done .p { color: var(--sv-dim); }
 .sv-runrow.fresh { background: var(--sv-sel); }
+.sv-runrow.sv-never { align-items: center; padding-top: 6px; padding-bottom: 6px; }
 .sv-run-foot { padding: 12px 20px; font-size: 12px; line-height: 1.45; color: var(--sv-ink2); }
 /* contacts and setup, inside the page: the app's buttons, tabs and lines */
 .sv-idk-page { padding: 16px 20px 0; --idk-line: var(--sv-line); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); font-family: var(--sv-sans); }

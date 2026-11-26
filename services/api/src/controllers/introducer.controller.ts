@@ -116,6 +116,16 @@ export class IntroducerController {
     return Response.json({ ok: true });
   }
 
+  /** DELETE /introducer/contacts/:id — remove one contact; the daily sync won't bring it back. */
+  @Delete('/contacts/:id')
+  @UseGuards(AuthGuard)
+  async removeContact(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = z.string().uuid().safeParse(params?.id);
+    if (!id.success) return Response.json({ error: 'Invalid id' }, { status: 400 });
+    if (!await introducerService.removeContact(user.id, id.data)) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ ok: true });
+  }
+
   /** DELETE /introducer/contacts — delete every imported contact and the proposals made from them. */
   @Delete('/contacts')
   @UseGuards(AuthGuard)

@@ -183,6 +183,13 @@
       "when": 1795665643024,
       "tag": "0025_network_featured",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795669473047,
+      "tag": "0026_contacts_removed",
+      "breakpoints": true
     }
   ]
 }

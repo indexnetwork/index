@@ -143,6 +143,12 @@ export const contacts = pgTable('contacts', {
   embedding: vector('embedding', { dimensions: 2000 }),
   /** Set when the owner said never to suggest this contact. */
   excludedAt: timestamp('excluded_at', { withTimezone: true }),
+  /**
+   * Set when the owner removed this contact. The row stays so the daily
+   * Google sync doesn't bring it back; it is hidden everywhere and, being
+   * excluded too, never suggested.
+   */
+  removedAt: timestamp('removed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

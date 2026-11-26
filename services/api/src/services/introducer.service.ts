@@ -102,7 +102,7 @@ export interface OpportunityProposalView {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { name: string; line: string; detail: string | null };
+  contact: { id: string; name: string; line: string; detail: string | null };
   /** The draft intro, `metadata.introducer.context` once opened. */
   draft: string;
 }
@@ -442,6 +442,11 @@ export class IntroducerService {
     return this.adapter.setExcluded(userId, contactId, excluded);
   }
 
+  /** Remove one contact from the owner's list for good; a later sync won't bring it back. */
+  async removeContact(userId: string, contactId: string): Promise<boolean> {
+    return this.adapter.removeContact(userId, contactId);
+  }
+
   /**
    * Delete every imported contact and the proposals made from them. Nothing
    * syncs again until the member reads their contacts again; introductions
@@ -587,7 +592,7 @@ function toProposalView(row: ProposalRow): OpportunityProposalView {
     opportunityId: row.opportunityId,
     networkTitle: row.networkTitle,
     member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.card.member, intentText: row.member.intentText },
-    contact: { name: contactName(row.contact), line: row.card.contact, detail: detail || null },
+    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null },
     draft: row.draft,
   };
 }

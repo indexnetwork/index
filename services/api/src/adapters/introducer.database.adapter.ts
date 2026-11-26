@@ -166,7 +166,7 @@ export class IntroducerDatabaseAdapter {
         lastImportAt: sql<Date | null>`max(${contacts.updatedAt})`,
       })
       .from(contacts)
-      .where(eq(contacts.ownerUserId, ownerUserId));
+      .where(and(eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)));
     return { total: row?.total ?? 0, onIndex: row?.onIndex ?? 0, lastImportAt: row?.lastImportAt ? new Date(row.lastImportAt) : null };
   }
 
@@ -423,7 +423,7 @@ export class IntroducerDatabaseAdapter {
   async listContacts(ownerUserId: string, options: { q?: string; filter: ContactFilter; limit: number; offset: number }): Promise<{ rows: ContactListRow[]; total: number }> {
     const q = options.q?.trim();
     const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
-    const where = sql`c.owner_user_id = ${ownerUserId}
+    const where = sql`c.owner_user_id = ${ownerUserId} and c.removed_at is null
       ${like ? sql`and (c.name ilike ${like} or c.email ilike ${like} or c.organization ilike ${like} or c.title ilike ${like})` : sql``}
       ${options.filter === 'not_on_index' ? sql`and c.matched_user_id is null and c.excluded_at is null`
         : options.filter === 'on_index' ? sql`and c.matched_user_id is not null`
@@ -452,13 +452,29 @@ export class IntroducerDatabaseAdapter {
   async setExcluded(ownerUserId: string, contactId: string, excluded: boolean): Promise<boolean> {
     const rows = await db.update(contacts)
       .set({ excludedAt: excluded ? new Date() : null })
-      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId)))
+      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)))
       .returning({ id: contacts.id });
     if (!rows.length) return false;
     if (excluded) {
       await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: new Date() })
         .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
     }
+    return true;
+  }
+
+  /**
+   * Remove one contact. The row stays, marked removed and excluded, so the
+   * next Google sync doesn't bring it back; its waiting proposals are skipped.
+   */
+  async removeContact(ownerUserId: string, contactId: string): Promise<boolean> {
+    const now = new Date();
+    const rows = await db.update(contacts)
+      .set({ removedAt: now, excludedAt: sql`coalesce(${contacts.excludedAt}, ${now})` })
+      .where(and(eq(contacts.id, contactId), eq(contacts.ownerUserId, ownerUserId), isNull(contacts.removedAt)))
+      .returning({ id: contacts.id });
+    if (!rows.length) return false;
+    await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: now })
+      .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
     return true;
   }
 

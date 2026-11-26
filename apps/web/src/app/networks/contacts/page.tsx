@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { PageView } from "@/components/intents-home/SplitView";
+import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -57,17 +58,19 @@ const FILTERS: { key: ContactFilter; label: string }[] = [
   { key: "all", label: "all" },
   { key: "not_on_index", label: "not on Index" },
   { key: "on_index", label: "on Index" },
-  { key: "excluded", label: "never suggest" },
 ];
 
-/** Your imported contacts: search, see who's on Index, and say who never to suggest. */
-function Contacts({ service, status, onDeleted }: { service: Service; status: IntroducerStatus; onDeleted: () => void }) {
+/** Your imported contacts: search them, see who's on Index, remove the ones you don't want here. */
+function Contacts({ service, status, onDeleted, onRemoved }: { service: Service; status: IntroducerStatus; onDeleted: () => void; onRemoved: () => void }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<ContactFilter>("all");
   const [rows, setRows] = useState<ContactEntry[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const later = useUndo();
+  // Removals wait behind "undo" for a few seconds before they reach the server.
+  const [removing, setRemoving] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async (offset: number) => {
     try {
@@ -84,16 +87,24 @@ function Contacts({ service, status, onDeleted }: { service: Service; status: In
     return () => clearTimeout(t);
   }, [load, q]);
 
-  const toggle = async (c: ContactEntry) => {
-    const excluded = !c.excluded;
-    setRows((all) => all?.map((r) => (r.id === c.id ? { ...r, excluded, proposals: excluded ? 0 : r.proposals } : r)) ?? all);
-    try {
-      await service.setExcluded(c.id, excluded);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save");
-      void load(0);
-    }
+  const unmark = (id: string) => setRemoving((all) => { const next = new Set(all); next.delete(id); return next; });
+
+  const remove = (c: ContactEntry) => {
+    setRemoving((all) => new Set(all).add(c.id));
+    later(`removed ${c.name}`, () => {
+      service.removeContact(c.id)
+        .then(() => {
+          setRows((all) => all?.filter((r) => r.id !== c.id) ?? all);
+          setTotal((n) => Math.max(0, n - 1));
+          onRemoved();
+        })
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't remove"))
+        .finally(() => unmark(c.id));
+    }, () => unmark(c.id));
   };
+
+  const shown = rows?.filter((r) => !removing.has(r.id)) ?? null;
+  const shownTotal = total - (rows?.length ?? 0) + (shown?.length ?? 0);
 
   const deleteAll = async () => {
     if (!window.confirm(`Delete all ${status.contacts.total} contacts from Index? Pairs made from them go too. Introductions you already opened stay. You can read your contacts again later.`)) return;
@@ -118,16 +129,16 @@ function Contacts({ service, status, onDeleted }: { service: Service; status: In
         </div>
       </div>
       {error && <div className="idk-error">{error}</div>}
-      {rows === null ? (
+      {shown === null ? (
         <p className="idk-dim">loading contacts…</p>
-      ) : rows.length === 0 ? (
-        <div className="idk-empty">{q ? "No contact matches that." : filter === "excluded" ? "Nobody is on your never-suggest list." : "No contacts here."}</div>
+      ) : shown.length === 0 ? (
+        <div className="idk-empty">{q ? "No contact matches that." : "No contacts here."}</div>
       ) : (
         <>
-          <div className="idk-faint" style={{ fontSize: 11, margin: "0 0 6px" }}>{total} {total === 1 ? "contact" : "contacts"}</div>
+          <div className="idk-faint" style={{ fontSize: 11, margin: "0 0 6px" }}>{shownTotal} {shownTotal === 1 ? "contact" : "contacts"}</div>
           <ul className="idk-clist">
-            {rows.map((c) => (
-              <li key={c.id} className={c.excluded ? "excluded" : ""}>
+            {shown.map((c) => (
+              <li key={c.id}>
                 <span className="idk-ghost" aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
                 <div className="who" title={c.source === "saved" ? "Saved in your Google contacts" : "Someone you've emailed (Google's \"Other contacts\")"}>
                   <b>{c.name}</b>
@@ -136,17 +147,14 @@ function Contacts({ service, status, onDeleted }: { service: Service; status: In
                 </div>
                 <div className="tags">
                   {c.onIndex && <span className="idk-tag">on Index</span>}
+                  {c.excluded && <span className="idk-faint">never suggested</span>}
                   {c.proposals > 0 && <span className="idk-faint">{c.proposals} pair{c.proposals === 1 ? "" : "s"} waiting</span>}
                 </div>
-                {!c.onIndex && (
-                  <button type="button" className="idk-btn small" onClick={() => void toggle(c)} aria-pressed={c.excluded}>
-                    {c.excluded ? "allow" : "never suggest"}
-                  </button>
-                )}
+                <button type="button" className="idk-btn small" onClick={() => remove(c)} title="Take them off your contacts. The daily sync won't bring them back.">remove</button>
               </li>
             ))}
           </ul>
-          {rows.length < total && (
+          {rows !== null && rows.length < total && (
             <button type="button" className="idk-btn small" style={{ marginTop: 10 }} onClick={() => void load(rows.length)}>show more</button>
           )}
         </>
@@ -161,8 +169,8 @@ function Contacts({ service, status, onDeleted }: { service: Service; status: In
 
 /**
  * My contacts: your Google contacts, private to you. Connect Google, read
- * them, search them, keep some out of suggestions. Introducing them is its
- * own page, /introduce, which needs these first.
+ * them, search them, remove the ones you don't want. Introducing them, and
+ * saying who never to suggest, is its own page, /introduce.
  */
 export default function ContactsPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
@@ -241,16 +249,14 @@ export default function ContactsPage() {
       {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
       <div className="idk-bar">
         <span className="idk-faint" title="Index re-reads your Google contacts once a day">{importing ? "syncing…" : `synced ${since(status.contacts.lastImportAt!)} ago`}</span>
-        <span className="sp" />
-        <button type="button" className="idk-open" onClick={() => navigate("/introduce")}>introduce them ›</button>
       </div>
-      <Contacts service={service} status={status} onDeleted={() => void load()} />
+      <Contacts service={service} status={status} onDeleted={() => void load()} onRemoved={() => void load()} />
     </>
   );
 
   if (plain && !compact) {
     return (
-      <PageView title="My contacts" sub={<span>{headStatus}</span>}>
+      <PageView title="My contacts" sub={<span>{headStatus}</span>} back={{ label: "networks", onClick: () => navigate("/networks") }}>
         <div className="idk sv-idk-page">{body}</div>
       </PageView>
     );

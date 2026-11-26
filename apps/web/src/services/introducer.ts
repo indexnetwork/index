@@ -22,7 +22,7 @@ export interface OpportunityProposal {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { name: string; line: string; detail: string | null };
+  contact: { id: string; name: string; line: string; detail: string | null };
   draft: string;
 }
 
@@ -79,5 +79,7 @@ export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedA
   contacts: (q: string, filter: ContactFilter, offset: number) =>
     api.get<{ contacts: ContactEntry[]; total: number }>(`/introducer/contacts?${new URLSearchParams({ q, filter, offset: String(offset) })}`),
   setExcluded: (id: string, excluded: boolean) => api.post<{ ok: true }>(`/introducer/contacts/${id}/exclude`, { excluded }),
+  /** Remove one contact for good: hidden, never suggested, and not brought back by the daily sync. */
+  removeContact: (id: string) => api.delete<{ ok: true }>(`/introducer/contacts/${id}`),
   deleteContacts: () => api.delete<{ deleted: number }>('/introducer/contacts'),
 });

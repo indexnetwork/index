@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
@@ -12,7 +12,7 @@ import { useCompact } from "@/hooks/useCompact";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { since } from "@/lib/since";
-import { createIntroducerService, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal } from "@/services/introducer";
+import { createIntroducerService, type ContactEntry, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
@@ -45,8 +45,26 @@ function phaseLine(p: IntroductionProgress): string {
   }
 }
 
+/** Contacts you said never to suggest, each with a way to allow them again. */
+function NeverList({ people, total, onAllow }: { people: ContactEntry[]; total: number; onAllow: (c: ContactEntry) => void }) {
+  if (!people.length) return null;
+  return (
+    <>
+      <h2 className="idk-h2" style={{ marginTop: 18 }}>never suggest <span className="n">{total}</span></h2>
+      <ul className="idk-rows">
+        {people.map((c) => (
+          <li key={c.id} title={c.detail ?? c.email}>
+            <span className="p">{c.name}</span>
+            <button type="button" className="idk-btn small" onClick={() => onAllow(c)}>allow</button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /** Introductions you opened, one row each: who, where it is, when it started. Never how. */
-function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null }) {
+function Running({ runs, opening, freshId, never }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null; never: ReactNode }) {
   // Live ones first, then finished, newest first within each.
   const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
   return (
@@ -73,14 +91,17 @@ function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; ope
         </ul>
       )}
       <div className="idk-run-foot">🔒 You see where each ends up, never what the agents say.</div>
+      {never}
     </aside>
   );
 }
 
-function ProposalCard({ proposal, onOpen, onSkip }: {
+function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
   proposal: OpportunityProposal;
   onOpen: (p: OpportunityProposal, context: string) => Promise<void>;
   onSkip: (p: OpportunityProposal) => void;
+  /** Never pair this contact with anyone again. */
+  onNever: (p: OpportunityProposal) => void;
 }) {
   const [text, setText] = useState(proposal.draft);
   const [busy, setBusy] = useState(false);
@@ -132,6 +153,7 @@ function ProposalCard({ proposal, onOpen, onSkip }: {
               }}
             >{busy ? "Waking…" : proposal.status === "failed" ? "Try again ▸" : "Wake both agents ▸"}</button>
             <button type="button" className="idk-btn small" disabled={busy} onClick={() => onSkip(proposal)}>Skip</button>
+            <button type="button" className="idk-btn small" disabled={busy} onClick={() => onNever(proposal)} title={`Never pair ${proposal.contact.name} with anyone`}>Never suggest {first(proposal.contact.name)}</button>
           </div>
           {(error ?? proposal.failure) && <div className="idk-error">{error ?? proposal.failure}</div>}
         </>
@@ -157,10 +179,12 @@ const lc = (text: string) => {
 };
 
 /** A pair, drawn like home's cards: who and who, the intro you'll send, wake or skip. */
-function PairCard({ proposal, onOpen, onSkip }: {
+function PairCard({ proposal, onOpen, onSkip, onNever }: {
   proposal: OpportunityProposal;
   onOpen: (p: OpportunityProposal, context: string) => Promise<void>;
   onSkip: (p: OpportunityProposal) => void;
+  /** Never pair this contact with anyone again. */
+  onNever: (p: OpportunityProposal) => void;
 }) {
   const [text, setText] = useState(proposal.draft);
   const [busy, setBusy] = useState(false);
@@ -199,6 +223,7 @@ function PairCard({ proposal, onOpen, onSkip }: {
                 }}
               >{busy ? "waking…" : proposal.status === "failed" ? "try again" : "wake both agents"}</button>
               <button type="button" className="sv-btn" disabled={busy} onClick={() => onSkip(proposal)}>skip</button>
+            <button type="button" className="sv-btn" disabled={busy} onClick={() => onNever(proposal)} title={`Never pair ${proposal.contact.name} with anyone`}>never suggest {first(proposal.contact.name)}</button>
             </div>
             {(error ?? proposal.failure) && <div className="sv-pair-err">{error ?? proposal.failure}</div>}
           </>
@@ -209,7 +234,14 @@ function PairCard({ proposal, onOpen, onSkip }: {
 }
 
 /** The introductions you woke, one row each, as a column beside the pairs. */
-function RunColumn({ runs, opening, freshId }: { runs: IntroductionProgress[]; opening: OpportunityProposal[]; freshId: string | null }) {
+function RunColumn({ runs, opening, freshId, never, neverTotal, onAllow }: {
+  runs: IntroductionProgress[];
+  opening: OpportunityProposal[];
+  freshId: string | null;
+  never: ContactEntry[];
+  neverTotal: number;
+  onAllow: (c: ContactEntry) => void;
+}) {
   const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
   const live = opening.length + runs.filter((r) => !isFinal(r)).length;
   return (
@@ -236,6 +268,17 @@ function RunColumn({ runs, opening, freshId }: { runs: IntroductionProgress[]; o
         </>
       )}
       <div className="sv-run-foot">🔒 You see where each ends up, never what the agents say.</div>
+      {never.length > 0 && (
+        <>
+          <ListHead id="never">never suggest · {neverTotal}</ListHead>
+          {never.map((c) => (
+            <div key={c.id} className="sv-runrow sv-never" title={c.detail ?? c.email}>
+              <span className="p">{c.name}</span>
+              <button type="button" className="sv-btn sm" onClick={() => onAllow(c)}>allow</button>
+            </div>
+          ))}
+        </>
+      )}
     </aside>
   );
 }
@@ -274,6 +317,18 @@ export default function IntroducePage() {
   const later = useUndo();
   // Skips wait behind "undo" for a few seconds before they reach the server.
   const [skipping, setSkipping] = useState<Set<string>>(() => new Set());
+  // Contacts you said never to suggest; their pairs hide at once, the change waits behind "undo".
+  const [never, setNever] = useState<{ people: ContactEntry[]; total: number }>({ people: [], total: 0 });
+  const [hiding, setHiding] = useState<Set<string>>(() => new Set());
+
+  const refreshNever = useCallback(async () => {
+    try {
+      const res = await service.contacts("", "excluded", 0);
+      setNever({ people: res.contacts, total: res.total });
+    } catch (err) {
+      logger.warn("never-suggest list failed", { error: String(err) });
+    }
+  }, [service]);
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -302,9 +357,12 @@ export default function IntroducePage() {
   const load = useCallback(async () => {
     const s = await service.status();
     setStatus(s);
-    if (s.contacts.lastImportAt) setProposals(await service.proposals());
+    if (s.contacts.lastImportAt) {
+      setProposals(await service.proposals());
+      void refreshNever();
+    }
     await refreshRuns();
-  }, [service, refreshRuns]);
+  }, [service, refreshRuns, refreshNever]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -334,11 +392,35 @@ export default function IntroducePage() {
     service.skip(proposal.id).catch((err: unknown) => logger.warn("skip failed", { error: String(err) }));
   };
 
+  const unhide = (contactId: string) => setHiding((all) => { const next = new Set(all); next.delete(contactId); return next; });
+
+  const neverSuggest = (p: OpportunityProposal) => {
+    const id = p.contact.id;
+    setHiding((all) => new Set(all).add(id));
+    later(`won't suggest ${p.contact.name} again`, () => {
+      service.setExcluded(id, true)
+        .then(async () => {
+          setProposals((all) => all?.filter((x) => x.contact.id !== id) ?? all);
+          await refreshNever();
+        })
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't save"))
+        .finally(() => unhide(id));
+    }, () => unhide(id));
+  };
+
+  const allow = (c: ContactEntry) => {
+    setNever((n) => ({ people: n.people.filter((x) => x.id !== c.id), total: Math.max(0, n.total - 1) }));
+    service.setExcluded(c.id, false).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "Couldn't save");
+      void refreshNever();
+    });
+  };
+
   // Signed out: sign in first, then come back here.
   if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
   const toContacts = () => navigate("/networks/contacts");
-  const waiting = (proposals ?? []).filter((p) => p.status !== "opening");
+  const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id));
   const ready = !!status?.contacts.lastImportAt;
   const contactsLink = ready && status
     ? <button type="button" className="idk-open" onClick={toContacts}>from {status.contacts.total} contacts ›</button>
@@ -375,9 +457,9 @@ export default function IntroducePage() {
                 <div className="sv-empty">loading pairs…</div>
               ) : shown.length === 0 ? (
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
-              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} />)}
+              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} />)}
             </section>
-            <RunColumn runs={runs} opening={opening} freshId={freshId} />
+            <RunColumn runs={runs} opening={opening} freshId={freshId} never={never.people} neverTotal={never.total} onAllow={allow} />
           </div>
         )}
       </PageView>
@@ -408,10 +490,10 @@ export default function IntroducePage() {
                   No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.
                 </div>
               ) : (
-                waiting.map((p) => <ProposalCard key={p.id} proposal={p} onOpen={open} onSkip={skip} />)
+                waiting.map((p) => <ProposalCard key={p.id} proposal={p} onOpen={open} onSkip={skip} onNever={neverSuggest} />)
               )}
             </section>
-            <Running runs={runs} opening={opening} freshId={freshId} />
+            <Running runs={runs} opening={opening} freshId={freshId} never={<NeverList people={never.people} total={never.total} onAllow={allow} />} />
           </div>
         </>
       )}
