@@ -11,7 +11,7 @@ import { useUndo } from "@/components/intents-home/undo";
 /** What "skip" sends the agent in place of an answer (there is no skip endpoint). */
 export const SKIP_ANSWER = "skip this one. use your best judgement.";
 
-type Question = PrincipalQuestion & { intentId: string; groupId?: string };
+type Question = PrincipalQuestion & { intentId: string; groupId?: string; intentIds?: string[] };
 
 /** "40 minutes", "3 hours", "2 days": how long two agents have been at it. */
 function talkingFor(since: string, now = Date.now()): string {
@@ -63,9 +63,13 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
   if (gone) return null;
   // Their agent wears their photo; yours is the black "ix" square.
   const owner = asker.owner as ({ id: string; name: string; avatar?: string | null } | null);
-  const face = owner
-    ? <Link to={`/u/${owner.id}`} title={`${owner.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={owner.id} name={owner.name} avatar={owner.avatar ?? null} size={36} /></Link>
+  // Several people waiting on one answer: the first of them stands for the rest.
+  const lead = owner ?? (asker.people?.[0] as ({ id: string; name: string; avatar?: string | null } | undefined));
+  const face = lead
+    ? <Link to={`/u/${lead.id}`} title={`${lead.name}'s profile`} style={{ display: "flex", flex: "none" }}><UserAvatar id={lead.id} name={lead.name} avatar={lead.avatar ?? null} size={36} /></Link>
     : <span className="sv-mine" aria-hidden>ix</span>;
+  // One answer reaching several intents says so, so it is never a surprise.
+  const reach = (question.intentIds?.length ?? 0) > 1 ? `for ${question.intentIds!.length} of your intents` : null;
   const label = owner ? `${owner.name.split(" ")[0]}'s agent` : asker.label;
   // Who it's asking for and what they're after; failing that, how long their agent and yours have been talking.
   const wants = owner ? question.matches?.[0]?.counterparty.wants : undefined;
@@ -84,6 +88,7 @@ export default function QuestionCard({ question, selected, onAnswer, onHide }: {
           {wants
             ? <span className="sv-via"> · looking for {wants}</span>
             : since && <span className="sv-via"> · talking with yours for {talkingFor(since)}</span>}
+          {reach && <span className="sv-via"> · {reach}</span>}
           <span className="sv-via"> · </span>
           <button type="button" className="sv-link" onClick={() => send(SKIP_ANSWER, "question skipped")}>skip</button>
         </div>

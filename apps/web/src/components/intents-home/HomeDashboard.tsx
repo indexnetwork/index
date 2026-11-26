@@ -314,7 +314,14 @@ export default function HomeDashboard() {
       {(talking.length > 0 || refreshingIds.length > 0) && (
         <>
           <ListHead id="progress">in progress</ListHead>
-          <div className="sv-strip">
+          {/* The whole line opens the list; the "see all ›" inside stays the keyboard's way in. */}
+          <div
+            className={`sv-strip${talkingList.fold ? " sv-strip-go" : ""}`}
+            onClick={(event) => {
+              if (!talkingList.fold || (event.target as HTMLElement).closest("a, button")) return;
+              talkingList.fold.toggle();
+            }}
+          >
             <span className="sv-stack">
               {talking.slice(0, 5).map((person) => (
                 <UserAvatar key={person.key} id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={22} />

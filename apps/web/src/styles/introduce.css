@@ -128,6 +128,11 @@
 .idk-clist .tags .idk-tag { margin-left: 0; }
 .idk-contacts-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid #000; font-size: 11.5px; color: var(--idk-ink2); }
 .idk-btn.danger { color: #a30000; }
+/* remove shows only on the row you're pointing at; touch screens and keyboard focus still see it */
+@media (hover: hover) {
+  .idk-clist li > .idk-btn { opacity: 0; transition: opacity 0.12s; }
+  .idk-clist li:hover > .idk-btn, .idk-clist li > .idk-btn:focus-visible { opacity: 1; }
+}
 @media (max-width: 640px) {
   .idk-clist li { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .idk-clist .tags { grid-column: 2; }
@@ -140,19 +145,28 @@
 
 @keyframes idk-pulse { 50% { background: #fff; } }
 
-/* never suggest ▾: a small menu under the button, one row per person in the pair */
-.idk-never { position: relative; display: inline-flex; }
+/* ⋯ in a pair card's top-right corner: a small menu to never suggest either person again */
+.idk-has-never { position: relative; }
+.idk-has-never > .idk-pair, .idk-never-room { padding-right: 28px; }
+.idk-never { position: absolute; top: 8px; right: 10px; z-index: 5; display: inline-flex; }
+.idk-card .idk-never { right: 0; }
+.idk-never .idk-never-dots {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 22px; padding: 0; border: 0; border-radius: 2px; background: transparent; box-shadow: none;
+  color: var(--sv-dim, #888); cursor: pointer;
+}
+.idk-never .idk-never-dots svg { display: block; fill: currentColor; }
+.idk-never .idk-never-dots:hover, .idk-never .idk-never-dots[aria-expanded="true"] { color: var(--sv-ink, #000); }
+.idk-never .idk-never-dots:disabled { opacity: 0.4; cursor: default; }
 .idk-never-menu {
-  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
-  min-width: 100%; display: flex; flex-direction: column; padding: 3px 0;
-  background: var(--sv-paper, #fff); border: 1px solid var(--sv-ink, #000); border-radius: 1px;
-  box-shadow: var(--sv-sh-pop, 4px 4px 0 #000);
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  display: flex; flex-direction: column; padding: 4px 0;
+  background: #fff; border: 1px solid var(--sv-line, #e6e6e6); border-radius: 3px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
-.idk-never-menu button {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
-  width: 100%; height: auto; padding: 7px 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+.idk-never .idk-never-menu button {
+  display: block; width: 100%; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
   text-align: left; white-space: nowrap; cursor: pointer;
-  font: 500 12.5px var(--sv-sans, inherit); color: var(--sv-ink, #000);
+  font: 500 12px var(--sv-mono, ui-monospace, monospace); color: var(--sv-ink, #000);
 }
-.idk-never-menu button small { font: 400 10.5px var(--sv-mono, ui-monospace, monospace); color: var(--sv-dim, #888); }
-.idk-never-menu button:hover { background: var(--sv-sel, #f4f4f1); }
+.idk-never .idk-never-menu button:hover { background: #f7f7f5; }

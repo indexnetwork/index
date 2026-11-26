@@ -1,12 +1,19 @@
 /**
  * How the personal agent groups the questions intent agents raise. A group is
- * the open questions, from different intents, that ask the person for the same
- * fact. Everything here is plain data in, plain data out.
+ * the open questions that ask the person for the same fact about themselves,
+ * whichever intents raised them and whoever wanted to know. Everything here
+ * is plain data in, plain data out.
  */
 import type { MatchReference, PrincipalMessage } from '../../adapters/agent-session.database.adapter';
 
 /** How many groups are on Home at once. The rest wait their turn, oldest first. */
 export const MAX_SHOWN_GROUPS = 5;
+
+/**
+ * How many shown groups one intent fills while another intent's questions
+ * wait. Fairness, not a limit: slots nobody else wants still go to it.
+ */
+export const SHOWN_PER_INTENT = 2;
 
 export type QuestionScope = 'intent' | 'match';
 
@@ -28,6 +35,8 @@ export interface GroupMember {
   scope: QuestionScope;
   /** Whether this question is still waiting: not answered and not withdrawn. */
   open: boolean;
+  /** The opportunities it is about, when it is still open; empty otherwise. */
+  opportunityIds: string[];
 }
 
 export interface GroupState {
@@ -49,28 +58,61 @@ export function isOpen(group: GroupState): boolean {
 }
 
 /**
- * The groups a new question may join. Only intent-scoped questions group, never
- * with an opportunity-scoped one, and never with a question from the same
- * intent: one intent asking twice is its own business, not a shared fact.
+ * The groups a new question may join. Questions group across intents and
+ * across the people who wanted to know, since a fact about the person is the
+ * same fact whoever asks. Two questions about the same opportunity never
+ * group, and neither do two intent-wide questions from one intent: those are
+ * one negotiation or one agent asking twice, not a shared fact.
  *
  * @returns Open groups, and answered ones whose answer the question can reuse.
  */
 export function joinableGroups(question: OpenQuestion, groups: GroupState[]): GroupState[] {
-  if (question.scope !== 'intent') return [];
+  const about = new Set(question.matches.map((match) => match.opportunityId));
   return groups.filter((group) =>
-    group.members.every((member) => member.scope === 'intent' && member.intentId !== question.intentId)
+    group.members.every((member) =>
+      !member.opportunityIds.some((opportunityId) => about.has(opportunityId))
+      && !(question.scope === 'intent' && member.scope === 'intent' && member.intentId === question.intentId))
     && (isOpen(group) || group.answerText !== null));
 }
 
-/** @returns The held groups to show now, oldest first, so no more than {@link MAX_SHOWN_GROUPS} open groups are shown. */
+/** @returns The intents a group still waits on. */
+function waitingIntents(group: GroupState): string[] {
+  return [...new Set(group.members.filter((member) => member.open).map((member) => member.intentId))];
+}
+
+/**
+ * The held groups to show now, so no more than {@link MAX_SHOWN_GROUPS} open
+ * groups are shown. Oldest first, except that one intent fills at most
+ * {@link SHOWN_PER_INTENT} slots while another intent's group waits: one busy
+ * intent never crowds the rest off Home.
+ *
+ * @returns Group ids, in the order they were picked.
+ */
 export function groupsToShow(groups: GroupState[]): string[] {
-  const shown = groups.filter((group) => group.state === 'shown' && isOpen(group)).length;
-  const free = Math.max(0, MAX_SHOWN_GROUPS - shown);
-  return groups
+  const shown = groups.filter((group) => group.state === 'shown' && isOpen(group));
+  let free = Math.max(0, MAX_SHOWN_GROUPS - shown.length);
+  const held = groups
     .filter((group) => group.state === 'held' && isOpen(group))
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .slice(0, free)
-    .map((group) => group.id);
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const load = new Map<string, number>();
+  for (const group of shown) for (const intentId of waitingIntents(group)) load.set(intentId, (load.get(intentId) ?? 0) + 1);
+  const picked: string[] = [];
+  const pick = (group: GroupState) => {
+    picked.push(group.id);
+    free--;
+    for (const intentId of waitingIntents(group)) load.set(intentId, (load.get(intentId) ?? 0) + 1);
+  };
+  // First pass: fair. A group goes up only if one of its intents has room.
+  for (const group of held) {
+    if (!free) break;
+    if (waitingIntents(group).some((intentId) => (load.get(intentId) ?? 0) < SHOWN_PER_INTENT)) pick(group);
+  }
+  // Second pass: whatever room is left goes to whoever is waiting, oldest first.
+  for (const group of held) {
+    if (!free) break;
+    if (!picked.includes(group.id)) pick(group);
+  }
+  return picked;
 }
 
 /**
@@ -127,7 +169,8 @@ export function voiceOf(group: GroupState): string | null {
 /**
  * The cards Home shows: one per shown, open group, oldest shown first. A card
  * speaks through the group's lead, or its first open member once the lead is
- * closed, and lists only the members still waiting.
+ * closed, lists only the members still waiting, and names everyone they are
+ * about, the voice's people first.
  */
 export function shownCards(groups: GroupState[], open: OpenQuestion[]): GroupCard[] {
   const byId = new Map(open.map((question) => [question.questionId, question]));
@@ -138,6 +181,10 @@ export function shownCards(groups: GroupState[], open: OpenQuestion[]): GroupCar
       const waiting = group.members.filter((member) => member.open && byId.has(member.questionId));
       const voice = byId.get(waiting.some((member) => member.questionId === group.leadQuestionId) ? group.leadQuestionId : waiting[0]?.questionId ?? '');
       if (!voice) return [];
+      const matches = new Map<string, MatchReference>();
+      for (const member of [voice, ...waiting.map((entry) => byId.get(entry.questionId)!)]) {
+        for (const match of member.matches) if (!matches.has(match.opportunityId)) matches.set(match.opportunityId, match);
+      }
       return [{
         groupId: group.id,
         id: voice.questionId,
@@ -145,7 +192,7 @@ export function shownCards(groups: GroupState[], open: OpenQuestion[]): GroupCar
         question: voice.text,
         ...(voice.options ? { options: voice.options } : {}),
         scope: voice.scope,
-        matches: voice.matches,
+        matches: [...matches.values()],
         intentIds: [...new Set(waiting.map((member) => member.intentId))],
         questionIds: waiting.map((member) => member.questionId),
       }];

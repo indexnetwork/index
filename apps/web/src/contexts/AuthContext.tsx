@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setError('Failed to load user data. Please try refreshing the page.');
+      setError("couldn't load your account. refresh to try again.");
       setUser(null);
       setFeatures(null);
     } finally {
@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/l', '/blog', '/pages', '/about', '/hermes',
-      '/login', '/s/', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download', '/setup',
+      '/login', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download', '/setup',
       '/9db20a5fbe', '/communities', '/for-networks',
     ];
     // Profile and network links at the root (index.network/<handle>) are public too.
@@ -188,9 +188,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The eye on white while auth settles: until then we don't know if this is the site or the app.
         <BootSplash />
       ) : error ? (
-        <StatusPage bar="error" title="Something went wrong" message={error}>
+        <StatusPage bar="error" title="something went wrong" message={error}>
           <button type="button" className="site-btn" onClick={() => window.location.reload()}>
-            Refresh
+            refresh
           </button>
         </StatusPage>
       ) : (

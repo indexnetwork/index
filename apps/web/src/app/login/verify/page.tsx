@@ -58,9 +58,9 @@ export function Component() {
 
   if (bound) {
     return (
-      <SiteSignInPage title="Sign in to Index">
-        <SiteSignInPanel bar="Email sign-in">
-          <p className="site-p">Signing in…</p>
+      <SiteSignInPage title="sign in to index">
+        <SiteSignInPanel bar="email sign-in">
+          <p className="site-p">signing in…</p>
         </SiteSignInPanel>
       </SiteSignInPage>
     );
@@ -68,14 +68,14 @@ export function Component() {
 
   // Links sent without a browser key (older clients) still need an explicit click.
   return (
-    <SiteSignInPage title="Sign in to Index">
-      <SiteSignInPanel bar="Email sign-in">
-        <p className="site-p">{token ? 'Continue to finish signing in.' : 'This sign-in link is incomplete. Request a new email link.'}</p>
+    <SiteSignInPage title="sign in to index">
+      <SiteSignInPanel bar="email sign-in">
+        <p className="site-p">{token ? 'one click and you\'re in.' : 'this sign-in link is cut off. send yourself a new one.'}</p>
         {token ? (
           <button type="button" className="site-btn site-btn--block" disabled={continuing} onClick={signIn}>
-            {continuing ? 'Signing in…' : 'Continue to sign in'}
+            {continuing ? 'signing in…' : 'continue →'}
           </button>
-        ) : <a className="site-btn" href="/login">Request a new link</a>}
+        ) : <a className="site-btn" href="/login">send a new link →</a>}
       </SiteSignInPanel>
     </SiteSignInPage>
   );

@@ -26,7 +26,7 @@
   --sv-sel-focus: #e6e5df;
   --sv-sel-pane: #ebeae5;
   /* hover: a whisper, so it never reads as the selected one */
-  --sv-tint: #faf9f6;
+  --sv-tint: #fcfcfa;
   /* shadows: A, hard offset */
   --sv-sh-btn: 1px 1px 0 #000;
   --sv-sh-chip: 1px 1px 0 rgba(0, 0, 0, 0.25);
@@ -488,7 +488,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* a signed-out profile's one ask: the owner's pitch on a warm well, the orange box beside it */
 .sv-pairme { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; padding: 16px 18px; border: 1px solid var(--sv-well-line); border-radius: 2px; background: var(--sv-well); }
 .sv-pairme > p { flex: 1 1 260px; margin: 0; font-size: 14px; line-height: 1.5; color: var(--sv-ink); }
-.sv .sv-pairme > .sv-btn { flex: none; height: 34px; padding: 0 18px; font-size: 12.5px; }
+.sv .sv-pairme > .sv-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 18px; font-size: 12.5px; text-decoration: none; }
 .sv-pairme > .sv-pair-err { flex-basis: 100%; margin-top: 0; }
 .sv-pair-err { margin-top: 8px; font-size: 12px; color: var(--sv-danger); }
 .sv-runrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }
@@ -496,7 +496,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-runrow .t { width: 24px; text-align: right; font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-runrow.done .p { color: var(--sv-dim); }
 .sv-runrow.fresh { background: var(--sv-sel); }
-.sv-runrow.sv-never { align-items: center; padding-top: 6px; padding-bottom: 6px; }
 .sv-run-foot { padding: 12px 20px; font-size: 12px; line-height: 1.45; color: var(--sv-ink2); }
 /* contacts and setup, inside the page: the app's buttons, tabs and lines */
 .sv-idk-page { padding: 16px 20px 0; --idk-line: var(--sv-line); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); font-family: var(--sv-sans); }
@@ -653,6 +652,9 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* Home "in progress": one line with the faces your agent is talking with. */
 .sv-strip { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }
 .sv-strip-t { flex: 1; min-width: 0; }
+.sv-strip-go { cursor: pointer; }
+.sv-strip-go:hover { background: var(--sv-tint); }
+.sv-strip-go:hover .sv-strip-t { text-decoration: underline; text-underline-offset: 3px; }
 .sv-stack { display: flex; flex: none; }
 .sv-stack > * { box-shadow: 0 0 0 2px var(--sv-paper); }
 .sv-stack > * + * { margin-left: -6px; }

@@ -63,13 +63,13 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
    * Make sure the viewer and this person share a network: if they share none,
    * both join Index Early and their agents are paired. Returns what they share now.
    */
-  ensureSharedNetwork: async (userId: string): Promise<{ networks: Array<{ id: string; title: string; _count: { members: number } }>; joined: boolean }> => {
-    const response = await api.post<{ networks?: Array<{ id: string; title: string; _count: { members: number } }>; joined?: boolean }>(`/networks/shared/${userId}/ensure`, {});
+  ensureSharedNetwork: async (userId: string): Promise<{ networks: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>; joined: boolean }> => {
+    const response = await api.post<{ networks?: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>; joined?: boolean }>(`/networks/shared/${userId}/ensure`, {});
     return { networks: response.networks || [], joined: !!response.joined };
   },
 
-  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
-    const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/networks/shared/${userId}`);
+  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; key?: string | null; _count: { members: number } }>> => {
+    const response = await api.get<{ networks: Array<{ id: string; title: string; key?: string | null; _count: { members: number } }> }>(`/networks/shared/${userId}`);
     return response.networks || [];
   },
 
@@ -363,6 +363,19 @@ export const networksService = {
   /** Written overview for the invite page. A cache miss waits on the model. */
   getNetworkShareSummary: async (code: string): Promise<string | null> => {
     const response = await apiClient.getPublic<{ summary?: string | null }>(`/networks/share/${code}/summary`);
+    return response.summary ?? null;
+  },
+
+  /** The invite page's counts for an open network, by id, for its own link's page. */
+  getPublicNetworkPulse: async (networkId: string): Promise<{ members: number; intents: number; negotiations: number; agents: number; lastActivityAt: string | null }> => {
+    const response = await apiClient.getPublic<{ pulse?: { members: number; intents: number; negotiations: number; agents: number; lastActivityAt: string | null } }>(`/networks/public/${networkId}/pulse`);
+    if (!response.pulse) throw new Error('Network not found');
+    return response.pulse;
+  },
+
+  /** The invite page's written overview for an open network, by id. */
+  getPublicNetworkSummary: async (networkId: string): Promise<string | null> => {
+    const response = await apiClient.getPublic<{ summary?: string | null }>(`/networks/public/${networkId}/summary`);
     return response.summary ?? null;
   },
 };

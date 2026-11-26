@@ -31,7 +31,7 @@ const WAKE_PROMPT = [
   BRIEF_PROMPT,
   "An intent with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
-  "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
+  "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator. Stalls missing the same fact about your principal share one intent-scoped question that names all of them, even when each counterpart wanted it for a different reason: ask what their app does once, not whether it is in education for one and fintech for another.",
   PAUSED_PROMPT,
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
@@ -205,6 +205,8 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   /** Opportunities whose stall a question on this wake asks about. */
   const asking = new Set<string>();
+  /** Opportunities whose per-person question was sent back once to be asked as a shared fact. */
+  const pushedBack = new Set<string>();
   let noted = false;
   /** The host's first failure to persist a decision, raised once the loop is done. */
   let unpersisted: unknown;
@@ -423,7 +425,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "ask_principal",
       description:
-        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms — or any approval — is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first. Write it the way a friend would ask in a text: one short question, never naming what your principal already knows, such as their own company. Its options are the answers they would tap, not sentences.",
+        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. Ask for the fact about your principal, never one counterpart's test of it: \"What does your app do?\" answers every negotiation that needs it, where \"Is your app in education?\" answers one. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question naming all of them in stalled. Only a counterpart's own offer or terms, or an approval to commit your principal to this person, is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first. Write it the way a friend would ask in a text: one short question, never naming what your principal already knows, such as their own company. Its options are the answers they would tap, not sentences, and there are none when the answer is open.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -431,11 +433,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
           question: { type: "string", minLength: 1, description: "One short, plain question. \"Does your work involve AI orchestration or online trust?\", not \"Does your work on <their company> intersect with AI orchestration or online trust?\"" },
           options: {
             type: "array",
-            minItems: 2,
             maxItems: 4,
             uniqueItems: true,
             items: { type: "string", minLength: 1, maxLength: OPTION_MAX },
-            description: "Two to four answers, one to three words each, never repeating the question's words back and never explaining themselves. Each must mean something different. Cover how they could really answer, not a false yes or no: a question naming two things offers each, both and neither, e.g. [\"Both\", \"Orchestration\", \"Online trust\", \"Neither\"], not [\"Yes, my work intersects with orchestration or trust\", \"No, it is focused on discovery\"]. Never add \"Other\": they can always type their own answer.",
+            description: "Two to four answers, one to three words each, never repeating the question's words back and never explaining themselves. Each must mean something different. Cover how they could really answer, not a false yes or no: a question naming two things offers each, both and neither, e.g. [\"Both\", \"Orchestration\", \"Online trust\", \"Neither\"], not [\"Yes, my work intersects with orchestration or trust\", \"No, it is focused on discovery\"]. Empty when the answer is open, such as what they build or where they will be. Never add \"Other\": they can always type their own answer.",
           },
           scope: { type: "string", enum: ["intent", "opportunity"] },
           opportunityId: { type: "string", description: "Required when scope is opportunity." },
@@ -452,6 +453,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!noted) {
           throw new Error("Write the note first with note_principal: your principal reads why you are asking before the question itself.");
         }
+        if (argument.options.length === 1) {
+          throw new Error("One option is not a choice. Give two to four answers, or none when the answer is open.");
+        }
         const wordy = argument.options.filter((option) => option.trim().length > OPTION_MAX);
         if (wordy.length) {
           throw new Error(`Options are answers your principal taps, one to three words each, never sentences. Shorten: ${wordy.map((option) => JSON.stringify(option)).join(", ")}.`);
@@ -460,6 +464,16 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
           if (!argument.opportunityId) throw new Error("An opportunity-scoped question needs its opportunityId.");
           if (!byId.has(argument.opportunityId)) {
             throw new Error(`No opportunity ${argument.opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
+          }
+          // Most per-person questions are one fact about the principal, tested
+          // a different way by each counterpart. While other stalls wait, the
+          // first one is sent back once to be asked as that fact instead.
+          const others = opportunities.filter(({ id, stall }) =>
+            id !== argument.opportunityId && stall && !stall.answered && !stall.questionId && !asking.has(id));
+          if (others.length && !pushedBack.has(argument.opportunityId)) {
+            pushedBack.add(argument.opportunityId);
+            const waiting = others.map(({ id, counterpart, stall }) => `${id} (${counterpart}): ${stall!.reason}`).join("; ");
+            throw new Error(`${others.length} other negotiation${others.length === 1 ? " is" : "s are"} also stalled: ${waiting}. If this asks for a fact about your principal (what they build, where they will be, whether they invest or are raising), ask for that fact once with scope intent, naming in stalled every stall it answers. Keep scope opportunity only for this counterpart's own offer or terms, or an approval: then call again unchanged.`);
           }
         }
         const unasked = (opportunityId: string) => {
@@ -625,7 +639,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       ...(input.now ? { now: input.now } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       instructions: [
-        "These negotiations are held on a stall, and this run settles each one. A stall with no questionId: write one note_principal, then ask_principal for what it is missing, naming it in stalled, unless your principal's own words already cover it, in which case resolve_stall. A stall marked answered: set_brief, in a brief that carries the answer. Decline or stop one only when the conversation already says so.",
+        "These negotiations are held on a stall, and this run settles each one. A stall with no questionId: write one note_principal, then ask_principal for what it is missing, naming it in stalled, unless your principal's own words already cover it, in which case resolve_stall. Stalls missing the same fact about your principal share one intent-scoped question that asks for the fact itself and names them all. A stall marked answered: set_brief, in a brief that carries the answer. Decline or stop one only when the conversation already says so.",
         BRIEF_PROMPT,
       ].join("\n\n"),
       prompt: JSON.stringify({

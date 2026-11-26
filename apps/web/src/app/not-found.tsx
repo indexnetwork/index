@@ -4,8 +4,8 @@ import { StatusPage } from "@/components/SiteSignIn";
 
 export default function NotFound() {
   return (
-    <StatusPage bar="not found" title="Page not found" message="That page isn’t here.">
-      <Link className="site-btn" to="/">Go home</Link>
+    <StatusPage bar="not found" title="nothing here" message="this link doesn’t go anywhere. it may have been mistyped or moved.">
+      <Link className="site-btn" to="/">go home →</Link>
     </StatusPage>
   );
 }

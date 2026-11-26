@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 
 import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import { useAgents } from "@/contexts/APIContext";
-import { MCP_SERVER_URL } from "@/lib/agent-prompt";
+import { agentPrompt } from "@/lib/agent-prompt";
 import { settingsPath } from "@/lib/settings-tabs";
 import type { Agent, AgentConnection } from "@/services/agents";
 
@@ -65,7 +65,7 @@ function CopyLine({ text, label }: { text: string; label: string }) {
 
 /** How to plug in each kind of agent. */
 function Instructions({ choice }: { choice: Choice }) {
-  const prompt = `Connect me to Index using its MCP server at ${MCP_SERVER_URL} and help me sign in. Then suggest three things I might want or offer based on what you know about me, and ask which to create as intents. Ask me before accepting or passing on introductions.`;
+  const prompt = agentPrompt();
   switch (choice) {
     case "hermes":
       return (

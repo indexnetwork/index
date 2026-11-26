@@ -17,7 +17,7 @@ it('does not redeem on page load; only the button navigates to the fixed API end
   const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
   render(<Component />);
   expect(assign).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Continue to sign in' }));
+  fireEvent.click(screen.getByRole('button', { name: 'continue →' }));
   const url = new URL(assign.mock.calls[0][0]);
   expect(url.origin + url.pathname).toBe('https://protocol.index.network/api/auth/magic-link/verify');
   expect(url.searchParams.get('token')).toBe('one-time-token');
@@ -29,5 +29,5 @@ it('does not redeem on page load; only the button navigates to the fixed API end
 it('offers a new link when the token is missing', () => {
   render(<Component />);
   expect(screen.queryByRole('button')).toBeNull();
-  expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute('href', '/login');
+  expect(screen.getByRole('link', { name: 'send a new link →' })).toHaveAttribute('href', '/login');
 });

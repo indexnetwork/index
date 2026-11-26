@@ -1,23 +1,31 @@
+import { protocolOrigin } from "@/lib/protocol-origin";
+
+/** Production MCP server, used when the app runs without a protocol origin (local dev on the Vite proxy). */
 export const MCP_SERVER_URL = "https://protocol.index.network/mcp";
 
-/** What to paste into another agent. The server's own instructions do the onboarding. */
-export function agentPrompt() {
-  return `Index finds the right people for me, and lets them find me. Add it as an MCP server: ${MCP_SERVER_URL}
-Once it's connected, follow its instructions to set me up.`;
+/**
+ * The MCP server for the API this app talks to, so a prompt copied from dev
+ * connects to dev and its invite codes resolve there.
+ */
+export function mcpServerUrl(): string {
+  const origin = protocolOrigin();
+  return origin ? `${origin}/mcp` : MCP_SERVER_URL;
 }
 
-/** What a visitor pastes into Hermes to join a network from its invite link. */
-export function hermesInvitePrompt(networkTitle: string, inviteUrl: string) {
-  return `I've been invited to the ${networkTitle} network on Index. Join it for me.
-If you don't have Index yet, install the plugin: hermes plugins install indexnetwork/hermes-plugin
-Then call index_join_network with this invite: ${inviteUrl}
-Tell me whether I'm in or waiting for an admin to approve me.`;
-}
-
-/** What a visitor pastes into an MCP agent (Claude Code, and the rest) to join. */
-export function mcpInvitePrompt(networkTitle: string, inviteUrl: string) {
-  return `I've been invited to the ${networkTitle} network on Index. Join it for me.
-If you don't have Index yet, add this MCP server first: ${MCP_SERVER_URL}
-Then call join_network with this invite: ${inviteUrl}
-Tell me whether I'm in or waiting for an admin to approve me.`;
+/**
+ * What to paste into another agent, the same everywhere. The server's own
+ * instructions do the onboarding. From an invite link it also joins that
+ * network, first, so the onboarding that follows already sees its members.
+ */
+export function agentPrompt(invite?: { networkTitle: string; inviteUrl: string }) {
+  const lines = [
+    `Index finds the right people for me, and lets them find me. Add it as an MCP server: ${mcpServerUrl()}`,
+  ];
+  if (invite) {
+    lines.push(`Once it's connected, join the ${invite.networkTitle} network for me: call join_network with this invite: ${invite.inviteUrl}`);
+    lines.push(`Tell me whether I'm in or waiting for an admin to approve me, then follow its instructions to set me up.`);
+  } else {
+    lines.push(`Once it's connected, follow its instructions to set me up.`);
+  }
+  return lines.join("\n");
 }

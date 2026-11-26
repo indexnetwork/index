@@ -1,12 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 
-import { ensureSiteFonts } from "@/app/site/SiteLayout";
-import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
-import { mcpInvitePrompt } from "@/lib/agent-prompt";
-import "@/app/site/site.css";
-import "@/app/site/flow.css";
-import "./SiteSignIn.css";
+import { SiteSignInPage } from "@/components/SiteSignIn";
+import { agentPrompt } from "@/lib/agent-prompt";
 import "./NetworkInviteBoard.css";
 
 /** Network activity the share-code preview carries. Nothing in it names a member. */
@@ -24,16 +20,8 @@ export interface NetworkPulse {
   summary?: string | null;
 }
 
-type AgentChoice = "here" | "hermes" | "mcp";
-
-const AGENT_CHOICES: Array<{ id: AgentChoice; label: string; hint?: string }> = [
-  { id: "here", label: "Join in the browser", hint: "No setup, Index runs an agent for you" },
-  { id: "hermes", label: "Bring your Hermes agent" },
-  { id: "mcp", label: "Copy prompt for your agent", hint: "Claude Code, or any other agent" },
-];
-
 /** Same-origin login that returns to this invite, so signing in joins the network. */
-function openAppHref(inviteUrl: string): string {
+function joinHref(inviteUrl: string): string {
   try {
     const path = new URL(inviteUrl).pathname;
     if (path.startsWith("/") && !path.startsWith("//")) return `/login?next=${encodeURIComponent(path)}`;
@@ -41,139 +29,13 @@ function openAppHref(inviteUrl: string): string {
   return "/login";
 }
 
-function WebIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden="true">
-      <circle cx="8" cy="8" r="6.25" />
-      <ellipse cx="8" cy="8" rx="2.6" ry="6.25" />
-      <path d="M1.75 8h12.5" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden="true">
-      <rect x="4.5" y="4.5" width="8" height="8" rx="1.2" />
-      <path d="M9.5 4.5V2.7a1.2 1.2 0 0 0-1.2-1.2H2.7a1.2 1.2 0 0 0-1.2 1.2v5.6a1.2 1.2 0 0 0 1.2 1.2h1.8" />
-    </svg>
-  );
-}
-
-/** The two install paths from the Hermes page: desktop plugin, or the CLI command. */
-function HermesInstall() {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  return (
-    <div className="invite-hermes">
-      <div className="invite-hermes__way">
-        <h3 className="invite-hermes__title">
-          <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />
-          Hermes desktop
-        </h3>
-        <a className="site-btn site-btn--secondary" href={HERMES_INSTALL_URL}>Install plugin</a>
-      </div>
-      <div className="invite-hermes__way">
-        <h3 className="invite-hermes__title">
-          <span className="invite-hermes__term" aria-hidden="true">&gt;_</span>
-          Hermes CLI
-        </h3>
-        <div className="invite-hermes__cmd">
-          <code>
-            <span className="invite-hermes__prompt">$ </span>
-            {HERMES_INSTALL_COMMAND}
-          </code>
-          <button
-            type="button"
-            className="invite-hermes__copy"
-            onClick={() => { void navigator.clipboard?.writeText(HERMES_INSTALL_COMMAND).then(() => setCopied(true)); }}
-            aria-label={copied ? "Copied" : "Copy command"}
-          >
-            {copied ? "Copied" : <CopyIcon />}
-          </button>
-        </div>
-        <a className="site-arrow-link" href={docsUrl("/use/hermes")} target="_blank" rel="noreferrer">
-          Read the docs ↗
-        </a>
-      </div>
-    </div>
-  );
-}
-
-/** Each way in is a button. Hermes expands its install options; MCP gets the invite to paste. */
-function BringYourAgent({ title, inviteUrl }: { title: string; inviteUrl: string }) {
-  const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
-  const [hermesOpen, setHermesOpen] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  const go = (id: AgentChoice) => {
-    if (id === "here") {
-      navigate(openAppHref(inviteUrl));
-      return;
-    }
-    if (id === "hermes") {
-      setHermesOpen((open) => !open);
-      return;
-    }
-    void navigator.clipboard?.writeText(mcpInvitePrompt(title, inviteUrl)).then(() => setCopied(true));
-  };
-
-  return (
-    <div className="invite-bring">
-      <h2 className="invite-ask">Which agent goes in?</h2>
-      <div className="invite-agents">
-        {AGENT_CHOICES.map((agent) => (
-          <div key={agent.id} className="invite-agent-slot">
-            <button
-              type="button"
-              className={agent.id === "here" ? "invite-agent invite-agent--primary" : "invite-agent"}
-              aria-expanded={agent.id === "hermes" ? hermesOpen : undefined}
-              onClick={() => go(agent.id)}
-            >
-              <span className="invite-agent__label">
-                <span className="invite-agent__name">
-                  {agent.id === "here" && <WebIcon />}
-                  {agent.id === "hermes" && <img className="invite-agent__logo" src="/site/nous-research.png" alt="" />}
-                  {agent.id === "mcp" && <CopyIcon />}
-                  {agent.id === "mcp" && copied ? "copied, paste it in →" : agent.label}
-                </span>
-                {agent.hint && !(agent.id === "mcp" && copied) && <span className="invite-agent__hint">{agent.hint}</span>}
-              </span>
-            </button>
-            {agent.id === "hermes" && hermesOpen && <HermesInstall />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** A panel with a caps header bar; `mark` puts the accent square before the label. */
-function Window({ label, children, mark = false }: { label: string; children: ReactNode; mark?: boolean }) {
-  return (
-    <section className="invite-window" aria-label={label}>
-      <div className="invite-bar">
-        {mark && <span className="invite-bar__mark" aria-hidden="true" />}
-        <span className="invite-bar__title">{label}</span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** The current time, ticking every `everyMs` so relative times stay true. */
-function useNow(everyMs: number): number {
+/** The current time, ticking every `everyMs` so relative times stay true, and fresh whenever `key` changes. */
+function useNow(everyMs: number, key?: unknown): number {
   const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setTimeout(() => setNow(Date.now()), 0);
+    return () => clearTimeout(t);
+  }, [key]);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), everyMs);
     return () => clearInterval(t);
@@ -207,91 +69,193 @@ function LiveNumber({ value }: { value: number }) {
 }
 
 /**
- * The invite page's ready state, in the app's quiet look (flow.css):
- * an "invite" card with the network and a summary of what members are after (written
- * on the server, so no single intent shows), and a "join" window with three ways
- * in through the same actions as the landing page, drawn larger.
+ * Copies the agent prompt, which joins the network and then sets Index up.
+ * The prompt is the one every "copy prompt" uses, plus this invite.
  */
-export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
+export function CopyInvitePrompt({ title, inviteUrl }: { title: string; inviteUrl: string }) {
+  const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
+  useEffect(() => {
+    if (copied !== "yes") return;
+    const t = setTimeout(() => setCopied(null), 2400);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(agentPrompt({ networkTitle: title, inviteUrl }));
+      setCopied("yes");
+    } catch {
+      setCopied("failed");
+    }
+  };
+
+  return (
+    <div className="invite-way">
+      <button type="button" className="site-btn site-btn--secondary site-btn--block" onClick={() => void copy()}>
+        {copied === "yes" ? "copied. paste it into your agent" : "copy a prompt for your agent"}
+      </button>
+      <p className="invite-hint" role="status">
+        {copied === "failed"
+          ? "couldn't reach the clipboard. select the prompt below and copy it."
+          : "for claude code, cursor, or any agent that takes an mcp server. it joins you here, then sets you up."}
+      </p>
+      {copied === "failed" && (
+        <textarea className="invite-prompt" readOnly rows={5} value={agentPrompt({ networkTitle: title, inviteUrl })} onFocus={(e) => e.currentTarget.select()} />
+      )}
+    </div>
+  );
+}
+
+/** The two ways into a network from its invite: Index's own agent in the browser, or the visitor's agent. */
+export function InviteActions({ title, inviteUrl }: { title: string; inviteUrl: string }) {
+  return (
+    <div className="invite-actions">
+      <div className="invite-way">
+        <Link className="site-btn site-btn--block" to={joinHref(inviteUrl)}>join in the browser →</Link>
+        <p className="invite-hint">no setup. index runs an agent for you.</p>
+      </div>
+      <CopyInvitePrompt title={title} inviteUrl={inviteUrl} />
+    </div>
+  );
+}
+
+/**
+ * One column for every "join this network" page (an invite link and a
+ * network's own link), with the same information on both: the network, what's
+ * going on inside, then what to do. No panels or caps bars; it stands on the
+ * page like sign-in, which is where its main button goes.
+ */
+export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = false, children }: {
+  kicker?: ReactNode;
+  /** Inside the app shell, which clips: the page scrolls itself. */
+  scroll?: boolean;
   title: string;
+  avatar?: ReactNode;
+  lede?: ReactNode;
+  pulse?: NetworkPulse;
+  /** The actions, or the join's status in their place. */
+  children: ReactNode;
+}) {
+  const now = useNow(15_000, pulse?.lastActivityAt);
+  // Only the counts the preview carries; a missing one is left out, not shown as 0.
+  const stats: Array<[string, number]> = [];
+  const count = (n: number | undefined, one: string, many: string) => { if (n != null) stats.push([n === 1 ? one : many, n]); };
+  if (pulse) {
+    count(pulse.members, "member", "members");
+    count(pulse.agents, "agent", "agents");
+    count(pulse.intents, "open intent", "open intents");
+    count(pulse.negotiations, "negotiation", "negotiations");
+  }
+
+  const page = (
+    <SiteSignInPage>
+      <div className="invite">
+        <div className="invite-head">
+          {avatar}
+          <div className="invite-hero">
+            {kicker && <p className="invite-kicker">{kicker}</p>}
+            <h1 className="invite-title">{title}</h1>
+            {lede && <div className="invite-lede">{lede}</div>}
+          </div>
+        </div>
+
+        {stats.length > 0 && (
+          <dl className="invite-stats">
+            {stats.map(([label, value]) => (
+              <div key={label} className="invite-stat">
+                <dt>{label}</dt>
+                <dd><LiveNumber value={value} /></dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {pulse && (
+          <div className="invite-looking">
+            <h2 className="invite-kicker">what people here are looking for</h2>
+            <p className="invite-summary">
+              {pulse.summary
+                ?? `${pulse.intents > 0 ? `${pulse.intents.toLocaleString()} intents are open right now. ` : ""}what they say stays private until you join.`}
+            </p>
+            {pulse.lastActivityAt && (
+              <p className="invite-updated" title={new Date(pulse.lastActivityAt).toLocaleString()}>
+                <span className="invite-live" aria-hidden="true" />
+                last change {ago(pulse.lastActivityAt, now)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {children}
+      </div>
+    </SiteSignInPage>
+  );
+  return scroll ? <div className="invite-scroll">{page}</div> : page;
+}
+
+/** What a network is, in its own words when it has some. */
+export function networkLede(prompt?: string | null): string {
+  return prompt?.trim() || "a network where your agent finds the people you're looking for, and introduces you only when it's mutual.";
+}
+
+/** How often a join page refreshes the network's numbers, so they read as live. */
+export const PULSE_REFRESH_MS = 3_000;
+
+/**
+ * A network's counts, kept live while the tab is visible, plus its written
+ * summary once. A failed refresh keeps what is on screen.
+ */
+export function useLivePulse(key: string | null, loadPulse: () => Promise<Omit<NetworkPulse, "summary">>, loadSummary: () => Promise<string | null>): NetworkPulse | undefined {
+  const [pulse, setPulse] = useState<Omit<NetworkPulse, "summary">>();
+  const [summary, setSummary] = useState<string | null>();
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const next = await loadPulse();
+        if (!cancelled) setPulse(next);
+      } catch { /* keep what's shown */ } finally {
+        inFlight = false;
+      }
+    };
+    void refresh();
+    loadSummary().then((s) => { if (!cancelled) setSummary(s); }).catch(() => {});
+    const timer = setInterval(() => void refresh(), PULSE_REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloads per network, not per loader identity
+  }, [key]);
+  return pulse ? { ...pulse, summary } : undefined;
+}
+
+/** The invite link's page (`/l/:code`): the network, then the ways in, or the join's status in their place. */
+export function NetworkInviteBoard({ title, prompt, avatar, pulse, inviteUrl, status }: {
+  title: string;
+  /** The network's own description, when it has one. */
+  prompt?: string | null;
+  avatar?: ReactNode;
   pulse?: NetworkPulse;
   inviteUrl: string;
   /** Set while a join is under way or has an outcome; replaces the actions. */
   status?: ReactNode;
 }) {
-  const now = useNow(15_000);
-  useEffect(() => {
-    ensureSiteFonts();
-  }, []);
-
-  const stats: Array<[string, number]> = [];
-  if (pulse) {
-    const members = pulse.members ?? 0;
-    const agents = pulse.agents ?? 0;
-    const negotiations = pulse.negotiations ?? 0;
-    stats.push(
-      [members === 1 ? "member" : "members", members],
-      [agents === 1 ? "agent" : "agents", agents],
-      ["open intents", pulse.intents],
-      [negotiations === 1 ? "negotiation" : "negotiations", negotiations],
-    );
-  }
-
   return (
-    <div className="site invite-wb">
-
-      <main className="invite-grid">
-        <div className="invite-stack">
-        <Window label="Invitation">
-          <div className="invite-body">
-            <div className="invite-hero">
-              <p className="invite-label">You&apos;re invited to</p>
-              <h1 className="invite-title">{title}</h1>
-              <p className="invite-lede">
-                A network where your agent finds the people you&apos;re looking for, and
-                introduces you only when it&apos;s mutual.
-              </p>
-            </div>
-
-            {stats.length > 0 && (
-              <dl className="invite-stats">
-                {stats.map(([label, value]) => (
-                  <div key={label} className="invite-stat">
-                    <dt>{label}</dt>
-                    <dd><LiveNumber value={value} /></dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-
-            <div className="invite-looking">
-              <h2 className="invite-label">What people are looking for</h2>
-              <p className="invite-summary">
-                {pulse?.summary
-                  ?? `${pulse && pulse.intents > 0 ? `${pulse.intents.toLocaleString()} intents are open right now. ` : ""}What they say stays private until you join.`}
-              </p>
-            </div>
-
-          </div>
-          {pulse?.lastActivityAt && (
-            <p className="invite-updated" title={new Date(pulse.lastActivityAt).toLocaleString()}>
-              <span className="invite-live" aria-hidden="true" />
-              last change {ago(pulse.lastActivityAt, now)}
-            </p>
-          )}
-        </Window>
-        </div>
-
-        <Window label="bring your agent" mark>
-          <div className="invite-body invite-body--join">
-            {status ? (
-              <div className="signin invite-signin invite-status">{status}</div>
-            ) : (
-              <BringYourAgent title={title} inviteUrl={inviteUrl} />
-            )}
-          </div>
-        </Window>
-      </main>
-    </div>
+    <NetworkJoinPage
+      kicker="you're invited to"
+      title={title}
+      avatar={avatar}
+      lede={networkLede(prompt)}
+      pulse={pulse}
+    >
+      {status ? <div className="invite-actions signin-status">{status}</div> : <InviteActions title={title} inviteUrl={inviteUrl} />}
+    </NetworkJoinPage>
   );
 }

@@ -85,6 +85,8 @@ export interface OutreachRow {
   email: string;
   contactName: string | null;
   introducerName: string;
+  /** The member who said yes; the email's link signs in straight to them. */
+  memberId: string;
   memberName: string;
   memberIntent: string;
   context: string;
@@ -443,7 +445,10 @@ export class IntroducerDatabaseAdapter {
              (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals
       from contacts c
       where ${where}
-      order by proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc
+      order by ${options.filter === 'excluded'
+        // Never-suggest reads newest first, so a fresh pick sits on the first page.
+        ? sql`c.excluded_at desc, c.id`
+        : sql`proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc`}
       limit ${options.limit} offset ${options.offset}
     `);
     return {
@@ -594,7 +599,7 @@ export class IntroducerDatabaseAdapter {
   async outreachDue(limit: number): Promise<OutreachRow[]> {
     const result = await db.execute(sql`
       select o.id as opportunity_id, seat.id as seat_id, seat.email, c.name as contact_name,
-             intro.name as introducer_name, mu.name as member_name,
+             intro.name as introducer_name, mu.id as member_id, mu.name as member_name,
              coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
       from opportunity_proposals s
@@ -618,6 +623,7 @@ export class IntroducerDatabaseAdapter {
       email: String(r.email),
       contactName: (r.contact_name as string | null) ?? null,
       introducerName: String(r.introducer_name),
+      memberId: String(r.member_id),
       memberName: String(r.member_name),
       memberIntent: String(r.member_intent),
       context: String(r.context),

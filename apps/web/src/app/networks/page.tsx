@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import PageHead from "@/components/intents-home/PageHead";
 import { useNavigate } from 'react-router';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
+import { networkPath } from '@/lib/network-path';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import CreateNetworkModal from '@/components/modals/CreateNetworkModal';
 import RequestNetworkModal from '@/components/modals/RequestNetworkModal';
@@ -218,7 +219,7 @@ export default function NetworksPage() {
       });
       addNetwork(newNetwork);
       setCreateNetworkModalOpen(false);
-      navigate(`/networks/${newNetwork.id}/contacts`);
+      navigate(networkPath(newNetwork, 'contacts'));
       success(`${networkData.name} is live. send the link to let people in.`);
     } catch (err) {
       logger.error('Error creating network', { error: err });
@@ -365,7 +366,7 @@ export default function NetworksPage() {
                     const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                     return (
                       <li key={network.id}>
-                        <a href={`/networks/${network.id}`} className="pl-net" onClick={(event) => { event.preventDefault(); navigate(`/networks/${network.id}`); }}>
+                        <a href={networkPath(network)} className="pl-net" onClick={(event) => { event.preventDefault(); navigate(networkPath(network)); }}>
                           <PlainMark id={network.id} name={network.title} photo={network.imageUrl} index={index} />
                           <span className="pl-net-text">
                             <span className="pl-net-name" title={network.title}>{network.title}</span>
@@ -553,7 +554,7 @@ export default function NetworksPage() {
                         || (viewerRole !== 'member' && user?.id === network.user?.id);
                       const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                       return (
-                        <button key={network.id} type="button" className="wb-link-row" onClick={() => navigate(`/networks/${network.id}`)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", textAlign: "left", border: "none", borderBottom: "1px solid #DDD8CC", font: "inherit" }}>
+                        <button key={network.id} type="button" className="wb-link-row" onClick={() => navigate(networkPath(network))} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", textAlign: "left", border: "none", borderBottom: "1px solid #DDD8CC", font: "inherit" }}>
                           <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
                           <span style={{ flex: 1, minWidth: 0 }}>
                             <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "inherit" }}>{network.title}</span>

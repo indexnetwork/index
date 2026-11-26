@@ -3196,6 +3196,108 @@ button.st-copy {
   white-space: nowrap;
   cursor: pointer;
 }
+/* agents: "settings ▾" opens a grey tray under the row (toggle, then id and remove) */
+.ag-link,
+.ih:not(#_) .pl button.ag-link,
+.ih:not(#_) .pl button.ag-link:hover:not(:disabled) {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 11.5px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0;
+  color: #000;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ih:not(#_) .pl button.ag-link.ag-danger { color: #8a0000; }
+/* a grey list under the row: one line per option, each line clickable end to end */
+.ag-tray {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  background: #f7f7f5;
+  border: 1px solid #e6e6e6;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ag-tray-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid #e6e6e6;
+  font: 400 11px "JetBrains Mono", ui-monospace, monospace;
+  color: #8a8578;
+}
+.ag-tray-foot:first-child { border-top: 0; }
+/* the selected agent's row: the whole row opens the picker */
+.ag-head-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 14px;
+  cursor: pointer;
+}
+.ag-head-row:focus-visible { outline: 2px solid #000; outline-offset: 2px; }
+/* who speaks for you: one agent per line in the tray; the line is the radio */
+.ag-pick > .ag-tray-note { padding: 10px 14px; border-top: 1px solid #e6e6e6; }
+.ih:not(#_) .pl button.ag-pick-line,
+.ih:not(#_) .pl button.ag-pick-line:active:not(:disabled) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line,
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line:hover:not(:disabled),
+.ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line:active:not(:disabled) { border-top: 1px solid #e6e6e6; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="false"]:hover:not(:disabled) { background: #ecebe6; }
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"],
+.ih:not(#_) .pl button.ag-pick-line[aria-checked="true"]:hover:not(:disabled) { background: transparent; cursor: default; }
+.ih:not(#_) .pl button.ag-pick-line:disabled { cursor: wait; opacity: 0.6; }
+.ag-radio {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #000;
+  background: #fff;
+}
+.ag-pick-line[aria-checked="true"] .ag-radio { background: #FF8A00; box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.3); }
+.ag-pick-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.ag-pick-state { flex: none; font: 500 11.5px "JetBrains Mono", ui-monospace, monospace; color: #8a8578; white-space: nowrap; }
+.ag-pick-line[aria-checked="false"] .ag-pick-state { color: #000; text-decoration: underline; text-underline-offset: 3px; }
+.ag-tray-note { margin: 0; font: 400 12px "IBM Plex Sans", sans-serif; color: #5a5548; }
+.ag-tray-foot button.st-copy { margin-left: 4px; text-decoration: underline; text-underline-offset: 3px; }
+.ag-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.ag-opt + .ag-opt { border-top: 1px solid #e6e6e6; }
+.ag-opt:hover { background: #ecebe6; }
+.ag-opt-text { flex: 1; min-width: 0; }
+.ag-opt > input[type="checkbox"] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 3px 0 0;
+  accent-color: #ff8a00;
+}
+.ag-opt b { display: block; font: 500 13px "IBM Plex Sans", sans-serif; color: #000; }
+.ag-opt small { display: block; margin-top: 1px; font: 400 12px/1.45 "IBM Plex Sans", sans-serif; color: #5a5548; }
+
 /* a secret shown once (a new api key) */
 .st-reveal {
   display: grid;

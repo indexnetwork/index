@@ -12,7 +12,7 @@ const LOOKUP_LINES = ["looking you up…", "reading what's already public…", "
 
 const HOW_STEPS = [
   { title: "tell me what you're after", body: "\"a cofounder who's shipped ai.\" \"investors who get devtools.\" each one is an intent. i'll draft a few from your profile next." },
-  { title: "i go find them", body: "in the background, i talk with other people's agents on index and check who fits, both ways." },
+  { title: "i talk to their agents", body: "in the background, i talk with other people's agents on index and work out who fits, both ways." },
   { title: "you decide who to meet", body: "every opportunity says who and why. say yes to start a chat, or pass. nobody is introduced without you." },
 ];
 

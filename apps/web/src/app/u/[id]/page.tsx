@@ -21,7 +21,7 @@ import { resolveSocials } from "@/lib/socials";
 import { SOCIAL_ICONS } from "@/components/SocialIcons";
 import { useBack } from "@/hooks/useBack";
 import { clearPendingPair, readPendingPair, rememberPendingPair } from "@/lib/pending-pair";
-import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
+import { needsOnboarding } from "@/services/onboarding";
 import { Placeholder } from "@/components/ui/Placeholder";
 // Its in-app layout (.pl) lives here; /u/:id can be the first page opened.
 import "@/styles/plain.css";
@@ -46,6 +46,8 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   const [searchParams] = useSearchParams();
   // `?as=public` renders the page as a signed-out visitor sees it.
   const asPublic = searchParams.get("as") === "public";
+  // Arrived from an emailed accept or pass on an introduction to this person.
+  const said = searchParams.get("said");
   const signedIn = isAuthenticated && !asPublic;
   const usersService = useUsers();
   const networksService = useNetworks();
@@ -185,10 +187,10 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
   }, [isSelf, profileId]);
   useEffect(() => {
     if (!profileId || pendingPairFor !== profileId) return;
-    // New here: onboarding first. Its last step lands on the home page, which brings them back.
-    if (needsOnboarding(user)) { navigate("/onboarding"); return; }
-    // Profile confirmed but no intent yet, so nothing to pair with.
-    if (awaitsFirstIntent(user)) { navigate("/i/new"); return; }
+    // New here: first run comes first (the app sends them there, and its last
+    // step lands on home, which brings them back). Then pair, first intent or not:
+    // sending them back to it after they put it off would bounce them.
+    if (needsOnboarding(user)) return;
     clearPendingPair();
     void pair();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per arrival; pair reads current state
@@ -276,11 +278,26 @@ export function UserProfile({ idOrUsername, atRoot = false }: { idOrUsername: st
             </>
           )}
 
-          {!signedIn && (
+          {!signedIn && said === "yes" && (
+            <>
+              <h4 className="sv-h4">your introduction</h4>
+              <div className="sv-pairme">
+                <p>you said yes. the chat with {profileData.name.split(" ")[0]} opens as soon as you sign in.</p>
+                <Link className="sv-btn go" to={`/login?next=${encodeURIComponent(`/u/${profileData.id}/chat`)}`}>open the chat →</Link>
+              </div>
+            </>
+          )}
+          {!signedIn && said === "no" && (
+            <>
+              <h4 className="sv-h4">your introduction</h4>
+              <p className="sv-dimp">you passed, so you two won&apos;t be introduced.</p>
+            </>
+          )}
+          {!signedIn && !said && (
             <>
               <h4 className="sv-h4">opportunities</h4>
               <div className="sv-pairme">
-                <p>Pair your agent with mine. They&apos;ll keep talking in the background, exploring possibilities and bringing us together whenever something interesting emerges.</p>
+                <p>pair your agent with mine. they&apos;ll keep talking in the background, and bring us together when something&apos;s worth meeting over.</p>
                 <button type="button" className="sv-btn go" onClick={pair} disabled={pairing} aria-busy={pairing}>
                   {pairing ? "pairing…" : "pair agents"}
                 </button>
