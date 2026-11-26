@@ -131,13 +131,20 @@ function intentFeed(messages: ConversationMessage[], questions: PrincipalQuestio
   return feed;
 }
 
+/** "Ana", "Ana and Bo", "Ana, Bo and Cy", "Ana, Bo and 3 others". */
+function namesOf(names: string[]): string {
+  if (names.length <= 2) return names.join(" and ");
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
+}
+
 /** One private intent conversation; every open question is answered in a single submit. */
 export function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
   const people = (question.matches ?? [])
     .map((match) => match.counterparty)
     .filter((person): person is { id: string; name: string } => Boolean(person?.name));
   if (people.length === 1) return { label: agentLabel(people[0].name), owner: people[0] };
-  if (people.length > 1) return { label: `${people.map((person) => person.name).join(", ")}’s agents`, owner: null };
+  if (people.length > 1) return { label: `${namesOf(people.map((person) => person.name.split(" ")[0]))}’s agents`, owner: null, people };
   return { label: question.scope === "match" ? "this match’s agent" : "your agent", owner: null };
 }
 
