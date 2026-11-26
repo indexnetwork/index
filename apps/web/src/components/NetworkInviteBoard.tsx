@@ -30,7 +30,7 @@ function joinHref(inviteUrl: string): string {
 }
 
 /**
- * A network's description, held to three lines with "more" when it runs
+ * A network's description, held to five lines with "more" when it runs
  * longer, so the page stays one screen and the buttons stay in reach.
  */
 function Lede({ children }: { children: ReactNode }) {

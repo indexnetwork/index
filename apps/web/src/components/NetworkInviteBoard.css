@@ -26,7 +26,7 @@
   overflow-wrap: anywhere;
 }
 .invite-lede { margin: 0; max-width: 64ch; font-size: 14px; line-height: 1.6; color: var(--body); white-space: pre-wrap; }
-.invite-lede--clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.invite-lede--clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
 .invite-lede-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .invite-more {
   padding: 0;
