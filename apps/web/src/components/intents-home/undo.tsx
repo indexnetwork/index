@@ -3,9 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 /** How long an action waits for "undo" before it's sent. */
 const UNDO_MS = 5_000;
 
-interface Pending { id: number; text: string; undo?: () => void; commit: () => void }
+/** A second toast button that sends the action now and, once it's saved, goes somewhere, e.g. "see list ›". */
+export interface UndoLink { label: string; go: () => void }
 
-const UndoContext = createContext<(text: string, commit: () => void, undo?: () => void) => void>((_text, commit) => commit());
+interface Pending { id: number; text: string; undo?: () => void; commit: () => unknown; link?: UndoLink }
+
+const UndoContext = createContext<(text: string, commit: () => unknown, undo?: () => void, link?: UndoLink) => void>((_text, commit) => commit());
 
 /**
  * Pass, skip, answer and archive wait a few seconds behind a toast with
@@ -22,12 +25,12 @@ export function UndoProvider({ children }: { children: ReactNode }) {
     const p = current.current;
     current.current = null;
     setPending(null);
-    p?.commit();
+    return p?.commit();
   }, []);
 
-  const schedule = useCallback((text: string, commit: () => void, undo?: () => void) => {
+  const schedule = useCallback((text: string, commit: () => unknown, undo?: () => void, link?: UndoLink) => {
     flush();
-    const p = { id: Date.now(), text, commit, undo };
+    const p = { id: Date.now(), text, commit, undo, link };
     current.current = p;
     setPending(p);
     timer.current = setTimeout(flush, UNDO_MS);
@@ -56,13 +59,14 @@ export function UndoProvider({ children }: { children: ReactNode }) {
         <div className="sv-toast" role="status" key={pending.id}>
           <span>{pending.text}</span>
           {pending.undo && <button type="button" onClick={cancel}>undo</button>}
+          {pending.link && <button type="button" onClick={() => { const go = pending.link!.go; void Promise.resolve(flush()).finally(go); }}>{pending.link.label}</button>}
         </div>
       )}
     </UndoContext.Provider>
   );
 }
 
-/** @returns `later(text, commit, undo)`: shows the toast and sends after a few seconds unless undone. */
+/** @returns `later(text, commit, undo, link)`: shows the toast and sends after a few seconds unless undone. */
 export function useUndo() {
   return useContext(UndoContext);
 }

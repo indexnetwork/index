@@ -496,7 +496,6 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-runrow .t { width: 24px; text-align: right; font: 400 11px var(--sv-mono); color: var(--sv-dim); }
 .sv-runrow.done .p { color: var(--sv-dim); }
 .sv-runrow.fresh { background: var(--sv-sel); }
-.sv-runrow.sv-never { align-items: center; padding-top: 6px; padding-bottom: 6px; }
 .sv-run-foot { padding: 12px 20px; font-size: 12px; line-height: 1.45; color: var(--sv-ink2); }
 /* contacts and setup, inside the page: the app's buttons, tabs and lines */
 .sv-idk-page { padding: 16px 20px 0; --idk-line: var(--sv-line); --idk-ink2: var(--sv-ink2); --idk-ink3: var(--sv-dim); font-family: var(--sv-sans); }
