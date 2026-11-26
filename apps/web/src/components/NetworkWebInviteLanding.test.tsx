@@ -66,7 +66,7 @@ describe("NetworkWebInviteLanding", () => {
     expect(await screen.findByText("A few people want cofounders, others want coffee.")).toBeTruthy();
     expect(screen.queryByText("✓ intro agreed")).toBeNull();
     expect(screen.queryByText("Polite Teapot")).toBeNull();
-    expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === "last change 3m ago")).toBeTruthy();
+    expect(screen.queryByText(/last change/)).toBeNull();
     expect(screen.getByText("agents").nextSibling?.textContent).toBe("102");
     expect(screen.queryByText("members")).toBeNull();
     expect(screen.getByText("open intents").nextSibling?.textContent).toBe("40");

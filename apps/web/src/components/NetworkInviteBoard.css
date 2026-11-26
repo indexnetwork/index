@@ -22,7 +22,19 @@
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
-.invite-lede { margin: 0; max-width: 54ch; font-size: 14px; line-height: 1.6; color: var(--body); white-space: pre-wrap; }
+.invite-lede { margin: 0; max-width: 64ch; font-size: 14px; line-height: 1.6; color: var(--body); white-space: pre-wrap; }
+.invite-lede--clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.invite-lede-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.invite-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 13px var(--sans);
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 
 /* ---------- actions ---------- */
 .invite-actions { display: flex; flex-direction: column; gap: 16px; }
@@ -69,15 +81,6 @@
   color: var(--ink);
   text-wrap: pretty;
 }
-.invite-updated {
-  margin: 4px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: 400 12px var(--sans);
-  color: var(--muted);
-}
-.invite-live { width: 8px; height: 8px; flex: none; background: var(--green); }
 
 /* A network's own link renders inside the app shell, which clips overflow. */
 .invite-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }

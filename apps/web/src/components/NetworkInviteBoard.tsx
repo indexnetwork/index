@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { SiteSignInPage } from "@/components/SiteSignIn";
@@ -29,27 +29,34 @@ function joinHref(inviteUrl: string): string {
   return "/login";
 }
 
-/** The current time, ticking every `everyMs` so relative times stay true, and fresh whenever `key` changes. */
-function useNow(everyMs: number, key?: unknown): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setTimeout(() => setNow(Date.now()), 0);
-    return () => clearTimeout(t);
-  }, [key]);
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), everyMs);
-    return () => clearInterval(t);
-  }, [everyMs]);
-  return now;
-}
-
-function ago(iso: string, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+/**
+ * A network's description, held to three lines with "more" when it runs
+ * longer, so the page stays one screen and the buttons stay in reach.
+ */
+function Lede({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [children, open]);
+  return (
+    <div className="invite-lede-wrap">
+      <div ref={ref} className={open ? "invite-lede" : "invite-lede invite-lede--clamped"}>{children}</div>
+      {(long || open) && (
+        <button type="button" className="invite-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? "less" : "more"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** A number that briefly highlights when a refresh changes it. */
@@ -136,7 +143,6 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
   /** The actions, or the join's status in their place. */
   children: ReactNode;
 }) {
-  const now = useNow(15_000, pulse?.lastActivityAt);
   // Only the counts the preview carries; a missing one is left out, not shown as 0.
   const stats: Array<[string, number]> = [];
   const count = (n: number | undefined, one: string, many: string) => { if (n != null) stats.push([n === 1 ? one : many, n]); };
@@ -155,7 +161,7 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
           <div className="invite-hero">
             {kicker && <p className="invite-kicker">{kicker}</p>}
             <h1 className="invite-title">{title}</h1>
-            {lede && <div className="invite-lede">{lede}</div>}
+            {lede && <Lede>{lede}</Lede>}
           </div>
         </div>
 
@@ -177,12 +183,6 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
               {pulse.summary
                 ?? `${pulse.intents > 0 ? `${pulse.intents.toLocaleString()} intents are open right now. ` : ""}what they say stays private until you join.`}
             </p>
-            {pulse.lastActivityAt && (
-              <p className="invite-updated" title={new Date(pulse.lastActivityAt).toLocaleString()}>
-                <span className="invite-live" aria-hidden="true" />
-                last change {ago(pulse.lastActivityAt, now)}
-              </p>
-            )}
           </div>
         )}
 
