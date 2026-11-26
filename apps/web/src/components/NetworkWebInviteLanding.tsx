@@ -10,7 +10,8 @@ import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
 import { SiteSignInPage } from "@/components/SiteSignIn";
 import { rememberAfterFirstRun } from "@/lib/after-first-run";
-import { NetworkInviteBoard, type NetworkPulse } from "@/components/NetworkInviteBoard";
+import { NetworkInviteBoard, PULSE_REFRESH_MS, type NetworkPulse } from "@/components/NetworkInviteBoard";
+import NetworkAvatar from "@/components/NetworkAvatar";
 import { Placeholder } from "@/components/ui/Placeholder";
 
 const logger = log.page.from("l/[code]");
@@ -26,8 +27,6 @@ const PREVIEW_FAILED = "couldn't load this invitation. check your connection and
 const JOIN_EXPIRED = "couldn't join. the invite may have expired. ask whoever sent it for a new one.";
 const JOIN_FAILED = "couldn't join right now. try again in a moment.";
 
-/** How often the invite page refreshes the network's numbers, so they read as live. */
-const PULSE_REFRESH_MS = 3_000;
 
 /**
  * 4xx (or a 200 without a network) means the code itself is bad; 5xx and
@@ -241,6 +240,8 @@ export default function NetworkWebInviteLanding() {
   return (
     <NetworkInviteBoard
       title={network.title}
+      prompt={network.prompt}
+      avatar={<NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={56} />}
       pulse={network.pulse}
       inviteUrl={inviteUrl}
       status={showChoice ? null : joining ? (

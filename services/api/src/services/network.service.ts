@@ -10,7 +10,8 @@ const logger = log.service.from("NetworkService");
 /**
  * Every open invite page polls its counts every few seconds. Viewers of one
  * invite link share a result this fresh, and a single query while one is running.
- * Keyed by share code, so a rotated code stops being served within the TTL.
+ * Keyed by share code (or `public:<id>` for an open network's own page), so a
+ * rotated code stops being served within the TTL.
  */
 const SHARE_PULSE_TTL_MS = 2_500;
 type SharePulse = Awaited<ReturnType<ChatDatabaseAdapter['getNetworkShareCounts']>> | null;
@@ -296,17 +297,30 @@ export class NetworkService {
    * can render before these scans finish.
    */
   async getNetworkSharePulse(code: string) {
-    const cached = sharePulseCache.get(code);
+    return this.cachedPulse(code, () => this.adapter.getNetworkByShareCode(code)
+      .then((network) => (network ? this.adapter.getNetworkShareCounts(network.id) : null)));
+  }
+
+  /**
+   * The same counts for an open network, by id, for its own link's page. Null
+   * for invite-only networks: their numbers stay behind the invite.
+   */
+  async getPublicNetworkPulse(networkId: string) {
+    return this.cachedPulse(`public:${networkId}`, () => this.adapter.getPublicNetworkDetail(networkId)
+      .then((network) => (network ? this.adapter.getNetworkShareCounts(network.id) : null)));
+  }
+
+  private cachedPulse(key: string, load: () => Promise<SharePulse>) {
+    const cached = sharePulseCache.get(key);
     if (cached && Date.now() - cached.at < SHARE_PULSE_TTL_MS) return cached.value;
-    const value = this.adapter.getNetworkByShareCode(code)
-      .then((network) => (network ? this.adapter.getNetworkShareCounts(network.id) : null));
-    sharePulseCache.set(code, { at: Date.now(), value });
+    const value = load();
+    sharePulseCache.set(key, { at: Date.now(), value });
     // A failed scan must not be served to the next viewer.
     value.catch(() => {
-      if (sharePulseCache.get(code)?.value === value) sharePulseCache.delete(code);
+      if (sharePulseCache.get(key)?.value === value) sharePulseCache.delete(key);
     });
-    for (const [key, entry] of sharePulseCache) {
-      if (Date.now() - entry.at >= SHARE_PULSE_TTL_MS) sharePulseCache.delete(key);
+    for (const [k, entry] of sharePulseCache) {
+      if (Date.now() - entry.at >= SHARE_PULSE_TTL_MS) sharePulseCache.delete(k);
     }
     return value;
   }
@@ -319,6 +333,17 @@ export class NetworkService {
   async getNetworkShareSummary(code: string) {
     const network = await this.adapter.getNetworkByShareCode(code);
     if (!network) return null;
+    return this.summaryFor(network);
+  }
+
+  /** The same line for an open network, by id. Null for invite-only networks. */
+  async getPublicNetworkSummary(networkId: string) {
+    const network = await this.adapter.getPublicNetworkDetail(networkId);
+    if (!network) return null;
+    return this.summaryFor(network);
+  }
+
+  private async summaryFor(network: { id: string; title: string; _count: { members: number } }) {
     if (network._count.members < SUMMARY_MIN_MEMBERS) return { summary: null };
     const intents = await this.adapter.getNetworkShareSummaryIntents(network.id);
     const { summary } = await getNetworkPulseSummary(network.id, {

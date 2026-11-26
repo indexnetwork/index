@@ -488,7 +488,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* a signed-out profile's one ask: the owner's pitch on a warm well, the orange box beside it */
 .sv-pairme { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; padding: 16px 18px; border: 1px solid var(--sv-well-line); border-radius: 2px; background: var(--sv-well); }
 .sv-pairme > p { flex: 1 1 260px; margin: 0; font-size: 14px; line-height: 1.5; color: var(--sv-ink); }
-.sv .sv-pairme > .sv-btn { flex: none; height: 34px; padding: 0 18px; font-size: 12.5px; }
+.sv .sv-pairme > .sv-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 18px; font-size: 12.5px; text-decoration: none; }
 .sv-pairme > .sv-pair-err { flex-basis: 100%; margin-top: 0; }
 .sv-pair-err { margin-top: 8px; font-size: 12px; color: var(--sv-danger); }
 .sv-runrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 20px; border-bottom: 1px solid var(--sv-line); font-size: 13.5px; }

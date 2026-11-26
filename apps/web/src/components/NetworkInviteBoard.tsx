@@ -121,9 +121,9 @@ export function InviteActions({ title, inviteUrl }: { title: string; inviteUrl: 
 
 /**
  * One column for every "join this network" page (an invite link and a
- * network's own link): who's asking, the network, what to do, then what's
- * going on inside. No panels or caps bars; it stands on the page like sign-in,
- * which is where its main button goes.
+ * network's own link), with the same information on both: the network, what's
+ * going on inside, then what to do. No panels or caps bars; it stands on the
+ * page like sign-in, which is where its main button goes.
  */
 export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = false, children }: {
   kicker?: ReactNode;
@@ -159,8 +159,6 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
           </div>
         </div>
 
-        {children}
-
         {stats.length > 0 && (
           <dl className="invite-stats">
             {stats.map(([label, value]) => (
@@ -187,15 +185,63 @@ export function NetworkJoinPage({ kicker, title, avatar, lede, pulse, scroll = f
             )}
           </div>
         )}
+
+        {children}
       </div>
     </SiteSignInPage>
   );
   return scroll ? <div className="invite-scroll">{page}</div> : page;
 }
 
+/** What a network is, in its own words when it has some. */
+export function networkLede(prompt?: string | null): string {
+  return prompt?.trim() || "a network where your agent finds the people you're looking for, and introduces you only when it's mutual.";
+}
+
+/** How often a join page refreshes the network's numbers, so they read as live. */
+export const PULSE_REFRESH_MS = 3_000;
+
+/**
+ * A network's counts, kept live while the tab is visible, plus its written
+ * summary once. A failed refresh keeps what is on screen.
+ */
+export function useLivePulse(key: string | null, loadPulse: () => Promise<Omit<NetworkPulse, "summary">>, loadSummary: () => Promise<string | null>): NetworkPulse | undefined {
+  const [pulse, setPulse] = useState<Omit<NetworkPulse, "summary">>();
+  const [summary, setSummary] = useState<string | null>();
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const next = await loadPulse();
+        if (!cancelled) setPulse(next);
+      } catch { /* keep what's shown */ } finally {
+        inFlight = false;
+      }
+    };
+    void refresh();
+    loadSummary().then((s) => { if (!cancelled) setSummary(s); }).catch(() => {});
+    const timer = setInterval(() => void refresh(), PULSE_REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloads per network, not per loader identity
+  }, [key]);
+  return pulse ? { ...pulse, summary } : undefined;
+}
+
 /** The invite link's page (`/l/:code`): the network, then the ways in, or the join's status in their place. */
-export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
+export function NetworkInviteBoard({ title, prompt, avatar, pulse, inviteUrl, status }: {
   title: string;
+  /** The network's own description, when it has one. */
+  prompt?: string | null;
+  avatar?: ReactNode;
   pulse?: NetworkPulse;
   inviteUrl: string;
   /** Set while a join is under way or has an outcome; replaces the actions. */
@@ -205,7 +251,8 @@ export function NetworkInviteBoard({ title, pulse, inviteUrl, status }: {
     <NetworkJoinPage
       kicker="you're invited to"
       title={title}
-      lede="a network where your agent finds the people you're looking for, and introduces you only when it's mutual."
+      avatar={avatar}
+      lede={networkLede(prompt)}
       pulse={pulse}
     >
       {status ? <div className="invite-actions signin-status">{status}</div> : <InviteActions title={title} inviteUrl={inviteUrl} />}

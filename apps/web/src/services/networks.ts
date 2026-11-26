@@ -365,6 +365,19 @@ export const networksService = {
     const response = await apiClient.getPublic<{ summary?: string | null }>(`/networks/share/${code}/summary`);
     return response.summary ?? null;
   },
+
+  /** The invite page's counts for an open network, by id, for its own link's page. */
+  getPublicNetworkPulse: async (networkId: string): Promise<{ members: number; intents: number; negotiations: number; agents: number; lastActivityAt: string | null }> => {
+    const response = await apiClient.getPublic<{ pulse?: { members: number; intents: number; negotiations: number; agents: number; lastActivityAt: string | null } }>(`/networks/public/${networkId}/pulse`);
+    if (!response.pulse) throw new Error('Network not found');
+    return response.pulse;
+  },
+
+  /** The invite page's written overview for an open network, by id. */
+  getPublicNetworkSummary: async (networkId: string): Promise<string | null> => {
+    const response = await apiClient.getPublic<{ summary?: string | null }>(`/networks/public/${networkId}/summary`);
+    return response.summary ?? null;
+  },
 };
 
 // Hook for using networks service with proper error handling

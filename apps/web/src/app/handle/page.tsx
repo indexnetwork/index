@@ -14,7 +14,8 @@ import { apiClient, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { rememberAfterFirstRun } from "@/lib/after-first-run";
 import { needsOnboarding } from "@/services/onboarding";
-import { NetworkJoinPage } from "@/components/NetworkInviteBoard";
+import { NetworkJoinPage, networkLede, useLivePulse } from "@/components/NetworkInviteBoard";
+import { networksService as publicNetworks } from "@/services/networks";
 import { useBack } from "@/hooks/useBack";
 import { Placeholder } from "@/components/ui/Placeholder";
 
@@ -79,20 +80,26 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
   const networksService = useNetworks();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [preview, setPreview] = useState<{ prompt?: string | null; _count?: { members: number } } | null>(null);
+  const [preview, setPreview] = useState<{ prompt?: string | null } | null>(null);
   const [joining, setJoining] = useState(false);
   const [failed, setFailed] = useState(false);
   const autoJoined = useRef(false);
 
   const isMember = !!networks?.some((n) => n.id === network.id);
   const open = network.joinPolicy === "anyone";
+  // The invite page's numbers and summary. Open networks show them; invite-only ones keep them behind the invite.
+  const pulse = useLivePulse(
+    open && !isMember ? network.id : null,
+    () => publicNetworks.getPublicNetworkPulse(network.id),
+    () => publicNetworks.getPublicNetworkSummary(network.id),
+  );
   const returning = params.get("join") === "1";
 
   useEffect(() => {
     if (!open || isMember) return;
     let active = true;
     apiClient
-      .getPublic<{ network: { prompt?: string | null; _count?: { members: number } } }>(`/networks/public/${network.id}`)
+      .getPublic<{ network: { prompt?: string | null } }>(`/networks/public/${network.id}`)
       .then((res) => { if (active) setPreview(res.network); })
       .catch((err) => logger.error("Failed to load network preview", { error: err }));
     return () => { active = false; };
@@ -142,15 +149,14 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
 
   if (isMember) return <NetworkDetailPage networkIdOverride={network.id} basePath={`/${handle}`} />;
 
-  const members = preview?._count?.members;
-
   return (
     <NetworkJoinPage
       scroll
-      kicker={open && members != null ? `${members.toLocaleString()} ${members === 1 ? "member" : "members"}` : "network on index"}
+      kicker="a network on index"
       title={network.title}
       avatar={<NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={56} />}
-      lede={open ? preview?.prompt : undefined}
+      lede={networkLede(open ? preview?.prompt : null)}
+      pulse={pulse}
     >
       <div className="invite-actions">
         {open ? (

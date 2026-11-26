@@ -664,6 +664,29 @@ export class NetworkController {
   }
 
   /**
+   * An open network's counts by id, for its own link's page; the invite page's
+   * pulse, without an invite. 404 for invite-only networks.
+   * IMPORTANT: This must come before GET /public/:id and GET /:id.
+   */
+  @Get('/public/:id/pulse')
+  async getPublicNetworkPulse(_req: Request, _user: unknown, params: Record<string, string>) {
+    const pulse = await networkService.getPublicNetworkPulse(params.id);
+    if (!pulse) return Response.json({ error: 'Network not found' }, { status: 404 });
+    return Response.json({ pulse });
+  }
+
+  /**
+   * An open network's "what people are looking for" line by id. 404 for invite-only networks.
+   * IMPORTANT: This must come before GET /public/:id and GET /:id.
+   */
+  @Get('/public/:id/summary')
+  async getPublicNetworkSummary(_req: Request, _user: unknown, params: Record<string, string>) {
+    const result = await networkService.getPublicNetworkSummary(params.id);
+    if (!result) return Response.json({ error: 'Network not found' }, { status: 404 });
+    return Response.json(result);
+  }
+
+  /**
    * Get a public network by ID (no auth required). Only works for networks with joinPolicy 'anyone'.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
