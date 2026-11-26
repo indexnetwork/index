@@ -1351,6 +1351,24 @@ button.ih-titlebar-close:active::after {
   margin-top: 8px;
 }
 
+/* New network: the connect dialog's shell around the settings form's fields */
+.nn-panel { max-width: 480px; }
+.nn-form { display: grid; gap: 16px; padding: 0 24px 24px; }
+.nn-photo { display: flex; align-items: center; gap: 14px; }
+.ih:not(#_) .pl button.nn-photo-pick,
+.ih:not(#_) .pl button.nn-photo-pick:hover:not(:disabled) { position: relative; width: 54px; height: 54px; padding: 0; background: transparent; border-radius: 3px; }
+.nn-photo-pick > :first-child { display: block; border-radius: 3px; overflow: hidden; }
+.nn-photo-pen {
+  position: absolute; right: -1px; bottom: -1px; width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--wb-control, #000); border-radius: 3px; background: #fff;
+  font-size: 10px; line-height: 1; color: var(--ink-2); pointer-events: none;
+}
+.nn-photo-pick:hover .nn-photo-pen, .nn-photo-pick:focus-visible .nn-photo-pen { background: var(--wb-hover-2, #f7f7f5); color: var(--ink); }
+.nn-photo-text { display: flex; align-items: baseline; gap: 10px; font: 400 13px "IBM Plex Sans", sans-serif; color: var(--ink-2); }
+.nn-access { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nn-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
 /* "connect your agent": one line above the menu, while no agent is connected. */
 .ih .ca-strip {
   display: flex;

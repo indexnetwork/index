@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
+import ChoiceCard from '@/components/ui/ChoiceCard';
 import { NotOnIndexTag } from '@/components/workbench/mac-blocks';
 import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
@@ -430,18 +431,6 @@ export default function AccessTab({
         )}
       </div>
     </div>
-  );
-}
-
-function ChoiceCard({ title, sub, selected, onClick }: { title: string; sub: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={selected} style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%", textAlign: "left", padding: "10px 12px", cursor: "pointer", border: `1px solid ${selected ? "#ccc" : "#e6e6e6"}`, borderRadius: 2, background: selected ? "#f7f7f5" : "#fff", boxShadow: "none" }}>
-      <span style={{ flex: "0 0 auto", width: 13, height: 13, marginTop: 2, border: "1px solid #000", background: selected ? "#FF8A00" : "#fff", boxShadow: selected ? "inset 1px 1px 0 rgba(0,0,0,0.3)" : "none" }} />
-      <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
-        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 600 }}>{title}</span>
-        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>{sub}</span>
-      </span>
-    </button>
   );
 }
 
