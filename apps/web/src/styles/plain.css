@@ -3249,7 +3249,7 @@ button.st-copy {
   cursor: pointer;
 }
 .ih:not(#_) .pl button.ag-pick-line + button.ag-pick-line { border-top: 1px solid #e6e6e6; }
-.ih:not(#_) .pl button.ag-pick-line:hover:not(:disabled) { background: #fff; }
+.ag-pick-line[aria-checked="false"]:hover:not(:disabled) .ag-radio { background: #ffe2bd; }
 .ih:not(#_) .pl button.ag-pick-line[aria-checked="true"] { cursor: default; }
 .ih:not(#_) .pl button.ag-pick-line:disabled { cursor: wait; opacity: 0.6; }
 .ag-radio {
