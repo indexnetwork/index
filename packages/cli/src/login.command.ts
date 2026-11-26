@@ -111,19 +111,19 @@ export async function handleLogin(
 
     if (req.method !== "GET" || url.pathname !== "/callback") {
       res.writeHead(404, { "Content-Type": "text/html" });
-      res.end(callbackHtml("Not found", "Unexpected request."));
+      res.end(callbackHtml("not found", "this isn't a sign-in callback."));
       return;
     }
 
     const callbackState = url.searchParams.get("state");
     if (!expectedState || callbackState !== expectedState) {
       res.writeHead(400, { "Content-Type": "text/html" });
-      res.end(callbackHtml("Authorization failed", "Invalid login state. Return to the terminal and try again."));
+      res.end(callbackHtml("sign-in didn't go through", "this sign-in doesn't match the one your terminal started. run index login again."));
       return;
     }
     if (stateConsumed) {
       res.writeHead(409, { "Content-Type": "text/html" });
-      res.end(callbackHtml("Authorization already completed", "This login callback has already been used."));
+      res.end(callbackHtml("already signed in", "this sign-in link was already used. you can close this window."));
       return;
     }
 
@@ -144,19 +144,19 @@ export async function handleLogin(
         const message = error instanceof Error ? error.message : "Failed to save CLI credentials.";
         resolveCallback({ success: false, error: message });
         res.writeHead(500, { "Content-Type": "text/html" });
-        res.end(callbackHtml("Authorization failed", "CLI sign-in could not be completed. Return to the terminal and try again."));
+        res.end(callbackHtml("sign-in didn't go through", "the cli couldn't finish signing in. run index login again."));
         return;
       }
 
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(callbackHtml("Authentication complete", "You can close this window and return to the terminal.", true));
+      res.end(callbackHtml("you're signed in", "you can close this window and go back to the terminal.", true));
       return;
     }
 
     resolveCallback({ success: false, error: "No device code received in callback." });
 
     res.writeHead(400, { "Content-Type": "text/html" });
-    res.end(callbackHtml("Authorization failed", "Incomplete sign-in received. Please try again."));
+    res.end(callbackHtml("sign-in didn't go through", "the sign-in came back incomplete. run index login again."));
   });
 
   // Listen on port 0 for ephemeral port assignment. Keep handling server
@@ -253,7 +253,7 @@ export async function handleLogin(
 
 /**
  * Loopback page after CLI sign-in. Mirrors the web app's sign-in status page
- * (/cli-auth "Authentication complete"): the title and message standing on a
+ * (/cli-auth "you're signed in"): the title and message standing on a
  * plain page in a narrow centred column, a green check when it worked.
  */
 function callbackHtml(title: string, message: string, ok = false): string {
@@ -262,7 +262,7 @@ function callbackHtml(title: string, message: string, ok = false): string {
     : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Index</title>
+<title>${title} · index</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">

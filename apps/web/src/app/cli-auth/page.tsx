@@ -54,7 +54,7 @@ function CliAuthPage() {
     request ? "loading" : "error",
   );
   const [error, setError] = useState<string | null>(
-    request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
+    request ? null : "this sign-in request isn't valid. start again from the index app, or run `index login` in the terminal.",
   );
   const exchangeStartedRef = useRef(false);
   // The mailed link returns to this request in its own tab; this one stays on "check your email".
@@ -87,7 +87,7 @@ function CliAuthPage() {
         const userCode = requested.data?.user_code;
         if (!deviceCode || !userCode) {
           setStatus("error");
-          setError("Couldn't start device sign-in. Try again, or restart sign-in from the app.");
+          setError("couldn't start signing in. try again, or start over from the app.");
           return;
         }
 
@@ -98,7 +98,7 @@ function CliAuthPage() {
         const approved = await authClient.device.approve({ userCode });
         if (!approved.data?.success) {
           setStatus("error");
-          setError("Couldn't authorize this device. Try again, or restart sign-in from the app.");
+          setError("couldn't approve this device. try again, or start over from the app.");
           return;
         }
 
@@ -110,7 +110,7 @@ function CliAuthPage() {
         );
       } catch {
         setStatus("error");
-        setError("Sign-in didn't go through. Try again, or restart sign-in from the app.");
+        setError("sign-in didn't go through. try again, or start over from the app.");
       }
     }
 
@@ -120,13 +120,13 @@ function CliAuthPage() {
   if (status === "login" && request) {
     return (
       <SiteSignInPage
-        title="Sign in to Index"
-        meta={<p className="site-p">Sign in here to finish connecting your app or the Index CLI.</p>}
+        title="sign in to index"
+        meta={<p className="site-p">sign in here to finish connecting your app or the index cli.</p>}
       >
         <SiteSignInCard
-          bar="Sign in"
+          bar="sign in"
           sentTo={linkSentTo}
-          sentNote="Open the link in the email to finish signing in. It expires in 10 minutes."
+          sentNote="open the link in the email to finish signing in. it expires in 10 minutes."
           callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
           onAuthenticated={() => window.location.reload()}
           onMagicLinkSent={setLinkSentTo}
@@ -136,20 +136,20 @@ function CliAuthPage() {
     );
   }
   if (status === "redirecting") {
-    return <Status ok title="Authentication complete" message="You can close this window now." />;
+    return <Status ok title="you're signed in" message="you can close this window now." />;
   }
   if (status === "error") {
     return (
       <Status
-        title="Authorization failed"
+        title="sign-in didn't go through"
         message={error ?? ""}
         // A malformed request can only be fixed by starting again from the app or CLI.
         // Runtime failures reload this same validated request, which mints a fresh device code.
-        action={request ? { label: "Try again", onClick: () => window.location.reload() } : undefined}
+        action={request ? { label: "try again", onClick: () => window.location.reload() } : undefined}
       />
     );
   }
-  return <Status title="Signing you in" message="Connecting to your account…" />;
+  return <Status title="signing you in" message="connecting to your account…" />;
 }
 
 export const Component = CliAuthPage;

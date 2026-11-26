@@ -1,39 +1,34 @@
 import { useEffect } from "react";
-import { CalendarDays, LogIn, Presentation } from "lucide-react";
-import { ensureSiteFonts } from "@/app/site/SiteLayout";
-import { connectLinks } from "./links";
+import { SiteSignInPage } from "@/components/SiteSignIn";
+import { joinLink, outLinks } from "./links";
 import "./page.css";
 
-const actionIcons = [LogIn, Presentation, CalendarDays];
-
-/** Public handout: deliberately outside the authenticated app shell. */
+/**
+ * Public handout: deliberately outside the authenticated app shell, but in
+ * the same look as every other page outside the app (sign-in, invites).
+ */
 export function Component() {
   useEffect(() => {
-    ensureSiteFonts();
     const previousTitle = document.title;
     document.title = "Connect with Index";
     return () => { document.title = previousTitle; };
   }, []);
 
   return (
-    <div className="site connect-page">
-      <main className="connect-content">
-        <img className="connect-logo" src="/site/index-logo.svg" alt="Index Network" width={433} height={36} />
-        <h1>Find your people.</h1>
-        <p>Try it for yourself. Keep the conversation going.</p>
-        <nav className="connect-links" aria-label="Connect with Index">
-          {connectLinks.map(({ label, href }, index) => {
-            const Icon = actionIcons[index];
-            return (
-              <a key={label} className="connect-link" href={href}>
-                <Icon size={24} strokeWidth={2} aria-hidden="true" />
-                <span>{label}</span>
-              </a>
-            );
-          })}
+    <SiteSignInPage
+      bar="connect"
+      kicker="index network"
+      title="find your people"
+      meta={<p className="site-p">try it for yourself, and keep the conversation going.</p>}
+    >
+      <div className="signin-status connect-actions">
+        <a className="site-btn site-btn--block" href={joinLink.href}>{joinLink.label}</a>
+        <nav className="connect-out" aria-label="more from index">
+          {outLinks.map(({ label, href }) => (
+            <a key={label} href={href} target="_blank" rel="noopener noreferrer">{label}</a>
+          ))}
         </nav>
-        <span className="connect-footer">index.network</span>
-      </main>
-    </div>
+      </div>
+    </SiteSignInPage>
   );
 }

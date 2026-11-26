@@ -4,6 +4,7 @@
 ## Unreleased
 
 ### Changed
+- The sign-in page that opens after connecting Index looks like Index's own sign-in pages: a plain page with the title, a green check when it worked, and one line on what to do next. It no longer has the serif title, wordmark and connection animation.
 - The negotiator refuses to brief or resume a negotiation that has settled, instead of reporting a negotiator that never runs.
 - An agent's decline no longer ends a negotiation; it pauses it. The negotiator reopens a paused negotiation when your message to it bears on that pair.
 - Answering your agent's questions shows at once: the answers appear as your replies with a thinking line, and the questions close without waiting for the server. A read that finishes after a newer one is ignored, so an answered question no longer flickers open again, and a failed send puts your answers back.
