@@ -1352,6 +1352,10 @@ button.ih-titlebar-close:active::after {
 }
 
 /* New network: the connect dialog's shell around the settings form's fields */
+/* Mounted inside a plain page, so undo its section-head h2 and paragraph margins. */
+.pl .ca-head h2 { display: block; margin: 0; font: 600 22px "IBM Plex Sans", sans-serif; letter-spacing: normal; text-transform: none; color: #000; }
+.pl .ca-head h2::after { content: none; }
+.pl .ca-lede { margin: 8px 24px 20px; }
 .nn-panel { max-width: 480px; }
 .nn-form { display: grid; gap: 16px; padding: 0 24px 24px; }
 .nn-photo { display: flex; align-items: center; gap: 14px; }
