@@ -197,8 +197,8 @@ export default function HomeDashboard() {
 
   const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   const moving = [...byStage.talks, ...byStage.chat];
-  // A question opened from a /q/ link stays in view even past the first few.
-  const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup);
+  // At most 3 question cards before "show all ›"; one opened from a /q/ link stays in view past them.
+  const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup, 3);
   const waitingList = useShowMore(waitingRows);
   const movingList = useShowMore(moving);
   usePublishHomeSections([
