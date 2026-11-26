@@ -220,10 +220,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/profile/edit", () => import("@/app/profile/edit/page")),
       },
       {
-        path: "/s/:token",
-        lazy: lazyRoute("/s/:token", () => import("@/app/s/[token]/page")),
-      },
-      {
         path: "/u/:id",
         lazy: lazyRoute("/u/:id", () => import("@/app/u/[id]/page")),
       },

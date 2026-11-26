@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { ensureSiteFonts, SiteNav } from "@/app/site/SiteLayout";
 import CopyPromptButton from "@/app/site/CopyPromptButton";
 import { docsUrl, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
@@ -221,9 +221,13 @@ export function IndexChips({
 
 /** `/setup` (Get Index): the app first, then the Hermes plugin, then a prompt for any other agent. */
 export default function Download({ overlay }: { overlay?: boolean }) {
+  const { pathname, search } = useLocation();
+  // In place of a link's page (a shared intent, say): signing in comes back to it.
+  const appHref = overlay ? `/login?next=${encodeURIComponent(pathname + search)}` : "/login";
   const chips = (
     <IndexChips
       columns
+      appHref={appHref}
       appTitle="index app"
       appBody="open index and start an intent."
       hermesTitle="hermes plugin"

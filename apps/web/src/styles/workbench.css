@@ -95,10 +95,13 @@
 @media (min-width: 721px) {
   .wb-norail .wb-stage { justify-content: center; }
   .wb-norail .wb-column > .amiga-window { border-right: none; }
-  /* A signed-out profile opens on the person's own header, no title bar above it. */
-  .wb-norail .amiga-window.wb-titleless > .mac-titlebar { display: none; }
   .wb-norail .amiga-window.wb-titleless { padding-top: 32px; }
 }
+
+/* A page someone lands on from a link (a profile, signed out) opens on its own
+   header: no title bar above it and no frame around it, on every screen. */
+.amiga-window.wb-titleless > .mac-titlebar { display: none; }
+.amiga-window.wb-titleless { border: 0; box-shadow: none; padding-top: 16px; }
 
 /* Onboarding has no rail beside it: the column sits in the middle of the
    page, and with nothing to separate it from, it carries no hairlines. */

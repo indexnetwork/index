@@ -12,7 +12,8 @@ import { parseSocial } from "@/lib/socials";
  * person and opens it, asking the visitor to sign in first.
  * `?action=&viewer=&sig=` accepts or declines from a signed link, then
  * `?surface=` opens the other person's profile on that surface when there is
- * exactly one. Otherwise it opens their public profile at `/u/`. No sign-in.
+ * exactly one. Otherwise it opens their public profile at `/u/`, which says
+ * what they answered (`?said=`) instead of offering to pair. No sign-in.
  */
 export default function OpportunityLinkPage() {
   const { id } = useParams();
@@ -94,7 +95,8 @@ function ActionOpportunityLink({ id, action, viewer, sig, surface }: {
         if (cancelled) return;
         const found = surface ? surfaceHrefs(surface, body.values ?? []) : [];
         if (found.length === 1) window.location.assign(found[0]);
-        else if (body.userId) navigate(`/u/${encodeURIComponent(body.userId)}`, { replace: true });
+        // Their profile, saying what they just answered, so it doesn't ask them to pair.
+        else if (body.userId) navigate(`/u/${encodeURIComponent(body.userId)}?said=${action === "decline" ? "no" : "yes"}`, { replace: true });
         else setFallback(true);
       })
       .catch(() => { if (!cancelled) setFallback(true); });

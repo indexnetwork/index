@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { protocolOrigin } from "@/lib/protocol-origin";
 import { SiteSignInCard, SiteSignInPage } from "@/components/SiteSignIn";
+import { useSignInReason } from "@/lib/sign-in-reason";
 
 /** A same-origin path to resume after login. Anything else returns home. */
 function resumePath(): string {
@@ -22,6 +23,8 @@ function LoginPage() {
   const authorizeURL = `${protocolOrigin() || window.location.origin}/api/auth/mcp/authorize${window.location.search}`;
   const destination = isMcpLogin ? authorizeURL : resumePath();
   const finishLogin = () => window.location.replace(destination);
+  // Whatever link sent them here, the page says so: the network, the person, the chat.
+  const reason = useSignInReason(isMcpLogin ? "/" : destination);
 
   useEffect(() => {
     authClient.getSession().then(({ data }) => {
@@ -37,19 +40,19 @@ function LoginPage() {
 
   return (
     <SiteSignInPage
-      title="Sign in to Index"
-      meta={<p className="site-p">Index finds the right people for you, before you even think to look.</p>}
+      title={reason.title}
+      meta={<p className="site-p">{reason.meta}</p>}
     >
       {['INVALID_TOKEN', 'EXPIRED_TOKEN'].includes(new URLSearchParams(window.location.search).get('error') || '') && (
-        <p className="site-p" role="alert">This sign-in link has expired or has already been used. Request a new link below.</p>
+        <p className="site-p" role="alert">this sign-in link has expired or was already used. send yourself a new one below.</p>
       )}
       {new URLSearchParams(window.location.search).get('error') === 'OTHER_BROWSER' && (
-        <p className="site-p" role="alert">This sign-in link was requested in another browser. Open it there, or request a new link below to sign in here.</p>
+        <p className="site-p" role="alert">this sign-in link was asked for in another browser. open it there, or send a new one below to sign in here.</p>
       )}
       <SiteSignInCard
-        bar="Sign in"
+        bar="sign in"
         sentTo={linkSentTo}
-        sentNote="Open the link in the email to sign in. It expires in 10 minutes."
+        sentNote="open the link in the email and you're in. it expires in 10 minutes."
         callbackURL={isMcpLogin ? window.location.href : window.location.origin + destination}
         onAuthenticated={() => {
           authClient.getSession().then(({ data }) => {

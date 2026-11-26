@@ -27,12 +27,6 @@ vi.mock("@/services/networks", () => ({
   },
   useNetworkService: () => ({ acceptInvitation }),
 }));
-// Stand-in form: one button per outcome the landing listens for.
-vi.mock("@/components/AuthForm", () => ({
-  default: ({ onMagicLinkSent }: { onMagicLinkSent?: (email: string) => void }) => (
-    <button type="button" onClick={() => onMagicLinkSent?.("ada@example.com")}>send link</button>
-  ),
-}));
 
 import NetworkWebInviteLanding from "./NetworkWebInviteLanding";
 
@@ -60,18 +54,10 @@ describe("NetworkWebInviteLanding", () => {
     acceptInvitation.mockResolvedValue({ status: "joined", network: { id: "n1" } });
   });
 
-  it("stays on check your email when the mailed link signs in from another tab", async () => {
-    const { rerenderLanding } = renderLanding();
-    fireEvent.click(await screen.findByRole("button", { name: "send link" }));
-    expect(screen.getByText("Check your email")).toBeTruthy();
-
-    // The magic link opened in a new tab; the shared session reaches this one.
-    auth.isAuthenticated = true;
-    await act(async () => { rerenderLanding(); });
-
-    expect(screen.getByText("Check your email")).toBeTruthy();
-    expect(screen.getByText("ada@example.com")).toBeTruthy();
-    expect(screen.queryByText("onboarding page")).toBeNull();
+  it("sends a signed-out visitor to sign in, which comes back to the invite", async () => {
+    renderLanding();
+    const join = await screen.findByRole("link", { name: /join in the browser/i });
+    expect(join.getAttribute("href")).toBe(`/login?next=${encodeURIComponent("/l/abc")}`);
     expect(acceptInvitation).not.toHaveBeenCalled();
   });
 
@@ -88,24 +74,17 @@ describe("NetworkWebInviteLanding", () => {
     expect(screen.queryByText("intros agreed")).toBeNull();
   });
 
-  it("sends the invite to the agent you pick", async () => {
+  it("copies the same agent prompt as everywhere else, with this invite to join", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     renderLanding();
-    expect(await screen.findByRole("heading", { name: /which agent goes in/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /bring your hermes agent/i }));
-    expect(await screen.findByRole("link", { name: /install plugin/i })).toBeTruthy();
-    expect(screen.getByText("hermes plugins install indexnetwork/hermes-plugin")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /copy command/i }));
-    expect(writeText.mock.calls.at(-1)?.[0]).toBe("hermes plugins install indexnetwork/hermes-plugin");
-
-    fireEvent.click(screen.getByRole("button", { name: /copy prompt for your agent/i }));
-    expect(writeText.mock.calls.at(-1)?.[0]).toContain("protocol.index.network/mcp");
-    expect(writeText.mock.calls.at(-1)?.[0]).toContain("/l/abc");
-
-    fireEvent.click(screen.getByRole("button", { name: /get started with your index agent/i }));
-    expect(await screen.findByText("login page")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /copy a prompt for your agent/i }));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    const prompt = writeText.mock.calls.at(-1)?.[0] as string;
+    expect(prompt).toContain("protocol.index.network/mcp");
+    expect(prompt).toContain("join_network");
+    expect(prompt).toContain("/l/abc");
+    expect(screen.queryByText(/hermes/i)).toBeNull();
   });
 
   it("joins a new account and sends it to onboarding", async () => {

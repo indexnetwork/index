@@ -98,11 +98,11 @@ export function SiteSignInCard({ bar, sentTo, sentNote, callbackURL, onAuthentic
   if (sentTo) {
     return (
       <Card bar={bar} className="signin-sent">
-        <h3 className="signin-subtitle">Check your email</h3>
-        <p className="site-p">We sent a sign-in link to <strong>{sentTo}</strong>.</p>
+        <h3 className="signin-subtitle">check your email</h3>
+        <p className="site-p">we sent a sign-in link to <strong>{sentTo}</strong>.</p>
         <p className="site-p">{sentNote}</p>
         <button type="button" className="site-btn site-btn--secondary site-btn--block" onClick={onBack}>
-          Back to sign in
+          use another email
         </button>
       </Card>
     );

@@ -15,17 +15,17 @@ export function RouteErrorBoundary() {
     <div role="alert">
       <StatusPage
         bar="error"
-        title={isChunkFailure ? "This page needs a refresh" : "Something went wrong"}
+        title={isChunkFailure ? "this page needs a refresh" : "something went wrong"}
         message={isChunkFailure
-          ? "Index may have been updated while this page was open. Refresh to load the latest version without losing this URL."
-          : "This page couldn't load. Refresh to try again, or go home if it keeps happening."}
+          ? "index was updated while this page was open. refresh to load the latest version. you stay on this page."
+          : "this page couldn't load. refresh to try again, or go home if it keeps happening."}
       >
         <button className="site-btn" onClick={() => window.location.reload()} type="button">
-          Refresh
+          refresh
         </button>
         {/* A full navigation, not a router Link: the router state is what just failed. */}
         <a className="site-btn site-btn--secondary" href="/">
-          Go home
+          go home
         </a>
       </StatusPage>
     </div>

@@ -215,13 +215,13 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
           {providersStatus === 'error' && (
             <p className="av-note">
-              Couldn&apos;t load all sign-in options.{' '}
+              couldn&apos;t load every way to sign in.{' '}
               <button
                 type="button"
                 className="av-link"
                 onClick={() => setProvidersRetryKey((k) => k + 1)}
               >
-                Retry
+                try again
               </button>
             </p>
           )}
@@ -239,14 +239,14 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                 <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
               </svg>
-              Continue with Google
+              continue with google
             </button>
           )}
 
           {hasGoogle && <div className="av-divider">or</div>}
 
           <form onSubmit={handleMagicLink} className="av-form">
-            <label htmlFor="auth-email" className="av-label">Email</label>
+            <label htmlFor="auth-email" className="av-label">email</label>
             <input
               id="auth-email"
               type="email"
@@ -261,7 +261,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             {error && <p className="av-error">{error}</p>}
 
             <button aria-busy={loading} type="submit" disabled={loading} className="av-submit">
-              {loading ? "Sending" : "Send sign-in link"}
+              {loading ? "sending" : "send sign-in link"}
             </button>
           </form>
 
@@ -292,25 +292,25 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
               ←
             </button>
             <h2 id="auth-modal-title" className="av-title">
-              {isSignUp ? "Create an account" : "Sign in with a password"}
+              {isSignUp ? "create an account" : "sign in with a password"}
             </h2>
           </div>
 
           <form onSubmit={handleEmailPassword} className="av-form">
             {isSignUp && (
               <>
-                <label htmlFor="auth-name" className="av-label">Name</label>
+                <label htmlFor="auth-name" className="av-label">name</label>
                 <input
                   id="auth-name"
                   type="text"
-                  placeholder="Your name"
+                  placeholder="your name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="av-input"
                 />
               </>
             )}
-            <label htmlFor="auth-email-pw" className="av-label">Email</label>
+            <label htmlFor="auth-email-pw" className="av-label">email</label>
             <input
               id="auth-email-pw"
               type="email"
@@ -320,7 +320,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
               required
               className="av-input"
             />
-            <label htmlFor="auth-password" className="av-label">Password</label>
+            <label htmlFor="auth-password" className="av-label">password</label>
             <input
               id="auth-password"
               type="password"
@@ -335,31 +335,31 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             {error && <p className="av-error">{error}</p>}
 
             <button aria-busy={loading} type="submit" disabled={loading} className="av-submit">
-              {loading ? (isSignUp ? "Creating account" : "Signing in") : isSignUp ? "Create account" : "Sign in"}
+              {loading ? (isSignUp ? "creating account" : "signing in") : isSignUp ? "create account" : "sign in"}
             </button>
           </form>
 
           <p className="av-alt">
             {canSignUpWithPassword && (isSignUp ? (
               <>
-                Already have an account?{' '}
+                already have an account?{' '}
                 <button
                   type="button"
                   className="av-link"
                   onClick={() => { setIsSignUp(false); setError(null); }}
                 >
-                  Sign in
+                  sign in
                 </button>
               </>
             ) : (
               <>
-                Don't have an account?{' '}
+                no account yet?{' '}
                 <button
                   type="button"
                   className="av-link"
                   onClick={() => { setIsSignUp(true); setError(null); }}
                 >
-                  Sign up
+                  sign up
                 </button>
               </>
             ))}

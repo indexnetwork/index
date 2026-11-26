@@ -1,19 +1,20 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
 import NetworkAvatar from "@/components/NetworkAvatar";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Stage, Window } from "@/components/workbench/Workbench";
 import NotFound from "@/app/not-found";
 import NetworkDetailPage from "@/app/networks/[id]/page";
 import { ProfileHold, UserProfile } from "@/app/u/[id]/page";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNetworks } from "@/contexts/APIContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
+import { rememberAfterFirstRun } from "@/lib/after-first-run";
+import { needsOnboarding } from "@/services/onboarding";
+import { NetworkJoinPage } from "@/components/NetworkInviteBoard";
 import { useBack } from "@/hooks/useBack";
 import { Placeholder } from "@/components/ui/Placeholder";
 
@@ -68,20 +69,24 @@ export default function HandlePage() {
 
 /**
  * A network at its link name. Members get the network itself; everyone else
- * gets what its join policy allows: a preview with a join button for open
- * networks, and only the name for invite-only ones.
+ * gets the same one-column page as an invite link: a join button for open
+ * networks, and for invite-only ones, how to get in. A signed-out click signs in
+ * and comes back with `?join=1`, which joins without asking twice.
  */
 function NetworkHandle({ handle, network }: { handle: string; network: Extract<Holder, { kind: "network" }> }) {
-  const { isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuthContext();
   const { networks, loading: networksLoading, addNetwork } = useNetworksState();
   const networksService = useNetworks();
-  const { error } = useNotifications();
-  const back = useBack("/");
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [preview, setPreview] = useState<{ prompt?: string | null; _count?: { members: number } } | null>(null);
   const [joining, setJoining] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const autoJoined = useRef(false);
 
   const isMember = !!networks?.some((n) => n.id === network.id);
   const open = network.joinPolicy === "anyone";
+  const returning = params.get("join") === "1";
 
   useEffect(() => {
     if (!open || isMember) return;
@@ -93,9 +98,43 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
     return () => { active = false; };
   }, [open, isMember, network.id]);
 
+  const join = useCallback(async () => {
+    // Signed-out visitors sign in and come back here with ?join=1, which joins.
+    if (!isAuthenticated) {
+      navigate(`/login?next=${encodeURIComponent(`/${handle}?join=1`)}`);
+      return;
+    }
+    setJoining(true);
+    setFailed(false);
+    try {
+      const result = await networksService.joinNetwork(network.id);
+      setParams({}, { replace: true });
+      // New here: first run, which ends back on this network.
+      if (needsOnboarding(user)) {
+        rememberAfterFirstRun(`/${handle}`);
+        navigate("/onboarding", { replace: true });
+        return;
+      }
+      // Membership flips this page over to the network itself.
+      if (!result.alreadyMember) addNetwork(result.network);
+    } catch (err) {
+      logger.error("Failed to join network", { error: err });
+      setFailed(true);
+    } finally {
+      setJoining(false);
+    }
+  }, [isAuthenticated, navigate, handle, networksService, network.id, setParams, user, addNetwork]);
+
+  // Back from signing in to join: join now.
+  useEffect(() => {
+    if (!returning || !open || !isAuthenticated || networksLoading || isMember || autoJoined.current) return;
+    autoJoined.current = true;
+    void join();
+  }, [returning, open, isAuthenticated, networksLoading, isMember, join]);
+
   if (authLoading || (isAuthenticated && networksLoading)) {
     return (
-      <ProfileHold title={network.title} onClose={back}>
+      <ProfileHold title={network.title} onClose={() => navigate("/")}>
         <Placeholder.Window rows={4} label="loading this network" />
       </ProfileHold>
     );
@@ -103,54 +142,36 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
 
   if (isMember) return <NetworkDetailPage networkIdOverride={network.id} basePath={`/${handle}`} />;
 
-  const join = async () => {
-    // Signed-out visitors come back here after signing in, then join.
-    if (!isAuthenticated) return openLoginModal(window.location.href);
-    setJoining(true);
-    try {
-      const result = await networksService.joinNetwork(network.id);
-      // Membership flips this page over to the network itself.
-      if (!result.alreadyMember) addNetwork(result.network);
-    } catch (err) {
-      logger.error("Failed to join network", { error: err });
-      error("Couldn't join this network");
-    } finally {
-      setJoining(false);
-    }
-  };
+  const members = preview?._count?.members;
 
   return (
-    <Stage width={480}>
-      <Window title="network" onClose={back}>
-        <div style={{ padding: "22px 24px", display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={54} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{network.title}</div>
-              {open && preview?._count && (
-                <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-                  {preview._count.members} {preview._count.members === 1 ? "member" : "members"}
-                </div>
-              )}
-            </div>
+    <NetworkJoinPage
+      scroll
+      kicker={open && members != null ? `${members.toLocaleString()} ${members === 1 ? "member" : "members"}` : "network on index"}
+      title={network.title}
+      avatar={<NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={56} />}
+      lede={open ? preview?.prompt : undefined}
+    >
+      <div className="invite-actions">
+        {open ? (
+          <div className="invite-way">
+            <button aria-busy={joining} type="button" className="site-btn site-btn--block" disabled={joining} onClick={() => void join()}>
+              {joining ? "joining…" : "join network →"}
+            </button>
+            <p className="invite-hint" role="status">
+              {failed ? "couldn't join right now. try again in a moment." : "your agent starts looking among its members right away."}
+            </p>
           </div>
-          {open ? (
-            <>
-              {preview?.prompt && (
-                <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{preview.prompt}</p>
-              )}
-              <div>
-                <button aria-busy={joining} type="button" className="wb-btn primary" disabled={joining} onClick={() => void join()}>
-                  {joining ? "joining" : "join network"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <EmptyState framed message="this network is invite-only. ask a member for an invite link." />
-          )}
-        </div>
-      </Window>
-    </Stage>
+        ) : (
+          <>
+            <p className="site-p">this network is invite-only. ask a member for its invite link, and it lets you straight in.</p>
+            <div className="site-btn-row">
+              <Link className="site-btn site-btn--secondary" to="/">{isAuthenticated ? "go home →" : "see what index is →"}</Link>
+            </div>
+          </>
+        )}
+      </div>
+    </NetworkJoinPage>
   );
 }
 

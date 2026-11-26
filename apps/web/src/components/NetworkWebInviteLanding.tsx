@@ -8,7 +8,8 @@ import { networkPath } from "@/lib/network-path";
 import { Network } from "@/lib/types";
 import { needsOnboarding } from "@/services/onboarding";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
-import { SiteSignInCard, SiteSignInPage } from "@/components/SiteSignIn";
+import { SiteSignInPage } from "@/components/SiteSignIn";
+import { rememberAfterFirstRun } from "@/lib/after-first-run";
 import { NetworkInviteBoard, type NetworkPulse } from "@/components/NetworkInviteBoard";
 import { Placeholder } from "@/components/ui/Placeholder";
 
@@ -20,10 +21,10 @@ type PreviewStep = "loading" | "ready" | "error";
 type InviteNetwork = Network & { pulse?: NetworkPulse };
 
 /** Friendly copy for a failed invite preview. Raw API strings stay in the console. */
-const INVALID_INVITE = "This link is invalid or has expired.";
-const PREVIEW_FAILED = "Couldn't load this invitation. Check your connection and try again.";
-const JOIN_EXPIRED = "Couldn't join. The invite may have expired.";
-const JOIN_FAILED = "Couldn't join right now. Try again in a moment.";
+const INVALID_INVITE = "this link is invalid or has expired. ask whoever sent it for a new one.";
+const PREVIEW_FAILED = "couldn't load this invitation. check your connection and try again.";
+const JOIN_EXPIRED = "couldn't join. the invite may have expired. ask whoever sent it for a new one.";
+const JOIN_FAILED = "couldn't join right now. try again in a moment.";
 
 /** How often the invite page refreshes the network's numbers, so they read as live. */
 const PULSE_REFRESH_MS = 3_000;
@@ -41,9 +42,10 @@ function isInviteRejected(err: unknown): boolean {
 type JoinOutcome = "pending" | "declined";
 
 /**
- * Web invite landing (`/l/:code`): preview the network, sign in inline, accept
- * the invitation automatically, then go straight on: a new account to
- * onboarding (which ends on its first intent), an existing one to the network.
+ * Web invite landing (`/l/:code`): preview the network, send the visitor to
+ * sign in (which comes back here), accept the invitation automatically, then go
+ * straight on: a new account to onboarding (which ends on the network), an
+ * existing one to the network.
  */
 export default function NetworkWebInviteLanding() {
   const { code } = useParams();
@@ -61,14 +63,9 @@ export default function NetworkWebInviteLanding() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
-  const [loginRequested, setLoginRequested] = useState(false);
   // Set once the join lands. Where to go next depends on the account, which
   // may still be loading right after an inline sign-in.
   const [joinedNetwork, setJoinedNetwork] = useState<Network | null>(null);
-  // Set once this tab mails a sign-in link. The link opens a new tab that
-  // signs in, joins and moves on; this tab stays on "check your
-  // email" even after the shared session arrives, rather than joining twice.
-  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const joinStartedRef = useRef(false);
   // The summary request can finish before or after the counts. Held here so
   // whichever lands second still keeps the other's result.
@@ -190,18 +187,20 @@ export default function NetworkWebInviteLanding() {
   }, [code, navigate, networkService, refetchUser]);
 
   useEffect(() => {
-    if (previewStep !== "ready" || !isReady || linkSentTo) return;
-    if (!isAuthenticated && !loginRequested) return;
+    if (previewStep !== "ready" || !isReady || !isAuthenticated) return;
     void attemptJoin();
-  }, [previewStep, isReady, isAuthenticated, loginRequested, linkSentTo, attemptJoin]);
+  }, [previewStep, isReady, isAuthenticated, attemptJoin]);
 
   useEffect(() => {
     if (!joinedNetwork || !user) return;
-    navigate(needsOnboarding(user) ? "/onboarding" : networkPath(joinedNetwork), { replace: true });
+    if (!needsOnboarding(user)) {
+      navigate(networkPath(joinedNetwork), { replace: true });
+      return;
+    }
+    // New here: first run, which ends on the network they just joined.
+    rememberAfterFirstRun(networkPath(joinedNetwork));
+    navigate("/onboarding", { replace: true });
   }, [joinedNetwork, user, navigate]);
-
-  const callbackURL =
-    typeof window !== "undefined" ? window.location.href : "/";
 
   // The clean link to hand to an agent, without whatever query the visit carried.
   const inviteUrl =
@@ -213,7 +212,7 @@ export default function NetworkWebInviteLanding() {
 
   if (previewStep === "error" || !network) {
     return (
-      <SiteSignInPage title="Invitation unavailable">
+      <SiteSignInPage title="this invitation doesn't work">
         <div className="signin-status">
           <p className="site-p">{previewError || INVALID_INVITE}</p>
           {previewRetryable ? (
@@ -222,51 +221,47 @@ export default function NetworkWebInviteLanding() {
               className="site-btn"
               onClick={() => { setPreviewStep("loading"); setPreviewError(null); setPreviewKey((k) => k + 1); }}
             >
-              Try again
+              try again
             </button>
           ) : (
-            <Link className="site-btn" to="/">Go home</Link>
+            <Link className="site-btn" to="/">see what index is →</Link>
           )}
         </div>
       </SiteSignInPage>
     );
   }
 
-  const signInCard = (
-    <SiteSignInCard
-      bar="Join the network"
-      sentTo={linkSentTo}
-      sentNote="Open the link in the email to join. It expires in 10 minutes."
-      callbackURL={callbackURL}
-      onAuthenticated={() => setLoginRequested(true)}
-      onMagicLinkSent={setLinkSentTo}
-      onBack={() => setLinkSentTo(null)}
-    />
-  );
-  const showChoice = linkSentTo == null && !joining && !joinError && !joinOutcome && !isAuthenticated && isReady;
+  const showChoice = !joining && !joinError && !joinOutcome && !isAuthenticated && isReady;
+  // Waiting on an admin is no reason to wait on anything else: a new account
+  // sets up meanwhile, an existing one goes home.
+  const whileWaiting = needsOnboarding(user)
+    ? <Link className="site-btn" to="/onboarding">set up your profile meanwhile →</Link>
+    : <Link className="site-btn" to="/">go home →</Link>;
 
   return (
     <NetworkInviteBoard
       title={network.title}
       pulse={network.pulse}
       inviteUrl={inviteUrl}
-      status={showChoice ? null : linkSentTo ? signInCard : joining ? (
-        <div className="signin-status"><button type="button" className="site-btn" disabled aria-busy="true">Joining</button></div>
+      status={showChoice ? null : joining ? (
+        <button type="button" className="site-btn site-btn--block" disabled aria-busy="true">joining…</button>
       ) : joinOutcome === "pending" ? (
-        <p className="site-p signin-status">
-          Your request is waiting for an admin to review it. You&apos;ll be
-          in as soon as they approve it.
-        </p>
+        <>
+          <p className="site-p">you asked to join. an admin reviews it, and you&apos;re in as soon as they approve.</p>
+          <div className="site-btn-row">{whileWaiting}</div>
+        </>
       ) : joinOutcome === "declined" ? (
-        <div className="signin-status">
-          <p className="site-p">An admin declined your request to join this network.</p>
-          <Link className="site-btn" to="/">Go home</Link>
-        </div>
+        <>
+          <p className="site-p">an admin declined your request to join this network.</p>
+          <div className="site-btn-row"><Link className="site-btn" to="/">go home →</Link></div>
+        </>
       ) : joinError ? (
-        <div className="signin-status">
+        <>
           <p className="site-p">{joinError}</p>
-          <button type="button" className="site-btn" onClick={() => void attemptJoin()}>Try again</button>
-        </div>
+          <div className="site-btn-row">
+            <button type="button" className="site-btn" onClick={() => void attemptJoin()}>try again</button>
+          </div>
+        </>
       ) : (
         <Placeholder.Form fields={2} label="loading" />
       )}

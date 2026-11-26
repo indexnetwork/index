@@ -4,7 +4,7 @@ import { useLocation } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { APIError } from "@/lib/api";
-import { needsOnboarding } from "@/services/onboarding";
+import { awaitsFirstIntent, needsOnboarding } from "@/services/onboarding";
 
 /** A starting suggestion from the display name, in the alphabet usernames allow. */
 function suggestFromName(name: string | undefined): string {
@@ -22,7 +22,8 @@ function suggestFromName(name: string | undefined): string {
  * Every account holds one username. Anyone signed in without one is asked
  * once, here, and cannot dismiss it; saving one is what makes it go away for
  * good. Onboarding is left alone: the first-run profile form has its own
- * username field, and this only asks afterwards if that was left blank.
+ * username field, and this only asks afterwards if that was left blank. Nor
+ * does it cover first run's last step, the first intent: it waits for home.
  */
 export default function UsernamePrompt() {
   const { user, isAuthenticated, refetchUser } = useAuthContext();
@@ -32,7 +33,8 @@ export default function UsernamePrompt() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isAuthenticated || !user?.id || user.username || needsOnboarding(user) || pathname.startsWith("/onboarding")) {
+  if (!isAuthenticated || !user?.id || user.username || needsOnboarding(user) || pathname.startsWith("/onboarding")
+    || (pathname.startsWith("/i/new") && awaitsFirstIntent(user))) {
     return null;
   }
 

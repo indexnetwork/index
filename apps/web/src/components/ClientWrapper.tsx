@@ -1,5 +1,5 @@
 import { PropsWithChildren, useMemo } from 'react';
-import { useLocation } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
 import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
@@ -10,17 +10,19 @@ import MobileTabBar, { isTabRoot } from "@/components/workbench/MobileTabBar";
 import ConsentGate from "@/components/ConsentGate";
 import { isHandlePath } from "@/lib/handle-route";
 import UsernamePrompt from "@/components/UsernamePrompt";
+import { needsOnboarding } from "@/services/onboarding";
+import { rememberAfterFirstRun } from "@/lib/after-first-run";
 
 import AppFrame from "@/components/intents-home/AppFrame";
 import { IntentsDataProvider } from "@/contexts/IntentsDataContext";
 
 const appRoutes = ['/', '/i', '/intents', '/u', '/networks', '/chat', '/negotiations', '/settings', '/profile', '/agents', '/onboarding', '/introduce'];
 // /l is the chrome-free web invite join.
-const bareRoutes = ['/', '/l', '/login', '/download', '/setup', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/communities', '/for-networks', '/cli-auth', '/s', '/mcp'];
+const bareRoutes = ['/', '/l', '/login', '/download', '/setup', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/communities', '/for-networks', '/cli-auth', '/mcp'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
-  const { pathname } = useLocation();
-  const { isAuthenticated } = useAuthContext();
+  const { pathname, search } = useLocation();
+  const { isAuthenticated, user } = useAuthContext();
   const compact = useCompact();
 
   const isBareRoute = useMemo(() => {
@@ -42,6 +44,17 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   // comes before there is anything to put in it.
   const framed = showAppShell && isAuthenticated && !compact && !pathname.startsWith('/onboarding');
   useVisualViewport(showAppShell);
+
+  // A new account goes through first run before any app page, however it got
+  // here (a chat link, a network, an introduction), then comes back to it.
+  // Home sends it there itself; a network link that is joining joins first.
+  const firstRunFirst = !isBareRoute && isAuthenticated && needsOnboarding(user)
+    && pathname !== '/' && !pathname.startsWith('/onboarding')
+    && !(isHandlePath(pathname) && new URLSearchParams(search).get('join') === '1');
+  if (firstRunFirst) {
+    rememberAfterFirstRun(pathname + search);
+    return <Navigate to="/onboarding" replace />;
+  }
 
   if (isBareRoute) {
     return (

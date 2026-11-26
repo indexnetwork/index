@@ -11,7 +11,7 @@ it('labels restricted password access and does not offer signup', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ emailPassword: true, emailPasswordRestricted: true }) }));
   render(<AuthForm />);
   fireEvent.click(await screen.findByRole('button', { name: 'reviewer password sign-in' }));
-  expect(screen.queryByRole('button', { name: 'Sign up' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'sign up' })).toBeNull();
 });
 
 it('still allows password signup against a development API', async () => {
@@ -21,6 +21,6 @@ it('still allows password signup against a development API', async () => {
   await screen.findByRole('button', { name: 'sign in with a password' });
   await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'reviewer password sign-in' })).toBeNull());
   fireEvent.click(screen.getByRole('button', { name: 'sign in with a password' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Sign up' }));
-  expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'sign up' }));
+  expect(screen.getByRole('button', { name: 'create account' })).toBeInTheDocument();
 });
