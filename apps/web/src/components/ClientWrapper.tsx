@@ -80,7 +80,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             <ConsentGate>
               <UsernamePrompt />
               {showAppShell ? (
-                <div className={`workbench mac-desktop wb-viewport overflow-hidden flex flex-col${pathname.startsWith('/onboarding') ? " wb-onboarding" : ""}`}>
+                <div className={`workbench mac-desktop wb-viewport overflow-hidden flex flex-col${pathname.startsWith('/onboarding') ? " wb-onboarding" : framed ? "" : " wb-norail"}`}>
                   <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
                     {framed ? (
                       <IntentsDataProvider>
