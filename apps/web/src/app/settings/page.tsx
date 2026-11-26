@@ -61,8 +61,8 @@ export default function SettingsPage() {
 export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRunReview; editProfile?: boolean } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
-  // Signed in on desktop the page sits in the app frame; first run keeps its window.
-  const plain = useInAppFrame() && !firstRun && !editProfile;
+  // Signed in on desktop the page sits in the app frame, centered like every other screen; first run keeps its window.
+  const plain = useInAppFrame() && !firstRun;
   const back = useBack("/");
   // The edit form is pushed on top of the profile. Leaving it pops back, so the
   // profile's own close box doesn't land on the form again.
@@ -414,9 +414,11 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     return (
       <div className="ih-view pl">
         <div className="pl-col">
-          <PageHead title="settings" centered />
+          {editProfile
+            ? <PageHead title="edit profile" back={{ label: "profile", onClick: leaveEdit }} />
+            : <PageHead title="settings" centered />}
           <div className="pl-page pl-settings">
-            <div className="pl-tabbar">
+            {!editProfile && <div className="pl-tabbar">
               <div className="pl-tabs" role="tablist">
                 {SETTINGS_TABS.map((tab) => (
                   <button
@@ -429,11 +431,12 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                   >{tab}</button>
                 ))}
               </div>
-            </div>
+            </div>}
             <div className="st-body">{body}</div>
             {savable && (
               <div className="st-actions">
-                <button type="button" onClick={() => resetForm(user)} disabled={saving || !isDirty} className="wb-btn">cancel</button>
+                {/* Editing your profile, cancel leaves; in settings it puts the form back. */}
+                <button type="button" onClick={editProfile ? leaveEdit : () => resetForm(user)} disabled={saving || (!editProfile && !isDirty)} className="wb-btn">cancel</button>
                 <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || !isDirty} aria-busy={saving} className="wb-btn primary">{saveLabel}</button>
               </div>
             )}
