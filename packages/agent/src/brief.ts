@@ -132,6 +132,7 @@ export async function briefIfMissing(input: BriefInput, decision: Decision, oper
     operation,
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
+    ...(user.emailVerified === false ? { unverified: true } : {}),
     // A second step lets the model rewrite a brief recordBrief rejected.
     maxSteps: 2,
     ...(input.now ? { now: input.now } : {}),

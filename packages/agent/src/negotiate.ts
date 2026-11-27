@@ -88,6 +88,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
+    ...(user.emailVerified === false ? { unverified: true } : {}),
     instructions: [
       SYSTEM_PROMPT,
       user.emailVerified === false && unverifiedPrompt(intent),
