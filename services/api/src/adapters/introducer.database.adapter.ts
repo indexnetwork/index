@@ -623,8 +623,8 @@ export class IntroducerDatabaseAdapter {
 
   /**
    * Emails with a checking proposal still to settle, oldest first: ones to
-   * research (skipping ones tried 3 times or within 30 minutes) and ones
-   * already found not to exist online.
+   * research (skipping ones tried 3 times or within 30 minutes), ones already
+   * found not to exist online, and ones already found (judged, not researched).
    */
   async checkingDue(limit: number): Promise<{ email: string; contact: ContactCard }[]> {
     const result = await db.execute(sql`
@@ -636,7 +636,7 @@ export class IntroducerDatabaseAdapter {
       left join contact_research r on r.email = lower(c.email)
       where p.status = 'checking'
         and (
-          r.status = 'not_found'
+          r.status in ('not_found', 'found')
           or (r.status is null and (r.email is null or (r.attempts < 3 and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))))
         )
       order by lower(c.email), p.created_at asc
@@ -652,6 +652,81 @@ export class IntroducerDatabaseAdapter {
           organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
         },
       }));
+  }
+
+  /**
+   * What the judge reads for one checking pair: the introducer, the member
+   * and the member's intent, and the ghost found for the contact's email.
+   * Only public intents are ever read; null when the pair can't be judged
+   * (no ghost, the member's intent is private now).
+   */
+  async judgeInput(proposalId: string, email: string): Promise<{
+    introducer: { name: string; intro: string | null; intents: string[] };
+    member: { name: string; intro: string | null; intent: string };
+    contact: { name: string; headline: string; socials: string[] };
+  } | null> {
+    const result = await db.execute(sql`
+      select iu.id as introducer_id, iu.name as introducer_name, iu.intro as introducer_intro,
+             mu.name as member_name, mu.intro as member_intro,
+             case when i.is_private then null else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
+             g.id as ghost_id, g.name as ghost_name, g.intro as ghost_intro
+      from opportunity_proposals p
+      join intents i on i.id = p.intent_id
+      join users mu on mu.id = i.user_id
+      join users iu on iu.id = p.introducer_user_id
+      join contact_research r on r.email = ${email.toLowerCase()} and r.status = 'found'
+      join users g on g.id = r.seat_user_id
+      where p.id = ${proposalId} and p.status = 'checking'
+    `);
+    const [row] = rowsOf(result);
+    if (!row || !row.intent_text) return null;
+    const introducerIntents = await db.execute(sql`
+      select coalesce(nullif(i.summary, ''), i.payload) as text
+      from intents i
+      where i.user_id = ${String(row.introducer_id)}
+        and i.archived_at is null and (i.status is null or i.status = 'active') and i.is_private = false
+      order by i.created_at desc
+      limit 5
+    `);
+    const socials = await db.select({ value: schema.userSocials.value }).from(schema.userSocials)
+      .where(eq(schema.userSocials.userId, String(row.ghost_id)));
+    return {
+      introducer: {
+        name: String(row.introducer_name), intro: (row.introducer_intro as string | null) ?? null,
+        intents: rowsOf(introducerIntents).map((r) => String(r.text)).filter(Boolean),
+      },
+      member: { name: String(row.member_name), intro: (row.member_intro as string | null) ?? null, intent: String(row.intent_text) },
+      contact: { name: String(row.ghost_name), headline: String(row.ghost_intro ?? ''), socials: socials.map((s) => s.value) },
+    };
+  }
+
+  /** A judged pair worth both sides: shown on the desk. Only a pair still checking is changed. */
+  async promoteProposal(id: string, pair: {
+    confidence: number; card: { member: string; contact: string }; draft: string;
+    judgment: { memberGets: string; contactGets: string };
+  }): Promise<void> {
+    const reasoning = `${pair.card.member} ⇄ ${pair.card.contact}`;
+    await db.execute(sql`
+      update opportunity_proposals set
+        status = 'proposed',
+        confidence = ${String(pair.confidence)},
+        interpretation = coalesce(interpretation, '{}'::jsonb)
+          || jsonb_build_object('reasoning', ${reasoning}::text, 'confidence', ${pair.confidence}::float8),
+        metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{introducer}',
+                     coalesce(metadata->'introducer', '{}'::jsonb) || jsonb_build_object('context', ${pair.draft}::text))
+          || jsonb_build_object(
+               'card', jsonb_build_object('member', ${pair.card.member}::text, 'contact', ${pair.card.contact}::text),
+               'judgment', jsonb_build_object('memberGets', ${pair.judgment.memberGets}::text, 'contactGets', ${pair.judgment.contactGets}::text)),
+        updated_at = now()
+      where id = ${id} and status = 'checking'
+    `);
+  }
+
+  /** A judged pair that doesn't work both ways: settled with the reason. Only a pair still checking is changed. */
+  async unmatchProposal(id: string, failure: string): Promise<void> {
+    await db.update(opportunityProposals)
+      .set({ status: 'unmatched', failure, updatedAt: new Date() })
+      .where(and(eq(opportunityProposals.id, id), eq(opportunityProposals.status, 'checking')));
   }
 
   /** After giving up: start the count over but keep the last try's time, so a later pair retries after the backoff. */

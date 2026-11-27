@@ -6,6 +6,7 @@ import { auth } from '../lib/betterauth/auth.instance';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
 import { GMAIL_SCOPE, sentFrequency } from '../lib/introducer/gmail-frequency';
+import { judgePair } from '../lib/introducer/judge';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
 import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
@@ -510,8 +511,15 @@ export class IntroducerService {
       }
     };
     let existing = await this.adapter.accountByEmail(email);
+    const status = await this.adapter.researchStatus(email);
+    if (status === 'found') {
+      // Researched before: judge its pairs without researching again, unless the ghost has become a real account.
+      if (existing?.deleted) return settle('opted_out');
+      if (existing?.emailVerified) return settle('on_index');
+      return this.judgeEmail(email);
+    }
     if (!existing) {
-      if (await this.adapter.researchStatus(email) === 'not_found') {
+      if (status === 'not_found') {
         // Researched before and found nothing: final, so a new pair settles at once.
         await settle('not_found');
         return;
@@ -542,7 +550,7 @@ export class IntroducerService {
       if (created) {
         await this.adapter.recordResearch(email, 'found', created.userId);
         logger.info('Contact research', { outcome: 'found' });
-        return;
+        return this.judgeEmail(email);
       }
       // An account appeared while we researched: treat it as any existing one.
       existing = await this.adapter.accountByEmail(email);
@@ -555,6 +563,32 @@ export class IntroducerService {
     if (existing.emailVerified) return settle('on_index');
     await this.adapter.recordResearch(email, 'found', existing.id);
     logger.info('Contact research', { outcome: 'existing' });
+    return this.judgeEmail(email);
+  }
+
+  /**
+   * Judge each checking pair of a found email both ways: worth it to both,
+   * it goes to the desk; not, it settles; no verdict, it stays checking for
+   * the next sweep. A pair whose intent is private now is left alone.
+   */
+  private async judgeEmail(email: string): Promise<void> {
+    for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
+      const input = await this.adapter.judgeInput(proposal.id, email);
+      if (!input) continue;
+      const judgment = await judgePair(input);
+      logger.info('Pair judged', { proposalId: proposal.id, mutual: judgment ? judgment.mutual : null });
+      if (!judgment) continue;
+      if (!judgment.mutual) {
+        await this.adapter.unmatchProposal(proposal.id, 'not mutual');
+        continue;
+      }
+      await this.adapter.promoteProposal(proposal.id, {
+        confidence: judgment.rank / 100,
+        card: { member: judgment.memberLine, contact: judgment.contactLine },
+        draft: judgment.draft,
+        judgment: { memberGets: judgment.memberGets, contactGets: judgment.contactGets },
+      });
+    }
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────
