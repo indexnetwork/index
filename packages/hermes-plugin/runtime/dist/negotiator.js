@@ -25031,6 +25031,8 @@ function parseUserEvent(raw) {
   switch (type) {
     case "opportunity.new":
     case "opportunity.status":
+    case "introduction.status":
+    case "introduction.report":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -25146,6 +25148,16 @@ class IndexClient {
   }
   async createOpportunity(input2) {
     return this.request("POST", "/opportunities", input2);
+  }
+  async recordOpportunityEvent(id, event) {
+    return this.request("POST", `/opportunities/${encodeURIComponent(id)}/events`, event);
+  }
+  async reportOpportunity(id, report) {
+    return this.recordOpportunityEvent(id, { type: "report", data: { note: report.note } });
+  }
+  async listIntroductions() {
+    const { introductions } = await this.request("GET", "/introducer/introductions");
+    return introductions;
   }
   async acceptOpportunity(id) {
     await this.request("PATCH", `/opportunities/${encodeURIComponent(id)}/status`, { status: "accepted" });
@@ -36938,6 +36950,11 @@ var SYSTEM_PROMPT = [
 ].join(`
 
 `);
+var PRIVATE_CONTEXT_PROMPT = [
+  "Your principal's private intents are listed below. They are hidden rules that decide one thing only: whether to decline. They never shape what you write.",
+  "If the counterpart plainly breaks one, decline, and say only that this is not a fit for your principal. This overrides naming the mismatch: do not name it, its topic, or any requirement, person, place, or term the counterpart could trace back to it.",
+  "Never ask a question, make or accept a proposal, or choose a word because of a private intent, and never let one make the pair look like a better fit. Never quote, paraphrase, or hint that they exist. In everything else, act as if they were not there."
+].join(" ");
 async function negotiate(input2) {
   const { user, intent, brief, opportunity } = input2;
   let result;
@@ -36989,7 +37006,7 @@ async function negotiate(input2) {
     instructions: [
       SYSTEM_PROMPT,
       user.emailVerified === false && UNVERIFIED_PROMPT,
-      input2.privateContext?.length && "Your principal's private intents are listed below. Weigh them as context. Decline when the counterpart plainly breaks one. Never quote, paraphrase, or hint that they exist."
+      input2.privateContext?.length && PRIVATE_CONTEXT_PROMPT
     ].filter(Boolean).join(`
 
 `),
@@ -38252,7 +38269,7 @@ function startRunner(options) {
     const active = new Set;
     log(`read ${rows.length} intents, ${rows.filter((row) => row.status === "active").length} active`);
     for (const row of rows) {
-      if (row.status !== "active")
+      if (row.status !== "active" || row.isPrivate)
         continue;
       active.add(row.id);
       const known = intents.has(row.id);
