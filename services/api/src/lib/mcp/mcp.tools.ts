@@ -728,7 +728,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'report_to_introducer',
     {
-      description: `Send the person who introduced the owner one short note (at most ${REPORT_NOTE_MAX} characters) on how an introduction went. Only on an opportunity that has an introducer and has left negotiating, once per opportunity, and only when the owner's introducer setting is "note" (see set_introducer_reports). The note reaches the introducer word for word, without saying which side sent it: write it for the owner, never quote the negotiation, and confirm it with the owner first.`,
+      description: `Send the person who introduced the owner one short note (at most ${REPORT_NOTE_MAX} characters) on how an introduction went. Only on an opportunity that has an introducer and has left negotiating, once per opportunity, and only when the owner's introducer setting is "note" (see set_introducer_reports). The note reaches the introducer word for word, without saying which side sent it: write it for the owner, never quote the negotiation, never quote, paraphrase, or hint at the owner's private intents, and confirm it with the owner first.`,
       inputSchema: z.object({
         opportunityId: z.string().trim().min(1),
         note: z.string().trim().min(1).max(REPORT_NOTE_MAX),

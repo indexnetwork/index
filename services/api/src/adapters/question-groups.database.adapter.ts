@@ -54,7 +54,8 @@ export class QuestionGroupsDatabaseAdapter {
     const theirIntent = new Map(seats.map((seat) => [seat.opportunityId, seat.initiatorUserId === userId ? seat.responderIntentId : seat.initiatorIntentId]));
     if (!theirIntent.size) return new Map();
     const statements = await db.select({ id: intents.id, summary: intents.summary, payload: intents.payload }).from(intents)
-      .where(inArray(intents.id, [...new Set(theirIntent.values())]));
+      // A private intent's wording never reaches the other seat.
+      .where(and(inArray(intents.id, [...new Set(theirIntent.values())]), eq(intents.isPrivate, false)));
     const byId = new Map(statements.map((row) => [row.id, (row.summary ?? row.payload ?? '').trim()]));
     const wants = new Map<string, { intentId: string; text: string }>();
     for (const [opportunityId, intentId] of theirIntent) {

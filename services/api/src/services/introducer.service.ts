@@ -842,6 +842,7 @@ function introEmail(row: { introducerName: string; memberId: string; memberName:
   // Sign-in that lands on the member, not the marketing page; the page names them.
   const link = `${WEB_APP_URL}/login?next=${encodeURIComponent(`/u/${row.memberId}`)}`;
   const url = escapeHtml(link);
+  const work = row.memberIntent.trim() ? clip(row.memberIntent, 300) : '';
   const contextHtml = row.context ? `<blockquote style="margin: 12px 0; padding-left: 12px; border-left: 3px solid #ddd;">${escapeHtml(row.context)}</blockquote>` : '';
   return {
     subject: `${intro} introduced you to ${member}`,
@@ -849,15 +850,14 @@ function introEmail(row: { introducerName: string; memberId: string; memberName:
   <p>${escapeHtml(hello)}</p>
   <p><strong>${escapeHtml(intro)}</strong> thinks you should meet <strong>${escapeHtml(member)}</strong>, and ${escapeHtml(firstName(member))} said yes.</p>
   ${contextHtml}
-  <p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(clip(row.memberIntent, 300))}</p>
+  ${work ? `<p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(work)}</p>` : ''}
   <p><a href="${url}">Sign in with this email to see it and reply</a></p>
   <p style="color: #666; font-size: 12px;">Not interested? Reply "stop" and Index will delete it and never contact you again.</p>
 </div>`,
     text: `${hello}
 
 ${intro} thinks you should meet ${member}, and ${firstName(member)} said yes.
-${row.context ? `\n"${row.context}"\n` : ''}
-${firstName(member)} is working on: ${clip(row.memberIntent, 300)}
+${row.context ? `\n"${row.context}"\n` : ''}${work ? `\n${firstName(member)} is working on: ${work}` : ''}
 
 Sign in with this email to see it and reply: ${link}
 

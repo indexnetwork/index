@@ -264,7 +264,8 @@ export function startRunner(options: RunnerOptions): Runner {
     const active = new Set<string>();
     log(`read ${rows.length} intents, ${rows.filter((row) => row.status === "active").length} active`);
     for (const row of rows) {
-      if (row.status !== "active") continue;
+      // A private intent is never worked: it only steers the owner's other intents.
+      if (row.status !== "active" || row.isPrivate) continue;
       active.add(row.id);
       const known = intents.has(row.id);
       intents.set(row.id, { id: row.id, statement: row.statement });

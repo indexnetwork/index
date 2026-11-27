@@ -355,7 +355,7 @@ export class IntroducerDatabaseAdapter {
       select p.id, p.status, p.failure, p.confidence, p.detection, p.actors, p.interpretation, p.context, p.metadata,
              p.network_id, n.title as network_title, p.opportunity_id, p.created_at,
              u.id as member_id, u.name as member_name, u.avatar as member_avatar,
-             i.id as intent_id, coalesce(nullif(i.summary, ''), i.payload) as intent_text,
+             i.id as intent_id, case when i.is_private then '' else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
              c.id as contact_id, c.email, c.name, c.organization, c.title
       from opportunity_proposals p
       join intents i on i.id = p.intent_id
@@ -580,11 +580,11 @@ export class IntroducerDatabaseAdapter {
     });
   }
 
-  /** An existing seat's live intent closest to the member's, if it has one. */
+  /** An existing seat's live public intent closest to the member's, if it has one. */
   async closestSeatIntent(seatUserId: string, memberIntentId: string): Promise<string | null> {
     const result = await db.execute(sql`
       select g.id from intents g
-      where g.user_id = ${seatUserId} and g.archived_at is null and (g.status is null or g.status = 'active')
+      where g.user_id = ${seatUserId} and g.archived_at is null and (g.status is null or g.status = 'active') and g.is_private = false
       order by g.embedding <=> (select embedding from intents where id = ${memberIntentId}) nulls last
       limit 1
     `);
@@ -602,7 +602,8 @@ export class IntroducerDatabaseAdapter {
     const result = await db.execute(sql`
       select o.id as opportunity_id, seat.id as seat_id, seat.email, seat.name as seat_name,
              intro.name as introducer_name, mu.id as member_id, mu.name as member_name,
-             coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
+             -- An intent made private after the member said yes is never emailed.
+             case when mi.is_private then '' else coalesce(nullif(mi.summary, ''), mi.payload) end as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
       from opportunity_proposals s
       join opportunities o on o.id = s.opportunity_id
@@ -677,9 +678,9 @@ export class IntroducerDatabaseAdapter {
       select o.id as opportunity_id, o.status, o.created_at, o.updated_at,
              o.metadata->'introducer'->>'context' as context,
              n.initiator_user_id as a_user, ua.name as a_name, ua.avatar as a_avatar,
-             coalesce(nullif(ia.summary, ''), ia.payload) as a_text,
+             case when ia.is_private then '' else coalesce(nullif(ia.summary, ''), ia.payload) end as a_text,
              n.responder_user_id as b_user, ub.name as b_name, ub.avatar as b_avatar,
-             coalesce(nullif(ib.summary, ''), ib.payload) as b_text
+             case when ib.is_private then '' else coalesce(nullif(ib.summary, ''), ib.payload) end as b_text
       from opportunities o
       join negotiations n on n.opportunity_id = o.id
       join users ua on ua.id = n.initiator_user_id

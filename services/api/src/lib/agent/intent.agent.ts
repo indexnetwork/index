@@ -260,10 +260,11 @@ export class IntentAgent {
    * @param userId - The intent's owner.
    * @param intentId - The intent a frame named.
    * @returns The intent as a run reads it, or null when it cannot be worked now.
+   * A private intent is never worked: it only steers the owner's other intents.
    */
   private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
     const intent = await intentService.getById(intentId, userId);
-    if (!intent || intent.archivedAt || intent.status !== 'active') return null;
+    if (!intent || intent.archivedAt || intent.status !== 'active' || intent.isPrivate) return null;
     return { id: intent.id, statement: intent.payload };
   }
 

@@ -224,7 +224,7 @@ export function startMorningBrief(options: {
     work: async (owner, claim) => {
       const networks = await networkedIntentIds(owner.id);
       const intents = (await new HostedIndex(owner.id).listIntents())
-        .filter((item) => item.status === 'active' && networks.has(item.id));
+        .filter((item) => item.status === 'active' && !item.isPrivate && networks.has(item.id));
       for (const item of intents) {
         try {
           await options.wake(owner.id, { id: item.id, statement: item.statement }, claim.previous);
