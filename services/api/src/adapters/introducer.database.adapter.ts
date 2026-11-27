@@ -144,6 +144,17 @@ const LIVE_PUBLIC_INTENT = sql`
   and i.embedding is not null and u.email_verified and u.deleted_at is null and u.shadowbanned_at is null`;
 
 /**
+ * A pair the desk and the research step may still show or work on: its intent is
+ * still public and live, the member is in good standing, and the member and the
+ * introducer are both current members of the pair's network. Aliases: p proposal,
+ * i its intent, u the intent's owner.
+ */
+const VISIBLE_MEMBER_SIDE = sql`
+  ${LIVE_PUBLIC_INTENT}
+  and exists (select 1 from network_members mm where mm.network_id = p.network_id and mm.user_id = u.id and mm.deleted_at is null)
+  and exists (select 1 from network_members mi where mi.network_id = p.network_id and mi.user_id = p.introducer_user_id and mi.deleted_at is null)`;
+
+/**
  * Storage for the introducer: a member's imported contacts, the introductions
  * the matcher proposes to them, the seats of contacts they introduce, and the
  * status (never the wording) of the introductions they opened.
@@ -437,7 +448,7 @@ export class IntroducerDatabaseAdapter {
         and c.excluded_at is null and c.matched_user_id is null
         and not exists (select 1 from introducer_exclusions x
                         where x.introducer_user_id = p.introducer_user_id and x.excluded_user_id = u.id)
-        and (p.status <> 'proposed' or (i.archived_at is null and (i.status is null or i.status = 'active')))`}
+        and (p.status <> 'proposed' or (${VISIBLE_MEMBER_SIDE}))`}
       order by (p.status = 'proposed') desc, p.confidence desc
       limit 50
     `);
@@ -632,9 +643,11 @@ export class IntroducerDatabaseAdapter {
       select distinct on (lower(c.email)) lower(c.email) as key, p.created_at,
              c.id as contact_id, c.email, c.name, c.organization, c.title
       from opportunity_proposals p
+      join intents i on i.id = p.intent_id
+      join users u on u.id = i.user_id
       join contacts c on c.id = p.contact_id
       left join contact_research r on r.email = lower(c.email)
-      where p.status = 'checking'
+      where p.status = 'checking' and ${VISIBLE_MEMBER_SIDE}
         and (
           r.status = 'not_found'
           or (r.status = 'found' and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))
@@ -782,6 +795,7 @@ export class IntroducerDatabaseAdapter {
       join contacts c on c.id = p.contact_id
       join networks n on n.id = p.network_id
       where lower(c.email) = ${email.toLowerCase()} and p.status = ${status}
+        and ${VISIBLE_MEMBER_SIDE}
       order by p.created_at asc
     `);
     return rowsOf(result).map(toProposalRow);
