@@ -459,11 +459,14 @@ export class IntroducerDatabaseAdapter {
     await db.update(opportunityProposals).set({ ...patch, updatedAt: new Date() }).where(eq(opportunityProposals.id, id));
   }
 
-  /** Opened: the contact's actor gets its seat, the proposal keeps the intro that was sent, and links the opportunity. */
-  async markOpened(id: string, seat: { userId: string; intentId: string }, context: string, opportunityId: string): Promise<void> {
+  /**
+   * Opened: the contact's actor gets its seat (a person, no intent), the
+   * proposal keeps the intro that was sent, and links the opportunity.
+   */
+  async markOpened(id: string, seatUserId: string, context: string, opportunityId: string): Promise<void> {
     await db.execute(sql`
       update opportunity_proposals set
-        actors = jsonb_set(jsonb_set(actors, '{1,userId}', to_jsonb(${seat.userId}::text)), '{1,intent}', to_jsonb(${seat.intentId}::text)),
+        actors = jsonb_set(actors, '{1,userId}', to_jsonb(${seatUserId}::text)) #- '{1,intent}',
         metadata = jsonb_set(metadata, '{introducer,context}', to_jsonb(${context}::text)),
         status = 'opened', failure = null, opportunity_id = ${opportunityId}, updated_at = now()
       where id = ${id}
@@ -818,23 +821,6 @@ export class IntroducerDatabaseAdapter {
       .onConflictDoUpdate({ target: schema.contactResearch.email, set });
   }
 
-  /** An existing seat's live public intent closest to the member's, if it has one. */
-  async closestSeatIntent(seatUserId: string, memberIntentId: string): Promise<string | null> {
-    const result = await db.execute(sql`
-      select g.id from intents g
-      where g.user_id = ${seatUserId} and g.archived_at is null and (g.status is null or g.status = 'active') and g.is_private = false
-      order by g.embedding <=> (select embedding from intents where id = ${memberIntentId}) nulls last
-      limit 1
-    `);
-    const [row] = rowsOf(result);
-    return row ? String(row.id) : null;
-  }
-
-  async addSeatIntent(seatUserId: string, payload: string, embedding: number[]): Promise<string> {
-    const [row] = await db.insert(schema.intents).values({ payload, userId: seatUserId, embedding }).returning({ id: schema.intents.id });
-    return row!.id;
-  }
-
   /** Woken introductions a member said yes to, whose contact was not emailed yet. */
   async outreachDue(limit: number): Promise<OutreachRow[]> {
     const result = await db.execute(sql`
@@ -870,42 +856,12 @@ export class IntroducerDatabaseAdapter {
     }));
   }
 
-  async markOpportunity(opportunityId: string, key: 'introOutreachAt' | 'introSeatScrubbedAt'): Promise<void> {
+  async markOpportunity(opportunityId: string, key: 'introOutreachAt'): Promise<void> {
     await db.execute(sql`
       update opportunities
       set metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object(${key}::text, now()::text)
       where id = ${opportunityId}
     `);
-  }
-
-  /**
-   * Seats whose introduction ended without a match (no fit or went quiet),
-   * not claimed, with nothing else open: what research said about them goes.
-   */
-  async seatsToScrub(limit: number): Promise<{ opportunityId: string; seatUserId: string }[]> {
-    const result = await db.execute(sql`
-      select o.id as opportunity_id, seat.id as seat_id
-      from opportunity_proposals s
-      join opportunities o on o.id = s.opportunity_id and o.status in ('rejected', 'expired')
-      join users seat on seat.id = s.actors->1->>'userId' and not seat.email_verified and seat.deleted_at is null
-      where o.metadata->>'introSeatScrubbedAt' is null
-        and not exists (
-          select 1 from opportunities o2
-          where o2.id <> o.id and o2.status in ('negotiating', 'pending', 'accepted')
-            and o2.actors::jsonb @> jsonb_build_array(jsonb_build_object('userId', seat.id))
-        )
-      limit ${limit}
-    `);
-    return rowsOf(result).map((r) => ({ opportunityId: String(r.opportunity_id), seatUserId: String(r.seat_id) }));
-  }
-
-  /** Forget what research found about an unclaimed seat: profile, links, intents. */
-  async scrubSeat(seatUserId: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, seatUserId));
-      await tx.update(users).set({ intro: null, avatar: null }).where(and(eq(users.id, seatUserId), eq(users.emailVerified, false)));
-      await tx.update(schema.intents).set({ archivedAt: new Date() }).where(and(eq(schema.intents.userId, seatUserId), isNull(schema.intents.archivedAt)));
-    });
   }
 
   // ─── progress ──────────────────────────────────────────────────────────────
@@ -918,14 +874,17 @@ export class IntroducerDatabaseAdapter {
              n.initiator_user_id as a_user, ua.name as a_name, ua.avatar as a_avatar,
              case when ia.is_private then '' else coalesce(nullif(ia.summary, ''), ia.payload) end as a_text,
              n.responder_user_id as b_user, ub.name as b_name, ub.avatar as b_avatar,
-             case when ib.is_private then '' else coalesce(nullif(ib.summary, ''), ib.payload) end as b_text
+             case when ib.id is null or ib.is_private then '' else coalesce(nullif(ib.summary, ''), ib.payload, '') end as b_text
       from opportunities o
       join negotiations n on n.opportunity_id = o.id
       join users ua on ua.id = n.initiator_user_id
       join users ub on ub.id = n.responder_user_id
       join intents ia on ia.id = n.initiator_intent_id
-      join intents ib on ib.id = n.responder_intent_id
+      left join intents ib on ib.id = n.responder_intent_id
       where o.metadata->'introducer'->>'userId' = ${viewerId}
+        -- A contact introduced through Introduce sits as a person, with no intent.
+        -- Identity introductions between members are left out, as before.
+        and (ib.id is not null or (n.responder_intent_id is null and o.actors->1->>'via' is not null))
         ${opportunityId ? sql`and o.id = ${opportunityId}` : sql``}
       order by o.created_at desc
       limit ${limit}

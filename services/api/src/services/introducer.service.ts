@@ -1,5 +1,5 @@
 import { createModel, type Model } from '@indexnetwork/agent';
-import { decideNegotiationOpening, pairKeyOf } from '@indexnetwork/protocol';
+import { decideNegotiationOpening, identityPairKeyOf } from '@indexnetwork/protocol';
 import { generateText, jsonSchema, Output } from 'ai';
 
 import { auth } from '../lib/betterauth/auth.instance';
@@ -126,6 +126,14 @@ export interface ContactView {
   excluded: boolean;
   proposals: number;
 }
+
+type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['accountByEmail']>>>;
+
+/** What researching an email, or taking its existing account, came to. */
+type SeatOutcome =
+  | { kind: 'seated'; userId: string }
+  | { kind: 'on_index' | 'opted_out' | 'not_found' | 'lost' }
+  | { kind: 'unavailable'; attempts: number };
 
 export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy' } | { kind: 'gone' };
 
@@ -510,7 +518,7 @@ export class IntroducerService {
         await this.adapter.setProposal(proposal.id, { status: 'unmatched', failure: FAILURES[reason] });
       }
     };
-    let existing = await this.adapter.accountByEmail(email);
+    const existing = await this.adapter.accountByEmail(email);
     const status = await this.adapter.researchStatus(email);
     if (status === 'found') {
       // Researched before: judge its pairs without researching again, unless the ghost has become a real account.
@@ -523,52 +531,77 @@ export class IntroducerService {
       }
       return this.judgeEmail(email);
     }
-    if (!existing) {
-      if (status === 'not_found') {
-        // Researched before and found nothing: final, so a new pair settles at once.
-        await settle('not_found');
-        return;
-      }
-      const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
-      if (research.kind === 'unavailable') {
-        await this.adapter.recordResearch(email, 'failed');
-        const attempts = await this.adapter.researchAttempts(email);
-        if (attempts >= RESEARCH_ATTEMPTS) {
+    // Researched before and found nothing: final, so a new pair settles at once.
+    if (!existing && status === 'not_found') return settle('not_found');
+    const seat = existing ? await this.adoptAccount(email, existing) : await this.researchAndSeat(email, contact);
+    switch (seat.kind) {
+      case 'seated':
+        return this.judgeEmail(email);
+      case 'unavailable':
+        if (seat.attempts >= RESEARCH_ATTEMPTS) {
           await settle('research_unavailable');
           await this.adapter.resetResearchAttempts(email);
         }
-        logger.info('Contact research', { outcome: 'unavailable', reason: research.reason, attempts });
         return;
-      }
-      if (research.kind === 'not_found') {
-        await this.adapter.recordResearch(email, 'not_found');
-        await settle('not_found');
-        logger.info('Contact research', { outcome: 'not_found' });
+      case 'lost':
         return;
-      }
-      const created = await this.adapter.createSeat({
-        email,
-        name: publicName(research.name) ?? nameFromEmail(email),
-        intro: research.headline.trim() || null,
-        socials: profileLinks(research.socials),
-      });
-      if (created) {
-        await this.adapter.recordResearch(email, 'found', created.userId);
-        logger.info('Contact research', { outcome: 'found' });
-        return this.judgeEmail(email);
-      }
-      // An account appeared while we researched: treat it as any existing one.
-      existing = await this.adapter.accountByEmail(email);
-      if (!existing) {
-        logger.warn('Seat not created and no account found');
-        return;
-      }
+      default:
+        return settle(seat.kind);
     }
-    if (existing.deleted) return settle('opted_out');
-    if (existing.emailVerified) return settle('on_index');
-    await this.adapter.recordResearch(email, 'found', existing.id);
+  }
+
+  /**
+   * Research one email and seat whoever it finds: an identity-only ghost,
+   * recorded per email. Found nothing is recorded as final; couldn't run
+   * counts a try. An account that appeared meanwhile is taken as it is.
+   * The card is the introducer's own address book: a hint for research to
+   * find the right person, never copied onto the seat.
+   */
+  private async researchAndSeat(email: string, contact: ContactCard): Promise<SeatOutcome> {
+    const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
+    if (research.kind === 'unavailable') {
+      // No API key: nothing ran, so it is not a try.
+      if (research.reason === 'no_key') return { kind: 'unavailable', attempts: 0 };
+      await this.adapter.recordResearch(email, 'failed');
+      const attempts = await this.adapter.researchAttempts(email);
+      logger.info('Contact research', { outcome: 'unavailable', reason: research.reason, attempts });
+      return { kind: 'unavailable', attempts };
+    }
+    if (research.kind === 'not_found') {
+      await this.adapter.recordResearch(email, 'not_found');
+      logger.info('Contact research', { outcome: 'not_found' });
+      return { kind: 'not_found' };
+    }
+    const created = await this.adapter.createSeat({
+      email,
+      name: publicName(research.name) ?? nameFromEmail(email),
+      intro: research.headline.trim() || null,
+      socials: profileLinks(research.socials),
+    });
+    if (created) {
+      await this.adapter.recordResearch(email, 'found', created.userId);
+      logger.info('Contact research', { outcome: 'found' });
+      return { kind: 'seated', userId: created.userId };
+    }
+    // An account appeared while we researched: treat it as any existing one.
+    const existing = await this.adapter.accountByEmail(email);
+    if (!existing) {
+      logger.warn('Seat not created and no account found');
+      return { kind: 'lost' };
+    }
+    return this.adoptAccount(email, existing);
+  }
+
+  /**
+   * An account the email already has. Claimed or deleted is final; an
+   * unclaimed one (an earlier seat) is the seat as it is, intents untouched.
+   */
+  private async adoptAccount(email: string, account: EmailAccount): Promise<SeatOutcome> {
+    if (account.deleted) return { kind: 'opted_out' };
+    if (account.emailVerified) return { kind: 'on_index' };
+    await this.adapter.recordResearch(email, 'found', account.id);
     logger.info('Contact research', { outcome: 'existing' });
-    return this.judgeEmail(email);
+    return { kind: 'seated', userId: account.id };
   }
 
   /**
@@ -667,6 +700,14 @@ export class IntroducerService {
     return { kind: 'ok' };
   }
 
+  /**
+   * Open the pair as an intent-to-identity opportunity: the member's intent
+   * on one side, the contact's ghost as a person on the other, reached only
+   * through the introducer. The ghost is the one research recorded for the
+   * email. A pair proposed before research existed may have none: an earlier
+   * unclaimed seat is taken as it is (its intents stay, unused), and an email
+   * never researched is researched now. Other pairs are left alone.
+   */
   private async seatAndOpen(introducerUserId: string, row: ProposalRow, context: string): Promise<void> {
     const fail = (reason: keyof typeof FAILURES) => this.adapter.setProposal(row.id, { status: 'failed', failure: FAILURES[reason] });
     const email = row.contact.email;
@@ -674,37 +715,26 @@ export class IntroducerService {
     if (existing?.emailVerified && !existing.deleted) return fail('on_index');
     if (existing?.deleted) return fail('opted_out');
 
-    let seat: { userId: string; intentId: string };
-    if (existing) {
-      // Already seated by an earlier introduction or by Ghost: reuse it.
-      const intentId = await this.adapter.closestSeatIntent(existing.id, row.member.intentId)
-        ?? await this.addIntroducedIntent(existing.id, row.member.intentText);
-      seat = { userId: existing.id, intentId };
-    } else {
-      // The card is the introducer's own address book: a hint for research to
-      // find the right person, never copied onto the seat.
-      const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
-      if (research.kind !== 'found') return fail('not_opened');
-      const created = await this.adapter.createSeat({
-        email,
-        name: publicName(research.name) ?? nameFromEmail(email),
-        intro: research.headline.trim() || null,
-        socials: profileLinks(research.socials),
-      });
-      if (!created) return fail('not_opened');
-      // Temporary: wake still opens intent-to-intent.
-      const intentId = await this.addIntroducedIntent(created.userId, row.member.intentText);
-      seat = { userId: created.userId, intentId };
+    let seatUserId = await this.adapter.foundSeatId(email);
+    if (!seatUserId) {
+      if (!existing && await this.adapter.researchStatus(email) === 'not_found') return fail('not_opened');
+      const seat = existing ? await this.adoptAccount(email, existing) : await this.researchAndSeat(email, row.contact);
+      // A third failed try would keep this email out of the research step: start the count over, as the step does.
+      if (seat.kind === 'unavailable' && seat.attempts >= RESEARCH_ATTEMPTS) await this.adapter.resetResearchAttempts(email);
+      if (seat.kind === 'on_index' || seat.kind === 'opted_out') return fail(seat.kind);
+      if (seat.kind !== 'seated') return fail('not_opened');
+      seatUserId = seat.userId;
     }
 
-    const pairKey = pairKeyOf(`via:${introducerUserId}`, row.member.intentId, seat.intentId);
+    // One negotiation per introducer: the ghost is reachable only through the introducer who holds its email.
+    const pairKey = identityPairKeyOf(`via:${introducerUserId}`, row.member.intentId, seatUserId);
     await negotiationDatabaseAdapter.openCounterparties([{
       pairKey,
       networkId: row.networkId,
       intentA: row.member.intentId,
-      intentB: seat.intentId,
+      intentB: null,
       userA: row.member.userId,
-      userB: seat.userId,
+      userB: seatUserId,
       score: 100,
       reasoning: INTRODUCER_REASONING,
       evidence: [],
@@ -714,14 +744,8 @@ export class IntroducerService {
     }], decideNegotiationOpening);
     const opened = await negotiationDatabaseAdapter.findByPairKey(pairKey);
     if (!opened) return fail('not_opened');
-    await this.adapter.markOpened(row.id, seat, context, opened.opportunityId);
+    await this.adapter.markOpened(row.id, seatUserId, context, opened.opportunityId);
     logger.info('Proposal opened', { proposalId: row.id, opportunityId: opened.opportunityId });
-  }
-
-  private async addIntroducedIntent(seatUserId: string, memberIntent: string): Promise<string> {
-    const payload = await introducedIntent(memberIntent);
-    const embedding = await this.embedder.generate(payload) as number[];
-    return this.adapter.addSeatIntent(seatUserId, payload, embedding);
   }
 
   // ─── after the agents ──────────────────────────────────────────────────────
@@ -737,14 +761,6 @@ export class IntroducerService {
       } catch (error) {
         logger.error('Introduction email failed', { opportunityId: row.opportunityId, error: String(error) });
       }
-    }
-  }
-
-  /** No fit or went quiet: forget what research said about the contact. */
-  private async scrubEnded(): Promise<void> {
-    for (const row of await this.adapter.seatsToScrub(50)) {
-      await this.adapter.scrubSeat(row.seatUserId);
-      await this.adapter.markOpportunity(row.opportunityId, 'introSeatScrubbedAt');
     }
   }
 
@@ -911,32 +927,6 @@ function nameFromEmail(email: string): string {
   const words = local.split(/[._\-\s]+/).filter((w) => /[a-z]/i.test(w));
   const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   return name || local || email;
-}
-
-/**
- * A seat's one intent when research found nothing to say about them: only
- * that they were introduced, phrased around what the member wants. Written
- * from the member's intent alone; nothing from the introducer's card.
- */
-async function introducedIntent(memberIntent: string): Promise<string> {
-  const fallback = `I was introduced to someone who wants: ${clip(memberIntent, 200).replace(/[.!?…]+$/, '')}. I'm open to hearing more.`;
-  try {
-    const { text } = await generateText({
-      model: introModel(),
-      prompt: [
-        'A mutual contact introduced someone to a member who wants the thing below. Nothing else is known about the person introduced.',
-        'Write one first-person sentence for that person saying only that they were introduced and are open to hearing more about it.',
-        'Claim no name, role, company, skill, interest or experience. No emoji. Reply with the sentence only.',
-        '',
-        `The member wants: ${clip(memberIntent, 300)}`,
-      ].join('\n'),
-    });
-    const line = clip(text, 240);
-    return line || fallback;
-  } catch (error) {
-    logger.warn('Introduced-intent line failed', { error: String(error) });
-    return fallback;
-  }
 }
 
 /** Public profile links research opened; personal sites included. */
