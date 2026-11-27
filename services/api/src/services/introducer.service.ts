@@ -551,18 +551,21 @@ export class IntroducerService {
     if (existing) {
       // Already seated by an earlier introduction or by Ghost: reuse it.
       const intentId = await this.adapter.closestSeatIntent(existing.id, row.member.intentId)
-        ?? await this.addFallbackIntent(existing.id, row);
+        ?? await this.addIntroducedIntent(existing.id, row.member.intentText);
       seat = { userId: existing.id, intentId };
     } else {
+      // The card is the introducer's own address book: a hint for research to
+      // find the right person, never copied onto the seat. Everyone else sees
+      // the seat (the member, later introducers, the contact's own email), so
+      // its name, intro and intents come from public research only.
       const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
-      const name = contactName(row.contact);
       const payloads = research?.intents.map((t) => t.trim()).filter(Boolean).slice(0, 3) ?? [];
-      if (!payloads.length) payloads.push(fallbackIntent(row));
+      if (!payloads.length) payloads.push(await introducedIntent(row.member.intentText));
       const vectors = await this.embedder.generate(payloads) as number[][];
       const created = await this.adapter.createSeat({
         email,
-        name,
-        intro: research?.headline?.trim() || [row.contact.title, row.contact.organization].filter(Boolean).join(', ') || null,
+        name: publicName(research?.name) ?? nameFromEmail(email),
+        intro: research?.headline?.trim() || null,
         socials: profileLinks(research?.socials ?? []),
         intents: payloads.map((payload, i) => ({ payload, embedding: vectors[i]! })),
       });
@@ -592,8 +595,8 @@ export class IntroducerService {
     logger.info('Proposal opened', { proposalId: row.id, opportunityId: opened.opportunityId });
   }
 
-  private async addFallbackIntent(seatUserId: string, row: ProposalRow): Promise<string> {
-    const payload = fallbackIntent(row);
+  private async addIntroducedIntent(seatUserId: string, memberIntent: string): Promise<string> {
+    const payload = await introducedIntent(memberIntent);
     const embedding = await this.embedder.generate(payload) as number[];
     return this.adapter.addSeatIntent(seatUserId, payload, embedding);
   }
@@ -769,10 +772,48 @@ function toContactView(row: ContactListRow): ContactView {
   };
 }
 
-/** When research finds nothing: who they are, as the introducer's card has them. */
-function fallbackIntent(row: ProposalRow): string {
-  const role = [row.contact.title, row.contact.organization].filter(Boolean).join(' at ');
-  return role ? `${contactName(row.contact)}, ${role}.` : `${contactName(row.contact)} ${row.card.contact}.`;
+/** Research's name for someone, unless it reads like a label rather than a name ("Raj (Stripe guy)"). */
+function publicName(name: string | undefined): string | null {
+  const clean = name?.replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length > 80 || /[()[\]@\d]/.test(clean)) return null;
+  return clean;
+}
+
+/**
+ * A seat's name when research found none: the email's local part, tidied
+ * (`raj.patel@` → "Raj Patel"). Never the introducer's address-book label.
+ */
+function nameFromEmail(email: string): string {
+  const local = email.split('@')[0]!.split('+')[0]!;
+  const words = local.split(/[._\-\s]+/).filter((w) => /[a-z]/i.test(w));
+  const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  return name || local || email;
+}
+
+/**
+ * A seat's one intent when research found nothing to say about them: only
+ * that they were introduced, phrased around what the member wants. Written
+ * from the member's intent alone; nothing from the introducer's card.
+ */
+async function introducedIntent(memberIntent: string): Promise<string> {
+  const fallback = `I was introduced to someone who wants: ${clip(memberIntent, 200).replace(/[.!?…]+$/, '')}. I'm open to hearing more.`;
+  try {
+    const { text } = await generateText({
+      model: introModel(),
+      prompt: [
+        'A mutual contact introduced someone to a member who wants the thing below. Nothing else is known about the person introduced.',
+        'Write one first-person sentence for that person saying only that they were introduced and are open to hearing more about it.',
+        'Claim no name, role, company, skill, interest or experience. No emoji. Reply with the sentence only.',
+        '',
+        `The member wants: ${clip(memberIntent, 300)}`,
+      ].join('\n'),
+    });
+    const line = clip(text, 240);
+    return line || fallback;
+  } catch (error) {
+    logger.warn('Introduced-intent line failed', { error: String(error) });
+    return fallback;
+  }
 }
 
 /** Public profile links research opened; personal sites included. */
@@ -792,11 +833,12 @@ function profileLinks(urls: string[]): { label: string; value: string }[] {
 }
 
 /** The first email the contact gets: from the person who introduced them, after the member said yes. */
-function introEmail(row: { introducerName: string; memberId: string; memberName: string; memberIntent: string; context: string; contactName: string | null }) {
+function introEmail(row: { introducerName: string; memberId: string; memberName: string; memberIntent: string; context: string; seatName: string | null }) {
   const oneLine = (s: string) => s.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 120);
   const intro = oneLine(row.introducerName);
   const member = oneLine(row.memberName);
-  const hello = row.contactName ? `Hi ${firstName(row.contactName)},` : 'Hi,';
+  // The seat's own name, from research or their email; never the introducer's label for them.
+  const hello = row.seatName?.trim() ? `Hi ${firstName(row.seatName)},` : 'Hi,';
   // Sign-in that lands on the member, not the marketing page; the page names them.
   const link = `${WEB_APP_URL}/login?next=${encodeURIComponent(`/u/${row.memberId}`)}`;
   const url = escapeHtml(link);

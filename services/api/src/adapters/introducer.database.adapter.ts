@@ -84,7 +84,8 @@ export interface OutreachRow {
   opportunityId: string;
   seatUserId: string;
   email: string;
-  contactName: string | null;
+  /** The seat's own name (`users.name`), never the introducer's address-book label. */
+  seatName: string | null;
   introducerName: string;
   /** The member who said yes; the email's link signs in straight to them. */
   memberId: string;
@@ -599,14 +600,13 @@ export class IntroducerDatabaseAdapter {
   /** Woken introductions a member said yes to, whose contact was not emailed yet. */
   async outreachDue(limit: number): Promise<OutreachRow[]> {
     const result = await db.execute(sql`
-      select o.id as opportunity_id, seat.id as seat_id, seat.email, c.name as contact_name,
+      select o.id as opportunity_id, seat.id as seat_id, seat.email, seat.name as seat_name,
              intro.name as introducer_name, mu.id as member_id, mu.name as member_name,
              coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
       from opportunity_proposals s
       join opportunities o on o.id = s.opportunity_id
       join users seat on seat.id = s.actors->1->>'userId' and not seat.email_verified and seat.deleted_at is null
-      join contacts c on c.id = s.contact_id
       join users intro on intro.id = s.introducer_user_id
       join intents mi on mi.id = s.intent_id
       join users mu on mu.id = mi.user_id
@@ -622,7 +622,7 @@ export class IntroducerDatabaseAdapter {
       opportunityId: String(r.opportunity_id),
       seatUserId: String(r.seat_id),
       email: String(r.email),
-      contactName: (r.contact_name as string | null) ?? null,
+      seatName: (r.seat_name as string | null) ?? null,
       introducerName: String(r.introducer_name),
       memberId: String(r.member_id),
       memberName: String(r.member_name),
