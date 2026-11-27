@@ -105,6 +105,8 @@ export interface Me {
   profileConfirmed: boolean;
   /** Whether the owner verified their email. */
   emailVerified?: boolean;
+  /** Their public links, given for an unverified owner (an introduced contact researched from the public web). */
+  socials?: { label: string; value: string }[];
 }
 
 export type QuestionScope = "intent" | "match";

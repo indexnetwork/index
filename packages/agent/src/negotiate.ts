@@ -1,4 +1,4 @@
-import { principalFacts, unverifiedPrompt } from "./brief.ts";
+import { principalFacts, publicProfile, unverifiedPrompt } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
 import type { NegotiateInput, NegotiateResult, NegotiationAction, Stall, Turn } from "./types.ts";
@@ -40,6 +40,7 @@ const PRIVATE_CONTEXT_PROMPT = [
  */
 export async function negotiate(input: NegotiateInput): Promise<NegotiateResult> {
   const { user, intent, brief, opportunity } = input;
+  const profile = publicProfile(user, intent);
   let result: NegotiateResult | undefined;
 
   const tools: Tool<never>[] = [
@@ -97,8 +98,9 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     prompt:
       "Take this negotiation's next turn, or stall.\nYour brief:\n" +
       brief +
-      "\n\nYour principal (null when unconfirmed):\n" +
-      JSON.stringify(principalFacts(user)) +
+      (profile
+        ? "\n\nYour principal's public profile (researched from the public web; they have not confirmed it):\n" + JSON.stringify(profile)
+        : "\n\nYour principal (null when unconfirmed):\n" + JSON.stringify(principalFacts(user))) +
       (input.privateContext?.length ? "\n\nYour principal's private intents:\n" + input.privateContext.map((text) => "- " + text).join("\n") : "") +
       "\n\nThis negotiation:\n" +
       JSON.stringify(opportunity),

@@ -13,6 +13,8 @@ export interface User {
   profileConfirmed?: boolean;
   /** Whether the principal verified their email. */
   emailVerified?: boolean;
+  /** Their public links. Read only for an introduced contact, whose profile was researched from the public web. */
+  socials?: { label: string; value: string }[];
 }
 
 /** An intent or an opportunity-only work context; identity contexts carry no goal. */

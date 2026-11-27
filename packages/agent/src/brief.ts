@@ -52,6 +52,22 @@ export function principalFacts(user: User): Pick<User, "name" | "intro" | "locat
   return { name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null };
 }
 
+/** How an introduced contact's profile is labelled wherever a prompt carries it. */
+export const PUBLIC_PROFILE_SOURCE = "Their public profile, researched from the public web. They have not confirmed it.";
+
+/**
+ * An introduced contact never confirms a profile, so `principalFacts` gives
+ * nothing; what research found on the public web is all there is to judge from.
+ *
+ * @param user - The principal as the host read them.
+ * @param intent - The seat the run serves.
+ * @returns Their public profile, labelled as unconfirmed, for an unverified principal on an identity seat; otherwise null.
+ */
+export function publicProfile(user: User, intent: Intent): { source: string; name: string | null; intro: string | null; socials: { label: string; value: string }[] } | null {
+  if (user.emailVerified !== false || intent.kind !== "identity") return null;
+  return { source: PUBLIC_PROFILE_SOURCE, name: user.name, intro: user.intro ?? null, socials: user.socials ?? [] };
+}
+
 /**
  * Briefs, decisions, stalls and resolutions are carried on the opportunities themselves, so
  * the conversation a run reads is only what passed between the principal and
@@ -107,6 +123,7 @@ export function recordBrief(opportunity: Opportunity, decision: Decision, brief?
 export async function briefIfMissing(input: BriefInput, decision: Decision, operation = "brief"): Promise<WakeAction[]> {
   const { user, intent, opportunity } = input;
   if (opportunity.brief && opportunity.decision) return [];
+  const profile = publicProfile(user, intent);
 
   const recorded: WakeAction[] = [];
   const tools: Tool<never>[] = [
@@ -142,7 +159,7 @@ export async function briefIfMissing(input: BriefInput, decision: Decision, oper
       "Brief this one opportunity now.\n" +
       JSON.stringify({
         decision,
-        principal: principalFacts(user),
+        ...(profile ? { principal_public_profile: profile } : { principal: principalFacts(user) }),
         conversation: principalOnly(input.principalConversation),
         opportunity,
       }),
