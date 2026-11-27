@@ -25,3 +25,5 @@ export type {
   QuestionScope,
   UserEvent,
 } from "./client.ts";
+
+export { negotiationScope, opportunityFromScope } from "./negotiation-scope.js";

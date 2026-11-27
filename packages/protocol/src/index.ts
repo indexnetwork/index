@@ -116,6 +116,7 @@ export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle
  */
 export {
   pairKeyOf,
+  identityPairKeyOf,
 } from "./internal/opportunities/opportunity.counterparties.js";
 export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
 export type {

@@ -1,3 +1,4 @@
+import { negotiationScope } from '@indexnetwork/client';
 import { Negotiations, observeNegotiation, type NegotiationTurn } from '@indexnetwork/protocol';
 
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
@@ -122,7 +123,7 @@ export class NegotiationService {
         : result.roundEnded === 'declined' ? 'One agent passed for now. It stays in talks: new context from either owner that bears on this pair can resume it.'
           : result.roundEnded ? 'The round ended without agreement. It stays in talks: new context from either owner that bears on this pair can resume it.'
             : 'A negotiation is waiting on your agent.',
-      data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, roundEnded: result.roundEnded, turnIndex: result.turnIndex + 1 },
+      data: { opportunityId, intentId: seat.intentId, scopeId: negotiationScope(seat.intentId, opportunityId), outcome: result.outcome, roundEnded: result.roundEnded, turnIndex: result.turnIndex + 1 },
     })));
     return record;
   }

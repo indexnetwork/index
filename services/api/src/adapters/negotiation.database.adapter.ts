@@ -5,6 +5,8 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
+import { opportunityFromScope } from '@indexnetwork/client';
+
 import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, schema, sql, users } from './database.shared';
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
@@ -28,7 +30,7 @@ export interface IntentCounterpartyPair {
   pairKey: string;
   networkId: string;
   intentA: string;
-  intentB: string;
+  intentB: string | null;
   userA: string;
   userB: string;
   score: number;
@@ -78,7 +80,7 @@ export interface NegotiationTurnRecord {
 export interface NegotiationView {
   id: string;
   opportunityId: string;
-  intentId: string;
+  intentId: string | null;
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
   settledAt: Date | null;
@@ -88,7 +90,7 @@ export interface NegotiationView {
   /** The third party who opened this pair, and their case for it. Null when the seats' own agents opened it. */
   introducer: { userId: string; name: string | null; context: string } | null;
   counterparty: {
-    intentId: string;
+    intentId: string | null;
     userId: string;
     name: string | null;
     avatar: string | null;
@@ -129,7 +131,7 @@ export interface NegotiationOpening {
   userA: string;
   userB: string;
   intentA: string;
-  intentB: string;
+  intentB: string | null;
   eligible: boolean;
 }
 export type NegotiationOpeningDecision = { awaitingUserId: string; opportunityStatus: 'negotiating' } | null;
@@ -215,7 +217,7 @@ export class NegotiationDatabaseAdapter {
    */
   async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
-    const seats: { userId: string; intentId: string }[] = [];
+    const seats: { userId: string; intentId: string | null }[] = [];
     for (const pair of pairs) {
       const result = await this.open(pair, decide);
       if (!result) continue;
@@ -334,9 +336,11 @@ export class NegotiationDatabaseAdapter {
         const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
           .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
           .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
-          .where(and(inArray(intents.id, pair.via ? [pair.intentA] : [pair.intentA, pair.intentB]), liveIntentWhere()))
+          .where(and(inArray(intents.id, pair.via || !pair.intentB ? [pair.intentA] : [pair.intentA, pair.intentB]), liveIntentWhere(),
+            ...(!pair.intentB ? [eq(intents.isPrivate, false), eq(intentNetworks.visibility, 'networks_only'),
+              isNull(networkMembers.deletedAt), sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`] : [])))
           .orderBy(asc(intents.id)).for('share');
-        if (pair.via) {
+        if (pair.via && pair.intentB) {
           // Reached through a person: B's seat is B's own live intent, in no network.
           const [viaSeat] = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
             .where(and(eq(intents.id, pair.intentB), liveIntentWhere())).for('share');
@@ -344,7 +348,10 @@ export class NegotiationDatabaseAdapter {
         }
         const decision = decide({ ...pair, eligible:
           seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
-          && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
+          && (pair.intentB ? seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB)
+            : pair.detection?.source === 'introducer' && !pair.via && !!pair.introducer
+              && pair.introducer.userId !== pair.userA
+              && await this.identityEligible(tx, pair.userB, pair.networkId, pair.intentA, pair.introducer.userId)) });
         if (!decision) return null;
 
         const [row] = await tx.insert(opportunities).values({
@@ -358,7 +365,7 @@ export class NegotiationDatabaseAdapter {
             { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
             pair.via
               ? { via: pair.via, userId: pair.userB, role: 'party', intent: pair.intentB }
-              : { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
+              : { networkId: pair.networkId, userId: pair.userB, role: 'party', ...(pair.intentB ? { intent: pair.intentB } : {}) },
           ],
           interpretation: {
             category: 'collaboration',
@@ -416,10 +423,10 @@ export class NegotiationDatabaseAdapter {
       or(eq(negotiations.initiatorUserId, userId), eq(negotiations.responderUserId, userId)),
     ];
     if (options.intentId) {
-      conditions.push(or(
-        eq(negotiations.initiatorIntentId, options.intentId),
-        eq(negotiations.responderIntentId, options.intentId),
-      ));
+      const opportunityId = opportunityFromScope(options.intentId);
+      conditions.push(opportunityId
+        ? and(eq(negotiations.opportunityId, opportunityId), eq(negotiations.responderUserId, userId), isNull(negotiations.responderIntentId))
+        : or(eq(negotiations.initiatorIntentId, options.intentId), eq(negotiations.responderIntentId, options.intentId)));
     }
     if (options.counterpartyUserId) {
       conditions.push(or(
@@ -436,10 +443,10 @@ export class NegotiationDatabaseAdapter {
         negotiations.initiatorIntentId,
         db.select({ id: intents.id }).from(intents).where(liveIntentWhere()),
       ));
-      conditions.push(inArray(
+      conditions.push(or(isNull(negotiations.responderIntentId), inArray(
         negotiations.responderIntentId,
         db.select({ id: intents.id }).from(intents).where(liveIntentWhere()),
-      ));
+      )));
     }
 
     let query = db.select().from(negotiations)
@@ -494,6 +501,24 @@ export class NegotiationDatabaseAdapter {
       .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, networkId)))
       .where(and(eq(intents.id, seat.intentId), eq(intents.userId, seat.userId), liveIntentWhere()))})`);
 
+    eligibleSeats[0] = sql<boolean>`${eligibleSeats[0]} and (${negotiations.responderIntentId} is not null or exists (
+      select 1 from ${intents} initiating
+      join ${networkMembers} membership on membership.user_id = initiating.user_id
+      where initiating.id = ${negotiations.initiatorIntentId} and initiating.is_private = false
+        and membership.network_id = ${networkId} and membership.deleted_at is null
+        and membership.permissions && ARRAY['owner', 'member', 'admin']::text[]
+    ))`;
+    eligibleSeats[1] = sql<boolean>`(${eligibleSeats[1]} or (${negotiations.responderIntentId} is null and exists (
+      select 1 from ${users} identity_user
+      join ${networkMembers} membership on membership.user_id = identity_user.id
+      where identity_user.id = ${negotiations.responderUserId} and identity_user.deleted_at is null
+        and identity_user.email_verified = true and membership.network_id = ${networkId}
+        and exists (select 1 from ${schema.networks} n where n.id = ${networkId} and n.deleted_at is null)
+        and membership.deleted_at is null and membership.permissions && ARRAY['owner', 'member', 'admin']::text[]
+        and not exists (select 1 from ${schema.intentExclusions} exclusion
+          where exclusion.intent_id = ${negotiations.initiatorIntentId} and exclusion.excluded_user_id = identity_user.id)
+    )))`;
+    const opportunityId = opportunityFromScope(intentId);
     return db.select({
       opportunityId: negotiations.opportunityId,
       // Keep Postgres timestamp precision rather than truncating it to JavaScript milliseconds.
@@ -501,10 +526,12 @@ export class NegotiationDatabaseAdapter {
       eligible: sql<boolean>`${and(eq(opportunities.status, 'negotiating'), ...eligibleSeats)}`,
     }).from(negotiations)
       .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
-      .where(or(
-        and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
-        and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
-      ))
+      .where(opportunityId
+        ? and(eq(negotiations.opportunityId, opportunityId), eq(negotiations.responderUserId, userId), isNull(negotiations.responderIntentId))
+        : or(
+          and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
+          and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
+        ))
       .orderBy(desc(negotiations.updatedAt));
   }
 
@@ -684,13 +711,16 @@ export class NegotiationDatabaseAdapter {
       let query = tx.select({ id: intents.id, userId: intents.userId }).from(intents)
         .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, networkId)))
         .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, networkId)))
-        .where(and(inArray(intents.id, [row.initiatorIntentId, row.responderIntentId]), liveIntentWhere()))
+        .where(and(inArray(intents.id, [row.initiatorIntentId, ...(row.responderIntentId ? [row.responderIntentId] : [])]), liveIntentWhere(),
+          ...(!row.responderIntentId ? [eq(intents.isPrivate, false), isNull(networkMembers.deletedAt),
+            sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`] : [])))
         .orderBy(asc(intents.id)).$dynamic();
       if (lock) query = query.for('share');
       const seats = await query;
       eligible = opportunity?.status === 'negotiating'
         && seats.some((seat) => seat.id === row.initiatorIntentId && seat.userId === row.initiatorUserId)
-        && seats.some((seat) => seat.id === row.responderIntentId && seat.userId === row.responderUserId);
+        && (row.responderIntentId ? seats.some((seat) => seat.id === row.responderIntentId && seat.userId === row.responderUserId)
+          : await this.identityEligible(tx, row.responderUserId, networkId, row.initiatorIntentId));
     }
     const turns = await tx.select().from(negotiationTurns).where(eq(negotiationTurns.negotiationId, row.id)).orderBy(asc(negotiationTurns.turnIndex));
     return { initiatorUserId: row.initiatorUserId, responderUserId: row.responderUserId,
@@ -758,6 +788,29 @@ export class NegotiationDatabaseAdapter {
     ], row.opportunityId)));
   }
 
+  /** Identity seats are existing verified members; introduction never grants access. */
+  private async identityEligible(connection: typeof db | Transaction, userId: string, networkId: string, intentId: string, introducerId?: string): Promise<boolean> {
+    const [member] = await connection.select({ id: users.id }).from(users)
+      .innerJoin(networkMembers, and(eq(networkMembers.userId, users.id), eq(networkMembers.networkId, networkId)))
+      .where(and(eq(users.id, userId), isNull(users.deletedAt), eq(users.emailVerified, true),
+        isNull(networkMembers.deletedAt), sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+        sql`exists (select 1 from ${schema.networks} n where n.id = ${networkId} and n.deleted_at is null)`,
+        sql`not exists (select 1 from ${schema.intentExclusions} where ${schema.intentExclusions.intentId} = ${intentId} and ${schema.intentExclusions.excludedUserId} = ${userId})`,
+      )).limit(1);
+    if (!member) return false;
+    if (introducerId) {
+      const [introducer] = await connection.select({ id: networkMembers.userId }).from(networkMembers)
+        .where(and(eq(networkMembers.userId, introducerId), eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt),
+          sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`)).limit(1);
+      if (!introducer || introducerId === userId) return false;
+    }
+    return true;
+  }
+
+  async seatedIdentity(userId: string, networkId: string, intentId: string): Promise<boolean> {
+    return this.identityEligible(db, userId, networkId, intentId);
+  }
+
   /** Resolve each row into the shape its reader's seat is allowed to see. */
   private async toViews(rows: NegotiationRow[], userId: string, connection: typeof db | Transaction = db): Promise<NegotiationView[]> {
     if (rows.length === 0) return [];
@@ -774,7 +827,7 @@ export class NegotiationDatabaseAdapter {
       // A private intent's wording never crosses, even on a negotiation it
       // opened before it was made private.
       connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
-        .where(and(inArray(intents.id, [...new Set(counterparts.map((c) => c.intentId))]), eq(intents.isPrivate, false))),
+        .where(and(inArray(intents.id, [...new Set(counterparts.flatMap((c) => c.intentId ? [c.intentId] : []))]), eq(intents.isPrivate, false))),
       connection.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
         .from(negotiationTurns)
         .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
@@ -818,7 +871,7 @@ export class NegotiationDatabaseAdapter {
           avatar: person?.avatar ?? null,
           bio: person?.intro ?? null,
           location: person?.location ?? null,
-          statement: statementById.get(counterpart.intentId) ?? '',
+          statement: statementById.get(counterpart.intentId ?? '') ?? '',
         },
       };
     });

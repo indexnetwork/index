@@ -1,5 +1,5 @@
 import { readConversation } from '@indexnetwork/agent';
-import type { ConversationMessage } from '@indexnetwork/client';
+import { negotiationScope, opportunityFromScope, type ConversationMessage } from '@indexnetwork/client';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
@@ -85,6 +85,11 @@ function opportunityLine(peerName: string, peerUrl: string, headline: string | u
 }
 
 async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
+  const opportunityId = opportunityFromScope(intentId);
+  if (opportunityId) {
+    const url = appLink('o', opportunityId);
+    return { url, link: mdLink('introduction', url) };
+  }
   const url = appLink('i', intentId);
   const intent = await intentService.getById(intentId, userId);
   const label = intent ? intentLabel(intent.summary ?? intent.payload) : 'intent';
@@ -130,6 +135,15 @@ function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listInten
 
 const SOURCE_FIELDS_HINT = ' Optional sourceType and sourceId are client-owned strings Index stores and returns unchanged, for mapping your own records (such as an inferred ambient intent) to this intent.';
 const sourceFieldSchema = z.string().max(1024).nullable().optional();
+
+/** Resolve conversation scope without granting intent operations to an identity seat. */
+async function resolveConversationScope(scope: string, principal: McpPrincipal) {
+  const opportunityId = opportunityFromScope(scope);
+  if (!opportunityId) return resolveIntent(scope, principal);
+  const record = await negotiationService.read(opportunityId, principal.userId);
+  return record?.intentId === null ? { id: scope }
+    : { error: mcpError('conversation_not_found', 'Conversation not found.') };
+}
 
 async function resolveIntent(intentId: string, principal: McpPrincipal) {
   const resolved = await intentService.resolveId(intentId, principal.userId);
@@ -794,7 +808,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const offset = input.offset ?? 0;
       let resolvedIntentId: string | undefined;
       if (input.intentId) {
-        const resolved = await resolveIntent(input.intentId, principal);
+        const resolved = await resolveConversationScope(input.intentId, principal);
         if ('error' in resolved) return resolved.error;
         resolvedIntentId = resolved.id;
       }
@@ -831,20 +845,24 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent_conversation',
     {
-      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent; omit it to read every non-archived intent in one call. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Answers can be saved with principal_send_message using the questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
+      description: 'Read owned intents’ chats: the agent’s notes, progress, and questions, and what the owner has already said. Pass intentId for one intent or opportunity:<UUID> for an identity-seat introduction; omit it to read intents and incoming introductions. Always returns a conversations list. questions are the ones still waiting for an answer, each with questionId, prompt, suggested options, and allowFreeText. Answers can be saved with principal_send_message using the questionId. This is the owner’s private chat. Never forward it to the other person.' + LINK_HINT,
       inputSchema: z.object({ intentId: z.string().trim().min(1).optional() }).strict(),
       annotations: hints('Get intent conversation', true, false, false, true),
     },
     ({ intentId }) => runTool('get_intent_conversation', principal, async () => {
       let intents: { id: string; label: string }[];
       if (intentId) {
-        const resolved = await resolveIntent(intentId, principal);
+        const resolved = await resolveConversationScope(intentId, principal);
         if ('error' in resolved) return resolved.error;
-        const intent = await intentService.getById(resolved.id, principal.userId);
-        intents = [{ id: resolved.id, label: intentLabel(intent?.summary ?? intent?.payload) }];
+        const intent = opportunityFromScope(resolved.id) ? null : await intentService.getById(resolved.id, principal.userId);
+        intents = [{ id: resolved.id, label: opportunityFromScope(resolved.id) ? 'Introduction' : intentLabel(intent?.summary ?? intent?.payload) }];
       } else {
         const { intents: listed } = await intentService.listIntents(principal.userId, { limit: 100 });
-        intents = listed.map((intent) => ({ id: intent.id, label: intentLabel(intent.summary ?? intent.payload) }));
+        const incoming = await negotiationService.list(principal.userId);
+        intents = [
+          ...listed.map((intent) => ({ id: intent.id, label: intentLabel(intent.summary ?? intent.payload) })),
+          ...incoming.filter((row) => row.intentId === null).map((row) => ({ id: negotiationScope(null, row.opportunityId), label: 'Introduction' })),
+        ];
       }
       try {
         const read = await conversationService.intentConversations(principal.userId, intents.map((intent) => intent.id));
@@ -854,7 +872,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           questions: entry.questions.map(({ id, question, options, ...rest }) => ({
             questionId: id, prompt: question, options: options ?? [], allowFreeText: true, ...rest,
           })),
-          url: appLink('i', entry.intentId),
+          url: opportunityFromScope(entry.intentId) ? appLink('o', opportunityFromScope(entry.intentId)!) : appLink('i', entry.intentId),
         }));
         const lines = conversations.map((entry, index) => `- ${mdLink(intents[index]!.label, entry.url)}`);
         return mcpSuccess({ conversations }, lines.length ? lines.join('\n') : 'No intents.');
@@ -869,7 +887,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'principal_send_message',
     {
-      description: 'Save what the owner just said in one intent’s chat, the same way the Index app does. Copy their words; never infer or invent a message. Pass a questionId only when those words answer that waiting question. A message without one is saved as a plain message, and so is one naming a question that is no longer waiting. Saving a message is not approval to accept or pass a match.' + LINK_HINT,
+      description: 'Save what the owner just said in one intent or opportunity-scoped introduction chat, the same way the Index app does. Copy their words; never infer or invent a message. Pass a questionId only when those words answer that waiting question. A message without one is saved as a plain message, and so is one naming a question that is no longer waiting. Saving a message is not approval to accept or pass a match.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         messages: z.array(z.object({
@@ -880,7 +898,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       annotations: hints('Send message', false, false, false, false),
     },
     ({ intentId, messages }, ctx) => runTool('principal_send_message', principal, async () => {
-      const resolved = await resolveIntent(intentId, principal);
+      const resolved = await resolveConversationScope(intentId, principal);
       if ('error' in resolved) return resolved.error;
       const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
       if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);

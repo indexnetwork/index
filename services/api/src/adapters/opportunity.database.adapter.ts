@@ -593,7 +593,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { identityOnly?: boolean; status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     let intentScopeValid = false;
     if (options?.scopeType === 'intent' && options.scopeId) {
@@ -625,6 +625,10 @@ export class OpportunityDatabaseAdapter {
       )
     )`;
     const conditions = [visibilityGuard];
+    if (options?.identityOnly) conditions.push(sql`exists (
+      select 1 from jsonb_array_elements(${opportunities.actors}) actor
+      where actor->>'userId' = ${userId} and actor->>'intent' is null
+    )`);
     // Draft visibility: when explicit statuses are requested, the caller decides;
     // otherwise exclude drafts unless a conversationId scopes them to one session.
     if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));

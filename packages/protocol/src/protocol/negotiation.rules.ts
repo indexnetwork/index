@@ -24,7 +24,7 @@ export interface NegotiationState {
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
   settled: boolean;
-  /** Both intents are active, assigned to this network, and owned by current members. */
+  /** Attached intents are active and assigned; both participants remain eligible in the network. */
   eligible: boolean;
   turns: { seatUserId: string; action: NegotiationAction; message: string }[];
 }
@@ -35,7 +35,7 @@ export interface NegotiationOpening {
   userA: string;
   userB: string;
   intentA: string;
-  intentB: string;
+  intentB: string | null;
   eligible: boolean;
 }
 export type NegotiationOpeningDecision = { awaitingUserId: string; opportunityStatus: 'negotiating' } | null;

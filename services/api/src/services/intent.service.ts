@@ -1,4 +1,4 @@
-import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, type IntentSuggestions, type PrepareInput } from '@indexnetwork/protocol';
+import { IntentSuggester, Intents, Networks, decideNegotiationOpening, pairKeyOf, identityPairKeyOf, type IntentSuggestions, type PrepareInput } from '@indexnetwork/protocol';
 
 import type { AssignmentVisibility } from '../schemas/database.schema';
 
@@ -701,20 +701,22 @@ export class IntentService {
   async openOpportunity(
     userId: string,
     networkId: string,
-    intentIds: [string, string],
+    intentIds: [string, string] | { intentId: string; userId: string },
     context: string,
   ): Promise<OpenOpportunityOutcome> {
     if (!await this.adapter.isNetworkMember(networkId, userId)) return { kind: 'not_member' };
-    const a = await negotiationDatabaseAdapter.seatedIntent(intentIds[0], networkId, { visible: true });
-    const b = a && await negotiationDatabaseAdapter.seatedIntent(intentIds[1], networkId, {
+    const a = await negotiationDatabaseAdapter.seatedIntent(Array.isArray(intentIds) ? intentIds[0] : intentIds.intentId, networkId, { visible: true });
+    const b = a && (Array.isArray(intentIds) ? await negotiationDatabaseAdapter.seatedIntent(intentIds[1], networkId, {
       visible: true,
       otherUserId: a.userId,
       otherIntentId: a.intentId,
-    });
+    }) : await negotiationDatabaseAdapter.seatedIdentity(intentIds.userId, networkId, a.intentId)
+      ? { userId: intentIds.userId, intentId: null } : null);
     if (!a || !b || a.intentId === b.intentId) return { kind: 'not_seated' };
     if (a.userId === userId || b.userId === userId || a.userId === b.userId) return { kind: 'own_intent' };
 
-    const pairKey = pairKeyOf(networkId, a.intentId, b.intentId);
+    const pairKey = b.intentId ? pairKeyOf(networkId, a.intentId, b.intentId)
+      : identityPairKeyOf(networkId, a.intentId, b.userId);
     await negotiationDatabaseAdapter.openCounterparties([{
       pairKey,
       networkId,

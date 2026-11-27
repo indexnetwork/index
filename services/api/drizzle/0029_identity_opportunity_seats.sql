@@ -1,0 +1,1 @@
+ALTER TABLE "negotiations" ALTER COLUMN "responder_intent_id" DROP NOT NULL;

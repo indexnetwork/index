@@ -24,7 +24,7 @@ export type NegotiationOutcome = "agreed" | "declined" | "closed";
 export interface Negotiation {
   id: string;
   opportunityId: string;
-  intentId: string;
+  intentId: string | null;
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
   settledAt: string | null;
@@ -34,7 +34,7 @@ export interface Negotiation {
   /** The third party who opened this pair, and their case for it. Null when the seats' own agents opened it. */
   introducer?: { userId: string; name: string | null; context: string } | null;
   counterparty: {
-    intentId: string;
+    intentId: string | null;
     userId: string;
     name: string | null;
     avatar: string | null;
@@ -175,9 +175,9 @@ export type UserEvent = FrameStamp & (
   | { type: "opportunity.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; status: string } }
   | { type: "introduction.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; phase: Introduction["phase"] } }
   | { type: "introduction.report"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; phase: Introduction["phase"]; note: string } }
-  | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
-  | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
-  | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
+  | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; scopeId?: string; turnIndex: number } }
+  | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; scopeId?: string; outcome: string } }
+  | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string | null; opportunityId?: string } }
   | { type: "intent.created"; id: string; title: string; body: string; data: { intentId: string } }
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }

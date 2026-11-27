@@ -15,10 +15,10 @@ export interface User {
   emailVerified?: boolean;
 }
 
-export interface Intent {
-  id: string;
-  statement: string;
-}
+/** An intent or an opportunity-only work context; identity contexts carry no goal. */
+export type Intent = { id: string; statement: string; kind?: 'intent' }
+  | { id: string; statement: ''; kind: 'identity'; opportunityId: string };
+
 
 export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 

@@ -235,7 +235,7 @@ export default function HomeDashboard() {
     };
   };
 
-  if (intentsLoaded && intents.length === 0) {
+  if (intentsLoaded && intents.length === 0 && questionsLoaded && questions.length === 0 && radar["opportunity:inbox"]?.length === 0) {
     return split(
       <div className="sv-empty">
         <p className="sv-p"><b>welcome to index.</b></p>
