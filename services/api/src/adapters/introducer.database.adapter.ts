@@ -97,6 +97,34 @@ export interface OutreachRow {
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown): Row[] => (result as { rows?: Row[] }).rows ?? (result as Row[]);
 
+function toProposalRow(r: Row): ProposalRow {
+  const metadata = r.metadata as { introducer: { context: string }; card: { member: string; contact: string } };
+  return {
+    id: String(r.id),
+    status: String(r.status) as OpportunityProposalStatus,
+    failure: (r.failure as string | null) ?? null,
+    confidence: Number(r.confidence),
+    detection: r.detection as Record<string, unknown>,
+    actors: r.actors as OpportunityProposalActor[],
+    interpretation: r.interpretation as Record<string, unknown>,
+    context: r.context as Record<string, unknown>,
+    card: metadata.card,
+    draft: metadata.introducer.context,
+    networkId: String(r.network_id),
+    networkTitle: String(r.network_title),
+    opportunityId: (r.opportunity_id as string | null) ?? null,
+    createdAt: new Date(String(r.created_at)),
+    member: {
+      userId: String(r.member_id), name: String(r.member_name), avatar: (r.member_avatar as string | null) ?? null,
+      intentId: String(r.intent_id), intentText: String(r.intent_text),
+    },
+    contact: {
+      id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
+      organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+    },
+  };
+}
+
 /** Mailboxes anyone can have; their domain says nothing about the person. */
 const FREEMAIL = [
   'gmail.com', 'googlemail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com', 'msn.com',
@@ -384,6 +412,7 @@ export class IntroducerDatabaseAdapter {
       context: { networkId: r.networkId },
       confidence: String(r.score),
       metadata: { introducer: { userId: r.introducerUserId, context: r.draft }, card: { member: r.intentLine, contact: r.contactLine } },
+      status: 'checking' as const,
     }))).onConflictDoNothing();
   }
 
@@ -412,33 +441,7 @@ export class IntroducerDatabaseAdapter {
       order by (p.status = 'proposed') desc, p.confidence desc
       limit 50
     `);
-    return rowsOf(result).map((r) => {
-      const metadata = r.metadata as { introducer: { context: string }; card: { member: string; contact: string } };
-      return {
-        id: String(r.id),
-        status: String(r.status) as OpportunityProposalStatus,
-        failure: (r.failure as string | null) ?? null,
-        confidence: Number(r.confidence),
-        detection: r.detection as Record<string, unknown>,
-        actors: r.actors as OpportunityProposalActor[],
-        interpretation: r.interpretation as Record<string, unknown>,
-        context: r.context as Record<string, unknown>,
-        card: metadata.card,
-        draft: metadata.introducer.context,
-        networkId: String(r.network_id),
-        networkTitle: String(r.network_title),
-        opportunityId: (r.opportunity_id as string | null) ?? null,
-        createdAt: new Date(String(r.created_at)),
-        member: {
-          userId: String(r.member_id), name: String(r.member_name), avatar: (r.member_avatar as string | null) ?? null,
-          intentId: String(r.intent_id), intentText: String(r.intent_text),
-        },
-        contact: {
-          id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
-          organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
-        },
-      };
-    });
+    return rowsOf(result).map(toProposalRow);
   }
 
   async setProposal(id: string, patch: Partial<{ status: OpportunityProposalStatus; failure: string | null }>): Promise<void> {
@@ -597,14 +600,13 @@ export class IntroducerDatabaseAdapter {
   }
 
   /**
-   * Seat someone outside Index: an unverified account with intents in no
-   * network, so discovery never finds them and only an introduction reaches
-   * them. Morning briefs are off; signing in with the email claims it.
+   * Seat someone outside Index: an unverified identity with no intents and no
+   * network, so discovery never finds them. Morning briefs are off; signing in
+   * with the email claims it. Null when the email already has an account.
    */
   async createSeat(person: {
     email: string; name: string; intro: string | null; socials: { label: string; value: string }[];
-    intents: { payload: string; embedding: number[] }[];
-  }): Promise<{ userId: string; intentIds: string[] } | null> {
+  }): Promise<{ userId: string } | null> {
     return db.transaction(async (tx) => {
       const [user] = await tx.insert(users)
         .values({ email: person.email, name: person.name, intro: person.intro, emailVerified: false })
@@ -613,11 +615,83 @@ export class IntroducerDatabaseAdapter {
       if (!user) return null;
       if (person.socials.length) await tx.insert(schema.userSocials).values(person.socials.map((s) => ({ userId: user.id, ...s })));
       await tx.insert(schema.userNotificationSettings).values({ userId: user.id, preferences: { morningBrief: false } });
-      const rows = await tx.insert(schema.intents)
-        .values(person.intents.map((intent) => ({ payload: intent.payload, userId: user.id, embedding: intent.embedding })))
-        .returning({ id: schema.intents.id });
-      return { userId: user.id, intentIds: rows.map((r) => r.id) };
+      return { userId: user.id };
     });
+  }
+
+  // ─── research ──────────────────────────────────────────────────────────────
+
+  /**
+   * Emails with a checking proposal still to research, oldest first. Skips
+   * emails already researched and ones tried 3 times or within 30 minutes.
+   */
+  async checkingDue(limit: number): Promise<{ email: string; contact: ContactCard }[]> {
+    const result = await db.execute(sql`
+      select * from (
+      select distinct on (lower(c.email)) lower(c.email) as key, p.created_at,
+             c.id as contact_id, c.email, c.name, c.organization, c.title
+      from opportunity_proposals p
+      join contacts c on c.id = p.contact_id
+      left join contact_research r on r.email = lower(c.email)
+      where p.status = 'checking'
+        and r.status is null
+        and (r.email is null or (r.attempts < 3 and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes')))
+      order by lower(c.email), p.created_at asc
+      ) due
+      order by created_at asc
+      limit ${limit}
+    `);
+    return rowsOf(result)
+      .map((r) => ({
+        email: String(r.key),
+        contact: {
+          id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
+          organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+        },
+      }));
+  }
+
+  /** How many research tries an email has had. */
+  async researchAttempts(email: string): Promise<number> {
+    const [row] = await db.select({ attempts: schema.contactResearch.attempts }).from(schema.contactResearch)
+      .where(eq(schema.contactResearch.email, email.toLowerCase()));
+    return row?.attempts ?? 0;
+  }
+
+  /** Every proposal of one status made from a contact with this email, across introducers. */
+  async proposalsForEmail(email: string, status: 'checking'): Promise<ProposalRow[]> {
+    const result = await db.execute(sql`
+      select p.id, p.status, p.failure, p.confidence, p.detection, p.actors, p.interpretation, p.context, p.metadata,
+             p.network_id, n.title as network_title, p.opportunity_id, p.created_at,
+             u.id as member_id, u.name as member_name, u.avatar as member_avatar,
+             i.id as intent_id, case when i.is_private then '' else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
+             c.id as contact_id, c.email, c.name, c.organization, c.title
+      from opportunity_proposals p
+      join intents i on i.id = p.intent_id
+      join users u on u.id = i.user_id
+      join contacts c on c.id = p.contact_id
+      join networks n on n.id = p.network_id
+      where lower(c.email) = ${email.toLowerCase()} and p.status = ${status}
+      order by p.created_at asc
+    `);
+    return rowsOf(result).map(toProposalRow);
+  }
+
+  /** What one research try came to. Failed tries count; found and not found are final. */
+  async recordResearch(email: string, outcome: 'found' | 'not_found' | 'failed', seatUserId?: string): Promise<void> {
+    const key = email.toLowerCase();
+    const now = new Date();
+    if (outcome === 'failed') {
+      await db.insert(schema.contactResearch).values({ email: key, attempts: 1, lastAttemptAt: now })
+        .onConflictDoUpdate({
+          target: schema.contactResearch.email,
+          set: { attempts: sql`${schema.contactResearch.attempts} + 1`, lastAttemptAt: now },
+        });
+      return;
+    }
+    const set = { status: outcome, seatUserId: outcome === 'found' ? seatUserId ?? null : null, researchedAt: now, lastAttemptAt: now };
+    await db.insert(schema.contactResearch).values({ email: key, attempts: 1, ...set })
+      .onConflictDoUpdate({ target: schema.contactResearch.email, set });
   }
 
   /** An existing seat's live public intent closest to the member's, if it has one. */

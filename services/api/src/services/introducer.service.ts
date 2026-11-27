@@ -32,6 +32,10 @@ const SYNC_EVERY_MS = 24 * 60 * 60_000;
 const MATCH_FLOOR = 0.2;
 /** Contacts read per new intent, across everyone who can introduce it. */
 const PER_INTENT = 24;
+/** Research: emails per sweep, how many run at once, and tries before giving up. */
+const RESEARCH_PER_SWEEP = 10;
+const RESEARCH_CONCURRENCY = 3;
+const RESEARCH_ATTEMPTS = 3;
 /** Intents read per newly synced contact. */
 const PER_CONTACT = 3;
 /** Pairs one screen call judges. */
@@ -200,6 +204,8 @@ interface GooglePerson {
 const FAILURES = {
   on_index: 'They joined Index since; their agent can find this on its own.',
   opted_out: 'They asked Index not to contact them.',
+  not_found: "We couldn't find them online.",
+  research_unavailable: "We couldn't look them up. Try again later.",
   not_visible: "That intent isn't public in a network you share any more.",
   not_opened: "The agents couldn't be woken. Try again.",
 } as const;
@@ -457,7 +463,7 @@ export class IntroducerService {
   /**
    * The background pass, every few minutes: embed contact cards still
    * missing one, match public intents created since the last pass, email
-   * contacts a member said yes to, and forget seats whose introduction ended.
+   * research contacts with new pairs, and email contacts a member said yes to.
    * Every step is idempotent, so a missed or repeated pass is harmless.
    */
   async sweep(): Promise<void> {
@@ -470,11 +476,74 @@ export class IntroducerService {
         await this.matchIntent(intent.id).catch((error) => logger.warn('Matching an intent failed', { intentId: intent.id, error: String(error) }));
         this.sweepCursor = intent.createdAt;
       }
+      await this.researchStep().catch((error) => logger.warn('Contact research step failed', { error: String(error) }));
       await this.outreach();
-      await this.scrubEnded();
     } finally {
       this.sweeping = false;
     }
+  }
+
+  // ─── research ──────────────────────────────────────────────────────────────
+
+  /**
+   * Research each contact with a checking pair once per email: make the
+   * identity-only seat, or settle the pairs when there is no one to find.
+   * At most 10 emails per pass, 3 at a time.
+   */
+  async researchStep(): Promise<void> {
+    if (!process.env.PARALLELS_API_KEY) return;
+    const due = await this.adapter.checkingDue(RESEARCH_PER_SWEEP);
+    let next = 0;
+    const worker = async () => {
+      while (next < due.length) {
+        const item = due[next++]!;
+        await this.researchEmail(item.email, item.contact).catch((error) => logger.warn('Researching a contact failed', { error: String(error) }));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(RESEARCH_CONCURRENCY, due.length) }, worker));
+  }
+
+  private async researchEmail(email: string, contact: ContactCard): Promise<void> {
+    const settle = async (reason: keyof typeof FAILURES) => {
+      for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
+        await this.adapter.setProposal(proposal.id, { status: 'unmatched', failure: FAILURES[reason] });
+      }
+    };
+    let existing = await this.adapter.accountByEmail(email);
+    if (!existing) {
+      const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
+      if (research.kind === 'unavailable') {
+        await this.adapter.recordResearch(email, 'failed');
+        const attempts = await this.adapter.researchAttempts(email);
+        if (attempts >= RESEARCH_ATTEMPTS) await settle('research_unavailable');
+        logger.info('Contact research', { outcome: 'unavailable', reason: research.reason, attempts });
+        return;
+      }
+      if (research.kind === 'not_found') {
+        await this.adapter.recordResearch(email, 'not_found');
+        await settle('not_found');
+        logger.info('Contact research', { outcome: 'not_found' });
+        return;
+      }
+      const created = await this.adapter.createSeat({
+        email,
+        name: publicName(research.name) ?? nameFromEmail(email),
+        intro: research.headline.trim() || null,
+        socials: profileLinks(research.socials),
+      });
+      if (created) {
+        await this.adapter.recordResearch(email, 'found', created.userId);
+        logger.info('Contact research', { outcome: 'found' });
+        return;
+      }
+      // An account appeared while we researched: treat it as any existing one.
+      existing = await this.adapter.accountByEmail(email);
+      if (!existing) return;
+    }
+    if (existing.deleted) return settle('opted_out');
+    if (existing.emailVerified) return settle('on_index');
+    await this.adapter.recordResearch(email, 'found', existing.id);
+    logger.info('Contact research', { outcome: 'existing' });
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────
@@ -560,22 +629,18 @@ export class IntroducerService {
       seat = { userId: existing.id, intentId };
     } else {
       // The card is the introducer's own address book: a hint for research to
-      // find the right person, never copied onto the seat. Everyone else sees
-      // the seat (the member, later introducers, the contact's own email), so
-      // its name, intro and intents come from public research only.
+      // find the right person, never copied onto the seat.
       const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
-      const payloads = research?.intents.map((t) => t.trim()).filter(Boolean).slice(0, 3) ?? [];
-      if (!payloads.length) payloads.push(await introducedIntent(row.member.intentText));
-      const vectors = await this.embedder.generate(payloads) as number[][];
+      if (research.kind !== 'found') return fail('not_opened');
       const created = await this.adapter.createSeat({
         email,
-        name: publicName(research?.name) ?? nameFromEmail(email),
-        intro: research?.headline?.trim() || null,
-        socials: profileLinks(research?.socials ?? []),
-        intents: payloads.map((payload, i) => ({ payload, embedding: vectors[i]! })),
+        name: publicName(research.name) ?? nameFromEmail(email),
+        intro: research.headline.trim() || null,
+        socials: profileLinks(research.socials),
       });
       if (!created) return fail('not_opened');
-      const intentId = await this.adapter.closestSeatIntent(created.userId, row.member.intentId) ?? created.intentIds[0]!;
+      // Temporary: wake still opens intent-to-intent.
+      const intentId = await this.addIntroducedIntent(created.userId, row.member.intentText);
       seat = { userId: created.userId, intentId };
     }
 
