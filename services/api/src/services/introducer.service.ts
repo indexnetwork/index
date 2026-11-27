@@ -132,7 +132,7 @@ type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['ac
 /** What researching an email, or taking its existing account, came to. */
 type SeatOutcome =
   | { kind: 'seated'; userId: string }
-  | { kind: 'on_index' | 'opted_out' | 'not_found' | 'lost' }
+  | { kind: 'on_index' | 'opted_out' | 'not_found' }
   | { kind: 'unavailable'; attempts: number };
 
 export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy' } | { kind: 'gone' };
@@ -468,12 +468,14 @@ export class IntroducerService {
 
   private sweepCursor = new Date(Date.now() - 60 * 60_000);
   private sweeping = false;
+  private researching = false;
 
   /**
    * The background pass, every few minutes: embed contact cards still
-   * missing one, match public intents created since the last pass, email
-   * research contacts with new pairs, and email contacts a member said yes to.
-   * Every step is idempotent, so a missed or repeated pass is harmless.
+   * missing one, match public intents created since the last pass, start
+   * researching contacts with new pairs beside the pass, and email contacts
+   * a member said yes to. Every step is idempotent, so a missed or repeated
+   * pass is harmless.
    */
   async sweep(): Promise<void> {
     if (this.sweeping) return;
@@ -485,7 +487,8 @@ export class IntroducerService {
         await this.matchIntent(intent.id).catch((error) => logger.warn('Matching an intent failed', { intentId: intent.id, error: String(error) }));
         this.sweepCursor = intent.createdAt;
       }
-      await this.researchStep().catch((error) => logger.warn('Contact research step failed', { error: String(error) }));
+      // Research makes slow paid calls: it runs on its own, never holding up matching or outreach.
+      void this.researchStep().catch((error) => logger.warn('Contact research step failed', { error: String(error) }));
       await this.outreach();
     } finally {
       this.sweeping = false;
@@ -497,19 +500,24 @@ export class IntroducerService {
   /**
    * Research each contact with a checking pair once per email: make the
    * identity-only seat, or settle the pairs when there is no one to find.
-   * At most 10 emails per pass, 3 at a time.
+   * At most 10 emails per pass, 3 at a time; a pass still running skips the next.
    */
   async researchStep(): Promise<void> {
-    if (!process.env.PARALLELS_API_KEY) return;
-    const due = await this.adapter.checkingDue(RESEARCH_PER_SWEEP);
-    let next = 0;
-    const worker = async () => {
-      while (next < due.length) {
-        const item = due[next++]!;
-        await this.researchEmail(item.email, item.contact).catch((error) => logger.warn('Researching a contact failed', { error: String(error) }));
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(RESEARCH_CONCURRENCY, due.length) }, worker));
+    if (this.researching || !process.env.PARALLELS_API_KEY) return;
+    this.researching = true;
+    try {
+      const due = await this.adapter.checkingDue(RESEARCH_PER_SWEEP);
+      let next = 0;
+      const worker = async () => {
+        while (next < due.length) {
+          const item = due[next++]!;
+          await this.researchEmail(item.email, item.contact).catch((error) => logger.warn('Researching a contact failed', { error: String(error) }));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(RESEARCH_CONCURRENCY, due.length) }, worker));
+    } finally {
+      this.researching = false;
+    }
   }
 
   private async researchEmail(email: string, contact: ContactCard): Promise<void> {
@@ -543,8 +551,6 @@ export class IntroducerService {
           await this.adapter.resetResearchAttempts(email);
         }
         return;
-      case 'lost':
-        return;
       default:
         return settle(seat.kind);
     }
@@ -552,44 +558,52 @@ export class IntroducerService {
 
   /**
    * Research one email and seat whoever it finds: an identity-only ghost,
-   * recorded per email. Found nothing is recorded as final; couldn't run
-   * counts a try. An account that appeared meanwhile is taken as it is.
+   * recorded per email. Every try is counted before the paid call, so one
+   * that fails or loses its seat afterwards is never researched again for
+   * free; found nothing is recorded as final. An account that appeared
+   * meanwhile is taken as it is.
    * The card is the introducer's own address book: a hint for research to
    * find the right person, never copied onto the seat.
    */
   private async researchAndSeat(email: string, contact: ContactCard): Promise<SeatOutcome> {
-    const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
-    if (research.kind === 'unavailable') {
-      // No API key: nothing ran, so it is not a try.
-      if (research.reason === 'no_key') return { kind: 'unavailable', attempts: 0 };
-      await this.adapter.recordResearch(email, 'failed');
-      const attempts = await this.adapter.researchAttempts(email);
-      logger.info('Contact research', { outcome: 'unavailable', reason: research.reason, attempts });
+    // No API key: nothing would run, so it is not a try.
+    if (!process.env.PARALLELS_API_KEY) return { kind: 'unavailable', attempts: 0 };
+    const attempts = await this.adapter.recordAttempt(email);
+    const unavailable = (reason: string): SeatOutcome => {
+      logger.info('Contact research', { outcome: 'unavailable', reason, attempts });
       return { kind: 'unavailable', attempts };
-    }
+    };
+    const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
+    if (research.kind === 'unavailable') return unavailable(research.reason);
     if (research.kind === 'not_found') {
       await this.adapter.recordResearch(email, 'not_found');
       logger.info('Contact research', { outcome: 'not_found' });
       return { kind: 'not_found' };
     }
-    const created = await this.adapter.createSeat({
-      email,
-      name: publicName(research.name) ?? nameFromEmail(email),
-      intro: research.headline.trim() || null,
-      socials: profileLinks(research.socials),
-    });
-    if (created) {
-      await this.adapter.recordResearch(email, 'found', created.userId);
-      logger.info('Contact research', { outcome: 'found' });
-      return { kind: 'seated', userId: created.userId };
+    try {
+      const created = await this.adapter.createSeat({
+        email,
+        name: publicName(research.name) ?? nameFromEmail(email),
+        intro: research.headline.trim() || null,
+        socials: profileLinks(research.socials),
+      });
+      if (created) {
+        await this.adapter.recordResearch(email, 'found', created.userId);
+        logger.info('Contact research', { outcome: 'found' });
+        return { kind: 'seated', userId: created.userId };
+      }
+      // An account appeared while we researched: treat it as any existing one.
+      const existing = await this.adapter.accountByEmail(email);
+      if (!existing) {
+        logger.warn('Seat not created and no account found');
+        return unavailable('lost');
+      }
+      return await this.adoptAccount(email, existing);
+    } catch (error) {
+      // The try is already counted: let the attempt limit settle it like any other failure.
+      logger.warn('Seating a researched contact failed', { error: String(error) });
+      return unavailable('seat_failed');
     }
-    // An account appeared while we researched: treat it as any existing one.
-    const existing = await this.adapter.accountByEmail(email);
-    if (!existing) {
-      logger.warn('Seat not created and no account found');
-      return { kind: 'lost' };
-    }
-    return this.adoptAccount(email, existing);
   }
 
   /**

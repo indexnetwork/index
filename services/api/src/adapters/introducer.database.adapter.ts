@@ -620,7 +620,7 @@ export class IntroducerDatabaseAdapter {
   /** The account an email already has, if any, with whether it is claimed or gone. */
   async accountByEmail(email: string): Promise<{ id: string; emailVerified: boolean; deleted: boolean } | null> {
     const [row] = await db.select({ id: users.id, emailVerified: users.emailVerified, deletedAt: users.deletedAt })
-      .from(users).where(eq(users.email, email)).limit(1);
+      .from(users).where(sql`lower(${users.email}) = lower(${email})`).limit(1);
     return row ? { id: row.id, emailVerified: row.emailVerified, deleted: row.deletedAt !== null } : null;
   }
 
@@ -788,11 +788,16 @@ export class IntroducerDatabaseAdapter {
     return row?.status ?? null;
   }
 
-  /** How many research tries an email has had. */
-  async researchAttempts(email: string): Promise<number> {
-    const [row] = await db.select({ attempts: schema.contactResearch.attempts }).from(schema.contactResearch)
-      .where(eq(schema.contactResearch.email, email.toLowerCase()));
-    return row?.attempts ?? 0;
+  /** Count one research try, before it runs. @returns How many tries the email has had, this one included. */
+  async recordAttempt(email: string): Promise<number> {
+    const now = new Date();
+    const [row] = await db.insert(schema.contactResearch).values({ email: email.toLowerCase(), attempts: 1, lastAttemptAt: now })
+      .onConflictDoUpdate({
+        target: schema.contactResearch.email,
+        set: { attempts: sql`${schema.contactResearch.attempts} + 1`, lastAttemptAt: now },
+      })
+      .returning({ attempts: schema.contactResearch.attempts });
+    return row?.attempts ?? 1;
   }
 
   /** Every proposal of one status made from a contact with this email, across introducers. */
@@ -815,18 +820,10 @@ export class IntroducerDatabaseAdapter {
     return rowsOf(result).map(toProposalRow);
   }
 
-  /** What one research try came to. Failed tries count; found and not found are final. */
-  async recordResearch(email: string, outcome: 'found' | 'not_found' | 'failed', seatUserId?: string): Promise<void> {
+  /** What a research try found, or a seat taken as it is. Final; the try itself was counted by `recordAttempt`. */
+  async recordResearch(email: string, outcome: 'found' | 'not_found', seatUserId?: string): Promise<void> {
     const key = email.toLowerCase();
     const now = new Date();
-    if (outcome === 'failed') {
-      await db.insert(schema.contactResearch).values({ email: key, attempts: 1, lastAttemptAt: now })
-        .onConflictDoUpdate({
-          target: schema.contactResearch.email,
-          set: { attempts: sql`${schema.contactResearch.attempts} + 1`, lastAttemptAt: now },
-        });
-      return;
-    }
     const set = { status: outcome, seatUserId: outcome === 'found' ? seatUserId ?? null : null, researchedAt: now, lastAttemptAt: now };
     await db.insert(schema.contactResearch).values({ email: key, attempts: 1, ...set })
       .onConflictDoUpdate({ target: schema.contactResearch.email, set });

@@ -24,7 +24,7 @@ function addressesIn(values: string[]): Set<string> {
  * How often the member emailed each address: lowercased address to the number
  * of their sent messages that include it (once per message), over the newest
  * 2,000 sent. Reads headers only.
- * @returns null when Gmail refuses (401/403) or fails partway, so the caller ranks without it.
+ * @returns null when Gmail refuses (401/403), fails partway or sends an unreadable body, so the caller ranks without it.
  */
 export async function sentFrequency(accessToken: string): Promise<Map<string, number> | null> {
   const headers = { Authorization: `Bearer ${accessToken}` };
@@ -39,7 +39,11 @@ export async function sentFrequency(accessToken: string): Promise<Map<string, nu
       logger.warn('Gmail list refused', { status: res?.status ?? 'network' });
       return null;
     }
-    const body = await res.json() as { messages?: { id: string }[]; nextPageToken?: string };
+    const body = await res.json().catch(() => null) as { messages?: { id: string }[]; nextPageToken?: string } | null;
+    if (!body) {
+      logger.warn('Gmail list unreadable');
+      return null;
+    }
     ids.push(...(body.messages ?? []).map((m) => m.id));
     pageToken = body.nextPageToken;
     if (!pageToken) break;
@@ -58,7 +62,12 @@ export async function sentFrequency(accessToken: string): Promise<Map<string, nu
         failed = true;
         return;
       }
-      const body = await res.json() as { payload?: { headers?: { name: string; value: string }[] } };
+      const body = await res.json().catch(() => null) as { payload?: { headers?: { name: string; value: string }[] } } | null;
+      if (!body) {
+        logger.warn('Gmail message unreadable');
+        failed = true;
+        return;
+      }
       const values = (body.payload?.headers ?? []).map((h) => h.value);
       for (const address of addressesIn(values)) counts.set(address, (counts.get(address) ?? 0) + 1);
     }
