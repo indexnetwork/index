@@ -317,6 +317,20 @@ export class NegotiationDatabaseAdapter {
           .where(eq(negotiations.pairKey, pair.pairKey)).limit(1);
         if (existing) return null;
 
+        // A pass is on the person, not the intent: once either of these two
+        // people has passed on an opportunity with the other, discovery never
+        // pairs them again through some other intent. Only a person who
+        // introduces them on purpose can.
+        if (pair.detection?.source !== 'introducer') {
+          const [passed] = await tx.select({ id: opportunities.id }).from(opportunities)
+            .where(and(
+              eq(opportunities.status, 'rejected'),
+              sql`${opportunities.actors} @> ${JSON.stringify([{ userId: pair.userA }])}::jsonb`,
+              sql`${opportunities.actors} @> ${JSON.stringify([{ userId: pair.userB }])}::jsonb`,
+            )).limit(1);
+          if (passed) return null;
+        }
+
         const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
           .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
           .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
