@@ -624,7 +624,7 @@ export class IntroducerDatabaseAdapter {
   /**
    * Emails with a checking proposal still to settle, oldest first: ones to
    * research (skipping ones tried 3 times or within 30 minutes), ones already
-   * found not to exist online, and ones already found (judged, not researched).
+   * found not to exist online, and ones already found (judged, not researched, at most every 30 minutes).
    */
   async checkingDue(limit: number): Promise<{ email: string; contact: ContactCard }[]> {
     const result = await db.execute(sql`
@@ -636,7 +636,8 @@ export class IntroducerDatabaseAdapter {
       left join contact_research r on r.email = lower(c.email)
       where p.status = 'checking'
         and (
-          r.status in ('not_found', 'found')
+          r.status = 'not_found'
+          or (r.status = 'found' and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))
           or (r.status is null and (r.email is null or (r.attempts < 3 and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))))
         )
       order by lower(c.email), p.created_at asc
@@ -727,6 +728,25 @@ export class IntroducerDatabaseAdapter {
     await db.update(opportunityProposals)
       .set({ status: 'unmatched', failure, updatedAt: new Date() })
       .where(and(eq(opportunityProposals.id, id), eq(opportunityProposals.status, 'checking')));
+  }
+
+  /** A found email's judging left pairs checking: wait out the backoff before judging it again. */
+  async touchResearch(email: string): Promise<void> {
+    await db.update(schema.contactResearch).set({ lastAttemptAt: new Date() }).where(eq(schema.contactResearch.email, email.toLowerCase()));
+  }
+
+  /** The ghost found for an email, if any. */
+  async foundSeatId(email: string): Promise<string | null> {
+    const [row] = await db.select({ id: schema.contactResearch.seatUserId }).from(schema.contactResearch)
+      .where(eq(schema.contactResearch.email, email.toLowerCase()));
+    return row?.id ?? null;
+  }
+
+  /** A found row lost its ghost: forget the result so the email is researched again after the backoff. */
+  async clearResearch(email: string): Promise<void> {
+    await db.update(schema.contactResearch)
+      .set({ status: null, seatUserId: null, attempts: 0, lastAttemptAt: new Date() })
+      .where(eq(schema.contactResearch.email, email.toLowerCase()));
   }
 
   /** After giving up: start the count over but keep the last try's time, so a later pair retries after the backoff. */

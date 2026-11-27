@@ -516,6 +516,11 @@ export class IntroducerService {
       // Researched before: judge its pairs without researching again, unless the ghost has become a real account.
       if (existing?.deleted) return settle('opted_out');
       if (existing?.emailVerified) return settle('on_index');
+      if (!await this.adapter.foundSeatId(email)) {
+        // The ghost is gone: research this email again later.
+        await this.adapter.clearResearch(email);
+        return;
+      }
       return this.judgeEmail(email);
     }
     if (!existing) {
@@ -572,12 +577,13 @@ export class IntroducerService {
    * the next sweep. A pair whose intent is private now is left alone.
    */
   private async judgeEmail(email: string): Promise<void> {
+    let unsettled = false;
     for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
       const input = await this.adapter.judgeInput(proposal.id, email);
-      if (!input) continue;
+      if (!input) { unsettled = true; continue; }
       const judgment = await judgePair(input);
       logger.info('Pair judged', { proposalId: proposal.id, mutual: judgment ? judgment.mutual : null });
-      if (!judgment) continue;
+      if (!judgment) { unsettled = true; continue; }
       if (!judgment.mutual) {
         await this.adapter.unmatchProposal(proposal.id, 'not mutual');
         continue;
@@ -589,6 +595,8 @@ export class IntroducerService {
         judgment: { memberGets: judgment.memberGets, contactGets: judgment.contactGets },
       });
     }
+    // Pairs left checking come back after 30 minutes, not every sweep.
+    if (unsettled) await this.adapter.touchResearch(email);
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────
