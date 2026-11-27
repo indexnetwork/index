@@ -6,6 +6,7 @@ import { z } from 'zod-v4';
 import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../../services/conversation.service';
 import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
+import { REPORT_NOTE_MAX, introducerService } from '../../services/introducer.service';
 import { negotiationService } from '../../services/negotiation.service';
 import { networkService } from '../../services/network.service';
 import { opportunityService } from '../../services/opportunity.service';
@@ -698,6 +699,69 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         },
         negotiation,
       }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status, opportunity.viewerCommitted)}`);
+    }),
+  );
+
+  server.registerTool(
+    'list_introductions',
+    {
+      description: 'Use when the owner asks how the introductions they made are going. Lists introductions the owner opened between two other people (from the Introduce page or the API), newest first: the pair, the phase (talking, agreed, met, no_fit, quiet, or private when one side keeps the outcome private) and any short notes either side sent back. Never the turns, and never which side said what.',
+      inputSchema: z.object({ opportunityId: z.string().trim().min(1).optional() }).strict(),
+      annotations: hints('List introductions I made', true, false, false, true),
+    },
+    ({ opportunityId }) => runTool('list_introductions', principal, async () => {
+      const introductions = (await introducerService.introductions(principal.userId, opportunityId)).map((intro) => ({
+        opportunityId: intro.opportunityId,
+        createdAt: intro.createdAt,
+        context: intro.context,
+        a: { userId: intro.a.userId, name: intro.a.name, url: appLink('u', intro.a.userId) },
+        b: { userId: intro.b.userId, name: intro.b.name, url: appLink('u', intro.b.userId) },
+        phase: intro.phase,
+        reports: intro.reports,
+      }));
+      const lines = introductions.map((intro) =>
+        `- ${mdLink(intro.a.name, intro.a.url)} ⇄ ${mdLink(intro.b.name, intro.b.url)} — ${intro.phase.replace('_', ' ')}${intro.reports.length ? ` — "${intro.reports.map((r) => r.note).join('" / "')}"` : ''}`);
+      return mcpSuccess({ introductions }, lines.length ? ['Introductions you made:', ...lines].join('\n') : 'No introductions yet.');
+    }),
+  );
+
+  server.registerTool(
+    'report_to_introducer',
+    {
+      description: `Send the person who introduced the owner one short note (at most ${REPORT_NOTE_MAX} characters) on how an introduction went. Only on an opportunity that has an introducer and has left negotiating, once per opportunity, and only when the owner's introducer setting is "note" (see set_introducer_reports). The note reaches the introducer word for word, without saying which side sent it: write it for the owner, never quote the negotiation, and confirm it with the owner first.`,
+      inputSchema: z.object({
+        opportunityId: z.string().trim().min(1),
+        note: z.string().trim().min(1).max(REPORT_NOTE_MAX),
+      }).strict(),
+      annotations: hints('Report back to introducer', false, false, false, false),
+    },
+    ({ opportunityId, note }) => runTool('report_to_introducer', principal, async () => {
+      const resolved = await resolveOpportunity(opportunityId, principal);
+      if ('error' in resolved) return resolved.error;
+      const result = await introducerService.fileReport(resolved.id, principal.userId, { note });
+      if ('error' in result) {
+        const code = result.status === 404 ? 'opportunity_not_found'
+          : result.status === 403 ? 'report_not_allowed'
+            : result.status === 409 ? 'report_conflict'
+              : 'report_invalid';
+        return mcpError(code, result.error);
+      }
+      return mcpSuccess({ reportId: result.id, opportunityId: resolved.id }, 'Sent your note to the person who introduced you.');
+    }),
+  );
+
+  server.registerTool(
+    'set_introducer_reports',
+    {
+      description: 'Read or change what people who introduce the owner learn once the owner\'s side of an introduction settles: "status" (where it ended up; the default), "note" (that, plus one short note the owner\'s agent may send with report_to_introducer), or "none" (nothing past "talking"; this hides the outcome for both sides). Omit setting to read the current value. Change it only when the owner asks.',
+      inputSchema: z.object({ setting: z.enum(['note', 'status', 'none']).optional() }).strict(),
+      annotations: hints('Introducer report setting', false, false, false, true),
+    },
+    ({ setting }) => runTool('set_introducer_reports', principal, async () => {
+      if (setting) await userService.updateNotificationPreferences(principal.userId, { introducerReports: setting });
+      const profile = await userService.findWithGraph(principal.userId);
+      const current = profile?.notificationPreferences?.introducerReports ?? 'status';
+      return mcpSuccess({ setting: current }, `People who introduce you learn: ${current === 'note' ? 'the status and a short note' : current === 'status' ? 'the status only' : 'nothing past "talking"'}.`);
     }),
   );
 

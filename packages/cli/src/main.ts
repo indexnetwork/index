@@ -277,6 +277,7 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         positionals: args.positionals,
+        message: args.message,
       });
       return;
     case "negotiation":

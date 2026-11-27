@@ -96,6 +96,8 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
     accepted?: boolean;
     messages?: boolean;
     morningBrief?: boolean;
+    introductions?: boolean;
+    introducerReports?: "note" | "status" | "none";
   }>({});
 
   const profileOnly = !!firstRun || !!editProfile;
@@ -246,11 +248,18 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
   }
 
 
-  const NOTIFY: Array<{ key: "opportunity" | "accepted" | "messages" | "morningBrief"; title: string; body: string }> = [
+  const NOTIFY: Array<{ key: "opportunity" | "accepted" | "messages" | "morningBrief" | "introductions"; title: string; body: string }> = [
     { key: "opportunity", title: "an opportunity surfaces", body: "your agent found someone who meets your intents and wants you to review." },
     { key: "accepted", title: "an intro is accepted", body: "both of you said yes, and the chat opens on both sides." },
     { key: "messages", title: "a message arrives", body: "a connection wrote to you; emailed if unread after a minute." },
+    { key: "introductions", title: "an introduction you made moves", body: "two people you introduced agreed, met, or went quiet, or one of them sent a note back." },
     { key: "morningBrief", title: "daily brief", body: "your agent looks again at 08:00, and emails you only when it needs you." },
+  ];
+
+  const REPORTS: Array<{ value: "status" | "note" | "none"; title: string; body: string }> = [
+    { value: "status", title: "where it ended up", body: "agreed, met, no fit, or went quiet. never what the agents said." },
+    { value: "note", title: "that, and a short note", body: "you, or your agent when you ask, can send them one line on how it went, once." },
+    { value: "none", title: "nothing", body: "they see it's talking, then only that it ended." },
   ];
 
   const body = (
@@ -383,6 +392,29 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                       type="checkbox"
                       checked={notificationPreferences[key] !== false}
                       onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, [key]: e.target.checked })); mark(); }}
+                    />
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2 className="st-h">people who introduce you</h2>
+            <p className="st-note">when someone introduces you, what they learn once your side settles.</p>
+            <ul className="st-rows" role="radiogroup" aria-label="people who introduce you">
+              {REPORTS.map(({ value, title, body: text }) => (
+                <li key={value}>
+                  <label className="st-row">
+                    <span className="st-row-text">
+                      <b>{title}</b>
+                      <span>{text}</span>
+                    </span>
+                    <input
+                      type="radio"
+                      name="introducerReports"
+                      value={value}
+                      checked={(notificationPreferences.introducerReports ?? "status") === value}
+                      onChange={() => { setNotificationPreferences((prev) => ({ ...prev, introducerReports: value })); mark(); }}
                     />
                   </label>
                 </li>

@@ -90,7 +90,8 @@
 .idk-h2::after { content: ""; flex: 1; height: 3px; border-top: 1px solid #000; border-bottom: 1px solid #000; }
 .idk-h2 .n { order: 2; font-weight: 500; letter-spacing: 0; color: var(--idk-ink3); }
 .idk .idk-rows { list-style: none; margin: 4px 0 0; padding: 0; }
-.idk .idk-rows li { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; margin: 0; font-size: 13px; }
+.idk .idk-rows li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 6px 0; margin: 0; font-size: 13px; }
+.idk-rows .note { flex-basis: 100%; font-size: 12px; color: var(--idk-ink2); line-height: 1.4; }
 .idk-rows li + li { border-top: 1px dashed var(--idk-line); }
 .idk-rows li.done .p { color: var(--idk-ink3); }
 .idk-rows li.fresh { animation: idk-fresh 1.6s ease-out 2; }

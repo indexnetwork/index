@@ -25,7 +25,7 @@ const MAX_CONTEXT = 2000;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
 
-const isFinal = (p: IntroductionProgress) => p.phase === "met" || p.phase === "no_fit" || p.phase === "quiet";
+const isFinal = (p: IntroductionProgress) => p.phase !== "talking" && p.phase !== "agreed";
 
 /** Each phase as a word and a status square, as on home. */
 const PHASE: Record<IntroductionPhase, { label: string; cls: string }> = {
@@ -34,6 +34,7 @@ const PHASE: Record<IntroductionPhase, { label: string; cls: string }> = {
   met: { label: "met", cls: "live" },
   no_fit: { label: "no fit", cls: "paused" },
   quiet: { label: "went quiet", cls: "paused" },
+  private: { label: "ended", cls: "paused" },
 };
 
 function phaseLine(p: IntroductionProgress): string {
@@ -44,6 +45,7 @@ function phaseLine(p: IntroductionProgress): string {
     case "met": return `${A} and ${B} both said yes. They're connected.`;
     case "no_fit": return "It wasn't a fit. Nothing more happens.";
     case "quiet": return "It went quiet before both said yes.";
+    case "private": return "It ended. One of them keeps how it went private.";
   }
 }
 
@@ -70,11 +72,12 @@ function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; ope
               <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
               <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
               <span className="t">{since(r.createdAt)}</span>
+              {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
             </li>
           ))}
         </ul>
       )}
-      <div className="idk-run-foot">🔒 You see where each ends up, never what the agents say.</div>
+      <div className="idk-run-foot">🔒 You see where each ends up and any note either side sends back, never what the agents say.</div>
     </aside>
   );
 }
@@ -282,11 +285,12 @@ function RunColumn({ runs, opening, freshId }: {
               <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
               <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
               <span className="t">{since(r.createdAt)}</span>
+              {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
             </div>
           ))}
         </>
       )}
-      <div className="sv-run-foot">🔒 You see where each ends up, never what the agents say.</div>
+      <div className="sv-run-foot">🔒 You see where each ends up and any note either side sends back, never what the agents say.</div>
     </aside>
   );
 }

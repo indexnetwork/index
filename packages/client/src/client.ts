@@ -173,6 +173,8 @@ type FrameStamp = { eventId?: string; at?: string };
 export type UserEvent = FrameStamp & (
   | { type: "opportunity.new"; id: string; title: string; body: string; link?: string; data?: { opportunityId: string } }
   | { type: "opportunity.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; status: string } }
+  | { type: "introduction.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; phase: Introduction["phase"] } }
+  | { type: "introduction.report"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; phase: Introduction["phase"]; note: string } }
   | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
@@ -199,6 +201,8 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
   switch (type) {
     case "opportunity.new":
     case "opportunity.status":
+    case "introduction.status":
+    case "introduction.report":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -219,6 +223,21 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
  * `IndexClient` is the REST implementation an external agent uses. A host that
  * already owns the data implements the same surface in-process.
  */
+/**
+ * An introduction you made, as its introducer sees it. `private` means it
+ * ended and one side keeps the outcome from introducers.
+ */
+export interface Introduction {
+  opportunityId: string;
+  createdAt: string;
+  updatedAt: string;
+  context: string;
+  a: { userId: string; name: string; avatar: string | null; intentText: string };
+  b: { userId: string; name: string; avatar: string | null; intentText: string };
+  phase: "talking" | "agreed" | "met" | "no_fit" | "quiet" | "private";
+  reports: { note: string; at: string }[];
+}
+
 export interface Index {
   /** @returns The owner this instance acts for. */
   me(): Promise<Me>;
@@ -527,6 +546,43 @@ export class IndexClient implements Index {
     context: string;
   }): Promise<{ opportunityId: string }> {
     return this.request("POST", "/opportunities", input);
+  }
+
+  /**
+   * Record a client event on an opportunity you hold a seat in, beside its
+   * lifecycle. Any type that isn't a lifecycle type; `report` is
+   * {@link reportOpportunity}.
+   *
+   * @param id - Opportunity id.
+   * @param event - The event type and optional free-form context.
+   * @returns The new event's id.
+   */
+  async recordOpportunityEvent(id: string, event: { type: string; data?: Record<string, unknown> }): Promise<{ id: string }> {
+    return this.request("POST", `/opportunities/${encodeURIComponent(id)}/events`, event);
+  }
+
+  /**
+   * Send the person who introduced you one short note on how it went: once,
+   * after the negotiation settled, and only when your introducer setting is
+   * `note`. The introducer never learns which side sent it.
+   *
+   * @param id - Opportunity id.
+   * @param report - The note, at most 280 characters.
+   * @returns The report's event id.
+   */
+  async reportOpportunity(id: string, report: { note: string }): Promise<{ id: string }> {
+    return this.recordOpportunityEvent(id, { type: "report", data: { note: report.note } });
+  }
+
+  /**
+   * Introductions you opened between two other people, newest first: the
+   * pair, the phase, and any notes either side sent back. Never the turns.
+   *
+   * @returns Your introductions.
+   */
+  async listIntroductions(): Promise<Introduction[]> {
+    const { introductions } = await this.request<{ introductions: Introduction[] }>("GET", "/introducer/introductions");
+    return introductions;
   }
 
   /** @param id - Opportunity id. @returns The opportunity now accepted. */

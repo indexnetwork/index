@@ -12,6 +12,7 @@ export type {
   IntentLifecycleWireStatus,
   IntentStatus,
   IntentSummary,
+  Introduction,
   MatchReference,
   Me,
   Negotiation,

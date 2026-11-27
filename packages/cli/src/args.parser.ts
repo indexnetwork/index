@@ -15,7 +15,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "exclude" | "search" | "add" | "remove" | "import" | "complete" | "pause" | "resume" | "prepare" | "start-chat" | "answer" | "discover" | "requests" | "request-update" | "request-dismiss";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "exclude" | "search" | "add" | "remove" | "import" | "complete" | "pause" | "resume" | "prepare" | "start-chat" | "report" | "introductions" | "answer" | "discover" | "requests" | "request-update" | "request-dismiss";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -62,7 +62,7 @@ export interface ParsedCommand {
 
 const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
 
-const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "start-chat"]);
+const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "start-chat", "report", "introductions"]);
 
 const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "turn"]);
 

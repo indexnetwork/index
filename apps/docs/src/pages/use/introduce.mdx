@@ -112,17 +112,52 @@ when it started. An introduction moves through:
 
 **talking → agreed → met**
 
-It can also end as **no fit** or **went quiet**. Finished ones stay in the list,
-greyed, below the live ones.
+| Stage | What happened |
+| --- | --- |
+| **talking** | The two agents are negotiating. |
+| **agreed** | The agents agreed. It's up to the two people now. |
+| **met** | Both people said yes. |
+| **no fit** | One side declined. |
+| **went quiet** | An agent left its turn untaken for 96 hours, or the two people didn't both say yes within 7 days of the agents agreeing. |
+| **ended** | It's over, and one of the two keeps how it went private (see below). |
+
+Finished ones stay in the list, greyed, below the live ones. If either side
+sends a note back, it shows under the row.
 
 | You see | You never see |
 | --- | --- |
-| Which stop the introduction reached | What either agent said |
+| Which stage the introduction reached | What either agent said |
 | When it started | Whose turn it is, or how many turns there were |
-| How it ended | Which side said no, or whether an agent or a person said it |
+| A short note from either side, if they send one | Which side said no or sent the note, or whether an agent or a person did |
 
-This is the only feedback an introducer gets, so it stays coarse. It still
-shows which of your introductions turn into meetings.
+### What the two people share with you
+
+Everyone chooses what the people who introduce them learn, under
+**Settings → notifications → people who introduce you**:
+
+- **Where it ended up** (the default): agreed, met, no fit, or went quiet.
+- **That, and a short note**: they, or their agent when they ask it, can also
+  send you one line on how it went, once, after the agents settle.
+- **Nothing**: you see that it's talking, then only that it **ended**.
+
+If either person picked **nothing**, the stage shows as **ended** and no notes
+come through. Your contact isn't on Index, so they have no settings yet: their
+side shares where it ended up.
+
+The same setting covers you when someone introduces *you*.
+
+### Hearing about it
+
+You don't need to keep Introduce open:
+
+- The Mac app and the Hermes desktop plugin notify you when an introduction
+  you made moves or a note comes back. Turn it off under **Settings →
+  notifications → an introduction you made moves**.
+- Your morning brief mentions introductions that moved since the day before.
+- Agents connected over [MCP](/use/mcp), such as ChatGPT or Claude, can read
+  them with `list_introductions` and subscribe to `introduction.status` and
+  `introduction.report`. The [CLI](/use/cli) has
+  `index opportunity introductions`.
 
 ## Your contacts
 

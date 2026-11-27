@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import type { OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
+import type { IntroducerReportSetting, OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
 
 const { contacts, users, opportunityProposals, introducerExclusions } = schema;
 
@@ -73,6 +73,7 @@ export interface IntroductionRow {
   opportunityId: string;
   status: string;
   createdAt: Date;
+  updatedAt: Date;
   context: string;
   a: { userId: string; name: string; avatar: string | null; intentText: string };
   b: { userId: string; name: string; avatar: string | null; intentText: string };
@@ -673,7 +674,7 @@ export class IntroducerDatabaseAdapter {
   /** Introductions the viewer opened, newest first: who, and the opportunity's status. Never the turns. */
   async introductions(viewerId: string, opportunityId?: string, limit = 20): Promise<IntroductionRow[]> {
     const result = await db.execute(sql`
-      select o.id as opportunity_id, o.status, o.created_at,
+      select o.id as opportunity_id, o.status, o.created_at, o.updated_at,
              o.metadata->'introducer'->>'context' as context,
              n.initiator_user_id as a_user, ua.name as a_name, ua.avatar as a_avatar,
              coalesce(nullif(ia.summary, ''), ia.payload) as a_text,
@@ -694,10 +695,73 @@ export class IntroducerDatabaseAdapter {
       opportunityId: String(r.opportunity_id),
       status: String(r.status),
       createdAt: new Date(String(r.created_at)),
+      updatedAt: new Date(String(r.updated_at)),
       context: String(r.context ?? ''),
       a: { userId: String(r.a_user), name: String(r.a_name), avatar: (r.a_avatar as string | null) ?? null, intentText: String(r.a_text) },
       b: { userId: String(r.b_user), name: String(r.b_name), avatar: (r.b_avatar as string | null) ?? null, intentText: String(r.b_text) },
     }));
+  }
+
+  /**
+   * What each person lets their introducers learn. A person with no setting,
+   * including a contact who has not signed up, shares the status.
+   */
+  async reportSettings(userIds: string[]): Promise<Map<string, IntroducerReportSetting>> {
+    const settings = new Map<string, IntroducerReportSetting>(userIds.map((id) => [id, 'status']));
+    if (!userIds.length) return settings;
+    const rows = await db.select({ userId: schema.userNotificationSettings.userId, preferences: schema.userNotificationSettings.preferences })
+      .from(schema.userNotificationSettings)
+      .where(inArray(schema.userNotificationSettings.userId, userIds));
+    for (const row of rows) {
+      const value = (row.preferences as { introducerReports?: unknown } | null)?.introducerReports;
+      if (value === 'note' || value === 'none') settings.set(row.userId, value);
+    }
+    return settings;
+  }
+
+  /** Notes the seats sent back, oldest first. Who sent each is never returned. */
+  async reports(opportunityIds: string[]): Promise<Map<string, { note: string; at: Date }[]>> {
+    const grouped = new Map<string, { note: string; at: Date }[]>();
+    if (!opportunityIds.length) return grouped;
+    const rows = await db.select({ opportunityId: schema.opportunityEvents.opportunityId, data: schema.opportunityEvents.data, at: schema.opportunityEvents.at })
+      .from(schema.opportunityEvents)
+      .where(and(inArray(schema.opportunityEvents.opportunityId, opportunityIds), eq(schema.opportunityEvents.type, 'report')))
+      .orderBy(schema.opportunityEvents.at);
+    for (const row of rows) {
+      const note = typeof row.data?.note === 'string' ? row.data.note : '';
+      if (!note) continue;
+      const list = grouped.get(row.opportunityId) ?? [];
+      list.push({ note, at: row.at });
+      grouped.set(row.opportunityId, list);
+    }
+    return grouped;
+  }
+
+  /** What reporting back reads of an opportunity: its status, its introducer, and its seats. */
+  async reportTarget(opportunityId: string): Promise<{ status: string; introducerUserId: string | null; actorIds: string[] } | null> {
+    const [row] = await db.select({
+      status: schema.opportunities.status,
+      actors: schema.opportunities.actors,
+      introducer: sql<string | null>`${schema.opportunities.metadata}->'introducer'->>'userId'`,
+    })
+      .from(schema.opportunities)
+      .where(eq(schema.opportunities.id, opportunityId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      status: row.status,
+      introducerUserId: row.introducer ?? null,
+      actorIds: (row.actors ?? []).map((actor) => actor.userId).filter(Boolean),
+    };
+  }
+
+  /** Whether this seat already reported on this opportunity. */
+  async hasReported(opportunityId: string, userId: string): Promise<boolean> {
+    const [row] = await db.select({ id: schema.opportunityEvents.id })
+      .from(schema.opportunityEvents)
+      .where(and(eq(schema.opportunityEvents.opportunityId, opportunityId), eq(schema.opportunityEvents.actorUserId, userId), eq(schema.opportunityEvents.type, 'report')))
+      .limit(1);
+    return !!row;
   }
 
   /** Display names for a set of users. */

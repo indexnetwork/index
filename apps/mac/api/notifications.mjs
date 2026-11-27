@@ -41,6 +41,12 @@ export function notificationEntityKey(event) {
     const id = notificationId(event, 'opportunityId');
     return id ? `opportunity:${id}` : null;
   }
+  // An introduction toasts once per phase, and once for its note.
+  if (event.type === 'introduction.status' || event.type === 'introduction.report') {
+    const id = notificationId(event, 'opportunityId');
+    const phase = event.data && typeof event.data.phase === 'string' ? event.data.phase : '';
+    return id ? `introduction:${id}:${event.type === 'introduction.report' ? 'note' : phase}` : null;
+  }
   if (event.type === 'question.pending') {
     const id = notificationId(event, 'questionId');
     return id ? `question:${id}` : null;
@@ -70,7 +76,7 @@ export function isOwnMessage(event, currentUserId) {
 /**
  * Gate an event on the user's notification preferences (settings pane).
  * `opportunity` gates opportunity.new, `accepted` gates opportunity.status,
- * `messages` gates conversation messages.
+ * `introductions` gates introduction.*, `messages` gates conversation messages.
  * Absent prefs (or unknown types) fail open.
  * @param {Object} event
  * @param {{ opportunity?: boolean, accepted?: boolean, messages?: boolean } | null} prefs
@@ -82,6 +88,7 @@ export function notificationEventAllowed(event, prefs) {
   if (event.type === 'opportunity.new') return prefs.opportunity !== false;
   if (event.type === 'opportunity.status') return prefs.accepted !== false;
   if (event.type.indexOf('opportunity.') === 0) return prefs.opportunity !== false;
+  if (event.type.indexOf('introduction.') === 0) return prefs.introductions !== false;
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     return prefs.messages !== false;
   }
@@ -110,6 +117,10 @@ export function composeNotification(event, options) {
       body: typeof event.body === 'string' ? event.body : '',
       ...(id ? { url: `index://o/${encodeURIComponent(id)}` } : {}),
     };
+  }
+  if (event.type === 'introduction.status' || event.type === 'introduction.report') {
+    if (typeof event.title !== 'string' || !event.title.trim()) return null;
+    return { title: event.title, body: typeof event.body === 'string' ? event.body : '' };
   }
   if (event.type === 'question.pending') {
     if (typeof event.title !== 'string' || !event.title.trim()) return null;

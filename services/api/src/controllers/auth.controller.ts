@@ -30,6 +30,8 @@ const updateProfileSchema = z.object({
     accepted: z.boolean().optional(),
     messages: z.boolean().optional(),
     morningBrief: z.boolean().optional(),
+    introductions: z.boolean().optional(),
+    introducerReports: z.enum(['note', 'status', 'none']).optional(),
   }).optional(),
 });
 

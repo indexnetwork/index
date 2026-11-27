@@ -17,6 +17,12 @@ export function notificationEntityKey(event) {
     const id = notificationId(event, 'opportunityId')
     return id ? `opportunity:${id}` : null
   }
+  // An introduction toasts once per phase, and once for its note.
+  if (event.type === 'introduction.status' || event.type === 'introduction.report') {
+    const id = notificationId(event, 'opportunityId')
+    const phase = event.data && typeof event.data.phase === 'string' ? event.data.phase : ''
+    return id ? `introduction:${id}:${event.type === 'introduction.report' ? 'note' : phase}` : null
+  }
   if (event.type === 'question.pending') {
     const id = notificationId(event, 'questionId')
     return id ? `question:${id}` : null
@@ -67,6 +73,14 @@ export function composeNotification(event) {
       title: event.title,
       body: typeof event.body === 'string' ? event.body : '',
       url: activateUrl('o', notificationId(event, 'opportunityId')),
+    }
+  }
+  if (event.type === 'introduction.status' || event.type === 'introduction.report') {
+    if (typeof event.title !== 'string' || !event.title.trim()) return null
+    return {
+      title: event.title,
+      body: typeof event.body === 'string' ? event.body : '',
+      url: PLUGIN_ACTIVATE_URL,
     }
   }
   if (event.type === 'question.pending') {

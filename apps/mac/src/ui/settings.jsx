@@ -410,6 +410,8 @@ const NOTIFY_OPTIONS = [
     blurb:"both of you said yes, and the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
     blurb:"a connection wrote to you; emailed if unread after a minute." },
+  { id:"introductions", title:"an introduction you made moves",
+    blurb:"two people you introduced agreed, met, or went quiet, or one of them sent a note back." },
   { id:"morningBrief", title:"daily brief",
     blurb:"your agent looks again at 08:00, and emails you only when it needs you." },
 ];
@@ -972,6 +974,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     accepted: prefer("accepted"),
     messages: prefer("messages"),
     morningBrief: prefer("morningBrief"),
+    introductions: prefer("introductions"),
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1017,6 +1020,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         accepted: !!notify.accepted,
         messages: !!notify.messages,
         morningBrief: !!notify.morningBrief,
+        introductions: !!notify.introductions,
       },
       timezone,
     });
@@ -1026,6 +1030,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       accepted: notify.accepted,
       messages: notify.messages,
       morningBrief: notify.morningBrief,
+      introductions: notify.introductions,
     };
     if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(toast);
     if (live && client) {
@@ -1045,6 +1050,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           accepted: !!notify.accepted,
           messages: !!notify.messages,
           morningBrief: !!notify.morningBrief,
+        introductions: !!notify.introductions,
         },
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch((e) => {

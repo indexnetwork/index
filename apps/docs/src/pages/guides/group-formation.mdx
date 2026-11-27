@@ -103,13 +103,13 @@ conversation opens once every member has committed. Silence is never consent,
 and a later yes cannot override an earlier refusal.
 
 Each seat may report once. An introducer sees the status and each note, never
-the turns.
+the turns. See [Reporting back](/guides/introducer-agent#reporting-back).
 
 ```ts
 await client.reportOpportunity(opportunityId, { note: "<what the group agreed>" });
 
-const opportunity = await client.getOpportunity(opportunityId);
-// { status, reports: [{ note }] }
+const introductions = await client.listIntroductions();
+// [{ opportunityId, phase, reports: [{ note, at }] }]
 ```
 
 ## Today

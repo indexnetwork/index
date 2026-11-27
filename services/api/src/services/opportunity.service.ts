@@ -251,6 +251,8 @@ export class OpportunityService {
     if (!opportunity?.actors.some((actor) => actor.userId === userId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    // A report goes to the introducer under the reporter's settings: only IntroducerService.fileReport writes one.
+    if (event.type === 'report') return { error: "type 'report' is filed through the introducer's report path", status: 400 };
     return { id: await appendClientOpportunityEvent(opportunityId, userId, event) };
   }
 

@@ -7,6 +7,8 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
+import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { publishUserEvent, type UserEvent } from '../lib/user-events';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { detectSocialLabel } from '../adapters/database.shared';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
@@ -124,18 +126,69 @@ export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy
 /**
  * What an introducer learns about an introduction: where it ended up, never
  * how. No turns, no whose-move, no wording, and a "no fit" never says which
- * side or whether an agent or a person said it.
+ * side or whether an agent or a person said it. `private` means it left the
+ * talks and one of the two keeps the outcome from introducers (their
+ * `introducerReports` setting is `none`).
  */
-export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet';
+export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet' | 'private';
+
+/** A note one side sent back. It never says which side. */
+export interface IntroductionReport {
+  note: string;
+  at: string;
+}
 
 export interface IntroductionProgress {
   opportunityId: string;
   createdAt: string;
+  /** When its status was last written. */
+  updatedAt: string;
   context: string;
   a: IntroductionRow['a'];
   b: IntroductionRow['b'];
   phase: IntroductionPhase;
+  reports: IntroductionReport[];
 }
+
+/** The phase an opportunity status reads as, before anyone's setting hides it. */
+export function phaseOf(status: string): Exclude<IntroductionPhase, 'private'> {
+  return status === 'accepted' ? 'met'
+    : status === 'rejected' ? 'no_fit'
+      : status === 'expired' ? 'quiet'
+        : status === 'pending' ? 'agreed'
+          : 'talking';
+}
+
+/** Longest note a seat may send its introducer. */
+export const REPORT_NOTE_MAX = 280;
+
+const INTRODUCE_URL = `${(process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '')}/introduce`;
+
+const PHASE_LABEL: Record<IntroductionPhase, string> = {
+  talking: 'talking',
+  agreed: 'agreed',
+  met: 'met',
+  no_fit: 'no fit',
+  quiet: 'went quiet',
+  private: 'ended',
+};
+
+/** One line on where an introduction is, as the Introduce page says it. */
+export function phaseLine(p: Pick<IntroductionProgress, 'a' | 'b' | 'phase'>): string {
+  const A = firstName(p.a.name), B = firstName(p.b.name);
+  switch (p.phase) {
+    case 'talking': return 'Both agents are awake and talking privately.';
+    case 'agreed': return `The agents agreed. Now it's up to ${A} and ${B}.`;
+    case 'met': return `${A} and ${B} both said yes. They're connected.`;
+    case 'no_fit': return "It wasn't a fit. Nothing more happens.";
+    case 'quiet': return 'It went quiet before both said yes.';
+    case 'private': return 'It ended. One of them keeps how it went private.';
+  }
+}
+
+export type ReportResult = { id: string } | { error: string; status: number };
+
+
 
 interface GooglePerson {
   names?: { displayName?: string }[];
@@ -573,18 +626,113 @@ export class IntroducerService {
 
   async introductions(userId: string, opportunityId?: string): Promise<IntroductionProgress[]> {
     const rows = await this.adapter.introductions(userId, opportunityId);
-    return rows.map((row) => ({
-      opportunityId: row.opportunityId,
-      createdAt: row.createdAt.toISOString(),
-      context: row.context,
-      a: row.a,
-      b: row.b,
-      phase: row.status === 'accepted' ? 'met'
-        : row.status === 'rejected' ? 'no_fit'
-          : row.status === 'expired' ? 'quiet'
-            : row.status === 'pending' ? 'agreed'
-              : 'talking',
-    }));
+    const [settings, reports] = await Promise.all([
+      this.adapter.reportSettings([...new Set(rows.flatMap((row) => [row.a.userId, row.b.userId]))]),
+      this.adapter.reports(rows.map((row) => row.opportunityId)),
+    ]);
+    return rows.map((row) => {
+      const phase = phaseOf(row.status);
+      // Talks in progress are no news: the introducer opened them. Where they
+      // ended up is shared only if neither side turned that off.
+      const hidden = phase !== 'talking' && (settings.get(row.a.userId) === 'none' || settings.get(row.b.userId) === 'none');
+      return {
+        opportunityId: row.opportunityId,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        context: row.context,
+        a: row.a,
+        b: row.b,
+        phase: hidden ? 'private' : phase,
+        reports: hidden ? [] : (reports.get(row.opportunityId) ?? []).map((r) => ({ note: r.note, at: r.at.toISOString() })),
+      };
+    });
+  }
+
+  // ─── reporting back ────────────────────────────────────────────────────────
+
+  /**
+   * File a seat's note to the introducer: an opportunity event of type
+   * `report`. Once per seat, after its negotiation settled, and only when the
+   * seat owner's `introducerReports` setting is `note`. The introducer never
+   * learns which side sent it.
+   *
+   * @param opportunityId - The opportunity.
+   * @param userId - The seat's owner.
+   * @param data - The event's data: `{ note }`.
+   */
+  async fileReport(opportunityId: string, userId: string, data: Record<string, unknown> | null): Promise<ReportResult> {
+    const target = await this.adapter.reportTarget(opportunityId);
+    if (!target || !target.actorIds.includes(userId)) return { error: 'Opportunity not found', status: 404 };
+    if (!target.introducerUserId) return { error: 'Nobody introduced this pair, so there is nobody to report to', status: 409 };
+    if (target.status === 'negotiating') return { error: 'Report once the negotiation has settled', status: 409 };
+    const note = typeof data?.note === 'string' ? data.note.replace(/\s+/g, ' ').trim() : '';
+    if (!note) return { error: 'data.note is required: one short line for the person who introduced you', status: 400 };
+    if (note.length > REPORT_NOTE_MAX) return { error: `data.note must be at most ${REPORT_NOTE_MAX} characters`, status: 400 };
+
+    const setting = (await this.adapter.reportSettings([userId])).get(userId);
+    if (setting !== 'note') {
+      return {
+        error: setting === 'none'
+          ? 'Your settings keep introducers out of how it went. Change "people who introduce you" under Settings → notifications.'
+          : 'Your settings share the status with introducers, not notes. Choose "that, and a short note" under Settings → notifications.',
+        status: 403,
+      };
+    }
+    if (await this.adapter.hasReported(opportunityId, userId)) {
+      return { error: 'You already reported on this introduction', status: 409 };
+    }
+
+    let id: string;
+    try {
+      id = await appendClientOpportunityEvent(opportunityId, userId, { type: 'report', data: { note } });
+    } catch (error) {
+      // The one-report index caught a concurrent second report.
+      if (String(error).includes('opportunity_events_one_report')) return { error: 'You already reported on this introduction', status: 409 };
+      throw error;
+    }
+    void this.publishIntroduction(target.introducerUserId, opportunityId, 'introduction.report').catch((error) => {
+      logger.error('Failed to publish introduction report', { opportunityId, error: String(error) });
+    });
+    return { id };
+  }
+
+  /**
+   * Tell the introducer an introduction moved. Called on every status write
+   * of every opportunity; anything not introduced is skipped.
+   *
+   * @param opportunityId - The opportunity whose status was written.
+   */
+  async publishTransition(opportunityId: string): Promise<void> {
+    try {
+      const target = await this.adapter.reportTarget(opportunityId);
+      if (!target?.introducerUserId) return;
+      await this.publishIntroduction(target.introducerUserId, opportunityId, 'introduction.status');
+    } catch (error) {
+      logger.error('Failed to publish introduction status', { opportunityId, error: String(error) });
+    }
+  }
+
+  private async publishIntroduction(introducerId: string, opportunityId: string, type: 'introduction.status' | 'introduction.report'): Promise<void> {
+    const [progress] = await this.introductions(introducerId, opportunityId);
+    if (!progress) return;
+    // Talks starting again are no news to the person who opened them.
+    if (type === 'introduction.status' && progress.phase === 'talking') return;
+    const note = progress.reports.at(-1)?.note;
+    if (type === 'introduction.report' && !note) return;
+    const pair = `${firstName(progress.a.name)} ⇄ ${firstName(progress.b.name)}`;
+    const event: UserEvent = {
+      type,
+      id: opportunityId,
+      title: type === 'introduction.report' ? `${pair} · a note back` : `${pair} · ${PHASE_LABEL[progress.phase]}`,
+      body: type === 'introduction.report' ? note! : phaseLine(progress),
+      link: INTRODUCE_URL,
+      data: {
+        opportunityId,
+        phase: progress.phase,
+        ...(type === 'introduction.report' ? { note } : {}),
+      },
+    };
+    await publishUserEvent(introducerId, event);
   }
 }
 

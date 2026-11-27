@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isSignedAction } from '../lib/app-link';
 import { isBotUserAgent } from '../lib/bot-agent';
 import { opportunityService } from '../services/opportunity.service';
+import { introducerService } from '../services/introducer.service';
 import { intentService } from '../services/intent.service';
 import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type NegotiationResumeRejection, type SubmitTurnRejection } from '../services/negotiation.service';
@@ -308,7 +309,10 @@ export class OpportunityController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await opportunityService.recordEvent(resolved.id, user.id, parsed.event);
+    // A report goes to the introducer, under the reporter's settings and once per seat.
+    const result = parsed.event.type === 'report'
+      ? await introducerService.fileReport(resolved.id, user.id, parsed.event.data)
+      : await opportunityService.recordEvent(resolved.id, user.id, parsed.event);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }

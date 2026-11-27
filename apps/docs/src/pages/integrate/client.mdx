@@ -43,6 +43,9 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 | `submitTurn(id, { action, message })` | `POST /api/opportunities/:id/negotiation/turns` |
 | `acceptOpportunity(id)` | `PATCH /api/opportunities/:id/status` with `accepted` |
 | `rejectOpportunity(id)` | `PATCH /api/opportunities/:id/status` with `rejected` |
+| `recordOpportunityEvent(id, { type, data? })` | `POST /api/opportunities/:id/events` → `{ id }` |
+| `reportOpportunity(id, { note })` | `POST /api/opportunities/:id/events` with `type: "report"`. See [Reporting back](/integrate/rest/opportunities#reporting-back) |
+| `listIntroductions()` | `GET /api/introducer/introductions` → introductions you made, with `phase` and `reports` |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a` |
 | `events(onEvent)` | `GET /api/events` as SSE. Returns a stop handle |

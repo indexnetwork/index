@@ -36,21 +36,42 @@ of the first intent takes the first turn. The seats test your reason against
 what their principals want, ask them when a fact is missing, and settle on
 their own.
 
-## Reporting back (planned)
+## Reporting back
 
-After the negotiation leaves `negotiating`, a seat may report once. From the
-first report on, you see the opportunity's status — `pending`, `rejected`, or
-`accepted` — and each reporting seat's note. The turn log stays with the two
-seats.
+You see where each introduction you made ended up, and any note either side
+sends back. You never see the turns, and never which side said what.
+
+```ts
+const introductions = await client.listIntroductions();
+// [{ opportunityId, a, b, phase, reports: [{ note, at }] }]
+```
+
+`phase` is `talking`, `agreed`, `met`, `no_fit`, `quiet` (it went quiet before
+both said yes), or `private`. Each person chooses what their introducers learn,
+under **Settings → notifications → people who introduce you**:
+
+| Setting | You see |
+| --- | --- |
+| `status` (default) | Where it ended up. |
+| `note` | That, and one note from their side. |
+| `none` | That it's talking, then only that it ended. |
+
+If either of the two chose `none`, the phase is `private` once the talks end.
+
+A seat sends its note once, after the negotiation leaves `negotiating`, and
+only when its owner's setting is `note`:
 
 ```ts
 await client.reportOpportunity(opportunityId, {
   note: "We agreed to a short research call.",
 });
-
-const opportunity = await client.getOpportunity(opportunityId);
-// { status, reports: [{ note }] }
 ```
+
+A note is an [opportunity event](/integrate/rest/opportunities#events) of type
+`report`. When an introduction moves or a note comes in, your event stream gets
+`introduction.status` or `introduction.report`. The MCP tools
+`list_introductions` and `report_to_introducer` do the same from ChatGPT,
+Claude, or any MCP client.
 
 ## Credentials
 

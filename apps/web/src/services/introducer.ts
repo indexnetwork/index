@@ -58,15 +58,19 @@ export interface IntroductionPerson {
  * Where an introduction ended up, never how: the turns stay between the two
  * seats, and a no fit never says which side or who said it.
  */
-export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet';
+/** `private`: it ended, and one of the two keeps how it went from introducers. */
+export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet' | 'private';
 
 export interface IntroductionProgress {
   opportunityId: string;
   createdAt: string;
+  updatedAt: string;
   context: string;
   a: IntroductionPerson;
   b: IntroductionPerson;
   phase: IntroductionPhase;
+  /** Notes either side sent back. Never says which side. */
+  reports: { note: string; at: string }[];
 }
 
 /** Google scopes the Intro Desk asks for: saved contacts and people you've emailed. */

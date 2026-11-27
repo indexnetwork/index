@@ -1,7 +1,7 @@
 /**
  * Opportunity command handlers for the Index CLI.
  *
- * Implements: list, show, accept, reject subcommands.
+ * Implements: list, show, accept, reject, start-chat, report, introductions.
  * Follows the same handleX(client, subcommand, positionals, options)
  * pattern as network.command.ts and conversation.command.ts.
  */
@@ -19,6 +19,8 @@ Usage:
   index opportunity accept <id>                 Accept an opportunity (accepts short ID)
   index opportunity reject <id>                 Reject an opportunity (accepts short ID)
   index opportunity start-chat <id>             Open the chat through this opportunity
+  index opportunity report <id> --message <m>   Send the person who introduced you one note on how it went
+  index opportunity introductions               Introductions you made, where each ended up, and notes back
 `;
 
 /**
@@ -41,6 +43,7 @@ export async function handleOpportunity(
     positionals?: string[];
     target?: string;
     introduce?: string;
+    message?: string;
   },
 ): Promise<void> {
   if (!subcommand) {
@@ -89,11 +92,45 @@ export async function handleOpportunity(
       return;
     }
 
+    case "report": {
+      if (!options.targetId || !options.message) {
+        output.error('Usage: index opportunity report <id> --message "<one line for your introducer>"', 1);
+        return;
+      }
+      const opportunity = await client.getOpportunity(options.targetId);
+      const result = await client.reportOpportunity(opportunity.id, options.message);
+      if (options.json) console.log(JSON.stringify(result));
+      else output.success("Sent your note to the person who introduced you.");
+      return;
+    }
+
+    case "introductions": {
+      const introductions = await client.listIntroductions();
+      if (options.json) { console.log(JSON.stringify(introductions)); return; }
+      output.heading("Introductions you made");
+      if (!introductions.length) { console.log("  None yet."); console.log(); return; }
+      for (const intro of introductions) {
+        console.log(`  ${intro.a.name} ⇄ ${intro.b.name}  ${PHASE_LABEL[intro.phase] ?? intro.phase}  ${intro.createdAt.slice(0, 10)}`);
+        for (const report of intro.reports) console.log(`    "${report.note}"`);
+      }
+      console.log();
+      return;
+    }
+
     default:
       output.error(`Unknown subcommand: ${subcommand}`, 1);
       return;
   }
 }
+
+const PHASE_LABEL: Record<string, string> = {
+  talking: "talking",
+  agreed: "agreed",
+  met: "met",
+  no_fit: "no fit",
+  quiet: "went quiet",
+  private: "ended (kept private)",
+};
 
 /**
  * List opportunities with optional filters.

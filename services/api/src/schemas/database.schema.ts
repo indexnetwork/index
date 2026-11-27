@@ -72,7 +72,17 @@ export interface NotificationPreferences {
   messages?: boolean;
   /** Absent means the morning wake, and its email, are on. */
   morningBrief?: boolean;
+  /** Absent means a toast when an introduction you made moves or hears back. */
+  introductions?: boolean;
+  /**
+   * What the person who introduced you learns once your side settles:
+   * `status` (where it ended up), `note` (that, plus one short note your
+   * agent may send), or `none`. Absent means `status`.
+   */
+  introducerReports?: IntroducerReportSetting;
 }
+
+export type IntroducerReportSetting = 'note' | 'status' | 'none';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Users table (unified: Better Auth + domain fields)
@@ -466,6 +476,8 @@ export const opportunityEvents = pgTable('opportunity_events', {
   opportunityIdx: index('opportunity_events_opportunity_idx').on(table.opportunityId),
   oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} in ('opened', 'agreed', 'declined', 'expired')`),
   oneCommit: uniqueIndex('opportunity_events_one_commit').on(table.opportunityId, table.actorUserId).where(sql`${table.type} = 'committed'`),
+  /** Each seat reports back to the introducer once. */
+  oneReport: uniqueIndex('opportunity_events_one_report').on(table.opportunityId, table.actorUserId).where(sql`${table.type} = 'report'`),
 }));
 
 /**
