@@ -79,6 +79,7 @@ function promptFor(input: JudgeInput): string {
     `- Claim nothing about ${firstName(contact.name)} beyond the headline and links above.`,
     '- When mutual is false, still fill every field with your best short text.',
     `- The draft is two sentences in ${who}'s voice, naming what each of them gets. Plain and specific. No flattery, no hype, no emoji.`,
+    `- ${firstName(contact.name)} may read the draft: it can be quoted to them in the introduction email.`,
     '- memberLine and contactLine are at most 80 characters each; the draft is at most 1000.',
   ].filter((line, i, all) => line !== '' || all[i - 1] !== '').join('\n');
 }
