@@ -511,11 +511,19 @@ export class IntroducerService {
     };
     let existing = await this.adapter.accountByEmail(email);
     if (!existing) {
+      if (await this.adapter.researchStatus(email) === 'not_found') {
+        // Researched before and found nothing: final, so a new pair settles at once.
+        await settle('not_found');
+        return;
+      }
       const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
       if (research.kind === 'unavailable') {
         await this.adapter.recordResearch(email, 'failed');
         const attempts = await this.adapter.researchAttempts(email);
-        if (attempts >= RESEARCH_ATTEMPTS) await settle('research_unavailable');
+        if (attempts >= RESEARCH_ATTEMPTS) {
+          await settle('research_unavailable');
+          await this.adapter.resetResearchAttempts(email);
+        }
         logger.info('Contact research', { outcome: 'unavailable', reason: research.reason, attempts });
         return;
       }
@@ -538,7 +546,10 @@ export class IntroducerService {
       }
       // An account appeared while we researched: treat it as any existing one.
       existing = await this.adapter.accountByEmail(email);
-      if (!existing) return;
+      if (!existing) {
+        logger.warn('Seat not created and no account found');
+        return;
+      }
     }
     if (existing.deleted) return settle('opted_out');
     if (existing.emailVerified) return settle('on_index');

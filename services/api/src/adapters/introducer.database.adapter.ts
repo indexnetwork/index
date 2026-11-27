@@ -622,8 +622,9 @@ export class IntroducerDatabaseAdapter {
   // ─── research ──────────────────────────────────────────────────────────────
 
   /**
-   * Emails with a checking proposal still to research, oldest first. Skips
-   * emails already researched and ones tried 3 times or within 30 minutes.
+   * Emails with a checking proposal still to settle, oldest first: ones to
+   * research (skipping ones tried 3 times or within 30 minutes) and ones
+   * already found not to exist online.
    */
   async checkingDue(limit: number): Promise<{ email: string; contact: ContactCard }[]> {
     const result = await db.execute(sql`
@@ -634,8 +635,10 @@ export class IntroducerDatabaseAdapter {
       join contacts c on c.id = p.contact_id
       left join contact_research r on r.email = lower(c.email)
       where p.status = 'checking'
-        and r.status is null
-        and (r.email is null or (r.attempts < 3 and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes')))
+        and (
+          r.status = 'not_found'
+          or (r.status is null and (r.email is null or (r.attempts < 3 and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))))
+        )
       order by lower(c.email), p.created_at asc
       ) due
       order by created_at asc
@@ -649,6 +652,18 @@ export class IntroducerDatabaseAdapter {
           organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
         },
       }));
+  }
+
+  /** After giving up: start the count over but keep the last try's time, so a later pair retries after the backoff. */
+  async resetResearchAttempts(email: string): Promise<void> {
+    await db.update(schema.contactResearch).set({ attempts: 0 }).where(eq(schema.contactResearch.email, email.toLowerCase()));
+  }
+
+  /** Whether research settled this email, if it did. */
+  async researchStatus(email: string): Promise<'found' | 'not_found' | null> {
+    const [row] = await db.select({ status: schema.contactResearch.status }).from(schema.contactResearch)
+      .where(eq(schema.contactResearch.email, email.toLowerCase()));
+    return row?.status ?? null;
   }
 
   /** How many research tries an email has had. */
