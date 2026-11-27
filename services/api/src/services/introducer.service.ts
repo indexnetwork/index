@@ -5,6 +5,7 @@ import { generateText, jsonSchema, Output } from 'ai';
 import { auth } from '../lib/betterauth/auth.instance';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
+import { GMAIL_SCOPE, sentFrequency } from '../lib/introducer/gmail-frequency';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
 import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
@@ -81,7 +82,7 @@ export type ImportOutcome =
   | { kind: 'google_error'; status: number };
 
 export interface IntroducerStatus {
-  google: { linked: boolean; contactsScope: boolean };
+  google: { linked: boolean; contactsScope: boolean; gmailScope: boolean };
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
@@ -251,6 +252,7 @@ export class IntroducerService {
         // Google access tokens last an hour. Without a refresh token the grant
         // is spent once that hour is up, so ask the member to connect again.
         contactsScope: !!account?.usable && CONTACT_SCOPES.every((s) => granted.includes(s)),
+        gmailScope: !!account?.usable && granted.includes(GMAIL_SCOPE),
       },
       contacts: {
         total: counts.total,
@@ -333,6 +335,9 @@ export class IntroducerService {
     add(other.people, 'google_other');
 
     await this.adapter.replaceContacts(userId, [...rows.values()]);
+    // Gmail is optional: without it, saved contacts rank before people you've only emailed.
+    const frequency = process.env.INTRODUCER_GMAIL === '1' && status.google.gmailScope ? await sentFrequency(accessToken) : null;
+    await this.adapter.rankContacts(userId, frequency);
     const counts = await this.adapter.contactCounts(userId);
     logger.info('Contacts synced', { userId, total: counts.total, onIndex: counts.onIndex });
     return { kind: 'ok', total: counts.total, onIndex: counts.onIndex };

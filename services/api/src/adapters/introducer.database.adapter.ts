@@ -107,6 +107,9 @@ const FREEMAIL = [
 /** A shared inbox is a team, not a person; the regex matches the local part. */
 const SHARED_INBOX = '^(info|hello|contact|team|press|office|support|hi|careers|jobs|media|pr|partners|invest|investment|investments|admin|enquiries|inquiries|sales|founders|noreply|no-reply|notifications|billing|help|community|events|marketing|ops|hr|legal|accounts|newsletter)$';
 
+/** Contacts per introducer that are embedded, matched and researched. */
+const TOP_CONTACTS = 500;
+
 /** Public, live intents whose owners verified their email: the only side the matcher reads. */
 const LIVE_PUBLIC_INTENT = sql`
   i.archived_at is null and (i.status is null or i.status = 'active') and i.is_private = false
@@ -162,6 +165,42 @@ export class IntroducerDatabaseAdapter {
     `);
   }
 
+  /**
+   * Keep only the owner's 500 most frequent contacts in play: store each
+   * contact's sent-mail frequency, then number the top 500 (not removed,
+   * excluded or on Index) by frequency, saved before emailed-only, oldest
+   * first. Everyone else gets no rank. One statement, so it is atomic.
+   * @param frequency Sent messages per lowercased address; null counts as 0 for all.
+   */
+  async rankContacts(ownerUserId: string, frequency: Map<string, number> | null): Promise<void> {
+    const entries = frequency ? [...frequency.entries()] : [];
+    const freq = entries.length
+      ? sql`(select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from (values ${sql.join(entries.map(([email, n]) => sql`(${email}::text, ${n}::int)`), sql`, `)}) as t(k, v))`
+      : sql`'{}'::jsonb`;
+    await db.execute(sql`
+      with freq as (select ${freq} as m),
+      scored as (
+        select c.id, coalesce((freq.m ->> c.email)::int, 0) as frequency,
+               (c.removed_at is null and c.excluded_at is null and c.matched_user_id is null) as eligible,
+               c.source, c.created_at
+        from contacts c, freq
+        where c.owner_user_id = ${ownerUserId}
+      ),
+      ranked as (
+        select id, frequency,
+               case when eligible then row_number() over (
+                 partition by eligible order by frequency desc, (source = 'google_contacts') desc, created_at asc, id
+               ) end as pos
+        from scored
+      )
+      update contacts c
+      set frequency = r.frequency,
+          rank = case when r.pos <= ${TOP_CONTACTS} then r.pos::int end
+      from ranked r
+      where c.id = r.id
+    `);
+  }
+
   async contactCounts(ownerUserId: string): Promise<{ total: number; onIndex: number; lastImportAt: Date | null }> {
     const [row] = await db
       .select({
@@ -211,6 +250,7 @@ export class IntroducerDatabaseAdapter {
         isNull(contacts.matchedUserId),
         isNull(contacts.excludedAt),
         isNull(contacts.embedding),
+        isNotNull(contacts.rank),
         // A person: a real name and a personal address, not a team inbox.
         sql`${contacts.name} is not null and position('@' in ${contacts.name}) = 0
              and ${contacts.name} <> split_part(${contacts.email}, '@', 1)
@@ -252,7 +292,7 @@ export class IntroducerDatabaseAdapter {
              it.id as intent_id, it.user_id as member_id, it.member_name, it.text,
              1 - (c.embedding <=> it.embedding) as score
       from it
-      join contacts c on c.embedding is not null and c.matched_user_id is null and c.excluded_at is null
+      join contacts c on c.embedding is not null and c.rank is not null and c.matched_user_id is null and c.excluded_at is null
       join introducers intr on intr.user_id = c.owner_user_id
       where not exists (
         select 1 from opportunity_proposals s
@@ -302,7 +342,7 @@ export class IntroducerDatabaseAdapter {
       ) x
       where c.owner_user_id = ${ownerUserId}
         and c.id in (${sql.join(contactIds.map((id) => sql`${id}`), sql`, `)})
-        and c.embedding is not null and c.excluded_at is null
+        and c.embedding is not null and c.rank is not null and c.excluded_at is null
         and not exists (
           select 1 from opportunity_proposals s
           where s.introducer_user_id = c.owner_user_id and s.intent_id = x.intent_id and s.contact_id = c.id

@@ -1,7 +1,7 @@
 import type { useAuthenticatedAPI } from '../lib/api';
 
 export interface IntroducerStatus {
-  google: { linked: boolean; contactsScope: boolean };
+  google: { linked: boolean; contactsScope: boolean; gmailScope: boolean };
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
@@ -78,6 +78,12 @@ export const CONTACT_SCOPES = [
   'https://www.googleapis.com/auth/contacts.readonly',
   'https://www.googleapis.com/auth/contacts.other.readonly',
 ];
+
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.metadata';
+
+/** Scopes to request when connecting: Gmail (sent-mail frequency only) is added when its flag is on. */
+export const requestedScopes = (): string[] =>
+  process.env.NEXT_PUBLIC_INTRODUCER_GMAIL === '1' ? [...CONTACT_SCOPES, GMAIL_SCOPE] : CONTACT_SCOPES;
 
 export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   status: () => api.get<IntroducerStatus>('/introducer/status'),
