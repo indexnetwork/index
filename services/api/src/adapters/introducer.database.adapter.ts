@@ -155,6 +155,16 @@ const VISIBLE_MEMBER_SIDE = sql`
   and exists (select 1 from network_members mi where mi.network_id = p.network_id and mi.user_id = p.introducer_user_id and mi.deleted_at is null)`;
 
 /**
+ * A checking pair research and judging may still work on: the introducer has
+ * not excluded or removed the contact, the contact has not joined Index, and
+ * the introducer has not excluded the member. Aliases: p proposal, c its
+ * contact, u the intent's owner.
+ */
+const OPEN_CONTACT_SIDE = sql`
+  c.excluded_at is null and c.removed_at is null and c.matched_user_id is null
+  and not exists (select 1 from introducer_exclusions x where x.introducer_user_id = p.introducer_user_id and x.excluded_user_id = u.id)`;
+
+/**
  * Storage for the introducer: a member's imported contacts, the introductions
  * the matcher proposes to them, the seats of contacts they introduce, and the
  * status (never the wording) of the introductions they opened.
@@ -520,7 +530,7 @@ export class IntroducerDatabaseAdapter {
     };
   }
 
-  /** Never suggest this contact (or allow it again). Excluding also takes their waiting proposals off the desk. */
+  /** Never suggest this contact (or allow it again). Excluding also takes their waiting and checking proposals off the desk. */
   async setExcluded(ownerUserId: string, contactId: string, excluded: boolean): Promise<boolean> {
     const rows = await db.update(contacts)
       .set({ excludedAt: excluded ? new Date() : null })
@@ -529,7 +539,7 @@ export class IntroducerDatabaseAdapter {
     if (!rows.length) return false;
     if (excluded) {
       await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: new Date() })
-        .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
+        .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['checking', 'proposed', 'failed'])));
     }
     return true;
   }
@@ -564,7 +574,7 @@ export class IntroducerDatabaseAdapter {
       update opportunity_proposals p set status = 'skipped', updated_at = now()
       from intents i
       where i.id = p.intent_id and i.user_id = ${memberUserId}
-        and p.introducer_user_id = ${introducerUserId} and p.status in ('proposed', 'failed')
+        and p.introducer_user_id = ${introducerUserId} and p.status in ('checking', 'proposed', 'failed')
     `);
     return true;
   }
@@ -581,7 +591,7 @@ export class IntroducerDatabaseAdapter {
       .returning({ id: contacts.id });
     if (!rows.length) return false;
     await db.update(opportunityProposals).set({ status: 'skipped', updatedAt: now })
-      .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['proposed', 'failed'])));
+      .where(and(eq(opportunityProposals.contactId, contactId), inArray(opportunityProposals.status, ['checking', 'proposed', 'failed'])));
     return true;
   }
 
@@ -650,7 +660,7 @@ export class IntroducerDatabaseAdapter {
       join users u on u.id = i.user_id
       join contacts c on c.id = p.contact_id
       left join contact_research r on r.email = lower(c.email)
-      where p.status = 'checking' and ${VISIBLE_MEMBER_SIDE}
+      where p.status = 'checking' and ${VISIBLE_MEMBER_SIDE} and ${OPEN_CONTACT_SIDE}
         and (
           r.status = 'not_found'
           or (r.status = 'found' and (r.last_attempt_at is null or r.last_attempt_at < now() - interval '30 minutes'))
@@ -798,7 +808,7 @@ export class IntroducerDatabaseAdapter {
       join contacts c on c.id = p.contact_id
       join networks n on n.id = p.network_id
       where lower(c.email) = ${email.toLowerCase()} and p.status = ${status}
-        and ${VISIBLE_MEMBER_SIDE}
+        and ${VISIBLE_MEMBER_SIDE} and ${OPEN_CONTACT_SIDE}
       order by p.created_at asc
     `);
     return rowsOf(result).map(toProposalRow);
