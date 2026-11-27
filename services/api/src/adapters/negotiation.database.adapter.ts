@@ -349,7 +349,10 @@ export class NegotiationDatabaseAdapter {
         const decision = decide({ ...pair, eligible:
           seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
           && (pair.intentB ? seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB)
-            : pair.detection?.source === 'introducer' && !pair.via && !!pair.introducer
+            // An introduced contact, reached through the introducer who holds their email.
+            : pair.via ? pair.detection?.source === 'introducer' && pair.detection.createdBy === pair.via
+              && await this.ghostIdentityEligible(tx, pair.userB, pair.networkId, pair.intentA, pair.via)
+            : pair.detection?.source === 'introducer' && !!pair.introducer
               && pair.introducer.userId !== pair.userA
               && await this.identityEligible(tx, pair.userB, pair.networkId, pair.intentA, pair.introducer.userId)) });
         if (!decision) return null;
@@ -364,7 +367,7 @@ export class NegotiationDatabaseAdapter {
           actors: [
             { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
             pair.via
-              ? { via: pair.via, userId: pair.userB, role: 'party', intent: pair.intentB }
+              ? { via: pair.via, userId: pair.userB, role: 'party', ...(pair.intentB ? { intent: pair.intentB } : {}) }
               : { networkId: pair.networkId, userId: pair.userB, role: 'party', ...(pair.intentB ? { intent: pair.intentB } : {}) },
           ],
           interpretation: {
@@ -491,6 +494,7 @@ export class NegotiationDatabaseAdapter {
    */
   async scanForIntent(userId: string, intentId: string): Promise<NegotiationScanRecord[]> {
     const networkId = sql<string>`nullif(${opportunities.context}->>'networkId', '')`;
+    const introducer = sql<string>`(${opportunities.detection}->>'createdBy')`;
     // Match state(): both live intents must still belong to their seats and be
     // assigned to the opportunity's network with a membership for each owner.
     const eligibleSeats = [
@@ -517,6 +521,25 @@ export class NegotiationDatabaseAdapter {
         and membership.deleted_at is null and membership.permissions && ARRAY['owner', 'member', 'admin']::text[]
         and not exists (select 1 from ${schema.intentExclusions} exclusion
           where exclusion.intent_id = ${negotiations.initiatorIntentId} and exclusion.excluded_user_id = identity_user.id)
+    )) or (${negotiations.responderIntentId} is null and ${opportunities.detection}->>'source' = 'introducer' and exists (
+      -- Mirrors ghostIdentityEligible: an introduced contact, only through the introducer who holds their email.
+      select 1 from ${users} ghost
+      where ghost.id = ${negotiations.responderUserId} and ghost.deleted_at is null and ghost.email_verified = false
+        and ghost.id <> ${introducer}
+        and exists (select 1 from ${networkMembers} introducing
+          where introducing.user_id = ${introducer} and introducing.network_id = ${networkId}
+            and introducing.deleted_at is null and introducing.permissions && ARRAY['owner', 'member', 'admin']::text[])
+        and exists (select 1 from ${schema.networks} n where n.id = ${networkId} and n.deleted_at is null)
+        and exists (select 1 from ${intents} initiating
+          where initiating.id = ${negotiations.initiatorIntentId} and initiating.user_id <> ${introducer})
+        and exists (select 1 from ${schema.contacts} contact
+          where contact.owner_user_id = ${introducer} and contact.email = lower(ghost.email)
+            and contact.removed_at is null and contact.excluded_at is null)
+        and not exists (select 1 from ${schema.intentExclusions} exclusion
+          where exclusion.intent_id = ${negotiations.initiatorIntentId} and exclusion.excluded_user_id = ghost.id)
+        and not exists (select 1 from ${schema.introducerExclusions} barred
+          join ${intents} barred_intent on barred_intent.user_id = barred.excluded_user_id
+          where barred.introducer_user_id = ${introducer} and barred_intent.id = ${negotiations.initiatorIntentId})
     )))`;
     const opportunityId = opportunityFromScope(intentId);
     return db.select({
@@ -703,9 +726,10 @@ export class NegotiationDatabaseAdapter {
   }
 
   private async state(tx: Transaction, row: NegotiationRow, lock = false): Promise<NegotiationState> {
-    const [opportunity] = await tx.select({ context: opportunities.context, status: opportunities.status }).from(opportunities)
+    const [opportunity] = await tx.select({ context: opportunities.context, status: opportunities.status, detection: opportunities.detection }).from(opportunities)
       .where(eq(opportunities.id, row.opportunityId));
     const networkId = (opportunity?.context as { networkId?: string } | null)?.networkId;
+    const detection = opportunity?.detection as { source?: string; createdBy?: string } | null | undefined;
     let eligible = false;
     if (networkId) {
       let query = tx.select({ id: intents.id, userId: intents.userId }).from(intents)
@@ -720,7 +744,9 @@ export class NegotiationDatabaseAdapter {
       eligible = opportunity?.status === 'negotiating'
         && seats.some((seat) => seat.id === row.initiatorIntentId && seat.userId === row.initiatorUserId)
         && (row.responderIntentId ? seats.some((seat) => seat.id === row.responderIntentId && seat.userId === row.responderUserId)
-          : await this.identityEligible(tx, row.responderUserId, networkId, row.initiatorIntentId));
+          : await this.identityEligible(tx, row.responderUserId, networkId, row.initiatorIntentId)
+            || (detection?.source === 'introducer' && !!detection.createdBy
+              && await this.ghostIdentityEligible(tx, row.responderUserId, networkId, row.initiatorIntentId, detection.createdBy)));
     }
     const turns = await tx.select().from(negotiationTurns).where(eq(negotiationTurns.negotiationId, row.id)).orderBy(asc(negotiationTurns.turnIndex));
     return { initiatorUserId: row.initiatorUserId, responderUserId: row.responderUserId,
@@ -805,6 +831,29 @@ export class NegotiationDatabaseAdapter {
       if (!introducer || introducerId === userId) return false;
     }
     return true;
+  }
+
+  /**
+   * Introduced contacts (ghosts) are unverified and in no network, so they can
+   * never pass `identityEligible`. They hold an identity seat only through the
+   * introducer whose own contacts hold their email: nobody else can reach them,
+   * and being reached grants them nothing else. Mirrored in `scanForIntent`.
+   */
+  private async ghostIdentityEligible(connection: typeof db | Transaction, userId: string, networkId: string, intentId: string, introducerId: string): Promise<boolean> {
+    if (introducerId === userId) return false;
+    const [ghost] = await connection.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, userId), isNull(users.deletedAt), eq(users.emailVerified, false),
+        sql`exists (select 1 from ${networkMembers} introducing where introducing.user_id = ${introducerId} and introducing.network_id = ${networkId}
+          and introducing.deleted_at is null and introducing.permissions && ARRAY['owner', 'member', 'admin']::text[])`,
+        sql`exists (select 1 from ${schema.networks} n where n.id = ${networkId} and n.deleted_at is null)`,
+        sql`exists (select 1 from ${intents} initiating where initiating.id = ${intentId} and initiating.user_id <> ${introducerId})`,
+        sql`exists (select 1 from ${schema.contacts} contact where contact.owner_user_id = ${introducerId} and contact.email = lower(${users.email})
+          and contact.removed_at is null and contact.excluded_at is null)`,
+        sql`not exists (select 1 from ${schema.intentExclusions} exclusion where exclusion.intent_id = ${intentId} and exclusion.excluded_user_id = ${userId})`,
+        sql`not exists (select 1 from ${schema.introducerExclusions} barred join ${intents} barred_intent on barred_intent.user_id = barred.excluded_user_id
+          where barred.introducer_user_id = ${introducerId} and barred_intent.id = ${intentId})`,
+      )).limit(1);
+    return !!ghost;
   }
 
   async seatedIdentity(userId: string, networkId: string, intentId: string): Promise<boolean> {
