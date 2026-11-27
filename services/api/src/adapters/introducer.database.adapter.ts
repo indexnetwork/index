@@ -145,12 +145,13 @@ const LIVE_PUBLIC_INTENT = sql`
 
 /**
  * A pair the desk and the research step may still show or work on: its intent is
- * still public and live, the member is in good standing, and the member and the
+ * still public, live and in the pair's network, the member is in good standing, and the member and the
  * introducer are both current members of the pair's network. Aliases: p proposal,
  * i its intent, u the intent's owner.
  */
 const VISIBLE_MEMBER_SIDE = sql`
   ${LIVE_PUBLIC_INTENT}
+  and exists (select 1 from intent_networks inw where inw.intent_id = i.id and inw.network_id = p.network_id and inw.visibility = 'networks_only')
   and exists (select 1 from network_members mm where mm.network_id = p.network_id and mm.user_id = u.id and mm.deleted_at is null)
   and exists (select 1 from network_members mi where mi.network_id = p.network_id and mi.user_id = p.introducer_user_id and mi.deleted_at is null)`;
 
