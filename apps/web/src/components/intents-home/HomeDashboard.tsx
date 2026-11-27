@@ -126,16 +126,16 @@ export default function HomeDashboard() {
 
   const awaiting = byStage.awaiting;
 
-  // People you accepted or passed on stay in their spot as a one-line note until the page
-  // reloads, like LinkedIn's "invitation ignored". The decision itself lives with the
-  // window on the right (it can be made there too); this keeps who it was and where.
+  // People you accepted stay in their spot until the page reloads, so the chat is one click
+  // away. People you pass on leave the list at once (undo brings them back). The decision
+  // itself lives with the window on the right (it can be made there too).
   const [pinned, setPinned] = useState<Map<string, { person: Person; at: number } | null>>(() => new Map());
   const waitingRows = useMemo(() => {
     const rows: Array<{ person: Person; decision: Decision | null }> = awaiting
-      .filter((person) => !(decisions[person.key] && pinned.get(person.key)))
+      .filter((person) => decisions[person.key] !== "rejected" && !(decisions[person.key] && pinned.get(person.key)))
       .map((person) => ({ person, decision: null }));
     [...pinned.entries()]
-      .flatMap(([key, pin]) => (pin && decisions[key] ? [{ ...pin, decision: decisions[key] }] : []))
+      .flatMap(([key, pin]) => (pin && decisions[key] === "accepted" ? [{ ...pin, decision: decisions[key] }] : []))
       .sort((a, b) => a.at - b.at)
       .forEach(({ person, at, decision }) => rows.splice(Math.min(at, rows.length), 0, { person, decision }));
     return rows;
@@ -290,9 +290,7 @@ export default function HomeDashboard() {
                   <div className="sv-mrow">
                     <b>{person.name}</b>
                     {person.notOnIndex && <span className="sv-via"> · not on index</span>}
-                    {canChat
-                      ? <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>
-                      : decision === "rejected" && <span className="sv-mchip">passed</span>}
+                    {canChat && <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>}
                   </div>
                   {blurb && <div className="sv-blurb">{blurb}</div>}
                   {!decision ? (
