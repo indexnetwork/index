@@ -29,12 +29,18 @@ import { log } from './log';
  * `principal.input` is the owner's answer or message on that same conversation
  * when an external executor is selected.
  *
+ * `introduction.status` and `introduction.report` are the introducer's: an
+ * introduction they opened, in which they hold no seat, moved or heard back.
+ * They carry the phase (and the note) only, never the turns or which side.
+ *
  * `message` is the exception to the pointer shape: it is human-addressed and
  * carries its text inline, so a desktop toast needs no follow-up read.
  */
 export type UserEventType =
   | 'opportunity.new'
   | 'opportunity.status'
+  | 'introduction.status'
+  | 'introduction.report'
   | 'question.pending'
   | 'principal.input'
   | 'negotiation.turn'

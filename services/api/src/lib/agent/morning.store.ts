@@ -119,7 +119,7 @@ export async function owedForEmail(userId: string, since: Date): Promise<Morning
   `) as unknown as [{ talked: number }];
   const waiting = await db.execute(sql`
     SELECT * FROM (
-      SELECT DISTINCT ON (other.id) o.id AS "opportunityId", other.id AS "userId", other.name, i.payload AS context, o.updated_at > ${after} AS fresh, o.updated_at
+      SELECT DISTINCT ON (other.id) o.id AS "opportunityId", other.id AS "userId", other.name, CASE WHEN i.is_private THEN NULL ELSE i.payload END AS context, o.updated_at > ${after} AS fresh, o.updated_at
       FROM ${schema.opportunities} o
       CROSS JOIN LATERAL jsonb_array_elements(o.actors) peer
       INNER JOIN ${schema.users} other ON other.id = peer->>'userId'

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "opportunity_events_one_report" ON "opportunity_events" USING btree ("opportunity_id","actor_user_id") WHERE "opportunity_events"."type" = 'report';

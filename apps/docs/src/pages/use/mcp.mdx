@@ -64,12 +64,25 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Read one opportunity and its negotiation | `get_opportunity` |
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
+| See how introductions I made are going | `list_introductions` |
+| Send a note to whoever introduced me | `report_to_introducer` |
+| Choose what people who introduce me learn | `set_introducer_reports` |
 | Read one or every intent's chat | `get_intent_conversation` |
 | Answer in one intent's chat | `principal_send_message` |
 
 `get_intent_conversation` returns a `conversations` list, one entry per intent, each with its chat and questions still waiting. Pass `intentId` for one intent, or omit it to read every non-archived intent in one call. `principal_send_message` saves what the owner just said. Pass `questionId` only when those words answer that question. The hosted negotiator writes the agent's side of the same chat.
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
+
+An **introducer** is someone who connects two other people, from the
+[Introduce](/use/introduce) page or with the API. `list_introductions` shows
+the introductions you made: the two people, where each ended up, and any note
+either side sent back, never the agents' turns. `report_to_introducer` sends
+the person who introduced you one note, at most 280 characters, once, after
+the agents settled. It works only when your setting is `note`.
+`set_introducer_reports` reads or changes that setting: `status` (the
+default), `note`, or `none`. See
+[Reporting back](/integrate/rest/opportunities#reporting-back).
 
 `create_intent` takes a `description` in plain language and prepares it before
 saving. A draft that is not ready comes back as `intent_needs_revision`, with

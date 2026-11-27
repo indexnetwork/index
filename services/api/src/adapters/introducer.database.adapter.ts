@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import type { OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
+import type { IntroducerReportSetting, OpportunityProposalActor, OpportunityProposalStatus } from '../schemas/database.schema';
 
 const { contacts, users, opportunityProposals, introducerExclusions } = schema;
 
@@ -73,6 +73,7 @@ export interface IntroductionRow {
   opportunityId: string;
   status: string;
   createdAt: Date;
+  updatedAt: Date;
   context: string;
   a: { userId: string; name: string; avatar: string | null; intentText: string };
   b: { userId: string; name: string; avatar: string | null; intentText: string };
@@ -83,7 +84,8 @@ export interface OutreachRow {
   opportunityId: string;
   seatUserId: string;
   email: string;
-  contactName: string | null;
+  /** The seat's own name (`users.name`), never the introducer's address-book label. */
+  seatName: string | null;
   introducerName: string;
   /** The member who said yes; the email's link signs in straight to them. */
   memberId: string;
@@ -353,7 +355,7 @@ export class IntroducerDatabaseAdapter {
       select p.id, p.status, p.failure, p.confidence, p.detection, p.actors, p.interpretation, p.context, p.metadata,
              p.network_id, n.title as network_title, p.opportunity_id, p.created_at,
              u.id as member_id, u.name as member_name, u.avatar as member_avatar,
-             i.id as intent_id, coalesce(nullif(i.summary, ''), i.payload) as intent_text,
+             i.id as intent_id, case when i.is_private then '' else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
              c.id as contact_id, c.email, c.name, c.organization, c.title
       from opportunity_proposals p
       join intents i on i.id = p.intent_id
@@ -578,11 +580,11 @@ export class IntroducerDatabaseAdapter {
     });
   }
 
-  /** An existing seat's live intent closest to the member's, if it has one. */
+  /** An existing seat's live public intent closest to the member's, if it has one. */
   async closestSeatIntent(seatUserId: string, memberIntentId: string): Promise<string | null> {
     const result = await db.execute(sql`
       select g.id from intents g
-      where g.user_id = ${seatUserId} and g.archived_at is null and (g.status is null or g.status = 'active')
+      where g.user_id = ${seatUserId} and g.archived_at is null and (g.status is null or g.status = 'active') and g.is_private = false
       order by g.embedding <=> (select embedding from intents where id = ${memberIntentId}) nulls last
       limit 1
     `);
@@ -598,14 +600,14 @@ export class IntroducerDatabaseAdapter {
   /** Woken introductions a member said yes to, whose contact was not emailed yet. */
   async outreachDue(limit: number): Promise<OutreachRow[]> {
     const result = await db.execute(sql`
-      select o.id as opportunity_id, seat.id as seat_id, seat.email, c.name as contact_name,
+      select o.id as opportunity_id, seat.id as seat_id, seat.email, seat.name as seat_name,
              intro.name as introducer_name, mu.id as member_id, mu.name as member_name,
-             coalesce(nullif(mi.summary, ''), mi.payload) as member_intent,
+             -- An intent made private after the member said yes is never emailed.
+             case when mi.is_private then '' else coalesce(nullif(mi.summary, ''), mi.payload) end as member_intent,
              coalesce(o.metadata->'introducer'->>'context', '') as context
       from opportunity_proposals s
       join opportunities o on o.id = s.opportunity_id
       join users seat on seat.id = s.actors->1->>'userId' and not seat.email_verified and seat.deleted_at is null
-      join contacts c on c.id = s.contact_id
       join users intro on intro.id = s.introducer_user_id
       join intents mi on mi.id = s.intent_id
       join users mu on mu.id = mi.user_id
@@ -621,7 +623,7 @@ export class IntroducerDatabaseAdapter {
       opportunityId: String(r.opportunity_id),
       seatUserId: String(r.seat_id),
       email: String(r.email),
-      contactName: (r.contact_name as string | null) ?? null,
+      seatName: (r.seat_name as string | null) ?? null,
       introducerName: String(r.introducer_name),
       memberId: String(r.member_id),
       memberName: String(r.member_name),
@@ -673,12 +675,12 @@ export class IntroducerDatabaseAdapter {
   /** Introductions the viewer opened, newest first: who, and the opportunity's status. Never the turns. */
   async introductions(viewerId: string, opportunityId?: string, limit = 20): Promise<IntroductionRow[]> {
     const result = await db.execute(sql`
-      select o.id as opportunity_id, o.status, o.created_at,
+      select o.id as opportunity_id, o.status, o.created_at, o.updated_at,
              o.metadata->'introducer'->>'context' as context,
              n.initiator_user_id as a_user, ua.name as a_name, ua.avatar as a_avatar,
-             coalesce(nullif(ia.summary, ''), ia.payload) as a_text,
+             case when ia.is_private then '' else coalesce(nullif(ia.summary, ''), ia.payload) end as a_text,
              n.responder_user_id as b_user, ub.name as b_name, ub.avatar as b_avatar,
-             coalesce(nullif(ib.summary, ''), ib.payload) as b_text
+             case when ib.is_private then '' else coalesce(nullif(ib.summary, ''), ib.payload) end as b_text
       from opportunities o
       join negotiations n on n.opportunity_id = o.id
       join users ua on ua.id = n.initiator_user_id
@@ -694,10 +696,73 @@ export class IntroducerDatabaseAdapter {
       opportunityId: String(r.opportunity_id),
       status: String(r.status),
       createdAt: new Date(String(r.created_at)),
+      updatedAt: new Date(String(r.updated_at)),
       context: String(r.context ?? ''),
       a: { userId: String(r.a_user), name: String(r.a_name), avatar: (r.a_avatar as string | null) ?? null, intentText: String(r.a_text) },
       b: { userId: String(r.b_user), name: String(r.b_name), avatar: (r.b_avatar as string | null) ?? null, intentText: String(r.b_text) },
     }));
+  }
+
+  /**
+   * What each person lets their introducers learn. A person with no setting,
+   * including a contact who has not signed up, shares the status.
+   */
+  async reportSettings(userIds: string[]): Promise<Map<string, IntroducerReportSetting>> {
+    const settings = new Map<string, IntroducerReportSetting>(userIds.map((id) => [id, 'status']));
+    if (!userIds.length) return settings;
+    const rows = await db.select({ userId: schema.userNotificationSettings.userId, preferences: schema.userNotificationSettings.preferences })
+      .from(schema.userNotificationSettings)
+      .where(inArray(schema.userNotificationSettings.userId, userIds));
+    for (const row of rows) {
+      const value = (row.preferences as { introducerReports?: unknown } | null)?.introducerReports;
+      if (value === 'note' || value === 'none') settings.set(row.userId, value);
+    }
+    return settings;
+  }
+
+  /** Notes the seats sent back, oldest first. Who sent each is never returned. */
+  async reports(opportunityIds: string[]): Promise<Map<string, { note: string; at: Date }[]>> {
+    const grouped = new Map<string, { note: string; at: Date }[]>();
+    if (!opportunityIds.length) return grouped;
+    const rows = await db.select({ opportunityId: schema.opportunityEvents.opportunityId, data: schema.opportunityEvents.data, at: schema.opportunityEvents.at })
+      .from(schema.opportunityEvents)
+      .where(and(inArray(schema.opportunityEvents.opportunityId, opportunityIds), eq(schema.opportunityEvents.type, 'report')))
+      .orderBy(schema.opportunityEvents.at);
+    for (const row of rows) {
+      const note = typeof row.data?.note === 'string' ? row.data.note : '';
+      if (!note) continue;
+      const list = grouped.get(row.opportunityId) ?? [];
+      list.push({ note, at: row.at });
+      grouped.set(row.opportunityId, list);
+    }
+    return grouped;
+  }
+
+  /** What reporting back reads of an opportunity: its status, its introducer, and its seats. */
+  async reportTarget(opportunityId: string): Promise<{ status: string; introducerUserId: string | null; actorIds: string[] } | null> {
+    const [row] = await db.select({
+      status: schema.opportunities.status,
+      actors: schema.opportunities.actors,
+      introducer: sql<string | null>`${schema.opportunities.metadata}->'introducer'->>'userId'`,
+    })
+      .from(schema.opportunities)
+      .where(eq(schema.opportunities.id, opportunityId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      status: row.status,
+      introducerUserId: row.introducer ?? null,
+      actorIds: (row.actors ?? []).map((actor) => actor.userId).filter(Boolean),
+    };
+  }
+
+  /** Whether this seat already reported on this opportunity. */
+  async hasReported(opportunityId: string, userId: string): Promise<boolean> {
+    const [row] = await db.select({ id: schema.opportunityEvents.id })
+      .from(schema.opportunityEvents)
+      .where(and(eq(schema.opportunityEvents.opportunityId, opportunityId), eq(schema.opportunityEvents.actorUserId, userId), eq(schema.opportunityEvents.type, 'report')))
+      .limit(1);
+    return !!row;
   }
 
   /** Display names for a set of users. */

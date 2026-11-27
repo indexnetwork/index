@@ -368,6 +368,8 @@ export interface UserWithGraph {
     accepted?: boolean;
     messages?: boolean;
     morningBrief?: boolean;
+    introductions?: boolean;
+    introducerReports?: 'note' | 'status' | 'none';
   };
 }
 
@@ -383,6 +385,8 @@ export interface NewsletterUserData {
     accepted?: boolean;
     messages?: boolean;
     morningBrief?: boolean;
+    introductions?: boolean;
+    introducerReports?: 'note' | 'status' | 'none';
   } | null;
   unsubscribeToken: string | null;
   onboarding: {

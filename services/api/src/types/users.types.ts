@@ -13,6 +13,10 @@ export interface NotificationPreferences {
   messages?: boolean;
   /** Absent means the morning wake is on. */
   morningBrief?: boolean;
+  /** Absent means a toast when an introduction you made moves or hears back. */
+  introductions?: boolean;
+  /** What your introducer learns once your side settles. Absent means `status`. */
+  introducerReports?: 'note' | 'status' | 'none';
 }
 
 export interface OnboardingState {

@@ -39,4 +39,10 @@ const opportunityEventService = new OpportunityEventService({
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
-OpportunityEvents.onTransition = (payload) => opportunityEventService.publishOpportunityStatus(payload);
+OpportunityEvents.onTransition = async (payload) => {
+  await Promise.all([
+    opportunityEventService.publishOpportunityStatus(payload),
+    // Loaded on first use: the introducer service pulls in auth and the agent, which bootstrap must not.
+    import('./services/introducer.service').then(({ introducerService }) => introducerService.publishTransition(payload.opportunity.id)),
+  ]);
+};

@@ -233,7 +233,9 @@ export class NegotiationDatabaseAdapter {
 
   /**
    * Resolve an intent that may hold a seat in a negotiation on this network:
-   * unarchived, still discoverable, and shared into the network.
+   * unarchived, still discoverable, not private, and shared into the network.
+   * A private intent never holds a seat on either side: the counterpart reads
+   * a seat's statement word for word.
    *
    * @param intentId - The intent to seat.
    * @param networkId - The network the negotiation would sit in.
@@ -253,7 +255,8 @@ export class NegotiationDatabaseAdapter {
         eq(intentNetworks.networkId, networkId),
         isNull(intents.archivedAt),
         activeIntentLifecycleWhere(),
-        ...(options.visible ? [eq(intents.isPrivate, false), eq(intentNetworks.visibility, 'networks_only' as const)] : []),
+        eq(intents.isPrivate, false),
+        ...(options.visible ? [eq(intentNetworks.visibility, 'networks_only' as const)] : []),
         ...(options.otherUserId && options.otherIntentId ? [sql`not exists (
           select 1 from ${schema.intentExclusions}
           where (${schema.intentExclusions.intentId} = ${intentId} and ${schema.intentExclusions.excludedUserId} = ${options.otherUserId})
@@ -313,6 +316,20 @@ export class NegotiationDatabaseAdapter {
         const [existing] = await tx.select({ id: negotiations.id }).from(negotiations)
           .where(eq(negotiations.pairKey, pair.pairKey)).limit(1);
         if (existing) return null;
+
+        // A pass is on the person, not the intent: once either of these two
+        // people has passed on an opportunity with the other, discovery never
+        // pairs them again through some other intent. Only a person who
+        // introduces them on purpose can.
+        if (pair.detection?.source !== 'introducer') {
+          const [passed] = await tx.select({ id: opportunities.id }).from(opportunities)
+            .where(and(
+              eq(opportunities.status, 'rejected'),
+              sql`${opportunities.actors} @> ${JSON.stringify([{ userId: pair.userA }])}::jsonb`,
+              sql`${opportunities.actors} @> ${JSON.stringify([{ userId: pair.userB }])}::jsonb`,
+            )).limit(1);
+          if (passed) return null;
+        }
 
         const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
           .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
@@ -754,8 +771,10 @@ export class NegotiationDatabaseAdapter {
     const [people, statements, turnCounts, introducers] = await Promise.all([
       connection.select({ id: users.id, name: users.name, avatar: users.avatar, intro: users.intro, location: users.location }).from(users)
         .where(inArray(users.id, [...new Set(counterparts.map((c) => c.userId))])),
+      // A private intent's wording never crosses, even on a negotiation it
+      // opened before it was made private.
       connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
-        .where(inArray(intents.id, [...new Set(counterparts.map((c) => c.intentId))])),
+        .where(and(inArray(intents.id, [...new Set(counterparts.map((c) => c.intentId))]), eq(intents.isPrivate, false))),
       connection.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
         .from(negotiationTurns)
         .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))

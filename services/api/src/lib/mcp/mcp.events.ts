@@ -36,6 +36,8 @@ interface EventDefinition {
   toPayload(frame: EventFrame): Record<string, unknown>;
 }
 
+const INTRODUCE_URL = `${(process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '')}/introduce`;
+
 const intentFilter = z.string().optional().describe('Only events for this intent (UUID).');
 
 function intentEvent(description: string): EventDefinition {
@@ -91,6 +93,18 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       status: String(data.status),
       url: appLink('o', String(data.opportunityId)),
     }),
+  },
+  'introduction.status': {
+    description: 'An introduction the owner made between two other people moved: agreed, met, no_fit, quiet, or private (it ended and one side keeps how private). Read every introduction with list_introductions.',
+    args: z.object({}).strict(),
+    payload: z.object({ opportunityId: z.string(), phase: z.string(), url: z.string() }).strict(),
+    toPayload: ({ data = {} }) => ({ opportunityId: String(data.opportunityId), phase: String(data.phase), url: INTRODUCE_URL }),
+  },
+  'introduction.report': {
+    description: 'One side of an introduction the owner made sent back a short note on how it went. The note never says which side.',
+    args: z.object({}).strict(),
+    payload: z.object({ opportunityId: z.string(), phase: z.string(), note: z.string(), url: z.string() }).strict(),
+    toPayload: ({ data = {} }) => ({ opportunityId: String(data.opportunityId), phase: String(data.phase), note: String(data.note ?? ''), url: INTRODUCE_URL }),
   },
 };
 

@@ -99,6 +99,8 @@ that chat through the opportunity's consent flow while it is `pending` or
 | Follow my agent's negotiations | `index negotiation list` |
 | Answer my personal agent | `index conversation send agent "<text>" --intent-id <id>` |
 | Review introductions | `index opportunity list --status pending` |
+| See how introductions I made are going | `index opportunity introductions` |
+| Send a note to whoever introduced me | `index opportunity report <id> --message "<note>"` |
 | Message someone | `index conversation with <user-id>` |
 | Find a network to join | `index network discover` |
 | Invite someone to my network | `index network invite <id> <email>` |
@@ -199,6 +201,8 @@ index opportunity show <id>
 index opportunity accept <id>
 index opportunity reject <id>
 index opportunity start-chat <id>
+index opportunity introductions                          # Introductions you made, where each ended up, notes back
+index opportunity report <id> --message "<note>"         # One note to whoever introduced you, once
 
 index conversation list                    # Your conversations
 index conversation with <user-id>          # Open or resume a DM

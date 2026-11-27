@@ -8,6 +8,7 @@ import { createRedisClient } from '../../adapters/cache.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { QuestionGroupsDatabaseAdapter } from '../../adapters/question-groups.database.adapter';
 import { ConversationService } from '../../services/conversation.service';
+import { introducerService, phaseLine } from '../../services/introducer.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { appLink } from '../app-link';
 import { MAX_WAITING, morningBriefTemplate } from '../email/templates';
@@ -75,7 +76,10 @@ export async function composeMorningEmail(userId: string, name: string, since: D
   const labels = new Map((await new HostedIndex(userId).listIntents()).map((intent) => [intent.id, intent.statement]));
   const written = await writeOpening({
     name,
-    reports: owed.notes.map((note) => ({ intent: labels.get(note.intentId) ?? 'an intent', text: note.text })),
+    reports: [
+      ...owed.notes.map((note) => ({ intent: labels.get(note.intentId) ?? 'an intent', text: note.text })),
+      ...await introductionNews(userId, since),
+    ],
     talked: owed.talked,
     waitingNames: waiting.map((person) => person.name),
     groupCount: groups.length,
@@ -92,6 +96,24 @@ export async function composeMorningEmail(userId: string, name: string, since: D
   if (!email) return null;
   const morning: Morning = { name, opening, waiting: waiting.slice(0, MAX_WAITING), groups };
   return { email, morning };
+}
+
+/**
+ * Introductions this owner made that moved or heard back since the last
+ * morning, as lines the opening can mention. Talks in progress are no news.
+ */
+async function introductionNews(userId: string, since: Date): Promise<{ intent: string; text: string }[]> {
+  const first = (name: string) => name.trim().split(/\s+/)[0] || name;
+  const introductions = await introducerService.introductions(userId).catch(() => []);
+  return introductions.flatMap((intro) => {
+    const pair = `an introduction you made (${first(intro.a.name)} and ${first(intro.b.name)})`;
+    const lines: { intent: string; text: string }[] = [];
+    if (intro.phase !== 'talking' && new Date(intro.updatedAt) > since) lines.push({ intent: pair, text: phaseLine(intro) });
+    for (const report of intro.reports) {
+      if (new Date(report.at) > since) lines.push({ intent: pair, text: `One of them sent a note back: "${report.note}"` });
+    }
+    return lines;
+  });
 }
 
 /**
@@ -202,7 +224,7 @@ export function startMorningBrief(options: {
     work: async (owner, claim) => {
       const networks = await networkedIntentIds(owner.id);
       const intents = (await new HostedIndex(owner.id).listIntents())
-        .filter((item) => item.status === 'active' && networks.has(item.id));
+        .filter((item) => item.status === 'active' && !item.isPrivate && networks.has(item.id));
       for (const item of intents) {
         try {
           await options.wake(owner.id, { id: item.id, statement: item.statement }, claim.previous);

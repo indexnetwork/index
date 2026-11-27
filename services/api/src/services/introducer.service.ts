@@ -7,6 +7,8 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
+import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { publishUserEvent, type UserEvent } from '../lib/user-events';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { detectSocialLabel } from '../adapters/database.shared';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
@@ -124,18 +126,69 @@ export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy
 /**
  * What an introducer learns about an introduction: where it ended up, never
  * how. No turns, no whose-move, no wording, and a "no fit" never says which
- * side or whether an agent or a person said it.
+ * side or whether an agent or a person said it. `private` means it left the
+ * talks and one of the two keeps the outcome from introducers (their
+ * `introducerReports` setting is `none`).
  */
-export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet';
+export type IntroductionPhase = 'talking' | 'agreed' | 'met' | 'no_fit' | 'quiet' | 'private';
+
+/** A note one side sent back. It never says which side. */
+export interface IntroductionReport {
+  note: string;
+  at: string;
+}
 
 export interface IntroductionProgress {
   opportunityId: string;
   createdAt: string;
+  /** When its status was last written. */
+  updatedAt: string;
   context: string;
   a: IntroductionRow['a'];
   b: IntroductionRow['b'];
   phase: IntroductionPhase;
+  reports: IntroductionReport[];
 }
+
+/** The phase an opportunity status reads as, before anyone's setting hides it. */
+export function phaseOf(status: string): Exclude<IntroductionPhase, 'private'> {
+  return status === 'accepted' ? 'met'
+    : status === 'rejected' ? 'no_fit'
+      : status === 'expired' ? 'quiet'
+        : status === 'pending' ? 'agreed'
+          : 'talking';
+}
+
+/** Longest note a seat may send its introducer. */
+export const REPORT_NOTE_MAX = 280;
+
+const INTRODUCE_URL = `${(process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '')}/introduce`;
+
+const PHASE_LABEL: Record<IntroductionPhase, string> = {
+  talking: 'talking',
+  agreed: 'agreed',
+  met: 'met',
+  no_fit: 'no fit',
+  quiet: 'went quiet',
+  private: 'ended',
+};
+
+/** One line on where an introduction is, as the Introduce page says it. */
+export function phaseLine(p: Pick<IntroductionProgress, 'a' | 'b' | 'phase'>): string {
+  const A = firstName(p.a.name), B = firstName(p.b.name);
+  switch (p.phase) {
+    case 'talking': return 'Both agents are awake and talking privately.';
+    case 'agreed': return `The agents agreed. Now it's up to ${A} and ${B}.`;
+    case 'met': return `${A} and ${B} both said yes. They're connected.`;
+    case 'no_fit': return "It wasn't a fit. Nothing more happens.";
+    case 'quiet': return 'It went quiet before both said yes.';
+    case 'private': return 'It ended. One of them keeps how it went private.';
+  }
+}
+
+export type ReportResult = { id: string } | { error: string; status: number };
+
+
 
 interface GooglePerson {
   names?: { displayName?: string }[];
@@ -498,18 +551,21 @@ export class IntroducerService {
     if (existing) {
       // Already seated by an earlier introduction or by Ghost: reuse it.
       const intentId = await this.adapter.closestSeatIntent(existing.id, row.member.intentId)
-        ?? await this.addFallbackIntent(existing.id, row);
+        ?? await this.addIntroducedIntent(existing.id, row.member.intentText);
       seat = { userId: existing.id, intentId };
     } else {
+      // The card is the introducer's own address book: a hint for research to
+      // find the right person, never copied onto the seat. Everyone else sees
+      // the seat (the member, later introducers, the contact's own email), so
+      // its name, intro and intents come from public research only.
       const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
-      const name = contactName(row.contact);
       const payloads = research?.intents.map((t) => t.trim()).filter(Boolean).slice(0, 3) ?? [];
-      if (!payloads.length) payloads.push(fallbackIntent(row));
+      if (!payloads.length) payloads.push(await introducedIntent(row.member.intentText));
       const vectors = await this.embedder.generate(payloads) as number[][];
       const created = await this.adapter.createSeat({
         email,
-        name,
-        intro: research?.headline?.trim() || [row.contact.title, row.contact.organization].filter(Boolean).join(', ') || null,
+        name: publicName(research?.name) ?? nameFromEmail(email),
+        intro: research?.headline?.trim() || null,
         socials: profileLinks(research?.socials ?? []),
         intents: payloads.map((payload, i) => ({ payload, embedding: vectors[i]! })),
       });
@@ -539,8 +595,8 @@ export class IntroducerService {
     logger.info('Proposal opened', { proposalId: row.id, opportunityId: opened.opportunityId });
   }
 
-  private async addFallbackIntent(seatUserId: string, row: ProposalRow): Promise<string> {
-    const payload = fallbackIntent(row);
+  private async addIntroducedIntent(seatUserId: string, memberIntent: string): Promise<string> {
+    const payload = await introducedIntent(memberIntent);
     const embedding = await this.embedder.generate(payload) as number[];
     return this.adapter.addSeatIntent(seatUserId, payload, embedding);
   }
@@ -573,18 +629,113 @@ export class IntroducerService {
 
   async introductions(userId: string, opportunityId?: string): Promise<IntroductionProgress[]> {
     const rows = await this.adapter.introductions(userId, opportunityId);
-    return rows.map((row) => ({
-      opportunityId: row.opportunityId,
-      createdAt: row.createdAt.toISOString(),
-      context: row.context,
-      a: row.a,
-      b: row.b,
-      phase: row.status === 'accepted' ? 'met'
-        : row.status === 'rejected' ? 'no_fit'
-          : row.status === 'expired' ? 'quiet'
-            : row.status === 'pending' ? 'agreed'
-              : 'talking',
-    }));
+    const [settings, reports] = await Promise.all([
+      this.adapter.reportSettings([...new Set(rows.flatMap((row) => [row.a.userId, row.b.userId]))]),
+      this.adapter.reports(rows.map((row) => row.opportunityId)),
+    ]);
+    return rows.map((row) => {
+      const phase = phaseOf(row.status);
+      // Talks in progress are no news: the introducer opened them. Where they
+      // ended up is shared only if neither side turned that off.
+      const hidden = phase !== 'talking' && (settings.get(row.a.userId) === 'none' || settings.get(row.b.userId) === 'none');
+      return {
+        opportunityId: row.opportunityId,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        context: row.context,
+        a: row.a,
+        b: row.b,
+        phase: hidden ? 'private' : phase,
+        reports: hidden ? [] : (reports.get(row.opportunityId) ?? []).map((r) => ({ note: r.note, at: r.at.toISOString() })),
+      };
+    });
+  }
+
+  // ─── reporting back ────────────────────────────────────────────────────────
+
+  /**
+   * File a seat's note to the introducer: an opportunity event of type
+   * `report`. Once per seat, after its negotiation settled, and only when the
+   * seat owner's `introducerReports` setting is `note`. The introducer never
+   * learns which side sent it.
+   *
+   * @param opportunityId - The opportunity.
+   * @param userId - The seat's owner.
+   * @param data - The event's data: `{ note }`.
+   */
+  async fileReport(opportunityId: string, userId: string, data: Record<string, unknown> | null): Promise<ReportResult> {
+    const target = await this.adapter.reportTarget(opportunityId);
+    if (!target || !target.actorIds.includes(userId)) return { error: 'Opportunity not found', status: 404 };
+    if (!target.introducerUserId) return { error: 'Nobody introduced this pair, so there is nobody to report to', status: 409 };
+    if (target.status === 'negotiating') return { error: 'Report once the negotiation has settled', status: 409 };
+    const note = typeof data?.note === 'string' ? data.note.replace(/\s+/g, ' ').trim() : '';
+    if (!note) return { error: 'data.note is required: one short line for the person who introduced you', status: 400 };
+    if (note.length > REPORT_NOTE_MAX) return { error: `data.note must be at most ${REPORT_NOTE_MAX} characters`, status: 400 };
+
+    const setting = (await this.adapter.reportSettings([userId])).get(userId);
+    if (setting !== 'note') {
+      return {
+        error: setting === 'none'
+          ? 'Your settings keep introducers out of how it went. Change "people who introduce you" under Settings → notifications.'
+          : 'Your settings share the status with introducers, not notes. Choose "that, and a short note" under Settings → notifications.',
+        status: 403,
+      };
+    }
+    if (await this.adapter.hasReported(opportunityId, userId)) {
+      return { error: 'You already reported on this introduction', status: 409 };
+    }
+
+    let id: string;
+    try {
+      id = await appendClientOpportunityEvent(opportunityId, userId, { type: 'report', data: { note } });
+    } catch (error) {
+      // The one-report index caught a concurrent second report.
+      if (String(error).includes('opportunity_events_one_report')) return { error: 'You already reported on this introduction', status: 409 };
+      throw error;
+    }
+    void this.publishIntroduction(target.introducerUserId, opportunityId, 'introduction.report').catch((error) => {
+      logger.error('Failed to publish introduction report', { opportunityId, error: String(error) });
+    });
+    return { id };
+  }
+
+  /**
+   * Tell the introducer an introduction moved. Called on every status write
+   * of every opportunity; anything not introduced is skipped.
+   *
+   * @param opportunityId - The opportunity whose status was written.
+   */
+  async publishTransition(opportunityId: string): Promise<void> {
+    try {
+      const target = await this.adapter.reportTarget(opportunityId);
+      if (!target?.introducerUserId) return;
+      await this.publishIntroduction(target.introducerUserId, opportunityId, 'introduction.status');
+    } catch (error) {
+      logger.error('Failed to publish introduction status', { opportunityId, error: String(error) });
+    }
+  }
+
+  private async publishIntroduction(introducerId: string, opportunityId: string, type: 'introduction.status' | 'introduction.report'): Promise<void> {
+    const [progress] = await this.introductions(introducerId, opportunityId);
+    if (!progress) return;
+    // Talks starting again are no news to the person who opened them.
+    if (type === 'introduction.status' && progress.phase === 'talking') return;
+    const note = progress.reports.at(-1)?.note;
+    if (type === 'introduction.report' && !note) return;
+    const pair = `${firstName(progress.a.name)} ⇄ ${firstName(progress.b.name)}`;
+    const event: UserEvent = {
+      type,
+      id: opportunityId,
+      title: type === 'introduction.report' ? `${pair} · a note back` : `${pair} · ${PHASE_LABEL[progress.phase]}`,
+      body: type === 'introduction.report' ? note! : phaseLine(progress),
+      link: INTRODUCE_URL,
+      data: {
+        opportunityId,
+        phase: progress.phase,
+        ...(type === 'introduction.report' ? { note } : {}),
+      },
+    };
+    await publishUserEvent(introducerId, event);
   }
 }
 
@@ -621,10 +772,48 @@ function toContactView(row: ContactListRow): ContactView {
   };
 }
 
-/** When research finds nothing: who they are, as the introducer's card has them. */
-function fallbackIntent(row: ProposalRow): string {
-  const role = [row.contact.title, row.contact.organization].filter(Boolean).join(' at ');
-  return role ? `${contactName(row.contact)}, ${role}.` : `${contactName(row.contact)} ${row.card.contact}.`;
+/** Research's name for someone, unless it reads like a label rather than a name ("Raj (Stripe guy)"). */
+function publicName(name: string | undefined): string | null {
+  const clean = name?.replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length > 80 || /[()[\]@\d]/.test(clean)) return null;
+  return clean;
+}
+
+/**
+ * A seat's name when research found none: the email's local part, tidied
+ * (`raj.patel@` → "Raj Patel"). Never the introducer's address-book label.
+ */
+function nameFromEmail(email: string): string {
+  const local = email.split('@')[0]!.split('+')[0]!;
+  const words = local.split(/[._\-\s]+/).filter((w) => /[a-z]/i.test(w));
+  const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  return name || local || email;
+}
+
+/**
+ * A seat's one intent when research found nothing to say about them: only
+ * that they were introduced, phrased around what the member wants. Written
+ * from the member's intent alone; nothing from the introducer's card.
+ */
+async function introducedIntent(memberIntent: string): Promise<string> {
+  const fallback = `I was introduced to someone who wants: ${clip(memberIntent, 200).replace(/[.!?…]+$/, '')}. I'm open to hearing more.`;
+  try {
+    const { text } = await generateText({
+      model: introModel(),
+      prompt: [
+        'A mutual contact introduced someone to a member who wants the thing below. Nothing else is known about the person introduced.',
+        'Write one first-person sentence for that person saying only that they were introduced and are open to hearing more about it.',
+        'Claim no name, role, company, skill, interest or experience. No emoji. Reply with the sentence only.',
+        '',
+        `The member wants: ${clip(memberIntent, 300)}`,
+      ].join('\n'),
+    });
+    const line = clip(text, 240);
+    return line || fallback;
+  } catch (error) {
+    logger.warn('Introduced-intent line failed', { error: String(error) });
+    return fallback;
+  }
 }
 
 /** Public profile links research opened; personal sites included. */
@@ -644,14 +833,16 @@ function profileLinks(urls: string[]): { label: string; value: string }[] {
 }
 
 /** The first email the contact gets: from the person who introduced them, after the member said yes. */
-function introEmail(row: { introducerName: string; memberId: string; memberName: string; memberIntent: string; context: string; contactName: string | null }) {
+function introEmail(row: { introducerName: string; memberId: string; memberName: string; memberIntent: string; context: string; seatName: string | null }) {
   const oneLine = (s: string) => s.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 120);
   const intro = oneLine(row.introducerName);
   const member = oneLine(row.memberName);
-  const hello = row.contactName ? `Hi ${firstName(row.contactName)},` : 'Hi,';
+  // The seat's own name, from research or their email; never the introducer's label for them.
+  const hello = row.seatName?.trim() ? `Hi ${firstName(row.seatName)},` : 'Hi,';
   // Sign-in that lands on the member, not the marketing page; the page names them.
   const link = `${WEB_APP_URL}/login?next=${encodeURIComponent(`/u/${row.memberId}`)}`;
   const url = escapeHtml(link);
+  const work = row.memberIntent.trim() ? clip(row.memberIntent, 300) : '';
   const contextHtml = row.context ? `<blockquote style="margin: 12px 0; padding-left: 12px; border-left: 3px solid #ddd;">${escapeHtml(row.context)}</blockquote>` : '';
   return {
     subject: `${intro} introduced you to ${member}`,
@@ -659,15 +850,14 @@ function introEmail(row: { introducerName: string; memberId: string; memberName:
   <p>${escapeHtml(hello)}</p>
   <p><strong>${escapeHtml(intro)}</strong> thinks you should meet <strong>${escapeHtml(member)}</strong>, and ${escapeHtml(firstName(member))} said yes.</p>
   ${contextHtml}
-  <p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(clip(row.memberIntent, 300))}</p>
+  ${work ? `<p>${escapeHtml(firstName(member))} is working on: ${escapeHtml(work)}</p>` : ''}
   <p><a href="${url}">Sign in with this email to see it and reply</a></p>
   <p style="color: #666; font-size: 12px;">Not interested? Reply "stop" and Index will delete it and never contact you again.</p>
 </div>`,
     text: `${hello}
 
 ${intro} thinks you should meet ${member}, and ${firstName(member)} said yes.
-${row.context ? `\n"${row.context}"\n` : ''}
-${firstName(member)} is working on: ${clip(row.memberIntent, 300)}
+${row.context ? `\n"${row.context}"\n` : ''}${work ? `\n${firstName(member)} is working on: ${work}` : ''}
 
 Sign in with this email to see it and reply: ${link}
 

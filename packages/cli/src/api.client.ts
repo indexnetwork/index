@@ -112,6 +112,25 @@ export class ApiClient {
     return await res.json() as Record<string, unknown>;
   }
 
+  /** Send the introducer one note on how this opportunity went (a `report` event). */
+  async reportOpportunity(id: string, note: string): Promise<{ id: string }> {
+    const res = await this.post(`/api/opportunities/${encodeURIComponent(id)}/events`, { type: "report", data: { note } });
+    return await res.json() as { id: string };
+  }
+
+  /** Introductions the caller opened between two other people. */
+  async listIntroductions(): Promise<{
+    opportunityId: string;
+    createdAt: string;
+    a: { name: string };
+    b: { name: string };
+    phase: string;
+    reports: { note: string; at: string }[];
+  }[]> {
+    const res = await this.get("/api/introducer/introductions");
+    return ((await res.json()) as { introductions: [] }).introductions;
+  }
+
   /** Start or resume the human chat through the opportunity's consent path. */
   async startOpportunityChat(id: string): Promise<{ conversationId: string }> {
     const res = await this.post(`/api/opportunities/${encodeURIComponent(id)}/start-chat`, {});

@@ -37,6 +37,8 @@ ChatGPT reads the full record with the tools.
 | `intent.updated` | You changed an intent's goal or constraints | `intentId` |
 | `opportunity.new` | An opportunity is waiting on you | `intentId` |
 | `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
+| `introduction.status` | An introduction you made between two other people moved: agreed, met, no fit, went quiet, or ended privately | |
+| `introduction.report` | One side of an introduction you made sent a note back | |
 - **Delivery** is a signed webhook ([Standard Webhooks](https://www.standardwebhooks.com/)) to the callback ChatGPT registers. Index first sends a challenge to the callback, and nothing else reaches it until the challenge is echoed.
 - **Payloads** carry ids, a link, and Index-written text (the opportunity headline). They never include messages you wrote.
 - **History is not replayed.** A subscription sees events from the moment it is created.
