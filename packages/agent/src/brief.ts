@@ -2,7 +2,7 @@ import type { Counterparty } from "@indexnetwork/client";
 
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { BriefInput, ConversationEntry, Decision, Opportunity, User, WakeAction } from "./types.ts";
+import type { BriefInput, ConversationEntry, Decision, Intent, Opportunity, User, WakeAction } from "./types.ts";
 
 /** How long a brief may be. Enough to authorise a negotiator, not to retell the intent. */
 export const BRIEF_LIMIT = 400;
@@ -24,6 +24,18 @@ export const BRIEF_PROMPT = [
 /** Added to every prompt for a principal who has not verified their email. */
 export const UNVERIFIED_PROMPT =
   "Your principal has not verified their account, so they have agreed to nothing, including this negotiation. Speak about them in the third person and only from their intent; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their intent does not cover is theirs to answer once contacted. Accept only a proposal their intent plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
+
+/** For an introduced contact: their seat has no intent, so the intent-based prompt would decline everything. */
+export const UNVERIFIED_IDENTITY_PROMPT =
+  "Your principal has not joined Index, so they have agreed to nothing. Someone who knows them introduced them. Speak about them in the third person, only from their public profile; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall. Accept a proposal to offer them this introduction when the other side's ask fits what their profile shows; whether they want it is theirs to decide once contacted. Decline when their profile plainly doesn't fit.";
+
+/**
+ * @param intent - The seat the run serves.
+ * @returns The prompt for an unverified principal: the identity variant when the seat has no intent.
+ */
+export function unverifiedPrompt(intent: Intent): string {
+  return intent.kind === "identity" ? UNVERIFIED_IDENTITY_PROMPT : UNVERIFIED_PROMPT;
+}
 
 const BRIEF_ONLY_PROMPT = [
   "You write the brief for one new opportunity, so its negotiator can run at all. The decision is already made and given to you: you never choose or change it. Write the brief that carries it out. For a continue, that is the reason this pair is worth a first conversation. For a decline, it is one sentence on the mismatch between what this intent seeks and what the counterpart asks.",
@@ -124,7 +136,7 @@ export async function briefIfMissing(input: BriefInput, decision: Decision, oper
     maxSteps: 2,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
-    instructions: user.emailVerified === false ? `${BRIEF_ONLY_PROMPT}\n\n${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
+    instructions: user.emailVerified === false ? `${BRIEF_ONLY_PROMPT}\n\n${unverifiedPrompt(intent)}` : BRIEF_ONLY_PROMPT,
     prompt:
       "Brief this one opportunity now.\n" +
       JSON.stringify({

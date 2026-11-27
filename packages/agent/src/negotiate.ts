@@ -1,4 +1,4 @@
-import { principalFacts, UNVERIFIED_PROMPT } from "./brief.ts";
+import { principalFacts, unverifiedPrompt } from "./brief.ts";
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
 import type { NegotiateInput, NegotiateResult, NegotiationAction, Stall, Turn } from "./types.ts";
@@ -90,7 +90,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
     intent,
     instructions: [
       SYSTEM_PROMPT,
-      user.emailVerified === false && UNVERIFIED_PROMPT,
+      user.emailVerified === false && unverifiedPrompt(intent),
       input.privateContext?.length && PRIVATE_CONTEXT_PROMPT,
     ].filter(Boolean).join("\n\n"),
     prompt:
