@@ -25298,6 +25298,15 @@ class IndexClient {
     return { events, next: page.next ?? null };
   }
 }
+// ../client/dist/index.js
+function negotiationScope2(intentId, opportunityId) {
+  return intentId ?? `opportunity:${opportunityId}`;
+}
+function opportunityFromScope2(scope) {
+  const match = /^opportunity:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(scope);
+  return match?.[1] ?? null;
+}
+
 // ../../node_modules/@ai-sdk/provider/dist/index.js
 var marker$162 = "vercel.ai.error";
 var symbol$162 = Symbol.for(marker$162);
@@ -36760,7 +36769,7 @@ function systemPrompt(input2) {
     "Write everything in English: every message, question, brief and turn, whatever language the principal, counterpart or anything you read uses.",
     `You are ${input2.identity.name}, acting on behalf of ${input2.identity.id}.`,
     `Today is ${formatDate((input2.now ?? (() => new Date))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
-    `Current intent: ${input2.intent.statement}
+    input2.intent.kind === "identity" && input2.unverified ? `Current opportunity: ${input2.intent.opportunityId}. Your principal has no intent attached and has not joined Index. Work this introduction from their public profile and the negotiation record only. Do not infer a goal or willingness from their profile or the introducer's claim.` : input2.intent.kind === "identity" ? `Current opportunity: ${input2.intent.opportunityId}. Your principal has no intent attached. Work this introduction using their confirmed facts, private conversation and the negotiation record. Do not infer a goal or willingness from their profile or the introducer's claim. Use the ordinary brief, negotiation and consultation flow.` : `Current intent: ${input2.intent.statement}
 Intent id: ${input2.intent.id}
 Everything you do in this run serves that intent. If something falls outside it, say so rather than acting.`
   ].join(`
@@ -36831,6 +36840,10 @@ var BRIEF_PROMPT = [
 
 `);
 var UNVERIFIED_PROMPT = "Your principal has not verified their account, so they have agreed to nothing, including this negotiation. Speak about them in the third person and only from their intent; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall: say plainly that anything their intent does not cover is theirs to answer once contacted. Accept only a proposal their intent plainly supports, as a sign that an introduction is worth offering them, and decline on any mismatch.";
+var UNVERIFIED_IDENTITY_PROMPT = "Your principal has not joined Index, so they have agreed to nothing. Someone who knows them introduced them. Speak about them in the third person, only from their public profile; never speak as them, say 'we', or claim their interest, availability or enthusiasm. They cannot be asked, so never stall. Accept a proposal to offer them this introduction when the other side's ask fits what their profile shows; whether they want it is theirs to decide once contacted. Decline when their profile plainly doesn't fit.";
+function unverifiedPrompt(intent) {
+  return intent.kind === "identity" ? UNVERIFIED_IDENTITY_PROMPT : UNVERIFIED_PROMPT;
+}
 var BRIEF_ONLY_PROMPT = [
   "You write the brief for one new opportunity, so its negotiator can run at all. The decision is already made and given to you: you never choose or change it. Write the brief that carries it out. For a continue, that is the reason this pair is worth a first conversation. For a decline, it is one sentence on the mismatch between what this intent seeks and what the counterpart asks.",
   BRIEF_PROMPT,
@@ -36842,6 +36855,12 @@ function principalFacts(user) {
   if (!user.profileConfirmed)
     return null;
   return { name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null };
+}
+var PUBLIC_PROFILE_SOURCE = "Their public profile, researched from the public web. They have not confirmed it.";
+function publicProfile(user, intent) {
+  if (user.emailVerified !== false || intent.kind !== "identity")
+    return null;
+  return { source: PUBLIC_PROFILE_SOURCE, name: user.name, intro: user.intro ?? null, socials: user.socials ?? [] };
 }
 function principalOnly(conversation) {
   return conversation.filter((entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall" && entry.kind !== "resolution");
@@ -36863,6 +36882,7 @@ async function briefIfMissing(input2, decision, operation = "brief") {
   const { user, intent, opportunity } = input2;
   if (opportunity.brief && opportunity.decision)
     return [];
+  const profile = publicProfile(user, intent);
   const recorded = [];
   const tools = [
     tool2({
@@ -36885,16 +36905,17 @@ async function briefIfMissing(input2, decision, operation = "brief") {
     operation,
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
+    ...user.emailVerified === false ? { unverified: true } : {},
     maxSteps: 2,
     ...input2.now ? { now: input2.now } : {},
     ...input2.signal ? { signal: input2.signal } : {},
     instructions: user.emailVerified === false ? `${BRIEF_ONLY_PROMPT}
 
-${UNVERIFIED_PROMPT}` : BRIEF_ONLY_PROMPT,
+${unverifiedPrompt(intent)}` : BRIEF_ONLY_PROMPT,
     prompt: `Brief this one opportunity now.
 ` + JSON.stringify({
       decision,
-      principal: principalFacts(user),
+      ...profile ? { principal_public_profile: profile } : { principal: principalFacts(user) },
       conversation: principalOnly(input2.principalConversation),
       opportunity
     }),
@@ -36957,6 +36978,7 @@ var PRIVATE_CONTEXT_PROMPT = [
 ].join(" ");
 async function negotiate(input2) {
   const { user, intent, brief, opportunity } = input2;
+  const profile = publicProfile(user, intent);
   let result;
   const tools = [
     tool2({
@@ -37003,19 +37025,23 @@ async function negotiate(input2) {
     operation: "negotiate",
     identity: { id: user.id, name: user.name ? `${user.name}'s agent` : user.id },
     intent,
+    ...user.emailVerified === false ? { unverified: true } : {},
     instructions: [
       SYSTEM_PROMPT,
-      user.emailVerified === false && UNVERIFIED_PROMPT,
+      user.emailVerified === false && unverifiedPrompt(intent),
       input2.privateContext?.length && PRIVATE_CONTEXT_PROMPT
     ].filter(Boolean).join(`
 
 `),
     prompt: `Take this negotiation's next turn, or stall.
 Your brief:
-` + brief + `
+` + brief + (profile ? `
+
+Your principal's public profile (researched from the public web; they have not confirmed it):
+` + JSON.stringify(profile) : `
 
 Your principal (null when unconfirmed):
-` + JSON.stringify(principalFacts(user)) + (input2.privateContext?.length ? `
+` + JSON.stringify(principalFacts(user))) + (input2.privateContext?.length ? `
 
 Your principal's private intents:
 ` + input2.privateContext.map((text2) => "- " + text2).join(`
@@ -37564,9 +37590,9 @@ ${MORNING}` : WAKE_PROMPT,
       unansweredMessage,
       openQuestions: [...open2].map(([questionId, question]) => ({ questionId, question }))
     }),
-    tools
+    tools: intent.kind === "identity" ? tools.filter((entry) => entry.name !== "reach_counterparties") : tools
   });
-  if (!unpersisted && !discovered && input2.reason !== "morning" && !opportunities.length) {
+  if (intent.kind !== "identity" && !unpersisted && !discovered && input2.reason !== "morning" && !opportunities.length) {
     const queries = [intent.statement];
     const { found, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
     if (found) {
@@ -37708,7 +37734,7 @@ function toOpportunity(negotiation, userId) {
     maxTurns,
     remainingTurns,
     actions: negotiation.protocol.availableActions,
-    intent: { statement: negotiation.counterparty.statement },
+    ...negotiation.counterparty.intentId ? { intent: { statement: negotiation.counterparty.statement } } : {},
     bio: negotiation.counterparty.bio,
     location: negotiation.counterparty.location,
     ...negotiation.introducer ? { introducer: { name: negotiation.introducer.name, context: negotiation.introducer.context } } : {}
@@ -37997,7 +38023,7 @@ async function closeInitiation(client, intent, runtime) {
   ]);
   const since = lastSummaryAt(inbox.messages);
   const stalled = stalledOpportunities(inbox.messages);
-  const batch = rows.filter((negotiation) => negotiation.intentId === intent.id && (!since || new Date(negotiation.createdAt) > since));
+  const batch = rows.filter((negotiation) => negotiationScope2(negotiation.intentId, negotiation.opportunityId) === intent.id && (!since || new Date(negotiation.createdAt) > since));
   if (batch.some((negotiation) => stillOpening(negotiation, user.id, stalled, now2)))
     return "pending";
   const details = (await Promise.all(batch.map((negotiation) => client.getNegotiation(negotiation.opportunityId).catch(() => null)))).filter((detail) => detail !== null && initiatedBy(detail, user.id));
@@ -38032,7 +38058,7 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     client.principalInbox(intent.id),
     client.listIntents()
   ]);
-  if (detail.intentId !== intent.id)
+  if (negotiationScope2(detail.intentId, detail.opportunityId) !== intent.id)
     return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
   if (detail.awaitingUserId !== user.id)
     return { stall: { reason: "It is not this seat's turn." } };
@@ -38260,8 +38286,15 @@ function startRunner(options) {
   }
   async function recoverAll() {
     const open2 = await client.listNegotiations();
-    for (const intentId of new Set(open2.map((negotiation) => negotiation.intentId)))
-      await recover(intentId);
+    const scopes = new Set;
+    for (const negotiation of open2) {
+      const scope = negotiationScope2(negotiation.intentId, negotiation.opportunityId);
+      if (!negotiation.intentId)
+        intents.set(scope, { id: scope, kind: "identity", statement: "", opportunityId: negotiation.opportunityId });
+      scopes.add(scope);
+    }
+    for (const scope of scopes)
+      await recover(scope);
   }
   let adopted = false;
   async function refresh() {
@@ -38282,7 +38315,7 @@ function startRunner(options) {
     }
     adopted = true;
     for (const id of [...intents.keys()]) {
-      if (!active.has(id)) {
+      if (!active.has(id) && !opportunityFromScope2(id)) {
         intents.delete(id);
         log(`dropped intent ${id}`);
       }
@@ -38292,11 +38325,26 @@ function startRunner(options) {
     switch (event.type) {
       case "negotiation.turn":
         log(`event ${event.type} on ${event.data.opportunityId}`);
-        startNegotiate(event.data.intentId, event.data.opportunityId);
+        {
+          const scope = negotiationScope2(event.data.intentId, event.data.opportunityId);
+          if (!event.data.intentId)
+            intents.set(scope, { id: scope, kind: "identity", statement: "", opportunityId: event.data.opportunityId });
+          startNegotiate(scope, event.data.opportunityId);
+        }
         break;
       case "principal.input":
         log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId, event.data.questionId ? undefined : event.data.text);
+        (async () => {
+          const scope = event.data.intentId;
+          const opportunityId = opportunityFromScope2(scope);
+          if (opportunityId && !intents.has(scope)) {
+            const record2 = await client.getNegotiation(opportunityId);
+            if (record2.intentId !== null)
+              return;
+            intents.set(scope, { id: scope, kind: "identity", statement: "", opportunityId });
+          }
+          startWake(scope, event.data.questionId ? undefined : event.data.text);
+        })().catch(onError);
         break;
       case "connected":
         log(`event ${event.type}`);
