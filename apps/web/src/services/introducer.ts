@@ -23,7 +23,8 @@ export interface OpportunityProposal {
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
   /** avatar: the face Google shows you for them, else the one Introduce found on the web. */
-  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null };
+  /** ghostUserId: the identity-only ghost research found for them; their page is /u/<ghostUserId>. */
+  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null; ghostUserId: string | null };
   draft: string;
 }
 

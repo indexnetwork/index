@@ -1,18 +1,21 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NetworkHomePanel from "./NetworkHomePanel";
 
 const mocks = vi.hoisted(() => ({ getRadarView: vi.fn(), act: vi.fn() }));
 const service = { getRadarView: mocks.getRadarView };
-vi.mock("@/contexts/APIContext", () => ({ useOpportunities: () => service }));
+const networks = { getNetworkOverview: async () => ({ intents: [] }) };
+vi.mock("@/contexts/APIContext", () => ({ useOpportunities: () => service, useNetworks: () => networks }));
 vi.mock("@/hooks/useOpportunityActions", () => ({ useOpportunityActions: () => ({ opportunityStatusMap: {}, opportunityActionLoading: {}, handleOpportunityAction: mocks.act }) }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuthContext: () => ({ user: { name: "Test" } }) }));
+vi.mock("@/components/intents-home/usePersonalQuestions", () => ({ usePersonalQuestions: () => ({ questions: [], all: [], loaded: true, answer: vi.fn() }) }));
 vi.mock("@/components/UserAvatar", () => ({ default: () => null }));
 
 const card = (id: string, status = "pending", extra = {}) => ({ opportunityId: id, status, peer: { userId: id, name: id }, mainText: `about ${id}`, ...extra });
 const mount = () => render(<MemoryRouter><NetworkHomePanel network={{ id: "foresight", title: "Foresight" }} /></MemoryRouter>);
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); mocks.act.mockResolvedValue(true); });
 
 describe("network member home", () => {
   it("requests only the current network and groups opportunities by the viewer's state", async () => {
@@ -20,26 +23,28 @@ describe("network member home", () => {
     mount();
     await screen.findByText("Alice");
     expect(mocks.getRadarView).toHaveBeenCalledWith(expect.objectContaining({ networkId: "foresight", statuses: ["pending", "negotiating", "accepted"] }));
-    expect(within(screen.getByRole("region", { name: "waiting on you" })).getByText("Alice")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "in progress" })).getByText("Bob")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "accepted" })).getByText("Carol")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "open chat ›" })).toHaveAttribute("href", "/u/Carol/chat");
+    expect(screen.getByText("agents agreed. your call · 1")).toHaveClass("sv-lh");
+    expect(screen.getByText("Alice").closest(".sv-card")).toBeInTheDocument();
+    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
+    expect(screen.getByText("your agent is talking with 1 person")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "see all ›" }));
+    expect(screen.getByText("Bob").closest(".sv-row")).toBeInTheDocument();
   });
 
   it("uses the shared decision flow and preserves the unverified-person flag", async () => {
     mocks.getRadarView.mockResolvedValue({ items: [card("Alice", "pending", { peer: { userId: "Alice", name: "Alice", emailVerified: false } })] });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "accept" }));
-    expect(mocks.act).toHaveBeenCalledWith("Alice", "accepted", "Alice", { notOnIndex: true });
+    expect(mocks.act).toHaveBeenCalledWith("Alice", "accepted", "Alice", { notOnIndex: true, scope: undefined });
     fireEvent.click(screen.getByRole("button", { name: "pass" }));
-    expect(mocks.act).toHaveBeenCalledWith("Alice", "rejected", "Alice");
+    expect(mocks.act).toHaveBeenCalledWith("Alice", "rejected", "Alice", { notOnIndex: true, scope: undefined });
   });
 
   it("recovers from a failed request", async () => {
     mocks.getRadarView.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ items: [] });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "try again" }));
-    await screen.findByText("nothing waiting on you right now.");
+    await screen.findByText("nobody yet. your agents are still looking.");
     expect(mocks.getRadarView).toHaveBeenCalledTimes(2);
   });
 

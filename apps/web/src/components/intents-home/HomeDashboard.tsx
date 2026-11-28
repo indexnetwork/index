@@ -47,14 +47,26 @@ const HOME_STATUS_LINE = HOME_STATUS_LINES[Math.floor(Math.random() * HOME_STATU
  * A plain page on purpose: text, links and native controls.
  */
 export default function HomeDashboard() {
+  return <HomeDashboardBody data={useIntentsData()} />;
+}
+
+export type HomeDashboardData = Pick<ReturnType<typeof useIntentsData>,
+  "intents" | "intentsLoaded" | "radar" | "radarFailed" | "entriesByIntent" | "opportunityActionLoading" | "handleOpportunityAction" | "loadRadar">;
+
+/** The same body for personal Home and a network's scoped Home. */
+export function HomeDashboardBody({ data, embedded = false, questionIntentIds }: {
+  data: HomeDashboardData;
+  embedded?: boolean;
+  questionIntentIds?: string[];
+}) {
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = useIntentsData();
+  const { intents, intentsLoaded, radar, radarFailed, entriesByIntent, opportunityActionLoading, handleOpportunityAction, loadRadar } = data;
   // The agent has its own window on the desktop (see AppFrame); Home only opens it.
   const { setOpen: toggleAgent, log: openLog, setLog, decisions, decide } = useAgentWindow();
   const later = useUndo();
   // A page in the middle; your agent, or whoever you open, docks on the right (see AppFrame).
-  const split = (page: ReactNode) => (
+  const split = (page: ReactNode) => embedded ? <>{page}</> : (
     <PageView
       title={<>{user?.name ? `hi ${user.name.split(" ")[0].toLowerCase()}.` : "hi."} {HOME_STATUS_LINE}</>}
       actions={<button type="button" className="sv-btn go sm" onClick={() => navigate("/i/new")}>+ new intent</button>}
@@ -63,7 +75,10 @@ export default function HomeDashboard() {
     </PageView>
   );
 
-  const { questions, all: allQuestions, loaded: questionsLoaded, answer } = usePersonalQuestions();
+  const { questions: personalQuestions, all: allQuestions, loaded: personalQuestionsLoaded, answer } = usePersonalQuestions();
+  const questions = questionIntentIds === undefined ? personalQuestions : personalQuestions.filter((question) =>
+    question.intentIds.some((id) => questionIntentIds.includes(id)));
+  const questionsLoaded = personalQuestionsLoaded && (!embedded || intentsLoaded);
   // A /q/<id> link lands here as ?q=<id>: that question's card is selected until answered.
   const [linkParams, setLinkParams] = useSearchParams();
   const linkedQuestion = linkParams.get("q");
@@ -179,7 +194,7 @@ export default function HomeDashboard() {
     const pending = person.entries.filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId]);
     const send = () => void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, person.userId, {
       notOnIndex: person.notOnIndex,
-      scope: { intentId: entry.intentId },
+      scope: entry.intentId.startsWith("opportunity:") ? undefined : { intentId: entry.intentId },
     }).then((ok) => { void loadRadar(entry.intentId); return ok; }))).then((results) => {
       // It didn't go through: the error is already shown, so give the card back.
       if (results.includes(false)) { decide(person.key, null); if (chatting) setLog(null); }
@@ -196,14 +211,14 @@ export default function HomeDashboard() {
     later(`passed on ${person.name.split(" ")[0]}`, send, () => decide(person.key, null));
   };
 
-  const loadingPeople = intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
+  const loadingPeople = !intentsLoaded || intents.some((intent) => !radar[intent.id] && !radarFailed[intent.id]);
   // Chats have their own page (conversations), so this section is only people your agent is still talking with.
   const talking = byStage.talks;
   // At most 3 question cards before "show all ›"; one opened from a /q/ link stays in view past them.
   const questionList = useShowMore(questions, (question) => question.groupId === linkedGroup, 3);
   const waitingList = useShowMore(waitingRows);
   const talkingList = useShowMore(talking, undefined, 0);
-  usePublishHomeSections([
+  usePublishHomeSections(embedded ? [] : [
         { id: "questions", label: "questions", count: questionsLoaded ? questions.length : undefined },
         { id: "waiting", label: "waiting on you", count: loadingPeople ? undefined : waitingCount },
         ...(talking.length || refreshingIds.length ? [{ id: "progress", label: "in progress", count: talking.length, loading: refreshingIds.length > 0 }] : []),
@@ -235,7 +250,7 @@ export default function HomeDashboard() {
     };
   };
 
-  if (intentsLoaded && intents.length === 0 && questionsLoaded && questions.length === 0 && radar["opportunity:inbox"]?.length === 0) {
+  if (!embedded && intentsLoaded && intents.length === 0 && questionsLoaded && questions.length === 0 && radar["opportunity:inbox"]?.length === 0) {
     return split(
       <div className="sv-empty">
         <p className="sv-p"><b>welcome to index.</b></p>
@@ -300,7 +315,7 @@ export default function HomeDashboard() {
                     </div>
                   ) : decision === "accepted" && person.notOnIndex && (
                     <div className="sv-actions">
-                      <button type="button" className="sv-btn" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
+                      <button type="button" className="sv-btn" onClick={() => navigate(lead.intentId.startsWith("opportunity:") ? `/u/${person.userId}` : `/i/${lead.intentId}`)}>send invite</button>
                     </div>
                   )}
                 </div>

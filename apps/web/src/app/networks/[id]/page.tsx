@@ -5,6 +5,8 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window, ConfirmWindow } from '@/components/workbench/Workbench';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
+import { PageView } from '@/components/intents-home/SplitView';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import NetworkHomePanel from '@/components/NetworkHomePanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -203,72 +205,38 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   const isPublic = network?.permissions?.joinPolicy === 'anyone';
 
-  // Signed in on desktop: the plain page, like the networks list.
   if (plain) {
+    const ready = !loading && !notFound && !loadFailed && network;
     const tabs: TabValue[] = isOwner ? ['home', 'overview', 'settings', 'access'] : ['home', 'overview'];
-    const initial = String(network?.title || networkId || "#").trim().charAt(0).toUpperCase();
-    return (
-      <div className="ih-view pl">
-        {leaveDialog}
-        <div className="pl-col">
-        <div className="pl-page pl-netdetail">
-          {/* Like the intent page: back and the page's button share the top line. */}
-          <div className="pl-intent-top">
-            <button type="button" className="pl-back" onClick={() => navigate('/networks')}>◂ networks</button>
-            {network && !isOwner && <button type="button" onClick={() => setLeaveRequested(true)}>leave</button>}
-          </div>
-          {loading ? (
-            <Placeholder.Window rows={4} label="loading this network" />
-          ) : notFound ? (
-            <div className="pl-profile-empty">
-              <p>this network doesn&apos;t exist, or you don&apos;t have access to it.</p>
-              <button type="button" onClick={() => navigate('/networks')}>back to networks</button>
-            </div>
-          ) : loadFailed ? (
-            <div className="pl-profile-empty">
-              <p>couldn&apos;t load this network.</p>
-              <button type="button" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
-            </div>
-          ) : network ? (
-            <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
-              <div className="pl-netdetail-head">
-                {network.imageUrl
-                  ? <img className="pl-net-mark img big" src={resolveNetworkImageSrc(network.imageUrl)} alt="" />
-                  : <span className="pl-net-mark c0 big" aria-hidden>{initial}</span>}
-                <div className="pl-netdetail-who">
-                  <h1 className="ih-title">{network.title}</h1>
-                  <div className="pl-netdetail-meta">
-                    {[isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "owner" : "member"].filter(Boolean).join(" · ")}
-                  </div>
-                </div>
-              </div>
-              <Tabs.List className="pl-tabs pl-netdetail-tabs">
-                {tabs.map((tab) => (
-                  <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{tab === "overview" ? "intents" : tab}</Tabs.Trigger>
-                ))}
-              </Tabs.List>
-              <Tabs.Content value="home">
-                <NetworkHomePanel key={network.id} network={network} />
-              </Tabs.Content>
-              <Tabs.Content value="overview">
-                <NetworkOverviewPanel network={network} isOwner={isOwner} />
-              </Tabs.Content>
-              {isOwner && (
-                <>
-                  <Tabs.Content value="settings" className="pl-netdetail-panel">
-                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" />
-                  </Tabs.Content>
-                  <Tabs.Content value="access" className="pl-netdetail-panel">
-                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" />
-                  </Tabs.Content>
-                </>
-              )}
-            </Tabs.Root>
-          ) : null}
-        </div>
-        </div>
-      </div>
-    );
+    return <>
+      {leaveDialog}
+      <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ height: '100%' }}>
+        <PageView
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {ready && <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} />}
+            <span>{network?.title || 'network'}</span>
+          </span>}
+          back={{ label: "networks", onClick: () => navigate('/networks') }}
+          actions={ready && !isOwner && <button type="button" className="sv-btn sm" onClick={() => setLeaveRequested(true)}>leave</button>}
+          sub={ready ? [isPublic ? "public" : "private", network._count?.members !== undefined ? `${network._count.members} people` : null, isOwner ? "owner" : "member"].filter(Boolean).join(" · ") : undefined}
+          seg={ready && <Tabs.List className="sv-seg" aria-label="network views">
+            {tabs.map((tab) => <Tabs.Trigger key={tab} value={tab} aria-pressed={activeTab === tab}>{tab === "overview" ? "intents" : tab}</Tabs.Trigger>)}
+          </Tabs.List>}
+        >
+          {loading ? <Placeholder.Window rows={4} label="loading this network" />
+            : notFound ? <EmptyState message="this network doesn't exist, or you don't have access to it." action={{ label: "back to networks", to: "/networks" }} />
+            : loadFailed ? <EmptyState tone="error" message="couldn't load this network." action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }} />
+            : network && <>
+              <Tabs.Content value="home"><NetworkHomePanel key={network.id} network={network} /></Tabs.Content>
+              <Tabs.Content value="overview"><NetworkOverviewPanel network={network} isOwner={isOwner} /></Tabs.Content>
+              {isOwner && <>
+                <Tabs.Content value="settings" className="pl pl-netdetail-panel" style={{ padding: '0 20px' }}><NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" /></Tabs.Content>
+                <Tabs.Content value="access" className="pl pl-netdetail-panel" style={{ padding: '0 20px' }}><NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" /></Tabs.Content>
+              </>}
+            </>}
+        </PageView>
+      </Tabs.Root>
+    </>;
   }
 
   return (
@@ -317,7 +285,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
           </div>
           <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: compact ? "14px 16px 20px" : "14px 24px 20px" }}>
             <Tabs.Content value="home">
-              <NetworkHomePanel key={network.id} network={network} />
+              <PageView><NetworkHomePanel key={network.id} network={network} /></PageView>
             </Tabs.Content>
             <Tabs.Content value="overview">
               <NetworkOverviewPanel network={network} isOwner={isOwner} />

@@ -119,7 +119,8 @@ export interface OpportunityProposalView {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null };
+  /** ghostUserId: the contact's identity-only ghost, so the card can open its page. */
+  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null; ghostUserId: string | null };
   /** The draft intro, `metadata.introducer.context` once opened. */
   draft: string;
 }
@@ -1117,7 +1118,7 @@ function toProposalView(row: ProposalRow): OpportunityProposalView {
     opportunityId: row.opportunityId,
     networkTitle: row.networkTitle,
     member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.card.member, intentText: row.member.intentText },
-    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null, avatar: row.contact.avatar },
+    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null, avatar: row.contact.avatar, ghostUserId: row.contact.ghostUserId },
     draft: row.draft,
   };
 }

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { ListHead, PageView } from "@/components/intents-home/SplitView";
@@ -25,6 +25,11 @@ const POLL_MS = 5000;
 const MAX_CONTEXT = 2000;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
+
+/** A person on a pair, linked to their page when they have one: the member's profile, or the contact's ghost. */
+function PersonLink({ userId, name, className = "idk-person", children }: { userId: string | null; name: string; className?: string; children: ReactNode }) {
+  return userId ? <Link to={`/u/${userId}`} className={className} title={`${name}'s page`}>{children}</Link> : <>{children}</>;
+}
 
 const isFinal = (p: IntroductionProgress) => p.phase !== "talking" && p.phase !== "agreed";
 
@@ -139,17 +144,21 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <div className="idk-pair">
         <div className="idk-who">
-          <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
+          <PersonLink userId={proposal.member.userId} name={proposal.member.name} className="idk-face">
+            <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
+          </PersonLink>
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={proposal.member.intentText}><b>{first(proposal.member.name)}</b> {proposal.member.line}</div>
+            <div className="idk-line" title={proposal.member.intentText}><b><PersonLink userId={proposal.member.userId} name={proposal.member.name}>{first(proposal.member.name)}</PersonLink></b> {proposal.member.line}</div>
             <small>{proposal.networkTitle}</small>
           </div>
         </div>
         <div className="idk-link">⇄</div>
         <div className="idk-who">
-          <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={30} />
+          <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name} className="idk-face">
+            <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={30} />
+          </PersonLink>
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={proposal.contact.detail ?? undefined}><b>{first(proposal.contact.name)}</b> {proposal.contact.line}</div>
+            <div className="idk-line" title={proposal.contact.detail ?? undefined}><b><PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name}>{first(proposal.contact.name)}</PersonLink></b> {proposal.contact.line}</div>
             <small>your contact<span className="idk-tag dash">not on Index</span></small>
           </div>
         </div>
@@ -192,8 +201,12 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
 function PairFace({ proposal, size = 36 }: { proposal: OpportunityProposal; size?: number }) {
   return (
     <div className="sv-pairav">
-      <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
-      <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
+      <PersonLink userId={proposal.member.userId} name={proposal.member.name} className="idk-face">
+        <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
+      </PersonLink>
+      <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name} className="idk-face">
+        <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
+      </PersonLink>
     </div>
   );
 }
@@ -222,7 +235,7 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <PairFace proposal={proposal} />
       <div className="sv-card-body">
-        <div className="idk-never-room"><b>{proposal.member.name} ⇄ {proposal.contact.name}</b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
+        <div className="idk-never-room"><b><PersonLink userId={proposal.member.userId} name={proposal.member.name}>{proposal.member.name}</PersonLink> ⇄ <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name}>{proposal.contact.name}</PersonLink></b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>

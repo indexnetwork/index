@@ -58,7 +58,8 @@ export interface ProposalRow {
   opportunityId: string | null;
   member: { userId: string; name: string; avatar: string | null; intentId: string; intentText: string };
   /** avatar: the face Google shows you for them, else the one research found on the web. Only the desk reads it. */
-  contact: ContactCard & { avatar: string | null };
+  /** ghostUserId: the identity-only seat research found for the contact, so their name can open it. */
+  contact: ContactCard & { avatar: string | null; ghostUserId: string | null };
   createdAt: Date;
 }
 
@@ -130,6 +131,7 @@ function toProposalRow(r: Row): ProposalRow {
       id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
       organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
       avatar: (r.contact_avatar as string | null) || null,
+      ghostUserId: (r.contact_ghost_id as string | null) ?? null,
     },
   };
 }
@@ -637,14 +639,14 @@ export class IntroducerDatabaseAdapter {
              u.id as member_id, u.name as member_name, u.avatar as member_avatar,
              i.id as intent_id, case when i.is_private then '' else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
              c.id as contact_id, c.email, c.name, c.organization, c.title,
-             coalesce(c.photo, web.avatar) as contact_avatar
+             coalesce(c.photo, web.avatar) as contact_avatar, web.id as contact_ghost_id
       from opportunity_proposals p
       join intents i on i.id = p.intent_id
       join users u on u.id = i.user_id
       join contacts c on c.id = p.contact_id
       join networks n on n.id = p.network_id
       left join lateral (
-        select g.avatar from contact_research r join users g on ${RESEARCHED_SEAT}
+        select g.id, g.avatar from contact_research r join users g on ${RESEARCHED_SEAT}
         where r.email = c.email and r.status = 'found'
         limit 1
       ) web on true

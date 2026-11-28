@@ -30,10 +30,15 @@ describe("network home routing", () => {
   it("lands on Home and lets members navigate to intents", async () => {
     const router = mount();
     await screen.findByText("network dashboard");
+    const header = screen.getByText("Foresight").closest("header");
+    const column = header?.closest(".sv-page-col");
+    expect(column).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "home" })).toHaveAttribute("aria-selected", "true");
     fireEvent.mouseDown(screen.getByRole("tab", { name: "intents" }), { button: 0, ctrlKey: false });
     await screen.findByText("network intents");
     expect(router.state.location.pathname).toBe("/foresight/intents");
+    expect(screen.getByText("Foresight").closest("header")).toBe(header);
+    expect(screen.getByText("network intents").closest(".sv-page-col")).toBe(column);
     expect(screen.queryByRole("tab", { name: "settings" })).not.toBeInTheDocument();
   });
   it("allows a member's direct intents link but redirects owner-only tabs", async () => {

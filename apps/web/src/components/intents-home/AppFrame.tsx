@@ -222,7 +222,7 @@ function IntentAgentWindow({ intentId }: { intentId: string }) {
  * Beside Home or an intent: an open match takes the agent window's place
  * until it's closed. On an intent page the agent there is that intent's.
  */
-function RightWindow({ intentId }: { intentId?: string }) {
+function RightWindow({ intentId, enabled }: { intentId?: string; enabled: boolean }) {
   const { pathname } = useLocation();
   const { log, setLog, open, setOpen } = useAgentWindow();
   // A match belongs to the page it was opened from.
@@ -248,6 +248,7 @@ function RightWindow({ intentId }: { intentId?: string }) {
       </section>
     );
   }
+  if (!enabled) return null;
   return intentId ? <IntentAgentWindow intentId={intentId} /> : <AgentWindow />;
 }
 
@@ -277,7 +278,7 @@ export default function AppFrame({ children }: { children: ReactNode }) {
               <main className="ih-main">
                 <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
               </main>
-              {!bare && withRight && <RightWindow intentId={pathname === "/" ? undefined : intentId} />}
+              {!bare && <RightWindow enabled={withRight} intentId={pathname === "/" ? undefined : intentId} />}
             </div>
           </KeyboardProvider>
         </UndoProvider>
