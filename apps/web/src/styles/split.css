@@ -476,10 +476,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-intro-cols { display: grid; grid-template-columns: minmax(0, 1fr) 272px; align-items: start; }
 .sv-intro-pairs { min-width: 0; }
 .sv-intro-run { border-left: 1px solid var(--sv-line); align-self: stretch; }
-.sv-pairav { position: relative; flex: none; }
-.sv-pairav > * { position: absolute; top: 0; }
-.sv-pairav > :first-child { left: 0; z-index: 1; box-shadow: 0 0 0 2px var(--sv-paper); }
-.sv-ghost { right: 0; display: grid; place-items: center; border: 1px dashed var(--sv-ink); border-radius: 50%; background: var(--sv-paper); color: var(--sv-ink); font-family: var(--sv-mono); font-weight: 700; box-sizing: border-box; }
+.sv-pairav { display: flex; gap: 4px; flex: none; align-self: flex-start; }
 .sv-pair { padding: 14px 20px 16px; }
 .sv-pair .sv-blurb { margin: 3px 0 12px; line-height: 1.45; }
 .sv-pair-lab { display: flex; justify-content: space-between; margin-bottom: 4px; font: 700 10px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-dim); }

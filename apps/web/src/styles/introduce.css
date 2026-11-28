@@ -54,7 +54,6 @@
 .idk-line { font-size: 13px; line-height: 1.35; }
 .idk-line b { font-weight: 700; }
 .idk-who small { display: block; font-size: 11px; color: var(--idk-ink2); }
-.idk-ghost { width: 30px; height: 30px; border-radius: 50%; border: 1px dashed #000; display: grid; place-items: center; font: 700 12px var(--idk-mono); flex: none; background: #fff; }
 .idk-tag.dash { border-style: dashed; background: #fff; }
 .idk-link { font: 700 18px var(--idk-mono); align-self: center; }
 .idk-tag { display: inline-block; font: 600 9.5px var(--idk-mono); padding: 0 4px; border: 1px solid #000; text-transform: uppercase; background: #fff6e8; margin-left: 4px; }

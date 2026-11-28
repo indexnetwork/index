@@ -146,7 +146,7 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
         </div>
         <div className="idk-link">⇄</div>
         <div className="idk-who">
-          <span className="idk-ghost" aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
+          <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={30} />
           <div style={{ minWidth: 0 }}>
             <div className="idk-line" title={proposal.contact.detail ?? undefined}><b>{first(proposal.contact.name)}</b> {proposal.contact.line}</div>
             <small>your contact<span className="idk-tag dash">not on Index</span></small>
@@ -187,12 +187,12 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
   );
 }
 
-/** The member's photo with your contact's letter beside it, in a dashed circle: they're not on Index. */
+/** Both faces side by side: the member's, and your contact's photo or the default face. */
 function PairFace({ proposal, size = 36 }: { proposal: OpportunityProposal; size?: number }) {
   return (
-    <div className="sv-pairav" style={{ width: Math.round(size * 1.7), height: size }}>
+    <div className="sv-pairav">
       <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
-      <span className="sv-ghost" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }} aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
+      <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
     </div>
   );
 }

@@ -22,7 +22,8 @@ export interface OpportunityProposal {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { id: string; name: string; line: string; detail: string | null };
+  /** avatar: the face Google shows you for them, else the one Introduce found on the web. */
+  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null };
   draft: string;
 }
 
