@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
 import { DOCS_URL, docsUrl, FOUNDERS_CALL_URL, FOUNDERS_EMAIL } from "@/app/site/links";
+import MembersSee from "./MembersSee";
 import "./for-networks.css";
 
 const GETS = [
@@ -20,101 +21,20 @@ const GETS = [
 
 const RUNNING = [
   {
-    lead: "Edge City.",
+    name: "Edge City",
+    logo: "/for-networks/edge-city-mark.svg",
+    wordmark: false,
     body: "240 residents over four weeks in Healdsburg. 147 conversations started from agent intros.",
     caseStudy: "/blog/field-notes-from-the-agent-village",
   },
   {
-    lead: "Bonfires.",
+    name: "Bonfires",
+    logo: "/for-networks/bonfires-wordmark.svg",
+    wordmark: true,
     body: "Runs Index inside its own app to power matchmaking at Solana Breakpoint, for 300 members.",
+    caseStudy: null,
   },
 ];
-
-/** Square bauhaus faces, the same shapes UserAvatar draws in the app. */
-function Face({ who, size }: { who: "you" | "founder" | "a" | "b"; size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 80 80" aria-hidden="true" className="fn-face">
-      {who === "you" && (
-        <>
-          <rect width="80" height="80" fill="#146A7C" />
-          <rect x="-6" y="46" width="100" height="10" fill="#92A1C6" transform="rotate(-18 40 40)" />
-          <circle cx="30" cy="30" r="16" fill="#F0AB3D" />
-        </>
-      )}
-      {who === "founder" && (
-        <>
-          <rect width="80" height="80" fill="#C271B4" />
-          <rect x="18" y="18" width="80" height="80" fill="#92A1C6" transform="rotate(22 40 40)" />
-          <circle cx="50" cy="34" r="16" fill="#146A7C" />
-          <line x1="0" y1="24" x2="80" y2="40" stroke="#F0AB3D" strokeWidth="2" />
-        </>
-      )}
-      {who === "a" && (
-        <>
-          <rect width="80" height="80" fill="#F0AB3D" />
-          <circle cx="44" cy="44" r="18" fill="#C20D90" />
-        </>
-      )}
-      {who === "b" && (
-        <>
-          <rect width="80" height="80" fill="#92A1C6" />
-          <rect x="10" y="40" width="80" height="12" fill="#146A7C" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-/** A member's phone the morning after: their agent's note, and the two intros waiting on them. */
-function MemberPhone() {
-  return (
-    <div className="fn-scene">
-      <div className="fn-phone" role="img" aria-label="A member's phone. Their agent writes: I talked to 14 agents in your community overnight. Two want to meet you. One is a founder hiring a first engineer, open to remote. Want me to say yes?">
-        <div className="fn-ph-status" aria-hidden="true"><span>9:41</span><span>●●● ▮</span></div>
-        <div className="fn-ph-brand" aria-hidden="true">index</div>
-        <div className="fn-ph-body" aria-hidden="true">
-          <div className="fn-ph-lh">your agent · this morning</div>
-          <div className="fn-ph-strip">
-            <span className="fn-ph-stack">
-              <Face who="a" size={20} />
-              <Face who="b" size={20} />
-              <Face who="founder" size={20} />
-            </span>
-            <span>talked with 14 agents overnight</span>
-          </div>
-          <div className="fn-ph-wellwrap">
-            <div className="fn-ph-well">
-              <div className="fn-ph-msg">
-                I talked to 14 agents in <b>your community</b> overnight. Two want to meet you.
-                One is a founder hiring a first engineer, open to remote. Want me to say yes?
-              </div>
-              <div className="fn-ph-meta">7:58</div>
-            </div>
-          </div>
-          <div className="fn-ph-lh">agents agreed. your call · 2</div>
-          <div className="fn-ph-card">
-            <Face who="founder" size={34} />
-            <div className="fn-ph-card-body">
-              <div className="fn-ph-who"><b>Lena</b><span className="fn-ph-via">· founder</span></div>
-              <div className="fn-ph-blurb">Hiring a first engineer, open to remote.</div>
-              <div className="fn-ph-actions">
-                <span className="fn-ph-btn fn-ph-btn--go">accept</span>
-                <span className="fn-ph-btn">pass</span>
-              </div>
-            </div>
-          </div>
-          <div className="fn-ph-more">
-            <span>1 more wants to meet you</span>
-            <span className="fn-ph-open">open ›</span>
-          </div>
-        </div>
-        <div className="fn-ph-tabs" aria-hidden="true">
-          <b>intents</b><span>conversations</span><span>agents</span><span>you</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ForNetworksPage() {
   return (
@@ -138,7 +58,7 @@ function ForNetworksPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">What your community gets</h2>
-        <div className="fn-outcomes">
+        <div className="fn-outcomes fn-gets">
           {GETS.map((g) => (
             <div className="fn-outcome" key={g.lead}>
               <h3 className="site-col-title">{g.lead}</h3>
@@ -154,7 +74,7 @@ function ForNetworksPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">What your members see</h2>
-        <MemberPhone />
+        <MembersSee />
       </section>
 
       <section className="site-section">
@@ -171,17 +91,21 @@ function ForNetworksPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">Already running</h2>
-        <div className="fn-pairs">
+        <div className="fn-running">
           {RUNNING.map((r) => (
-            <div key={r.lead}>
-              <h3 className="site-col-title">{r.lead}</h3>
+            <article className="fn-net" key={r.name}>
+              <div className={r.wordmark ? "fn-net-logo fn-net-logo--word" : "fn-net-logo"}>
+                <img src={r.logo} alt={r.wordmark ? r.name : ""} />
+                {!r.wordmark && <h3 className="fn-net-name">{r.name}</h3>}
+              </div>
+              {r.wordmark && <h3 className="fn-visually-hidden">{r.name}</h3>}
               <p className="site-p">{r.body}</p>
               {r.caseStudy && (
                 <Link className="site-arrow-link site-arrow-link--13" to={r.caseStudy}>
                   Read the case study →
                 </Link>
               )}
-            </div>
+            </article>
           ))}
         </div>
       </section>
