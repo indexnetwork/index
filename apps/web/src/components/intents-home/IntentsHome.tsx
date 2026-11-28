@@ -6,6 +6,7 @@ import "@/styles/plain.css";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import { RANK, filterOf, personKey, type Entry, type Filter, type HomeIntent } from "@/components/intents-home/stages";
 import UserAvatar from "@/components/UserAvatar";
+import { IntroducedLine } from "@/components/intents-home/IntroducedLine";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -179,14 +180,14 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
         : stage === "closed" ? (lead.item.status === "rejected" ? "not a fit" : "missed")
           : null;
     return (
-      <div key={person.key} data-sv-item={person.key} className={`sv-card${stage === "closed" ? " closed" : ""}${log?.opportunityId === lead.item.opportunityId ? " on" : ""}`}
+      <div key={person.key} data-sv-item={person.key} className={`sv-card${lead.item.introducer ? " intro" : ""}${stage === "closed" ? " closed" : ""}${log?.opportunityId === lead.item.opportunityId ? " on" : ""}`}
         onClick={(event) => { if (!(event.target as HTMLElement).closest("a, button, textarea, input")) openMatch(person); }}>
+        {lead.item.introducer && <IntroducedLine introducer={lead.item.introducer} />}
         <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
         <div className="sv-card-body">
           <div className="sv-mrow">
             <b>{person.name}</b>
             {person.notOnIndex && stage !== "chat" && <span className="sv-via"> · not on index</span>}
-            {lead.item.introducer && <span className="sv-via"> · via {lead.item.introducer.name.split(" ")[0]}</span>}
             {person.intentCount > 1 && <span className="sv-via"> · in {person.intentCount} of your intents</span>}
             {canOpenChat
               ? <button type="button" className="sv-open" onClick={() => openMatch(person, "chat")}>open chat ›</button>

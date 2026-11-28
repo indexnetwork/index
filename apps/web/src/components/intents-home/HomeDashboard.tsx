@@ -12,6 +12,7 @@ import { usePublishHomeSections } from "@/components/intents-home/homeSectionsCo
 import { focusedGroup, intentsToRefresh } from "@/components/intents-home/personal-questions";
 import { usePersonalQuestions } from "@/components/intents-home/usePersonalQuestions";
 import UserAvatar from "@/components/UserAvatar";
+import { IntroducedLine } from "@/components/intents-home/IntroducedLine";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -299,13 +300,13 @@ export function HomeDashboardBody({ data, embedded = false, questionIntentIds }:
             // Once you decide, the card stays as it was; only its buttons change.
             const canChat = decision === "accepted" && !!person.userId && !person.notOnIndex;
             return (
-              <div key={person.key} {...cardProps(person, "sv-card")}>
+              <div key={person.key} {...cardProps(person, lead.item.introducer ? "sv-card intro" : "sv-card")}>
+                {lead.item.introducer && <IntroducedLine introducer={lead.item.introducer} />}
                 <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
                 <div className="sv-card-body">
                   <div className="sv-mrow">
                     <b>{person.name}</b>
                     {person.notOnIndex && <span className="sv-via"> · not on index</span>}
-                    {lead.item.introducer && <span className="sv-via"> · via {lead.item.introducer.name.split(" ")[0]}</span>}
                     {canChat && <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>}
                   </div>
                   {blurb && <div className="sv-blurb">{blurb}</div>}

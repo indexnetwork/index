@@ -90,6 +90,10 @@
 .sv-card.sv-static { cursor: default; }
 .sv-card.sv-static:hover { background: none; }
 .sv-card-body { min-width: 0; flex: 1; }
+/* an introduced card: who introduced you sits on its own line above, like a forwarded message */
+.sv-card.intro { flex-wrap: wrap; row-gap: 8px; }
+.sv-cintro { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
+.sv-cintro a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .sv-card b, .sv-name { font-weight: 700; font-size: 14px; }
 .sv-blurb { color: var(--sv-ink2); margin: 2px 0 9px; font-size: 13px; }
 .sv-via { font: 400 11px var(--sv-mono); color: var(--sv-dim); }
