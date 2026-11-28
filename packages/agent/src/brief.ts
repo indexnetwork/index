@@ -52,6 +52,19 @@ export function principalFacts(user: User): Pick<User, "name" | "intro" | "locat
   return { name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null };
 }
 
+/**
+ * Who introduced a pair, said plainly, so an agent knows it was introduced
+ * and by whom instead of finding it in a field of the record.
+ *
+ * @param opportunity - The opportunity.
+ * @returns The lines to put before the record, or "" when the seats' own agents opened it.
+ */
+export function introducedBy(opportunity: Opportunity): string {
+  const introducer = opportunity.introducer;
+  if (!introducer) return "";
+  return `\n\n${introducer.name ?? "Someone who knows them both"} introduced your principal and ${opportunity.counterpart}. Both agents know this. Their note when introducing them: ${introducer.context}`;
+}
+
 /** How an introduced contact's profile is labelled wherever a prompt carries it. */
 export const PUBLIC_PROFILE_SOURCE = "Their public profile, researched from the public web. They have not confirmed it.";
 
@@ -156,7 +169,9 @@ export async function briefIfMissing(input: BriefInput, decision: Decision, oper
     ...(input.signal ? { signal: input.signal } : {}),
     instructions: user.emailVerified === false ? `${BRIEF_ONLY_PROMPT}\n\n${unverifiedPrompt(intent)}` : BRIEF_ONLY_PROMPT,
     prompt:
-      "Brief this one opportunity now.\n" +
+      "Brief this one opportunity now." +
+      introducedBy(opportunity) +
+      "\n" +
       JSON.stringify({
         decision,
         ...(profile ? { principal_public_profile: profile } : { principal: principalFacts(user) }),

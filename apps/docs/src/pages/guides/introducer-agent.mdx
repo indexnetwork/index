@@ -52,14 +52,15 @@ under **Settings → notifications → people who introduce you**:
 
 | Setting | You see |
 | --- | --- |
-| `status` (default) | Where it ended up. |
-| `note` | That, and one note from their side. |
+| `status` | Where it ended up. |
+| `note` (default) | That, and one note from their side. |
 | `none` | That it's talking, then only that it ended. |
 
 If either of the two chose `none`, the phase is `private` once the talks end.
 
 A seat sends its note once, after the negotiation leaves `negotiating`, and
-only when its owner's setting is `note`:
+only when its owner's setting is `note`. The Index agent writes and sends it
+itself when the talks settle; a seat run by your own agent sends it like this:
 
 ```ts
 await client.reportOpportunity(opportunityId, {

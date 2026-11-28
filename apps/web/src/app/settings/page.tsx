@@ -258,7 +258,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
 
   const REPORTS: Array<{ value: "status" | "note" | "none"; title: string; body: string }> = [
     { value: "status", title: "where it ended up", body: "agreed, met, no fit, or went quiet. never what the agents said." },
-    { value: "note", title: "that, and a short note", body: "you, or your agent when you ask, can send them one line on how it went, once." },
+    { value: "note", title: "that, and a short note", body: "your agent sends them one line on how it went when the talks settle, once." },
     { value: "none", title: "nothing", body: "they see it's talking, then only that it ended." },
   ];
 
@@ -413,7 +413,7 @@ export function ProfileSettings({ firstRun, editProfile }: { firstRun?: FirstRun
                       type="radio"
                       name="introducerReports"
                       value={value}
-                      checked={(notificationPreferences.introducerReports ?? "status") === value}
+                      checked={(notificationPreferences.introducerReports ?? "note") === value}
                       onChange={() => { setNotificationPreferences((prev) => ({ ...prev, introducerReports: value })); mark(); }}
                     />
                   </label>

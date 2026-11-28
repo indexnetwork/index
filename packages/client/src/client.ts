@@ -305,6 +305,16 @@ export interface Index {
    */
   rejectOpportunity(id: string): Promise<{ opportunityId: string; status: "rejected" }>;
   /**
+   * Send whoever introduced this pair one line on how it went: once, after the
+   * negotiation settled, and only when the owner's introducer setting allows notes.
+   *
+   * @param id - Opportunity id.
+   * @param report - The note, at most 280 characters.
+   * @returns The event id.
+   * @throws When Index refuses it.
+   */
+  reportOpportunity(id: string, report: { note: string }): Promise<{ id: string }>;
+  /**
    * @param intentId - Intent whose principal conversation to read.
    * @returns The agent DM slice for that intent.
    */

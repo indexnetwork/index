@@ -5,6 +5,7 @@ import { briefIfMissing, screens } from "./brief.ts";
 import type { Decide } from "./decide.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
+import { report } from "./report.ts";
 import { summarize } from "./summary.ts";
 import type { ConversationEntry, Decision, Intent, NegotiateInput, NegotiateResult, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
 import { reach, unansweredPrincipalMessage, wake } from "./wake.ts";
@@ -743,6 +744,38 @@ export async function runNegotiate(
     stall: { turnCount: detail.turnCount },
   }]);
   return result;
+}
+
+/**
+ * Tell whoever introduced this pair how it went, once its talks settled. Only
+ * a seat with a person behind it reports: a contact who has not joined Index
+ * has nobody to speak for, and the introducer is never their own reporter.
+ *
+ * @param client - Index for this owner.
+ * @param opportunityId - The settled negotiation.
+ * @param intent - The intent it belongs to.
+ * @param runtime - Model, clock, and cancellation.
+ * @returns The note sent, or why none was.
+ * @throws When Index refuses the note.
+ */
+export async function runReport(
+  client: Index,
+  opportunityId: string,
+  intent: Intent,
+  runtime: Runtime,
+): Promise<{ note: string } | { skipped: string }> {
+  const { model, now, signal, log = () => {} } = runtime;
+  const [user, detail] = await Promise.all([client.me(), client.getNegotiation(opportunityId)]);
+  if (!detail.introducer) return { skipped: "Nobody introduced this pair." };
+  if (!detail.outcome) return { skipped: "Its talks have not settled." };
+  if (detail.introducer.userId === user.id) return { skipped: "The owner introduced it." };
+  if (user.emailVerified === false) return { skipped: "The owner has not joined Index." };
+
+  log(`  reporting ${opportunityId} with ${detail.counterparty.name ?? detail.counterparty.userId} to ${detail.introducer.name ?? detail.introducer.userId}`);
+  const note = await report({ user, intent, opportunity: toOpportunity(detail, user.id), model, now, signal });
+  if (!note) return { skipped: "The report run wrote no note." };
+  await client.reportOpportunity(opportunityId, { note });
+  return { note };
 }
 
 /**

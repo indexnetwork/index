@@ -767,14 +767,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'set_introducer_reports',
     {
-      description: 'Read or change what people who introduce the owner learn once the owner\'s side of an introduction settles: "status" (where it ended up; the default), "note" (that, plus one short note the owner\'s agent may send with report_to_introducer), or "none" (nothing past "talking"; this hides the outcome for both sides). Omit setting to read the current value. Change it only when the owner asks.',
+      description: 'Read or change what people who introduce the owner learn once the owner\'s side of an introduction settles: "status" (where it ended up), "note" (that, plus one short note the owner\'s agent sends when the talks settle; the default), or "none" (nothing past "talking"; this hides the outcome for both sides). Omit setting to read the current value. Change it only when the owner asks.',
       inputSchema: z.object({ setting: z.enum(['note', 'status', 'none']).optional() }).strict(),
       annotations: hints('Introducer report setting', false, false, false, true),
     },
     ({ setting }) => runTool('set_introducer_reports', principal, async () => {
       if (setting) await userService.updateNotificationPreferences(principal.userId, { introducerReports: setting });
       const profile = await userService.findWithGraph(principal.userId);
-      const current = profile?.notificationPreferences?.introducerReports ?? 'status';
+      const current = profile?.notificationPreferences?.introducerReports ?? 'note';
       return mcpSuccess({ setting: current }, `People who introduce you learn: ${current === 'note' ? 'the status and a short note' : current === 'status' ? 'the status only' : 'nothing past "talking"'}.`);
     }),
   );

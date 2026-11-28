@@ -1142,18 +1142,19 @@ export class IntroducerDatabaseAdapter {
   }
 
   /**
-   * What each person lets their introducers learn. A person with no setting,
-   * including a contact who has not signed up, shares the status.
+   * What each person lets their introducers learn. A person with no setting
+   * shares the status and a note: their agent writes one when the talks settle.
+   * A contact who has not signed up has no agent of their own to write it.
    */
   async reportSettings(userIds: string[]): Promise<Map<string, IntroducerReportSetting>> {
-    const settings = new Map<string, IntroducerReportSetting>(userIds.map((id) => [id, 'status']));
+    const settings = new Map<string, IntroducerReportSetting>(userIds.map((id) => [id, 'note']));
     if (!userIds.length) return settings;
     const rows = await db.select({ userId: schema.userNotificationSettings.userId, preferences: schema.userNotificationSettings.preferences })
       .from(schema.userNotificationSettings)
       .where(inArray(schema.userNotificationSettings.userId, userIds));
     for (const row of rows) {
       const value = (row.preferences as { introducerReports?: unknown } | null)?.introducerReports;
-      if (value === 'note' || value === 'none') settings.set(row.userId, value);
+      if (value === 'status' || value === 'none') settings.set(row.userId, value);
     }
     return settings;
   }

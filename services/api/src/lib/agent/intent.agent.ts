@@ -11,13 +11,14 @@ import { negotiationScope, opportunityFromScope } from '@indexnetwork/client';
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning, runNegotiate, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, encodeActions, expireUnanswered, owedWork, runMorning, runNegotiate, runReport, runWake, type Decide, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter } from '../../adapters/agent-session.database.adapter';
 import { QuestionGroupsDatabaseAdapter } from '../../adapters/question-groups.database.adapter';
 import { createRedisClient, getRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
+import { introducerService } from '../../services/introducer.service';
 import { log } from '../log';
 import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
 
@@ -235,6 +236,10 @@ export class IntentAgent {
       case 'negotiation.turn':
         if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
         break;
+      case 'negotiation.settled':
+        // An introduced pair's talks ended: tell whoever introduced them how it went.
+        if (intentId && opportunityId) this.session.run(this.report(userId, intentId, opportunityId));
+        break;
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
@@ -251,6 +256,27 @@ export class IntentAgent {
       default:
         break;
     }
+  }
+
+  /**
+   * Send the introducer of a settled pair one line on how it went. Index
+   * refuses a seat that may not report — nobody introduced it, the owner's
+   * setting keeps notes back, or it already reported — before any model runs.
+   *
+   * @param userId - The seat's owner.
+   * @param intentId - The intent, or opportunity scope, the negotiation belongs to.
+   * @param opportunityId - The settled negotiation.
+   */
+  private async report(userId: string, intentId: string, opportunityId: string): Promise<void> {
+    if (!await this.holdsSeat(userId)) return;
+    if (await introducerService.reportRefusal(opportunityId, userId)) return;
+    const scoped = opportunityFromScope(intentId);
+    // A settled pair's intent may be paused or archived since; the note still owes its introducer.
+    const intent: Intent = scoped
+      ? { id: intentId, kind: 'identity', opportunityId: scoped, statement: '' }
+      : await intentService.getById(intentId, userId).then((row) => row && !row.isPrivate ? { id: row.id, statement: row.payload } : null) ?? { id: intentId, statement: '' };
+    const result = await runReport(new HostedIndex(userId), opportunityId, intent, this.runtime());
+    logger.verbose('note' in result ? 'Reported to introducer' : 'No report to introducer', { userId, opportunityId, ...('skipped' in result ? { reason: result.skipped } : {}) });
   }
 
   /** @param userId - The owner in question. @returns Whether Index still holds their seat. */

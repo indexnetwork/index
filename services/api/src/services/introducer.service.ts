@@ -1019,23 +1019,34 @@ export class IntroducerService {
   // ─── reporting back ────────────────────────────────────────────────────────
 
   /**
-   * File a seat's note to the introducer: an opportunity event of type
-   * `report`. Once per seat, after its negotiation settled, and only when the
-   * seat owner's `introducerReports` setting is `note`. The introducer never
-   * learns which side sent it.
+   * Why this seat may not report on this opportunity now, or null when it may.
+   * The hosted agent asks before writing a note, so a seat that cannot send
+   * one costs no model run.
    *
    * @param opportunityId - The opportunity.
    * @param userId - The seat's owner.
-   * @param data - The event's data: `{ note }`.
+   * @returns The refusal, or null.
    */
-  async fileReport(opportunityId: string, userId: string, data: Record<string, unknown> | null): Promise<ReportResult> {
+  async reportRefusal(opportunityId: string, userId: string): Promise<{ error: string; status: number } | null> {
+    const checked = await this.checkReport(opportunityId, userId, null);
+    return 'error' in checked ? checked : null;
+  }
+
+  /**
+   * Every check a report passes, in the order a caller is told about them.
+   *
+   * @param note - The cleaned note, or null to check the seat alone.
+   * @returns The refusal, or the introducer to tell.
+   */
+  private async checkReport(opportunityId: string, userId: string, note: string | null): Promise<{ error: string; status: number } | { introducerUserId: string }> {
     const target = await this.adapter.reportTarget(opportunityId);
     if (!target || !target.actorIds.includes(userId)) return { error: 'Opportunity not found', status: 404 };
     if (!target.introducerUserId) return { error: 'Nobody introduced this pair, so there is nobody to report to', status: 409 };
     if (target.status === 'negotiating') return { error: 'Report once the negotiation has settled', status: 409 };
-    const note = typeof data?.note === 'string' ? data.note.replace(/\s+/g, ' ').trim() : '';
-    if (!note) return { error: 'data.note is required: one short line for the person who introduced you', status: 400 };
-    if (note.length > REPORT_NOTE_MAX) return { error: `data.note must be at most ${REPORT_NOTE_MAX} characters`, status: 400 };
+    if (note !== null) {
+      if (!note) return { error: 'data.note is required: one short line for the person who introduced you', status: 400 };
+      if (note.length > REPORT_NOTE_MAX) return { error: `data.note must be at most ${REPORT_NOTE_MAX} characters`, status: 400 };
+    }
 
     const setting = (await this.adapter.reportSettings([userId])).get(userId);
     if (setting !== 'note') {
@@ -1049,6 +1060,23 @@ export class IntroducerService {
     if (await this.adapter.hasReported(opportunityId, userId)) {
       return { error: 'You already reported on this introduction', status: 409 };
     }
+    return { introducerUserId: target.introducerUserId };
+  }
+
+  /**
+   * File a seat's note to the introducer: an opportunity event of type
+   * `report`. Once per seat, after its negotiation settled, and only when the
+   * seat owner's `introducerReports` setting is `note`. The introducer never
+   * learns which side sent it.
+   *
+   * @param opportunityId - The opportunity.
+   * @param userId - The seat's owner.
+   * @param data - The event's data: `{ note }`.
+   */
+  async fileReport(opportunityId: string, userId: string, data: Record<string, unknown> | null): Promise<ReportResult> {
+    const note = typeof data?.note === 'string' ? data.note.replace(/\s+/g, ' ').trim() : '';
+    const target = await this.checkReport(opportunityId, userId, note);
+    if ('error' in target) return target;
 
     let id: string;
     try {

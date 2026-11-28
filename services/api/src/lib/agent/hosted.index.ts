@@ -14,6 +14,7 @@ import { readUserEventPage } from '../user-events';
 import { UserDatabaseAdapter } from '../../adapters/user.database.adapter';
 import { ConversationService } from '../../services/conversation.service';
 import { intentService } from '../../services/intent.service';
+import { introducerService } from '../../services/introducer.service';
 import { negotiationService, type NegotiationDetail as StoredNegotiation, type NegotiationView } from '../../services/negotiation.service';
 import { opportunityService } from '../../services/opportunity.service';
 
@@ -204,6 +205,18 @@ export class HostedIndex implements Index {
   /** @param id - Opportunity id. @returns The opportunity now rejected. @throws When Index refuses the update. */
   async rejectOpportunity(id: string): Promise<{ opportunityId: string; status: 'rejected' }> {
     return this.setOpportunityStatus(id, 'rejected');
+  }
+
+  /**
+   * @param id - Opportunity id.
+   * @param report - The note for whoever introduced the pair.
+   * @returns The event id.
+   * @throws When Index refuses the note.
+   */
+  async reportOpportunity(id: string, report: { note: string }): Promise<{ id: string }> {
+    const result = await introducerService.fileReport(id, this.userId, { note: report.note });
+    if ('error' in result) throw new Error(result.error);
+    return result;
   }
 
   /**

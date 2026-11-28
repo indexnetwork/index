@@ -77,7 +77,7 @@ export interface NotificationPreferences {
   /**
    * What the person who introduced you learns once your side settles:
    * `status` (where it ended up), `note` (that, plus one short note your
-   * agent may send), or `none`. Absent means `status`.
+   * agent sends when the talks settle), or `none`. Absent means `note`.
    */
   introducerReports?: IntroducerReportSetting;
 }

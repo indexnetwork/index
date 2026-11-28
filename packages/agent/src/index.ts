@@ -11,10 +11,11 @@ export { briefIfMissing } from "./brief.ts";
 export { wake } from "./wake.ts";
 export { negotiate } from "./negotiate.ts";
 export { summarize } from "./summary.ts";
+export { report } from "./report.ts";
 
 // One run each, against whatever implements Index: read what the run needs,
 // call it, publish what it produced.
-export { closeInitiation, encodeActions, expireUnanswered, owedWork, readConversation, runMorning, runNegotiate, runWake } from "./host.ts";
+export { closeInitiation, encodeActions, expireUnanswered, owedWork, readConversation, runMorning, runNegotiate, runReport, runWake } from "./host.ts";
 export type { NegotiateHook, Runtime } from "./host.ts";
 
 export { createModel } from "./model.ts";
