@@ -82,7 +82,7 @@ function Running({ runs, opening, freshId }: { runs: IntroductionProgress[]; ope
               <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
               <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
               <span className="t">{since(r.createdAt)}</span>
-              {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
+              {r.reports.map((n) => <span key={n.at} className="note">{n.note}</span>)}
             </li>
           ))}
         </ul>
@@ -345,7 +345,7 @@ function RunWindow({ runs, opening, freshId, onPerson }: {
                 <span className="p"><Opens who={runSide(r, r.a)} onPerson={onPerson}>{first(r.a.name)}</Opens> ⇄ <Opens who={runSide(r, r.b)} onPerson={onPerson}>{first(r.b.name)}</Opens></span>
                 <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
                 <span className="t">{since(r.createdAt)}</span>
-                {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
+                {r.reports.map((n) => <span key={n.at} className="note">{n.note}</span>)}
               </div>
             ))}
           </>

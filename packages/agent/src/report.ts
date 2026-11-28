@@ -6,12 +6,15 @@ import type { Intent, Opportunity, User } from "./types.ts";
 /** Index refuses a longer note. */
 export const REPORT_LIMIT = 280;
 
+/** What a note aims for: one glance in a narrow column. */
+const NOTE_TARGET = 110;
+
 const REPORT_PROMPT = [
-  "Someone introduced your principal to the counterpart, and the two agents have finished talking. Write the introducer one line on how it went: where it landed and, in plain words, why.",
-  "Write about the two of them by first name, from the outside: never \"I\", \"we\", \"my principal\" or \"your\", and nothing that tells which side wrote it. The introducer never learns which side sent it.",
-  "Give the gist, never the talk: no quotes, no turns, no who-asked-what, no agents, no negotiation words. Say nothing about your principal the counterpart could not already see, and nothing about what either of them keeps private.",
-  "If they agreed, say what the two have to talk about and that it is now up to them. If it did not land, say so kindly in a few words, blaming no one.",
-  `One or two short sentences, plain and warm, at most ${REPORT_LIMIT} characters. Not salesy, no exclamation marks, no thanks.`,
+  "Someone introduced your principal to the counterpart, and the two agents have finished talking. Write the introducer one tiny line on how it went.",
+  "The agents talked, not the people: the two have not spoken or said yes yet. So credit the agents (\"Viraj and Danny's agents hit it off\"), never the people (never \"Viraj and Danny agreed\").",
+  `One sentence, at most ${NOTE_TARGET} characters. Cheerful and a little playful, like a friend texting back. No exclamation marks, no quote marks, no thanks, nothing salesy.`,
+  "Privacy first. Name at most one broad shared theme (crypto and AI, climbing, design). Never companies, funds, rounds, amounts, cities, job titles, plans or anything either of them asked or said. Nothing that tells which side wrote it: no \"I\", \"we\", \"my principal\" or \"your\".",
+  "If they agreed, say the agents clicked and it is the two of them now. If it did not land, say so lightly in a few words, blaming no one.",
   "Call submit_note exactly once. That call is this run's whole product.",
 ].join("\n\n");
 
@@ -59,7 +62,7 @@ export async function report(input: ReportInput): Promise<string | undefined> {
   const tools: Tool<never>[] = [
     tool({
       name: "submit_note",
-      description: `The line for the introducer. At most ${REPORT_LIMIT} characters.`,
+      description: `The line for the introducer. At most ${NOTE_TARGET} characters, no quote marks.`,
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -70,8 +73,8 @@ export async function report(input: ReportInput): Promise<string | undefined> {
       },
       run: ({ text }: { text: string }) => {
         if (note) throw new Error("This run already wrote the note. Stop.");
-        const line = text.replace(/\s+/g, " ").trim();
-        if (line.length > REPORT_LIMIT) throw new Error(`The note is ${line.length} characters. Shorten it to ${REPORT_LIMIT}.`);
+        const line = text.replace(/["“”]/g, "").replace(/\s+/g, " ").trim();
+        if (line.length > NOTE_TARGET) throw new Error(`The note is ${line.length} characters. Shorten it to ${NOTE_TARGET}.`);
         note = line;
         return "Note recorded.";
       },
@@ -86,7 +89,8 @@ export async function report(input: ReportInput): Promise<string | undefined> {
     instructions: REPORT_PROMPT,
     prompt: context(input),
     tools,
-    maxSteps: 2,
+    // A second and third step let the model shorten a note the tool sent back.
+    maxSteps: 3,
     requireTool: true,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
