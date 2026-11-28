@@ -481,7 +481,14 @@ a.sv-soc:hover { background: var(--sv-sel); }
 /* A name or face on Introduce that opens the person on the right. */
 .sv .sv-whobtn { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
 .sv .sv-whobtn:not(.idk-face):hover { text-decoration: underline; }
-.sv-pairav { display: flex; gap: 4px; flex: none; align-self: flex-start; }
+/* a pair card's names line: a small face before each name, so nothing needs a face column */
+.sv-pairnames { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 4px; line-height: 20px; }
+.sv-pairnames > b { display: flex; }
+.sv .sv-facename { display: inline-flex; align-items: center; gap: 6px; }
+.sv .sv-facename > :first-child { flex: none; }
+.sv .sv-facename:hover { text-decoration: none; }
+.sv .sv-facename:hover > span { text-decoration: underline; }
+.sv-pairswap { color: var(--sv-dim); }
 .sv-pair { padding: 14px 20px 16px; }
 .sv-pair .sv-blurb { margin: 3px 0 12px; line-height: 1.45; }
 .sv-pair-lab { display: flex; justify-content: space-between; margin-bottom: 4px; font: 700 10px var(--sv-mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sv-dim); }

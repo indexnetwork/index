@@ -232,17 +232,13 @@ function Opens({ who, onPerson, className = "sv-whobtn", children }: { who: Side
   return <button type="button" className={className} title={`open ${who.name}`} onClick={() => onPerson(who)}>{children}</button>;
 }
 
-/** Both faces side by side: the member's, and your contact's photo or the default face. */
-function PairFace({ proposal, onPerson, size = 36 }: { proposal: OpportunityProposal; onPerson: (who: SidePerson) => void; size?: number }) {
+/** A face and the name beside it, as one button that opens that person on the right. */
+function FaceName({ who, onPerson }: { who: SidePerson; onPerson: (who: SidePerson) => void }) {
   return (
-    <div className="sv-pairav">
-      <Opens who={memberSide(proposal)} onPerson={onPerson} className="sv-whobtn idk-face">
-        <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
-      </Opens>
-      <Opens who={contactSide(proposal)} onPerson={onPerson} className="sv-whobtn idk-face">
-        <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
-      </Opens>
-    </div>
+    <Opens who={who} onPerson={onPerson} className="sv-whobtn sv-facename">
+      <UserAvatar id={who.avatarId} name={who.name} avatar={who.avatar} size={20} />
+      <span>{who.name}</span>
+    </Opens>
   );
 }
 
@@ -270,9 +266,13 @@ function PairCard({ proposal, onOpen, onSkip, onNever, onPerson }: {
   return (
     <div className="sv-card sv-static sv-pair idk-has-never" data-sv-item={proposal.id}>
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
-      <PairFace proposal={proposal} onPerson={onPerson} />
       <div className="sv-card-body">
-        <div className="idk-never-room"><b><Opens who={memberSide(proposal)} onPerson={onPerson}>{proposal.member.name}</Opens> ⇄ <Opens who={contactSide(proposal)} onPerson={onPerson}>{proposal.contact.name}</Opens></b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
+        <div className="idk-never-room sv-pairnames">
+          <b><FaceName who={memberSide(proposal)} onPerson={onPerson} /></b>
+          <span className="sv-pairswap" aria-hidden>⇄</span>
+          <b><FaceName who={contactSide(proposal)} onPerson={onPerson} /></b>
+          <span className="sv-via">· via {proposal.networkTitle}</span>
+        </div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
