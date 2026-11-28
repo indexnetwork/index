@@ -13,7 +13,7 @@ import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { AgentWindowProvider } from "@/components/intents-home/agentWindow";
 import { useAgentWindow } from "@/components/intents-home/agentWindowContext";
 import MatchWindow from "@/components/intents-home/MatchWindow";
-import { InAppFrameContext } from "@/components/intents-home/appFrameContext";
+import { InAppFrameContext, RightSlotContext } from "@/components/intents-home/appFrameContext";
 import ConnectAgent from "@/components/intents-home/ConnectAgent";
 import PersonalAgentPanel from "@/components/intents-home/PersonalAgentPanel";
 import IntentAgentPanel from "@/components/intents-home/IntentAgentPanel";
@@ -268,6 +268,8 @@ export default function AppFrame({ children }: { children: ReactNode }) {
   if (awaiting && !firstIntent) setFirstIntent(true);
   if (pathname !== "/i/new" && firstIntent) setFirstIntent(false);
   const bare = awaiting || firstIntent;
+  // A page's own right-hand window (Introduce) is drawn into this spot, beside the page.
+  const [rightSlot, setRightSlot] = useState<HTMLDivElement | null>(null);
   return (
     <HomeSectionsProvider>
       <AgentWindowProvider>
@@ -276,9 +278,12 @@ export default function AppFrame({ children }: { children: ReactNode }) {
             <div className={bare ? "ih ih-first" : "ih"}>
               {!bare && <AppRail here={here} />}
               <main className="ih-main">
-                <InAppFrameContext.Provider value>{children}</InAppFrameContext.Provider>
+                <InAppFrameContext.Provider value>
+                  <RightSlotContext.Provider value={bare ? null : rightSlot}>{children}</RightSlotContext.Provider>
+                </InAppFrameContext.Provider>
               </main>
               {!bare && <RightWindow enabled={withRight} intentId={pathname === "/" ? undefined : intentId} />}
+              {!bare && <div ref={setRightSlot} style={{ display: "contents" }} />}
             </div>
           </KeyboardProvider>
         </UndoProvider>

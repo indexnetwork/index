@@ -1,10 +1,14 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { ListHead, PageView } from "@/components/intents-home/SplitView";
 import { useUndo } from "@/components/intents-home/undo";
-import { useInAppFrame } from "@/components/intents-home/appFrameContext";
+import { InAppFrameContext, useInAppFrame, useRightSlot } from "@/components/intents-home/appFrameContext";
+import { PersonPane, PersonSummary, type PersonTab } from "@/components/intents-home/PersonPane";
+import { useProfile } from "@/components/intents-home/useProfile";
+import ChatView from "@/components/chat/ChatView";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
 import IntroducePersonPicker from "@/components/IntroducePersonPicker";
@@ -197,16 +201,47 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
   );
 }
 
+/** Someone on a pair or a running intro, opened on the right like a person on home. */
+interface SidePerson {
+  /** Who this is, so the same person isn't opened twice. */
+  key: string;
+  userId: string | null;
+  name: string;
+  avatar: string | null;
+  /** Seeds the avatar's colour when there's no user. */
+  avatarId: string;
+  /** Known from the pair; otherwise read from their profile. */
+  notOnIndex?: boolean;
+  /** What this page knows about them, on top of their summary. */
+  about?: { label: string; text: string };
+}
+
+const memberSide = (p: OpportunityProposal): SidePerson => ({
+  key: `u:${p.member.userId}`, userId: p.member.userId, name: p.member.name, avatar: p.member.avatar, avatarId: p.member.userId,
+  notOnIndex: false, about: { label: "looking for", text: p.member.intentText || p.member.line },
+});
+
+const contactSide = (p: OpportunityProposal): SidePerson => ({
+  key: p.contact.ghostUserId ? `u:${p.contact.ghostUserId}` : `c:${p.contact.id}`,
+  userId: p.contact.ghostUserId, name: p.contact.name, avatar: p.contact.avatar, avatarId: p.contact.id,
+  notOnIndex: true, about: { label: "your contact", text: p.contact.detail || p.contact.line },
+});
+
+/** A name or face that opens that person on the right. */
+function Opens({ who, onPerson, className = "sv-whobtn", children }: { who: SidePerson; onPerson: (who: SidePerson) => void; className?: string; children: ReactNode }) {
+  return <button type="button" className={className} title={`open ${who.name}`} onClick={() => onPerson(who)}>{children}</button>;
+}
+
 /** Both faces side by side: the member's, and your contact's photo or the default face. */
-function PairFace({ proposal, size = 36 }: { proposal: OpportunityProposal; size?: number }) {
+function PairFace({ proposal, onPerson, size = 36 }: { proposal: OpportunityProposal; onPerson: (who: SidePerson) => void; size?: number }) {
   return (
     <div className="sv-pairav">
-      <PersonLink userId={proposal.member.userId} name={proposal.member.name} className="idk-face">
+      <Opens who={memberSide(proposal)} onPerson={onPerson} className="sv-whobtn idk-face">
         <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
-      </PersonLink>
-      <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name} className="idk-face">
+      </Opens>
+      <Opens who={contactSide(proposal)} onPerson={onPerson} className="sv-whobtn idk-face">
         <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
-      </PersonLink>
+      </Opens>
     </div>
   );
 }
@@ -218,8 +253,10 @@ const lc = (text: string) => {
 };
 
 /** A pair, drawn like home's cards: who and who, the intro you'll send, wake or skip. */
-function PairCard({ proposal, onOpen, onSkip, onNever }: {
+function PairCard({ proposal, onOpen, onSkip, onNever, onPerson }: {
   proposal: OpportunityProposal;
+  /** A name or face opens that person on the right. */
+  onPerson: (who: SidePerson) => void;
   onOpen: (p: OpportunityProposal, context: string) => Promise<void>;
   onSkip: (p: OpportunityProposal) => void;
   /** Never suggest one side of this pair again. */
@@ -233,9 +270,9 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
   return (
     <div className="sv-card sv-static sv-pair idk-has-never" data-sv-item={proposal.id}>
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
-      <PairFace proposal={proposal} />
+      <PairFace proposal={proposal} onPerson={onPerson} />
       <div className="sv-card-body">
-        <div className="idk-never-room"><b><PersonLink userId={proposal.member.userId} name={proposal.member.name}>{proposal.member.name}</PersonLink> ⇄ <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name}>{proposal.contact.name}</PersonLink></b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
+        <div className="idk-never-room"><b><Opens who={memberSide(proposal)} onPerson={onPerson}>{proposal.member.name}</Opens> ⇄ <Opens who={contactSide(proposal)} onPerson={onPerson}>{proposal.contact.name}</Opens></b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
@@ -272,40 +309,88 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
   );
 }
 
-/** The introductions you woke, one row each, as a column beside the pairs. */
-function RunColumn({ runs, opening, freshId }: {
+/**
+ * The introductions you woke, one row each, in the window on the right. Each
+ * name opens that person there, in this list's place, until it's closed.
+ */
+function RunWindow({ runs, opening, freshId, onPerson }: {
   runs: IntroductionProgress[];
   opening: OpportunityProposal[];
   freshId: string | null;
+  onPerson: (who: SidePerson) => void;
 }) {
   const ordered = [...runs.filter((r) => !isFinal(r)), ...runs.filter(isFinal)];
   const live = opening.length + runs.filter((r) => !isFinal(r)).length;
+  const runSide = (r: IntroductionProgress, who: IntroductionProgress["a"]): SidePerson => ({
+    key: `u:${who.userId}`, userId: who.userId, name: who.name, avatar: who.avatar, avatarId: who.userId,
+    about: { label: `your intro · ${PHASE[r.phase].label}`, text: r.context || phaseLine(r) },
+  });
   return (
-    <aside className="sv-intro-run" aria-live="polite">
+    <div className="sv-runwin" aria-live="polite">
       <ListHead id="running">running · {live}</ListHead>
-      {ordered.length + opening.length === 0 ? (
-        <div className="sv-empty">Nothing running. Wake a pair and it shows up here.</div>
-      ) : (
+      <div className="sv-runwin-list">
+        {ordered.length + opening.length === 0 ? (
+          <div className="sv-empty">Nothing running. Wake a pair and it shows up here.</div>
+        ) : (
+          <>
+            {opening.map((p) => (
+              <div key={p.id} className="sv-runrow" title={`Looking ${first(p.contact.name)} up and seating their agent. This takes a minute or two.`}>
+                <span className="p"><Opens who={memberSide(p)} onPerson={onPerson}>{first(p.member.name)}</Opens> ⇄ <Opens who={contactSide(p)} onPerson={onPerson}>{first(p.contact.name)}</Opens></span>
+                <span className="pl-status pending">waking</span>
+                <span className="t">now</span>
+              </div>
+            ))}
+            {ordered.map((r) => (
+              <div key={r.opportunityId} className={`sv-runrow${isFinal(r) ? " done" : ""}${r.opportunityId === freshId ? " fresh" : ""}`} title={phaseLine(r)}>
+                <span className="p"><Opens who={runSide(r, r.a)} onPerson={onPerson}>{first(r.a.name)}</Opens> ⇄ <Opens who={runSide(r, r.b)} onPerson={onPerson}>{first(r.b.name)}</Opens></span>
+                <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
+                <span className="t">{since(r.createdAt)}</span>
+                {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+      <div className="sv-run-foot">🔒 You see where each ends up and any note either side sends back, never what the agents say.</div>
+    </div>
+  );
+}
+
+/**
+ * A person picked on Introduce, in the window on the right: the same pane
+ * home opens (summary · chat), with what this page knows about them on top.
+ */
+function PersonSide({ who, onClose }: { who: SidePerson; onClose: () => void }) {
+  const profile = useProfile(who.userId ?? undefined);
+  const [tab, setTab] = useState<PersonTab>("summary");
+  const [chatCount, setChatCount] = useState(0);
+  const notOnIndex = who.notOnIndex ?? profile?.emailVerified === false;
+  const canChat = !!who.userId && !notOnIndex;
+  return (
+    <PersonPane
+      person={{ name: who.name, userId: who.userId ?? undefined, avatar: who.avatar, notOnIndex, fallbackId: who.avatarId }}
+      tab={tab}
+      onTab={setTab}
+      chatOff={canChat ? undefined : `${first(who.name)} isn't on index yet. the chat opens here once they join.`}
+      chatCount={canChat ? chatCount || undefined : undefined}
+      onClose={onClose}
+      summary={(
         <>
-          {opening.map((p) => (
-            <div key={p.id} className="sv-runrow" title={`Looking ${first(p.contact.name)} up and seating their agent. This takes a minute or two.`}>
-              <span className="p">{first(p.member.name)} ⇄ {first(p.contact.name)}</span>
-              <span className="pl-status pending">waking</span>
-              <span className="t">now</span>
-            </div>
-          ))}
-          {ordered.map((r) => (
-            <div key={r.opportunityId} className={`sv-runrow${isFinal(r) ? " done" : ""}${r.opportunityId === freshId ? " fresh" : ""}`} title={phaseLine(r)}>
-              <span className="p">{first(r.a.name)} ⇄ {first(r.b.name)}</span>
-              <span className={`pl-status ${PHASE[r.phase].cls}`}>{PHASE[r.phase].label}</span>
-              <span className="t">{since(r.createdAt)}</span>
-              {r.reports.map((n) => <span key={n.at} className="note">“{n.note}”</span>)}
-            </div>
-          ))}
+          {who.about?.text && (
+            <>
+              <h4 className="sv-h4">{who.about.label}</h4>
+              <p>{who.about.text}</p>
+            </>
+          )}
+          {who.userId && <PersonSummary userId={who.userId} name={who.name} avatar={who.avatar} />}
         </>
       )}
-      <div className="sv-run-foot">🔒 You see where each ends up and any note either side sends back, never what the agents say.</div>
-    </aside>
+      chat={canChat && who.userId ? (
+        <InAppFrameContext.Provider value>
+          <ChatView key={who.userId} userId={who.userId} userName={who.name} userAvatar={who.avatar ?? undefined} onClose={() => setTab("summary")} bare onCount={setChatCount} />
+        </InAppFrameContext.Provider>
+      ) : null}
+    />
   );
 }
 
@@ -336,6 +421,22 @@ export default function IntroducePage() {
   const service = useMemo(() => createIntroducerService(api), [api]);
   const plain = useInAppFrame();
   const compact = useCompact();
+  const rightSlot = useRightSlot();
+  // The person opened on the right, in the running list's place; closing brings the list back.
+  const [side, setSide] = useState<SidePerson | null>(null);
+  useEffect(() => {
+    if (!side) return;
+    // Esc closes them, unless you're halfway through typing something.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT") && (target as HTMLTextAreaElement).value.trim() !== "") return;
+      event.preventDefault();
+      setSide(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [side]);
   const navigate = useNavigate();
 
   const [status, setStatus] = useState<IntroducerStatus | null>(null);
@@ -524,7 +625,8 @@ export default function IntroducePage() {
     ? <button type="button" className="idk-open" onClick={toContacts}>from {status.contacts.total} contacts ›</button>
     : null;
 
-  // A desktop inside the app: a page like home's, pairs on the left and what's running beside them.
+  // A desktop inside the app: a page like home's with the pairs, and a window on
+  // the right like home's: what's running, or the person you picked.
   if (plain && !compact) {
     const shown = waiting.filter((p) => !skipping.has(p.id));
     const skipLater = (p: OpportunityProposal) => {
@@ -541,6 +643,7 @@ export default function IntroducePage() {
       </>
     );
     return (
+      <>
       <PageView title="Introduce" sub={sub}>
         {!status ? (
           <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
@@ -561,12 +664,24 @@ export default function IntroducePage() {
                 <div className="sv-empty">{noPairsFor(person, "sv-btn go")}</div>
               ) : shown.length === 0 ? (
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
-              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} />)}
+              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} onPerson={setSide} />)}
             </section>
-            <RunColumn runs={runs} opening={opening} freshId={freshId} />
           </div>
         )}
       </PageView>
+      {rightSlot && ready && createPortal(
+        <section className="ih-agentwin sv-matchwin" aria-label={side ? `you and ${first(side.name)}` : "running introductions"}>
+          <div className="sv">
+            <section className="sv-pane" data-zone="pane">
+              {side
+                ? <PersonSide key={side.key} who={side} onClose={() => setSide(null)} />
+                : <RunWindow runs={runs} opening={opening} freshId={freshId} onPerson={setSide} />}
+            </section>
+          </div>
+        </section>,
+        rightSlot,
+      )}
+      </>
     );
   }
 

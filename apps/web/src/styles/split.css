@@ -473,9 +473,14 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-iagent { width: clamp(240px, 42%, 300px); }
 
 /* introduce: a page like home's, pairs on the left, what's running in a column beside them */
-.sv-intro-cols { display: grid; grid-template-columns: minmax(0, 1fr) 272px; align-items: start; }
 .sv-intro-pairs { min-width: 0; }
-.sv-intro-run { border-left: 1px solid var(--sv-line); align-self: stretch; }
+/* Introduce's right window: what's running, scrolling under its heading, the privacy note at the foot. */
+.sv-runwin { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sv-runwin-list { flex: 1; min-height: 0; overflow-y: auto; }
+.sv-runwin .sv-run-foot { flex: none; border-top: 1px solid var(--sv-line); }
+/* A name or face on Introduce that opens the person on the right. */
+.sv .sv-whobtn { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
+.sv .sv-whobtn:not(.idk-face):hover { text-decoration: underline; }
 .sv-pairav { display: flex; gap: 4px; flex: none; align-self: flex-start; }
 .sv-pair { padding: 14px 20px 16px; }
 .sv-pair .sv-blurb { margin: 3px 0 12px; line-height: 1.45; }

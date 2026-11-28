@@ -4,7 +4,8 @@ import { Link } from "react-router";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { useNetworks, useOpportunities, useUsers } from "@/contexts/APIContext";
+import { useNetworks, useOpportunities } from "@/contexts/APIContext";
+import { useProfile } from "@/components/intents-home/useProfile";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useIntentsData } from "@/contexts/IntentsDataContext";
 import { radarBucketForOpportunity } from "@/lib/radar-buckets";
@@ -24,33 +25,6 @@ export interface PanePerson {
   notOnIndex?: boolean;
   /** Used for the avatar's colour when there is no user yet. */
   fallbackId?: string;
-}
-
-interface Profile {
-  username?: string | null;
-  intro?: string | null;
-  location?: string | null;
-  socials?: Array<{ label: string; value: string }> | null;
-}
-
-/** Profiles once loaded, so the header and the summary don't each fetch one. */
-const profileCache = new Map<string, Promise<Profile>>();
-function useProfile(userId?: string): Profile | null {
-  const users = useUsers();
-  const [state, setState] = useState<{ id: string; profile: Profile } | null>(null);
-  useEffect(() => {
-    if (!userId) return;
-    let active = true;
-    let pending = profileCache.get(userId);
-    if (!pending) {
-      pending = users.getUserProfile(userId).then((p) => p as Profile);
-      pending.catch(() => profileCache.delete(userId));
-      profileCache.set(userId, pending);
-    }
-    pending.then((profile) => { if (active) setState({ id: userId, profile }); }).catch(() => {});
-    return () => { active = false; };
-  }, [userId, users]);
-  return state && state.id === userId ? state.profile : null;
 }
 
 /**
