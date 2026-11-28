@@ -178,20 +178,24 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
                 <span className="idk-ghost" aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
                 <div className="who" title={c.source === "saved" ? "Saved in your Google contacts" : "Someone you've emailed (Google's \"Other contacts\")"}>
                   <b>{c.name}</b>
-                  <small>{c.detail ?? c.email}</small>
-                  {c.detail && <small className="idk-faint">{c.email}</small>}
-                  {c.web && (
-                    <div className="idk-web" title="What Introduce found about them on the public web. Only you see it here.">
-                      <small>{c.web.name !== c.name ? `${c.web.name} · ` : ""}{c.web.headline ?? "found on the web"}</small>
-                      {c.web.links.length > 0 && (
-                        <small className="idk-web-links">
-                          {c.web.links.map((l) => (
-                            <a key={l.value} href={l.value} target="_blank" rel="noopener noreferrer">{linkText(l)}</a>
-                          ))}
-                        </small>
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    // Research's headline, once Introduce has looked them up, reads before your own card.
+                    const line = c.web?.headline ?? c.detail ?? c.email;
+                    const links = c.web?.links ?? [];
+                    return (
+                      <>
+                        <small title={c.web?.headline ? "Found on the public web. Only you see it here." : undefined}>{line}</small>
+                        {(line !== c.email || links.length > 0) && (
+                          <small className="idk-faint idk-mail">
+                            {line !== c.email && <span>{c.email}</span>}
+                            {links.map((l) => (
+                              <a key={l.value} href={l.value} target="_blank" rel="noopener noreferrer">{linkText(l)}</a>
+                            ))}
+                          </small>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="tags">
                   {c.onIndex && <span className="idk-tag">on Index</span>}

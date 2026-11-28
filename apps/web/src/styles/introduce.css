@@ -125,10 +125,9 @@
 .idk-clist .who { min-width: 0; }
 .idk-clist .who b, .idk-clist .who small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .idk-clist .who small { font-size: 11.5px; color: var(--idk-ink2); }
-.idk-clist .idk-web { margin-top: 3px; padding-left: 8px; border-left: 2px solid var(--idk-line); }
-.idk-clist .idk-web small { color: #000; }
-.idk-clist .idk-web .idk-web-links { display: flex; gap: 10px; color: var(--idk-ink2); }
-.idk-clist .idk-web .idk-web-links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.idk-clist .who .idk-mail a { color: var(--idk-ink2); text-decoration: none; }
+.idk-clist .who .idk-mail a:hover { text-decoration: underline; }
+.idk-clist .who .idk-mail > * + *::before { content: "·"; display: inline-block; margin: 0 6px; color: var(--idk-ink3); }
 .idk-clist .tags { display: flex; gap: 6px; align-items: center; font: 600 10px var(--idk-mono); }
 .idk-clist .tags .idk-tag { margin-left: 0; }
 .idk-contacts-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid #000; font-size: 11.5px; color: var(--idk-ink2); }
