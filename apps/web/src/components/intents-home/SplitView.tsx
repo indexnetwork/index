@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from "react";
+import { ArrowLeftRight, ArrowUpRight, Split, type LucideIcon } from "lucide-react";
 
 import "@/styles/split.css";
 import { useZone } from "@/components/intents-home/keyboard";
@@ -30,6 +31,20 @@ export function SplitView({ title, actions, seg, list, pane, listRef }: {
       </aside>
       <section className={`sv-pane${zone === "pane" ? " sv-focus" : ""}`} data-zone="pane">{pane}</section>
     </div>
+  );
+}
+
+/** Each place's mark, shown before its page title: intents go out ↗, conversations go both ways ⇄, introduce branches one into two. */
+const PLACE_ICONS = { intents: ArrowUpRight, conversations: ArrowLeftRight, introduce: Split } satisfies Record<string, LucideIcon>;
+
+/** A page title with its place's mark in front, e.g. ↗ intents. */
+export function PlaceTitle({ place, children }: { place: keyof typeof PLACE_ICONS; children: ReactNode }) {
+  const Icon = PLACE_ICONS[place];
+  return (
+    <span className="sv-place">
+      <Icon className="sv-place-ic" size={18} strokeWidth={2} aria-hidden />
+      {children}
+    </span>
   );
 }
 

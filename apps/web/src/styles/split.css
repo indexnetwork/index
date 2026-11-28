@@ -676,3 +676,7 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-stack { display: flex; flex: none; }
 .sv-stack > * { box-shadow: 0 0 0 2px var(--sv-paper); }
 .sv-stack > * + * { margin-left: -6px; }
+
+/* A page title's place mark (PlaceTitle): a quiet icon in front of the name. */
+.sv-place { display: inline-flex; align-items: center; gap: 8px; }
+.sv-place-ic { display: block; flex: none; color: var(--sv-dim, #888); }

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 
 import "@/styles/plain.css";
 import { Stage, Window } from "@/components/workbench/Workbench";
-import { SplitView, Seg } from "@/components/intents-home/SplitView";
+import { PlaceTitle, SplitView, Seg } from "@/components/intents-home/SplitView";
 import { useCompact } from "@/hooks/useCompact";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -33,7 +33,7 @@ export function ChatFrame({ list, onClose, children }: { list?: ReactNode; onClo
     return (
       <ChatFilterContext.Provider value={filter}>
         <SplitView
-          title="conversations"
+          title={<PlaceTitle place="conversations">conversations</PlaceTitle>}
           seg={<Seg items={[
             { label: "all", n: visible.length, on: filter === "all", onClick: () => setFilter("all") },
             { label: "unread", n: unread, on: filter === "unread", onClick: () => toggle("unread") },

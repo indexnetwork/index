@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
-import { ListHead, PageView } from "@/components/intents-home/SplitView";
+import { ListHead, PageView, PlaceTitle } from "@/components/intents-home/SplitView";
 import { useUndo } from "@/components/intents-home/undo";
 import { InAppFrameContext, useInAppFrame, useRightSlot } from "@/components/intents-home/appFrameContext";
 import { PersonPane, PersonSummary, type PersonTab } from "@/components/intents-home/PersonPane";
@@ -647,7 +647,7 @@ export default function IntroducePage() {
     );
     return (
       <>
-      <PageView title="Introduce" sub={sub}>
+      <PageView title={<PlaceTitle place="introduce">Introduce</PlaceTitle>} sub={sub}>
         {!status ? (
           <div className="sv-empty sv-page-gap">{error ?? "loading…"}</div>
         ) : !ready ? (
@@ -731,7 +731,7 @@ export default function IntroducePage() {
     return (
       <div className="ih-view pl">
         <div className="pl-col">
-          <PageHead title="Introduce" status={headStatus} />
+          <PageHead title={<PlaceTitle place="introduce">Introduce</PlaceTitle>} status={headStatus} />
           <div className="pl-page">{desk}</div>
         </div>
       </div>

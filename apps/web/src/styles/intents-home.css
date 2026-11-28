@@ -134,16 +134,6 @@
   flex: 1;
   min-width: 0;
 }
-/* A small mark after the place's name: intents ↗, conversations ⇄, introduce branches. */
-.ih-nav-icon {
-  display: inline-block;
-  margin-left: 6px;
-  vertical-align: -1px;
-  color: #666;
-}
-.ih-nav.on .ih-nav-icon {
-  color: #000;
-}
 .ih .ih-nav:hover {
   background: #fff6e8;
   border-color: #000;
