@@ -66,7 +66,9 @@ export interface ContactListRow extends ContactCard {
   /** Proposals still waiting on the desk for this contact. */
   proposals: number;
   /** What research found on the public web, when Introduce has looked them up. */
-  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
+  web: { name: string; headline: string | null } | null;
+  /** Their photo: the member's own when they are on Index, else the one found for their seat. */
+  avatar: string | null;
 }
 
 export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded' | 'researched';
@@ -406,6 +408,66 @@ export class IntroducerDatabaseAdapter {
     return rowsOf(result).map(toCandidate);
   }
 
+  /**
+   * One member's contacts that research already found: a live, unclaimed
+   * seat per email, still open to suggest (not excluded, removed, or on Index).
+   */
+  async enrichedContacts(ownerUserId: string): Promise<(ContactCard & { headline: string; seatName: string })[]> {
+    const result = await db.execute(sql`
+      select distinct on (lower(c.email)) c.id, c.email, c.name, c.organization, c.title,
+             g.name as seat_name, coalesce(g.intro, '') as headline
+      from contacts c
+      join contact_research r on r.email = lower(c.email) and r.status = 'found'
+      join users g on ${RESEARCHED_SEAT}
+      where c.owner_user_id = ${ownerUserId}
+        and c.excluded_at is null and c.removed_at is null and c.matched_user_id is null
+      order by lower(c.email), c.created_at asc
+    `);
+    return rowsOf(result).map((r) => ({
+      id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
+      organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+      seatName: String(r.seat_name ?? ''), headline: String(r.headline ?? ''),
+    }));
+  }
+
+  /**
+   * For one contact, by a vector of what research found about them: the
+   * closest public intents its owner can see, skipping pairs ever proposed.
+   */
+  async candidatesForVector(ownerUserId: string, contact: ContactCard, vector: number[], limit: number): Promise<MatchCandidate[]> {
+    const v = `[${vector.join(',')}]`;
+    const result = await db.execute(sql`
+      with nets as (
+        select m.network_id from network_members m
+        join networks n on n.id = m.network_id and n.deleted_at is null
+        where m.user_id = ${ownerUserId} and m.deleted_at is null
+      )
+      select i.id as intent_id, i.user_id as member_id, u.name as member_name,
+             coalesce(nullif(i.summary, ''), i.payload) as text,
+             (select inw.network_id from intent_networks inw join nets on nets.network_id = inw.network_id
+               where inw.intent_id = i.id and inw.visibility = 'networks_only' limit 1) as network_id,
+             1 - (i.embedding <=> ${v}::vector) as score
+      from intents i join users u on u.id = i.user_id
+      where ${LIVE_PUBLIC_INTENT}
+        and i.user_id <> ${ownerUserId}
+        and not exists (select 1 from introducer_exclusions x
+                        where x.introducer_user_id = ${ownerUserId} and x.excluded_user_id = i.user_id)
+        and exists (select 1 from intent_networks inw join nets on nets.network_id = inw.network_id
+                    where inw.intent_id = i.id and inw.visibility = 'networks_only')
+        and not exists (select 1 from opportunity_proposals s
+                        where s.introducer_user_id = ${ownerUserId} and s.intent_id = i.id and s.contact_id = ${contact.id})
+      order by i.embedding <=> ${v}::vector
+      limit ${limit}
+    `);
+    return rowsOf(result).map((r) => ({
+      introducerUserId: ownerUserId,
+      networkId: String(r.network_id),
+      score: Number(r.score),
+      member: { userId: String(r.member_id), name: String(r.member_name), intentId: String(r.intent_id), intentText: String(r.text) },
+      contact,
+    }));
+  }
+
   /** Public intents created since a moment, oldest first: the matcher's work queue. */
   async publicIntentsSince(since: Date, limit: number): Promise<{ id: string; createdAt: Date }[]> {
     const result = await db.execute(sql`
@@ -519,12 +581,12 @@ export class IntroducerDatabaseAdapter {
       select c.id, c.email, c.name, c.organization, c.title, c.source,
              c.matched_user_id is not null as on_index, c.excluded_at is not null as excluded,
              (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals,
-             web.name as web_name, web.intro as web_headline, web.links as web_links
+             web.name as web_name, web.intro as web_headline,
+             coalesce(mu.avatar, web.avatar) as avatar
       from contacts c
+      left join users mu on mu.id = c.matched_user_id and mu.deleted_at is null
       left join lateral (
-        select g.name, g.intro,
-               coalesce((select json_agg(json_build_object('label', s.label, 'value', s.value) order by s.label)
-                         from user_socials s where s.user_id = g.id), '[]'::json) as links
+        select g.name, g.intro, g.avatar
         from contact_research r join users g on ${RESEARCHED_SEAT}
         where r.email = c.email and r.status = 'found'
         limit 1
@@ -542,11 +604,8 @@ export class IntroducerDatabaseAdapter {
         id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
         organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
         source: String(r.source), onIndex: Boolean(r.on_index), excluded: Boolean(r.excluded), proposals: Number(r.proposals),
-        web: r.web_name == null ? null : {
-          name: String(r.web_name),
-          headline: (r.web_headline as string | null) || null,
-          links: ((r.web_links as { label: string; value: string }[] | null) ?? []),
-        },
+        web: r.web_name == null ? null : { name: String(r.web_name), headline: (r.web_headline as string | null) || null },
+        avatar: (r.avatar as string | null) || null,
       })),
     };
   }
@@ -638,10 +697,22 @@ export class IntroducerDatabaseAdapter {
   // ─── seats ─────────────────────────────────────────────────────────────────
 
   /** The account an email already has, if any, with whether it is claimed or gone. */
-  async accountByEmail(email: string): Promise<{ id: string; emailVerified: boolean; deleted: boolean } | null> {
-    const [row] = await db.select({ id: users.id, emailVerified: users.emailVerified, deletedAt: users.deletedAt })
+  async accountByEmail(email: string): Promise<{ id: string; emailVerified: boolean; deleted: boolean; avatar: string | null } | null> {
+    const [row] = await db.select({ id: users.id, emailVerified: users.emailVerified, deletedAt: users.deletedAt, avatar: users.avatar })
       .from(users).where(sql`lower(${users.email}) = lower(${email})`).limit(1);
-    return row ? { id: row.id, emailVerified: row.emailVerified, deleted: row.deletedAt !== null } : null;
+    return row ? { id: row.id, emailVerified: row.emailVerified, deleted: row.deletedAt !== null, avatar: row.avatar ?? null } : null;
+  }
+
+  /** A seat's profile links, as research stored them. */
+  async seatSocials(seatUserId: string): Promise<string[]> {
+    const rows = await db.select({ value: schema.userSocials.value }).from(schema.userSocials).where(eq(schema.userSocials.userId, seatUserId));
+    return rows.map((r) => r.value);
+  }
+
+  /** Give an unclaimed seat the photo found for it; a claimed account's own avatar is never touched. */
+  async setSeatAvatar(seatUserId: string, avatar: string): Promise<void> {
+    await db.update(users).set({ avatar, updatedAt: new Date() })
+      .where(and(eq(users.id, seatUserId), eq(users.emailVerified, false), isNull(users.avatar)));
   }
 
   /**

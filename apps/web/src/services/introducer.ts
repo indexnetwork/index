@@ -37,7 +37,9 @@ export interface ContactEntry {
   excluded: boolean;
   proposals: number;
   /** What Introduce found on the public web for them, once it has looked them up. */
-  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
+  web: { name: string; headline: string | null } | null;
+  /** Their photo when one is known: the member's own, or the one found on the web. */
+  avatar: string | null;
 }
 
 /** A member of your networks you said never to suggest. */

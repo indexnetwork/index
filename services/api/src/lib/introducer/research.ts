@@ -13,11 +13,12 @@ const researchSchema = z.object({
   name: z.string(),
   headline: z.string(),
   socials: z.array(z.string()),
+  photo: z.string(),
 });
 
 /** What one research try came to. */
 export type ResearchOutcome =
-  | { kind: 'found'; name: string; headline: string; socials: string[] }
+  | { kind: 'found'; name: string; headline: string; socials: string[]; photo: string }
   | { kind: 'not_found' }
   | { kind: 'unavailable'; reason: 'no_key' | 'error' };
 
@@ -33,8 +34,9 @@ const format = {
       name: { type: 'string', description: 'The person\'s full name as their own public pages give it, copied verbatim. Never a nickname or label from the hints. Empty when not found.' },
       headline: { type: 'string', description: 'One line: role, domain and city. Empty when not found.' },
       socials: { type: 'array', items: { type: 'string' }, description: 'Public profile URLs you opened for this person (X, LinkedIn, GitHub, personal site), copied verbatim.' },
+      photo: { type: 'string', description: 'Direct https URL of a photo of this person\'s face, as shown on one of the pages above about them (their profile picture on GitHub, X or their own site). Never a logo, a group photo or an image from a page about someone else. Empty when you saw none.' },
     },
-    required: ['found', 'name', 'headline', 'socials'],
+    required: ['found', 'name', 'headline', 'socials', 'photo'],
   },
 };
 
@@ -75,9 +77,9 @@ export async function researchPerson(person: {
     }, { timeout: RESEARCH_TIMEOUT_MS });
     const parsed = response.output_text ? researchSchema.safeParse(JSON.parse(response.output_text)) : null;
     if (!parsed?.success) return { kind: 'unavailable', reason: 'error' };
-    const { found, name, headline, socials } = parsed.data;
+    const { found, name, headline, socials, photo } = parsed.data;
     if (!found || (!name.trim() && !headline.trim())) return { kind: 'not_found' };
-    return { kind: 'found', name, headline, socials };
+    return { kind: 'found', name, headline, socials, photo };
   } catch (error) {
     logger.warn('Person research failed', { error: error instanceof Error ? error.message : String(error) });
     return { kind: 'unavailable', reason: 'error' };

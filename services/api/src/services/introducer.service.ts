@@ -7,6 +7,7 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
 import { GMAIL_SCOPE, sentFrequency } from '../lib/introducer/gmail-frequency';
 import { judgePair } from '../lib/introducer/judge';
+import { findSeatAvatar } from '../lib/introducer/avatar';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
 import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
@@ -126,7 +127,9 @@ export interface ContactView {
   excluded: boolean;
   proposals: number;
   /** What research found on the public web, once Introduce has looked them up. */
-  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
+  web: { name: string; headline: string | null } | null;
+  /** Their photo, when one is known: the member's own, or the one found for their seat. */
+  avatar: string | null;
 }
 
 type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['accountByEmail']>>>;
@@ -591,6 +594,7 @@ export class IntroducerService {
       });
       if (created) {
         await this.adapter.recordResearch(email, 'found', created.userId);
+        await this.storeSeatAvatar(created.userId, { email, photo: research.photo, socials: research.socials });
         logger.info('Contact research', { outcome: 'found' });
         return { kind: 'seated', userId: created.userId };
       }
@@ -616,8 +620,20 @@ export class IntroducerService {
     if (account.deleted) return { kind: 'opted_out' };
     if (account.emailVerified) return { kind: 'on_index' };
     await this.adapter.recordResearch(email, 'found', account.id);
+    if (!account.avatar) await this.storeSeatAvatar(account.id, { email, socials: await this.adapter.seatSocials(account.id) });
     logger.info('Contact research', { outcome: 'existing' });
     return { kind: 'seated', userId: account.id };
+  }
+
+  /** A photo for a seat, when one can be found; a seat without one is fine. */
+  private async storeSeatAvatar(seatUserId: string, person: { email: string; photo?: string; socials: string[] }): Promise<void> {
+    try {
+      const key = await findSeatAvatar(seatUserId, person);
+      if (key) await this.adapter.setSeatAvatar(seatUserId, key);
+      logger.info('Seat avatar', { found: !!key });
+    } catch (error) {
+      logger.warn('Finding a seat avatar failed', { error: String(error) });
+    }
   }
 
   /**
@@ -925,6 +941,7 @@ function toContactView(row: ContactListRow): ContactView {
     excluded: row.excluded,
     proposals: row.proposals,
     web: row.web,
+    avatar: row.avatar,
   };
 }
 
