@@ -65,9 +65,11 @@ export interface ContactListRow extends ContactCard {
   excluded: boolean;
   /** Proposals still waiting on the desk for this contact. */
   proposals: number;
+  /** What research found on the public web, when Introduce has looked them up. */
+  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
 }
 
-export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded';
+export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded' | 'researched';
 
 export interface IntroductionRow {
   opportunityId: string;
@@ -139,6 +141,9 @@ const SHARED_INBOX = '^(info|hello|contact|team|press|office|support|hi|careers|
 const TOP_CONTACTS = 500;
 
 /** Public, live intents whose owners verified their email: the only side the matcher reads. */
+/** A contact's researched seat (aliases `r` contact_research, `g` users): still unclaimed and not opted out. */
+const RESEARCHED_SEAT = sql`g.id = r.seat_user_id and g.deleted_at is null and g.email_verified = false`;
+
 const LIVE_PUBLIC_INTENT = sql`
   i.archived_at is null and (i.status is null or i.status = 'active') and i.is_private = false
   and i.embedding is not null and u.email_verified and u.deleted_at is null and u.shadowbanned_at is null`;
@@ -507,18 +512,28 @@ export class IntroducerDatabaseAdapter {
       ${like ? sql`and (c.name ilike ${like} or c.email ilike ${like} or c.organization ilike ${like} or c.title ilike ${like})` : sql``}
       ${options.filter === 'not_on_index' ? sql`and c.matched_user_id is null and c.excluded_at is null`
         : options.filter === 'on_index' ? sql`and c.matched_user_id is not null`
-          : options.filter === 'excluded' ? sql`and c.excluded_at is not null` : sql``}`;
+          : options.filter === 'excluded' ? sql`and c.excluded_at is not null`
+            : options.filter === 'researched' ? sql`and exists (select 1 from contact_research r join users g on ${RESEARCHED_SEAT} where r.email = c.email and r.status = 'found')` : sql``}`;
     const [count] = rowsOf(await db.execute(sql`select count(*)::int as n from contacts c where ${where}`));
     const result = await db.execute(sql`
       select c.id, c.email, c.name, c.organization, c.title, c.source,
              c.matched_user_id is not null as on_index, c.excluded_at is not null as excluded,
-             (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals
+             (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals,
+             web.name as web_name, web.intro as web_headline, web.links as web_links
       from contacts c
+      left join lateral (
+        select g.name, g.intro,
+               coalesce((select json_agg(json_build_object('label', s.label, 'value', s.value) order by s.label)
+                         from user_socials s where s.user_id = g.id), '[]'::json) as links
+        from contact_research r join users g on ${RESEARCHED_SEAT}
+        where r.email = c.email and r.status = 'found'
+        limit 1
+      ) web on true
       where ${where}
       order by ${options.filter === 'excluded'
         // Never-suggest reads newest first, so a fresh pick sits on the first page.
         ? sql`c.excluded_at desc, c.id`
-        : sql`proposals desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc`}
+        : sql`proposals desc, (web.name is not null) desc, (c.title is not null or c.organization is not null) desc, c.name asc nulls last, c.email asc`}
       limit ${options.limit} offset ${options.offset}
     `);
     return {
@@ -527,6 +542,11 @@ export class IntroducerDatabaseAdapter {
         id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
         organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
         source: String(r.source), onIndex: Boolean(r.on_index), excluded: Boolean(r.excluded), proposals: Number(r.proposals),
+        web: r.web_name == null ? null : {
+          name: String(r.web_name),
+          headline: (r.web_headline as string | null) || null,
+          links: ((r.web_links as { label: string; value: string }[] | null) ?? []),
+        },
       })),
     };
   }

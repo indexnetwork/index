@@ -14,7 +14,7 @@ const OPEN_BODY = z.object({ context: z.string().trim().min(1).max(2000) });
 
 const CONTACTS_QUERY = z.object({
   q: z.string().max(100).optional(),
-  filter: z.enum(['all', 'not_on_index', 'on_index', 'excluded']).default('all'),
+  filter: z.enum(['all', 'not_on_index', 'on_index', 'excluded', 'researched']).default('all'),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
 });
 

@@ -125,6 +125,8 @@ export interface ContactView {
   onIndex: boolean;
   excluded: boolean;
   proposals: number;
+  /** What research found on the public web, once Introduce has looked them up. */
+  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
 }
 
 type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['accountByEmail']>>>;
@@ -922,6 +924,7 @@ function toContactView(row: ContactListRow): ContactView {
     onIndex: row.onIndex,
     excluded: row.excluded,
     proposals: row.proposals,
+    web: row.web,
   };
 }
 

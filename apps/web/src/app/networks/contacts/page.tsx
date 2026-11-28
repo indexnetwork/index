@@ -24,8 +24,16 @@ const FILTERS: { key: ContactFilter; label: string }[] = [
   { key: "all", label: "all" },
   { key: "not_on_index", label: "not on Index" },
   { key: "on_index", label: "on Index" },
+  { key: "researched", label: "researched" },
   { key: "excluded", label: "never suggest" },
 ];
+
+/** A profile link's text: the network's name, or the site's host for anything else. */
+function linkText(link: { label: string; value: string }): string {
+  if (link.label === "twitter" || link.label === "x") return "x";
+  if (link.label !== "custom" && link.label !== "website") return link.label;
+  try { return new URL(link.value).hostname.replace(/^www\./, ""); } catch { return "site"; }
+}
 
 const isFilter = (v: string | null): v is ContactFilter => FILTERS.some((f) => f.key === v);
 
@@ -146,7 +154,7 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
         <p className="idk-dim">loading contacts…</p>
       ) : shown.length + shownMembers.length === 0 ? (
         <div className="idk-empty">
-          {q ? "No contact matches that." : never ? "Nobody yet. On Introduce, a pair's ⋯ menu lets you never suggest either person." : "No contacts here."}
+          {q ? "No contact matches that." : never ? "Nobody yet. On Introduce, a pair's ⋯ menu lets you never suggest either person." : filter === "researched" ? "Nobody yet. Introduce looks a contact up on the web once they're in a pair worth checking." : "No contacts here."}
         </div>
       ) : (
         <>
@@ -172,6 +180,18 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
                   <b>{c.name}</b>
                   <small>{c.detail ?? c.email}</small>
                   {c.detail && <small className="idk-faint">{c.email}</small>}
+                  {c.web && (
+                    <div className="idk-web" title="What Introduce found about them on the public web. Only you see it here.">
+                      <small>{c.web.name !== c.name ? `${c.web.name} · ` : ""}{c.web.headline ?? "found on the web"}</small>
+                      {c.web.links.length > 0 && (
+                        <small className="idk-web-links">
+                          {c.web.links.map((l) => (
+                            <a key={l.value} href={l.value} target="_blank" rel="noopener noreferrer">{linkText(l)}</a>
+                          ))}
+                        </small>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="tags">
                   {c.onIndex && <span className="idk-tag">on Index</span>}

@@ -36,6 +36,8 @@ export interface ContactEntry {
   onIndex: boolean;
   excluded: boolean;
   proposals: number;
+  /** What Introduce found on the public web for them, once it has looked them up. */
+  web: { name: string; headline: string | null; links: { label: string; value: string }[] } | null;
 }
 
 /** A member of your networks you said never to suggest. */
@@ -45,7 +47,7 @@ export interface ExcludedMember {
   avatar: string | null;
 }
 
-export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded';
+export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'researched' | 'excluded';
 
 export interface IntroductionPerson {
   userId: string;
