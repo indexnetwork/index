@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router";
 
 import PageHead from "@/components/intents-home/PageHead";
 import { ListHead, PageView } from "@/components/intents-home/SplitView";
@@ -7,6 +7,7 @@ import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
+import IntroducePersonPicker from "@/components/IntroducePersonPicker";
 import { ContactsSetup } from "@/components/ContactsImport";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
@@ -14,7 +15,7 @@ import { useContactsImport } from "@/hooks/useContactsImport";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { since } from "@/lib/since";
-import { createIntroducerService, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal } from "@/services/introducer";
+import { createIntroducerService, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal, type PickablePerson } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
@@ -24,6 +25,11 @@ const POLL_MS = 5000;
 const MAX_CONTEXT = 2000;
 
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
+
+/** A person on a pair, linked to their page when they have one: the member's profile, or the contact's ghost. */
+function PersonLink({ userId, name, className = "idk-person", children }: { userId: string | null; name: string; className?: string; children: ReactNode }) {
+  return userId ? <Link to={`/u/${userId}`} className={className} title={`${name}'s page`}>{children}</Link> : <>{children}</>;
+}
 
 const isFinal = (p: IntroductionProgress) => p.phase !== "talking" && p.phase !== "agreed";
 
@@ -138,17 +144,21 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <div className="idk-pair">
         <div className="idk-who">
-          <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
+          <PersonLink userId={proposal.member.userId} name={proposal.member.name} className="idk-face">
+            <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={30} />
+          </PersonLink>
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={proposal.member.intentText}><b>{first(proposal.member.name)}</b> {proposal.member.line}</div>
+            <div className="idk-line" title={proposal.member.intentText}><b><PersonLink userId={proposal.member.userId} name={proposal.member.name}>{first(proposal.member.name)}</PersonLink></b> {proposal.member.line}</div>
             <small>{proposal.networkTitle}</small>
           </div>
         </div>
         <div className="idk-link">⇄</div>
         <div className="idk-who">
-          <span className="idk-ghost" aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
+          <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name} className="idk-face">
+            <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={30} />
+          </PersonLink>
           <div style={{ minWidth: 0 }}>
-            <div className="idk-line" title={proposal.contact.detail ?? undefined}><b>{first(proposal.contact.name)}</b> {proposal.contact.line}</div>
+            <div className="idk-line" title={proposal.contact.detail ?? undefined}><b><PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name}>{first(proposal.contact.name)}</PersonLink></b> {proposal.contact.line}</div>
             <small>your contact<span className="idk-tag dash">not on Index</span></small>
           </div>
         </div>
@@ -187,12 +197,16 @@ function ProposalCard({ proposal, onOpen, onSkip, onNever }: {
   );
 }
 
-/** The member's photo with your contact's letter beside it, in a dashed circle: they're not on Index. */
+/** Both faces side by side: the member's, and your contact's photo or the default face. */
 function PairFace({ proposal, size = 36 }: { proposal: OpportunityProposal; size?: number }) {
   return (
-    <div className="sv-pairav" style={{ width: Math.round(size * 1.7), height: size }}>
-      <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
-      <span className="sv-ghost" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }} aria-hidden>{first(proposal.contact.name).slice(0, 1).toUpperCase()}</span>
+    <div className="sv-pairav">
+      <PersonLink userId={proposal.member.userId} name={proposal.member.name} className="idk-face">
+        <UserAvatar id={proposal.member.userId} name={proposal.member.name} avatar={proposal.member.avatar} size={size} />
+      </PersonLink>
+      <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name} className="idk-face">
+        <UserAvatar id={proposal.contact.id} name={proposal.contact.name} avatar={proposal.contact.avatar} size={size} />
+      </PersonLink>
     </div>
   );
 }
@@ -221,7 +235,7 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <PairFace proposal={proposal} />
       <div className="sv-card-body">
-        <div className="idk-never-room"><b>{A} ⇄ {B}</b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
+        <div className="idk-never-room"><b><PersonLink userId={proposal.member.userId} name={proposal.member.name}>{proposal.member.name}</PersonLink> ⇄ <PersonLink userId={proposal.contact.ghostUserId} name={proposal.contact.name}>{proposal.contact.name}</PersonLink></b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
@@ -375,6 +389,80 @@ export default function IntroducePage() {
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
   }, [load, isAuthenticated]);
 
+  // Regenerate: new pairs from contacts already looked up on the web. Polls the desk until the judge is done.
+  const [regenerating, setRegenerating] = useState(false);
+  useEffect(() => {
+    if (!regenerating) return;
+    const t = setInterval(() => {
+      void (async () => {
+        const running = await service.regenerating().catch(() => false);
+        await refreshProposals();
+        if (!running) setRegenerating(false);
+      })();
+    }, POLL_MS);
+    return () => clearInterval(t);
+  }, [regenerating, service, refreshProposals]);
+
+  const regenerate = async () => {
+    setError(null);
+    setRegenerating(true);
+    try {
+      await service.regenerate();
+    } catch (err) {
+      // 409: a run is already going; keep polling it.
+      if ((err as { status?: number }).status !== 409) {
+        setRegenerating(false);
+        setError(err instanceof Error ? err.message : "Couldn't regenerate");
+      }
+    }
+  };
+
+  const regenerateButton = (className: string) => (
+    <button type="button" className={className} disabled={regenerating} onClick={() => void regenerate()}>
+      {regenerating ? "regenerating…" : "regenerate"}
+    </button>
+  );
+
+  // Pick a person: only their pairs show, and with none you can look for some just for them.
+  const [person, setPerson] = useState<PickablePerson | null>(null);
+  // Who the last look was for, so an empty desk after it reads as "nothing found".
+  const [lookedFor, setLookedFor] = useState<string | null>(null);
+  const personKey = person ? `${person.kind}:${person.id}` : null;
+  const isTheirs = (p: OpportunityProposal) =>
+    !person || (person.kind === "member" ? p.member.userId === person.id : p.contact.id === person.id);
+
+  const generate = async (who: PickablePerson) => {
+    setError(null);
+    setLookedFor(`${who.kind}:${who.id}`);
+    setRegenerating(true);
+    try {
+      await service.generate(who);
+    } catch (err) {
+      // 409: a run is already going; keep polling it, but this look didn't start.
+      setLookedFor(null);
+      if ((err as { status?: number }).status !== 409) {
+        setRegenerating(false);
+        setError(err instanceof Error ? err.message : "Couldn't look for pairs");
+      }
+    }
+  };
+
+  const picker = <IntroducePersonPicker search={service.people} value={person} onChange={setPerson} />;
+
+  const noPairsFor = (who: PickablePerson, buttonClass: string) => {
+    const name = first(who.name);
+    if (regenerating) return <>Looking for pairs for {name}. Index checks each one on the web before it shows here, so this can take a few minutes.</>;
+    const looked = lookedFor === personKey;
+    return (
+      <>
+        {looked ? `Nothing worth introducing for ${name} right now.` : `No pairs with ${name} yet.`}
+        <div className="ipk-go">
+          <button type="button" className={buttonClass} onClick={() => void generate(who)}>{looked ? "Look again" : `Find pairs for ${name}`}</button>
+        </div>
+      </>
+    );
+  };
+
   const contactsImport = useContactsImport({ service, status, reload: load, here: "/introduce" });
 
   // Keep the page fresh while anything is moving: proposals being opened, agents talking.
@@ -430,7 +518,7 @@ export default function IntroducePage() {
   if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
   const toContacts = () => navigate("/networks/contacts");
-  const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id) && !hidingMembers.has(p.member.userId));
+  const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id) && !hidingMembers.has(p.member.userId) && isTheirs(p));
   const ready = !!status?.contacts.lastImportAt;
   const contactsLink = ready && status
     ? <button type="button" className="idk-open" onClick={toContacts}>from {status.contacts.total} contacts ›</button>
@@ -461,10 +549,16 @@ export default function IntroducePage() {
         ) : (
           <div className="sv-intro-cols">
             <section className="sv-intro-pairs">
-              <ListHead id="pairs">pairs you could introduce · {shown.length}</ListHead>
+              <div className="sv-lh sv-lh-fold" id="pairs">
+                <span>pairs you could introduce · {shown.length}</span>
+                {regenerateButton("sv-open")}
+              </div>
+              <div className="sv-pick-row">{picker}</div>
               {error && <div className="sv-empty sv-pair-err">{error}</div>}
               {proposals === null ? (
                 <div className="sv-empty">loading pairs…</div>
+              ) : shown.length === 0 && person ? (
+                <div className="sv-empty">{noPairsFor(person, "sv-btn go")}</div>
               ) : shown.length === 0 ? (
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
               ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} />)}
@@ -492,9 +586,12 @@ export default function IntroducePage() {
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
           <div className="idk-cols">
             <section className="idk-col">
-              <h2 className="idk-h2">pairs you could introduce <span className="n">{waiting.length || ""}</span></h2>
+              <h2 className="idk-h2">pairs you could introduce <span className="n">{waiting.length || ""}</span>{regenerateButton("idk-open idk-regen")}</h2>
+              {picker}
               {proposals === null ? (
                 <p className="idk-dim">loading pairs…</p>
+              ) : waiting.length === 0 && person ? (
+                <div className="idk-empty">{noPairsFor(person, "idk-btn go")}</div>
               ) : waiting.length === 0 ? (
                 <div className="idk-empty">
                   No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.

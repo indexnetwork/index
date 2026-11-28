@@ -85,7 +85,7 @@ export default function MatchWindow() {
     const pending = entries.filter((e) => e.stage === "awaiting" && !opportunityActionLoading[e.item.opportunityId]);
     const send = () => void Promise.all(pending.map((entry) => handleOpportunityAction(entry.item.opportunityId, action, match.userId, {
       notOnIndex: match.notOnIndex,
-      scope: { intentId: entry.intentId },
+      scope: entry.intentId.startsWith("opportunity:") ? undefined : { intentId: entry.intentId },
     }).then((ok) => { void loadRadar(entry.intentId); return ok; }))).then((results) => {
       // It didn't go through: back to the summary, with the error already shown.
       if (results.includes(false)) { if (key) decide(key, null); if (chatting) setLog(match); }
@@ -102,7 +102,7 @@ export default function MatchWindow() {
       <span className="hint">accepting opens the chat right here</span>
     </>
   ) : stage === "chat" && match.notOnIndex && lead ? (
-    <button type="button" className="sv-btn" onClick={() => navigate(`/i/${lead.intentId}`)}>send invite</button>
+    <button type="button" className="sv-btn" onClick={() => navigate(lead.intentId.startsWith("opportunity:") ? `/u/${match.userId}` : `/i/${lead.intentId}`)}>send invite</button>
   ) : stage === "closed" ? (
     <span className="note">this one is closed.</span>
   ) : undefined;
@@ -117,7 +117,7 @@ export default function MatchWindow() {
       chatCount={chatOff ? undefined : chatCount}
       onClose={close}
       foot={foot}
-      summary={<PersonSummary userId={match.notOnIndex ? undefined : match.userId} name={match.name} avatar={match.avatar} focusId={match.opportunityId} why={surfaced} intentId={lead?.intentId} />}
+      summary={<PersonSummary userId={match.notOnIndex ? undefined : match.userId} name={match.name} avatar={match.avatar} focusId={match.opportunityId} why={surfaced} intentId={lead?.intentId.startsWith("opportunity:") ? undefined : lead?.intentId} />}
       chat={match.userId && (
         <InAppFrameContext.Provider value>
           <ChatView key={match.userId} userId={match.userId} userName={match.name} userAvatar={match.avatar ?? undefined} onClose={close} bare onCount={setChatCount} />

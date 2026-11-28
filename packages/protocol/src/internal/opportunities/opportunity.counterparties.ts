@@ -23,3 +23,8 @@ export type {
   CreateIntentCounterpartyData,
   OpenedNegotiation,
 } from '../../platform/database.js';
+
+/** A directed intent-to-identity introduction, distinct from every two-intent pair. */
+export function identityPairKeyOf(networkId: string, intentId: string, userId: string): string {
+  return `identity:${[networkId, intentId, userId].map((part) => `${part.length}:${part}`).join('')}`;
+}

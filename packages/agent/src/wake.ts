@@ -604,12 +604,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         unansweredMessage,
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
-    tools,
+    tools: intent.kind === 'identity' ? tools.filter((entry) => entry.name !== 'reach_counterparties') : tools,
   });
 
   // An intent with nothing open is never left reaching no one: when the model
   // did not discover, the intent's own statement is the one direction.
-  if (!unpersisted && !discovered && input.reason !== "morning" && !opportunities.length) {
+  if (intent.kind !== 'identity' && !unpersisted && !discovered && input.reason !== "morning" && !opportunities.length) {
     const queries = [intent.statement];
     const { found, opened } = await reach(client, intent, queries, undefined, (candidate) => screens(screen, candidate));
     if (found) {

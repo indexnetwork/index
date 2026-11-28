@@ -1,3 +1,4 @@
+import { negotiationScope, opportunityFromScope } from '@indexnetwork/client';
 /**
  * One intent's agent. It works the intent for an owner who bound no external
  * negotiator, and reports to their personal agent; it never talks to them.
@@ -38,7 +39,7 @@ const QUESTION_SWEEP_INTENTS = 20;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string };
+  data?: { intentId?: string | null; scopeId?: string; opportunityId?: string; status?: string; questionId?: string | null; text?: string };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -227,7 +228,8 @@ export class IntentAgent {
   private dispatch({ userId, data }: UserEventRecord): void {
     let frame: WakeFrame;
     try { frame = JSON.parse(data) as WakeFrame; } catch { return; }
-    const { intentId, opportunityId, status } = frame.data ?? {};
+    const { opportunityId, status } = frame.data ?? {};
+    const intentId = frame.data?.scopeId ?? frame.data?.intentId ?? (opportunityId ? negotiationScope(null, opportunityId) : undefined);
 
     switch (frame.type) {
       case 'negotiation.turn':
@@ -263,6 +265,12 @@ export class IntentAgent {
    * A private intent is never worked: it only steers the owner's other intents.
    */
   private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
+    const opportunityId = opportunityFromScope(intentId);
+    if (opportunityId) {
+      const record = await new HostedIndex(userId).getNegotiation(opportunityId).catch(() => null);
+      if (!record || record.intentId !== null || record.protocol.blockedReason === 'intent_inactive') return null;
+      return { id: intentId, kind: 'identity', opportunityId, statement: '' };
+    }
     const intent = await intentService.getById(intentId, userId);
     if (!intent || intent.archivedAt || intent.status !== 'active' || intent.isPrivate) return null;
     return { id: intent.id, statement: intent.payload };
@@ -301,7 +309,7 @@ export class IntentAgent {
     if (!await this.holdsSeat(userId)) return;
     const index = new HostedIndex(userId);
     const open = await index.listNegotiations();
-    for (const intentId of new Set(open.map((negotiation) => negotiation.intentId))) {
+    for (const intentId of new Set(open.map((negotiation) => negotiationScope(negotiation.intentId, negotiation.opportunityId)))) {
       const intent = await this.activeIntent(userId, intentId);
       if (!intent) continue;
       const owed = await owedWork(index, intent);

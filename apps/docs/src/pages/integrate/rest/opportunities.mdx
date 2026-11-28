@@ -86,3 +86,22 @@ first: `opportunityId`, `createdAt`, `updatedAt`, `context`, the two people as
 `introduction.status` and `introduction.report` on the
 [event stream](/integrate/rest/events) tell you when one moves.
 
+
+## Introduce an intent to a person
+
+For an existing Index user without a relevant intent, send an explicit identity target instead of `intents`:
+
+```json
+{
+  "networkId": "<shared network UUID>",
+  "intentId": "<initiating intent UUID>",
+  "counterpartyUserId": "<existing recipient UUID>",
+  "context": "Why these two people should connect."
+}
+```
+
+The introducer owns neither seat. The initiating intent must be active and visible in the network; the recipient must be an existing verified member. Exclusions still apply. Repeating this introduction returns the existing opportunity. This does not create an intent for the recipient or enable automatic identity discovery.
+
+Negotiation and human acceptance follow the existing flow. The recipient's `intentId` is `null`; their conversation scope is `opportunity:<opportunity UUID>`. Pass that scope to the existing conversation `intentId` parameter and negotiation-list filter. Turn events also provide `scopeId`. The client exports `negotiationScope(intentId, opportunityId)` to resolve either kind of seat. Profile facts are evidence, not a statement of willingness.
+
+`GET /api/opportunities?identityOnly=true` lists the viewer's opportunities without an attached intent. Use the unscoped opportunity status and start-chat routes for them.

@@ -7,6 +7,7 @@ import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { ContactsSetup } from "@/components/ContactsImport";
+import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
 import { useContactsImport } from "@/hooks/useContactsImport";
@@ -24,6 +25,7 @@ const FILTERS: { key: ContactFilter; label: string }[] = [
   { key: "all", label: "all" },
   { key: "not_on_index", label: "not on Index" },
   { key: "on_index", label: "on Index" },
+  { key: "researched", label: "researched" },
   { key: "excluded", label: "never suggest" },
 ];
 
@@ -146,7 +148,7 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
         <p className="idk-dim">loading contacts…</p>
       ) : shown.length + shownMembers.length === 0 ? (
         <div className="idk-empty">
-          {q ? "No contact matches that." : never ? "Nobody yet. On Introduce, a pair's ⋯ menu lets you never suggest either person." : "No contacts here."}
+          {q ? "No contact matches that." : never ? "Nobody yet. On Introduce, a pair's ⋯ menu lets you never suggest either person." : filter === "researched" ? "Nobody yet. Introduce looks a contact up on the web once they're in a pair worth checking." : "No contacts here."}
         </div>
       ) : (
         <>
@@ -156,10 +158,10 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
           <ul className="idk-clist">
             {shownMembers.map((m) => (
               <li key={`m:${m.userId}`}>
-                <span className="idk-ghost" aria-hidden>{m.name.slice(0, 1).toUpperCase()}</span>
+                <UserAvatar id={m.userId} name={m.name} avatar={m.avatar} size={36} />
                 <div className="who">
                   <b>{m.name}</b>
-                  <small>in your networks</small>
+                  <small className="meta">in your networks</small>
                 </div>
                 <div className="tags" />
                 <button type="button" className="idk-btn small" onClick={() => allowMember(m)} title="Let Introduce suggest pairs with them again">allow</button>
@@ -167,11 +169,14 @@ function Contacts({ service, status, initialFilter, onDeleted, onRemoved }: { se
             ))}
             {shown.map((c) => (
               <li key={c.id}>
-                <span className="idk-ghost" aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
+                <UserAvatar id={c.id} name={c.name} avatar={c.avatar} size={36} />
                 <div className="who" title={c.source === "saved" ? "Saved in your Google contacts" : "Someone you've emailed (Google's \"Other contacts\")"}>
                   <b>{c.name}</b>
-                  <small>{c.detail ?? c.email}</small>
-                  {c.detail && <small className="idk-faint">{c.email}</small>}
+                  {/* Research's headline, once Introduce has looked them up, reads before your own card. */}
+                  {(c.web?.headline ?? c.detail) && (
+                    <small className="blurb" title={c.web?.headline ? "Found on the public web. Only you see it here." : undefined}>{c.web?.headline ?? c.detail}</small>
+                  )}
+                  <small className="meta">{c.email}</small>
                 </div>
                 <div className="tags">
                   {c.onIndex && <span className="idk-tag">on Index</span>}

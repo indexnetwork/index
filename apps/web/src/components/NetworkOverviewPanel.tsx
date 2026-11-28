@@ -12,6 +12,7 @@ import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Placeholder } from "@/components/ui/Placeholder";
+import { ListHead } from '@/components/intents-home/SplitView';
 import { useShowMore } from "@/components/ui/ShowMore";
 
 const logger = log.ui.from('NetworkOverviewPanel');
@@ -149,9 +150,9 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   if (plain) {
     return (
       <>
-        <h2>your intents here {!overviewLoading && `(${visible.length})`}</h2>
+        <ListHead fold={visibleList.fold}>your intents here · {overviewLoading ? "…" : visible.length}</ListHead>
         {undo && (
-          <div className="pl-netdetail-undo">
+          <div className="sv-empty">
             <span>removed from {network.title}. the intent is still running everywhere else.</span>
             <button type="button" onClick={() => { void handlePutBack(); }}>put it back</button>
           </div>
@@ -159,35 +160,32 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
         {overviewLoading ? (
           <Placeholder.Rows count={3} avatar={false} label="loading intents" />
         ) : overviewFailed && visible.length === 0 ? (
-          <div className="pl-profile-empty">
+          <div className="sv-empty">
             <p>couldn&apos;t load your intents in this network.</p>
             <button type="button" onClick={() => { setOverviewLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
           </div>
         ) : visible.length === 0 ? (
-          <div className="pl-profile-empty">
+          <div className="sv-empty">
             <p>you haven&apos;t shared any intents in this network yet.</p>
-            <button type="button" className="go" onClick={() => navigate("/i/new")}>+ new intent</button>
+            <button type="button" className="sv-btn go" onClick={() => navigate("/i/new")}>+ new intent</button>
           </div>
         ) : (
-          <ul className="pl-rows pl-netdetail-intents">
+          <div>
             {visibleList.shown.map((intent) => {
               const text = intent.payload?.trim() || intent.summary?.trim() || "untitled intent";
               const date = intent.createdAt ? new Date(intent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
               return (
-                <li key={intent.id}>
-                  <div className="pl-netdetail-intent">
-                    <button type="button" className="pl-row" onClick={() => handleOpenIntent(intent)} title="open this intent">
-                      <span className="pl-row-title">{text}</span>
-                      {date && <span className="pl-net-n">{date}</span>}
+                <div key={intent.id} className="sv-row">
+                    <button type="button" className="sv-row-t" style={{ border: 0, background: "none", padding: 0, textAlign: "left", cursor: "pointer" }} onClick={() => handleOpenIntent(intent)} title="open this intent">
+                      <span className="sv-row-n">{text}</span>
+                      {date && <div className="sv-row-pv">{date}</div>}
                     </button>
-                    <button type="button" className="pl-netdetail-remove" title={`stop sharing this intent with ${network.title}. it keeps running elsewhere`} onClick={() => { void handleRemove(intent.id); }}>remove</button>
-                  </div>
-                </li>
+                    <button type="button" className="sv-btn sm" title={`stop sharing this intent with ${network.title}. it keeps running elsewhere`} onClick={() => { void handleRemove(intent.id); }}>remove</button>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
-        {visibleList.more}
         {leaveDialog}
       </>
     );

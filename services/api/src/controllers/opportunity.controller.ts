@@ -19,15 +19,20 @@ const logger = log.controller.from('opportunity');
 
 const uuidQuerySchema = z.string().uuid();
 
-const openOpportunitySchema = z.object({
+const openIntentOpportunitySchema = z.object({
   networkId: z.string().uuid(),
   intents: z.tuple([z.string().uuid(), z.string().uuid()]),
   context: z.string().trim().min(1).max(2000),
 }).strict();
 
+const openOpportunitySchema = z.union([openIntentOpportunitySchema, z.object({
+  networkId: z.string().uuid(), intentId: z.string().uuid(), counterpartyUserId: z.string().uuid(),
+  context: z.string().trim().min(1).max(2000),
+}).strict()]);
+
 const OPEN_REFUSALS = {
   not_member: { status: 403, error: 'You are not a member of this network' },
-  not_seated: { status: 409, error: 'Both intents must be active and shared in this network' },
+  not_seated: { status: 409, error: 'Participants must be eligible in this network and supplied intents must be active and shared' },
   own_intent: { status: 403, error: 'An introducer owns neither intent, and the two owners must differ' },
 } as const;
 
@@ -101,8 +106,10 @@ export class OpportunityController {
     if (!parsed.success) {
       return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
-    const { networkId, intents, context } = parsed.data;
-    const result = await intentService.openOpportunity(user.id, networkId, intents, context);
+    const { networkId, context } = parsed.data;
+    const target = 'intents' in parsed.data ? parsed.data.intents
+      : { intentId: parsed.data.intentId, userId: parsed.data.counterpartyUserId };
+    const result = await intentService.openOpportunity(user.id, networkId, target, context);
     if (result.kind !== 'ok') {
       const refusal = OPEN_REFUSALS[result.kind];
       return Response.json({ error: refusal.error }, { status: refusal.status });

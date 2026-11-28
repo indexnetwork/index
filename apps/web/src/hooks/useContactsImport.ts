@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { authClient } from "@/lib/auth-client";
-import { CONTACT_SCOPES, type createIntroducerService, type IntroducerStatus } from "@/services/introducer";
+import { requestedScopes, type createIntroducerService, type IntroducerStatus } from "@/services/introducer";
 
 type Service = ReturnType<typeof createIntroducerService>;
 
@@ -45,7 +45,7 @@ export function useContactsImport({ service, status, reload, here }: {
   const connect = useCallback(async () => {
     const { data, error: linkError } = await authClient.linkSocial({
       provider: "google",
-      scopes: CONTACT_SCOPES,
+      scopes: requestedScopes(),
       callbackURL: `${window.location.origin}${here}?connected=1`,
       errorCallbackURL: `${window.location.origin}${here}?error=1`,
       disableRedirect: true,

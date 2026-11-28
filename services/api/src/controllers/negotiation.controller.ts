@@ -1,3 +1,4 @@
+import { opportunityFromScope } from '@indexnetwork/client';
 import { z } from 'zod';
 
 import { negotiationService } from '../services/negotiation.service';
@@ -37,7 +38,7 @@ export class NegotiationController {
     const rawIntentId = url.searchParams.get('intentId') ?? undefined;
     const rawState = url.searchParams.get('state') ?? undefined;
 
-    if (rawIntentId && !uuidQuerySchema.safeParse(rawIntentId).success) {
+    if (rawIntentId && !opportunityFromScope(rawIntentId) && !uuidQuerySchema.safeParse(rawIntentId).success) {
       return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
     }
     if (rawState && !stateQuerySchema.safeParse(rawState).success) {

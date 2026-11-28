@@ -103,6 +103,10 @@ export class HostedIndex implements Index {
       timezone: user.timezone,
       profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
       emailVerified: user.emailVerified,
+      // An unverified owner is an introduced contact: their researched links are their whole public profile.
+      ...(user.emailVerified === false
+        ? { socials: (await this.users.getSocials(user.id)).map(({ label, value }) => ({ label, value })) }
+        : {}),
     };
     return this.identity;
   }

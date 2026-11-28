@@ -1,3 +1,4 @@
+import { negotiationScope, opportunityFromScope } from '@indexnetwork/client';
 import type { Index } from "@indexnetwork/client";
 
 import type { Intent, Model, NegotiateHook } from "../src/index.ts";
@@ -252,7 +253,13 @@ export function startRunner(options: RunnerOptions): Runner {
    */
   async function recoverAll(): Promise<void> {
     const open = await client.listNegotiations();
-    for (const intentId of new Set(open.map((negotiation) => negotiation.intentId))) await recover(intentId);
+    const scopes = new Set<string>();
+    for (const negotiation of open) {
+      const scope = negotiationScope(negotiation.intentId, negotiation.opportunityId);
+      if (!negotiation.intentId) intents.set(scope, { id: scope, kind: 'identity', statement: '', opportunityId: negotiation.opportunityId });
+      scopes.add(scope);
+    }
+    for (const scope of scopes) await recover(scope);
   }
 
   // Intents already running when this process started are adopted, not woken:
@@ -276,7 +283,7 @@ export function startRunner(options: RunnerOptions): Runner {
     }
     adopted = true;
     for (const id of [...intents.keys()]) {
-      if (!active.has(id)) {
+      if (!active.has(id) && !opportunityFromScope(id)) {
         intents.delete(id);
         log(`dropped intent ${id}`);
       }
@@ -287,13 +294,26 @@ export function startRunner(options: RunnerOptions): Runner {
     switch (event.type) {
       case "negotiation.turn":
         log(`event ${event.type} on ${event.data.opportunityId}`);
-        startNegotiate(event.data.intentId, event.data.opportunityId);
+        {
+          const scope = negotiationScope(event.data.intentId, event.data.opportunityId);
+          if (!event.data.intentId) intents.set(scope, { id: scope, kind: 'identity', statement: '', opportunityId: event.data.opportunityId });
+          startNegotiate(scope, event.data.opportunityId);
+        }
         break;
       case "principal.input":
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
         log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId, event.data.questionId ? undefined : event.data.text);
+        void (async () => {
+          const scope = event.data.intentId;
+          const opportunityId = opportunityFromScope(scope);
+          if (opportunityId && !intents.has(scope)) {
+            const record = await client.getNegotiation(opportunityId);
+            if (record.intentId !== null) return;
+            intents.set(scope, { id: scope, kind: 'identity', statement: '', opportunityId });
+          }
+          startWake(scope, event.data.questionId ? undefined : event.data.text);
+        })().catch(onError);
         break;
       // The stream is trustworthy from here on, so this is the one moment to
       // recover what happened while it was not. Intents are read first: a

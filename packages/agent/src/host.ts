@@ -1,3 +1,4 @@
+import { negotiationScope } from '@indexnetwork/client';
 import type { ConversationMessage, Index, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
 import { briefIfMissing, screens } from "./brief.ts";
@@ -132,7 +133,7 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     maxTurns,
     remainingTurns,
     actions: negotiation.protocol.availableActions,
-    intent: { statement: negotiation.counterparty.statement },
+    ...(negotiation.counterparty.intentId ? { intent: { statement: negotiation.counterparty.statement } } : {}),
     bio: negotiation.counterparty.bio,
     location: negotiation.counterparty.location,
     ...(negotiation.introducer ? { introducer: { name: negotiation.introducer.name, context: negotiation.introducer.context } } : {}),
@@ -623,7 +624,7 @@ export async function closeInitiation(client: Index, intent: Intent, runtime: Ru
   const since = lastSummaryAt(inbox.messages);
   const stalled = stalledOpportunities(inbox.messages);
   const batch = rows.filter((negotiation) =>
-    negotiation.intentId === intent.id && (!since || new Date(negotiation.createdAt) > since));
+    negotiationScope(negotiation.intentId, negotiation.opportunityId) === intent.id && (!since || new Date(negotiation.createdAt) > since));
   if (batch.some((negotiation) => stillOpening(negotiation, user.id, stalled, now))) return "pending";
 
   const details = (await Promise.all(
@@ -687,7 +688,7 @@ export async function runNegotiate(
     client.principalInbox(intent.id),
     client.listIntents(),
   ]);
-  if (detail.intentId !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
+  if (negotiationScope(detail.intentId, detail.opportunityId) !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another intent.` } };
   if (detail.awaitingUserId !== user.id) return { stall: { reason: "It is not this seat's turn." } };
 
   const principalConversation = readConversation(inbox.messages);

@@ -1,3 +1,5 @@
+import { opportunityFromScope } from '@indexnetwork/client';
+import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { createDecide, type Decide } from '@indexnetwork/agent';
@@ -318,6 +320,14 @@ export class ConversationService {
     return this.db.upsertMetadata(conversationId, metadata);
   }
 
+  /** Legacy intentId conversation tags may also carry an explicit opportunity scope. */
+  private async ownsConversationScope(userId: string, scope: string): Promise<boolean> {
+    const opportunityId = opportunityFromScope(scope);
+    if (!opportunityId) return this.intents.isOwnedByUser(scope, userId);
+    const rows = await negotiationDatabaseAdapter.listForUser(userId, { intentId: scope });
+    return rows.some((row) => row.opportunityId === opportunityId && row.intentId === null);
+  }
+
   /**
    * @param userId - Authenticated owner.
    * @param intentId - Intent conversation being read.
@@ -325,7 +335,7 @@ export class ConversationService {
    * @throws AgentConversationError when the caller does not own the intent.
    */
   async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
-    if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.ownsConversationScope(userId, intentId)) throw new AgentConversationError('Intent not found.', 404);
     // Both seats ask: Index's hosted agent wakes on this intent and writes to
     // the same transcript, so the status names the speaker rather than deciding
     // whether there is one.
@@ -385,7 +395,7 @@ export class ConversationService {
    * @throws AgentConversationError when the intent is not owned.
    */
   async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }, options: { fanOut?: boolean } = {}) {
-    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.ownsConversationScope(input.userId, input.intentId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     const answered = input.questionId
@@ -416,7 +426,7 @@ export class ConversationService {
    * @throws AgentConversationError when the intent is not owned.
    */
   async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId?: string | null; text: string }[] }, options: { fanOut?: boolean; onlyWaiting?: boolean } = {}) {
-    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.ownsConversationScope(input.userId, input.intentId)) throw new AgentConversationError('Intent not found.', 404);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     // An automatic answer whose question closed meanwhile is dropped, never kept as a message.
@@ -456,7 +466,7 @@ export class ConversationService {
         recordAnswer: (groupId, answer, at) => QuestionGroupsDatabaseAdapter.recordAnswer(groupId, answer, at),
         isIntentActive: async (intentId) => {
           active ??= new Set((await this.intents.getActiveIntents(userId)).map((intent) => intent.id));
-          return active.has(intentId);
+          return active.has(intentId) || (!!opportunityFromScope(intentId) && await this.ownsConversationScope(userId, intentId));
         },
         answerOne: (question, answer) => this.answerAsOwner(userId, question, answer),
       });
@@ -540,7 +550,7 @@ export class ConversationService {
    * @throws AgentConversationError when the intent is not owned.
    */
   async publishH2A(input: { userId: string; intentId: string; agentId?: string; entries: PrincipalMessage[] }) {
-    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.ownsConversationScope(input.userId, input.intentId)) throw new AgentConversationError('Intent not found.', 404);
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));
     const entries = input.entries.filter(

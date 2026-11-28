@@ -242,6 +242,7 @@ export async function listOpportunityCards(
   deps: OpportunityCardsDeps,
   input: {
     viewerId: string;
+    identityOnly?: boolean;
     statuses: OpportunityStatus[];
     networkId?: string;
     intentId?: string;
@@ -252,6 +253,7 @@ export async function listOpportunityCards(
 ): Promise<{ cards: OpportunityCard[]; totalOpportunities: number }> {
   const { viewerId, intentId } = input;
   const scope = {
+    ...(input.identityOnly ? { identityOnly: true } : {}),
     ...(input.networkId ? { networkId: input.networkId } : {}),
     ...(intentId ? { scopeType: 'intent' as const, scopeId: intentId } : {}),
   };

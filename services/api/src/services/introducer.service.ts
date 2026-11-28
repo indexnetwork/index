@@ -1,10 +1,13 @@
 import { createModel, type Model } from '@indexnetwork/agent';
-import { decideNegotiationOpening, pairKeyOf } from '@indexnetwork/protocol';
+import { decideNegotiationOpening, identityPairKeyOf } from '@indexnetwork/protocol';
 import { generateText, jsonSchema, Output } from 'ai';
 
 import { auth } from '../lib/betterauth/auth.instance';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { escapeHtml } from '../lib/escapeHtml';
+import { GMAIL_SCOPE, sentFrequency } from '../lib/introducer/gmail-frequency';
+import { judgePair } from '../lib/introducer/judge';
+import { findSeatAvatar } from '../lib/introducer/avatar';
 import { researchPerson } from '../lib/introducer/research';
 import { log } from '../lib/log';
 import { appendClientOpportunityEvent } from '../lib/opportunity/opportunity.command';
@@ -31,10 +34,22 @@ const SYNC_EVERY_MS = 24 * 60 * 60_000;
 const MATCH_FLOOR = 0.2;
 /** Contacts read per new intent, across everyone who can introduce it. */
 const PER_INTENT = 24;
+/** Research: emails per sweep, how many run at once, and tries before giving up. */
+const RESEARCH_PER_SWEEP = 10;
+const RESEARCH_CONCURRENCY = 3;
+const RESEARCH_ATTEMPTS = 3;
 /** Intents read per newly synced contact. */
 const PER_CONTACT = 3;
 /** Pairs one screen call judges. */
 const SCREEN_BATCH = 15;
+/** Regenerate: intents read per researched contact, pairs judged per run, and judges at once. */
+const REGENERATE_PER_CONTACT = 5;
+const REGENERATE_MAX = 40;
+const REGENERATE_CONCURRENCY = 4;
+/** Pick a person: matches of each kind shown, contacts read per member intent, and pairs checked per run (each may be researched, a paid call). */
+const PICK_LIMIT = 6;
+const GENERATE_PER_INTENT = 3;
+const GENERATE_MAX = 8;
 const EMBED_BATCH = 64;
 const INTRODUCER_REASONING = 'Opened by a third party who knows the second person; that person is not on Index.';
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
@@ -81,7 +96,7 @@ export type ImportOutcome =
   | { kind: 'google_error'; status: number };
 
 export interface IntroducerStatus {
-  google: { linked: boolean; contactsScope: boolean };
+  google: { linked: boolean; contactsScope: boolean; gmailScope: boolean };
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
@@ -104,7 +119,8 @@ export interface OpportunityProposalView {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { id: string; name: string; line: string; detail: string | null };
+  /** ghostUserId: the contact's identity-only ghost, so the card can open its page. */
+  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null; ghostUserId: string | null };
   /** The draft intro, `metadata.introducer.context` once opened. */
   draft: string;
 }
@@ -119,7 +135,29 @@ export interface ContactView {
   onIndex: boolean;
   excluded: boolean;
   proposals: number;
+  /** What research found on the public web, once Introduce has looked them up. */
+  web: { name: string; headline: string | null } | null;
+  /** Their photo, when one is known: the member's own, or the one found for their seat. */
+  avatar: string | null;
 }
+
+/** Someone you can pick on Introduce: a member of your networks (id = user id) or one of your contacts (id = contact id). */
+export interface PickablePerson {
+  kind: 'member' | 'contact';
+  id: string;
+  name: string;
+  avatar: string | null;
+  /** A member's public intent, or what's known about a contact. */
+  line: string | null;
+}
+
+type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['accountByEmail']>>>;
+
+/** What researching an email, or taking its existing account, came to. */
+type SeatOutcome =
+  | { kind: 'seated'; userId: string }
+  | { kind: 'on_index' | 'opted_out' | 'not_found' }
+  | { kind: 'unavailable'; attempts: number };
 
 export type WakeOutcome = { kind: 'ok' } | { kind: 'not_found' } | { kind: 'busy' } | { kind: 'gone' };
 
@@ -194,11 +232,26 @@ interface GooglePerson {
   names?: { displayName?: string }[];
   emailAddresses?: { value?: string }[];
   organizations?: { name?: string; title?: string }[];
+  photos?: { url?: string; default?: boolean; metadata?: { source?: { type?: string } } }[];
+}
+
+/**
+ * The photo Google has for someone: the one they set on their own account
+ * ('profile') before one the owner set in their address book ('contact').
+ * Google's lettered placeholders are skipped.
+ */
+function googlePhoto(person: GooglePerson): { photo: string | null; photoSource: 'profile' | 'contact' | null } {
+  const real = (person.photos ?? []).filter((p) => p.url && !p.default && /^https:\/\//.test(p.url));
+  const own = real.find((p) => p.metadata?.source?.type === 'PROFILE');
+  const pick = own ?? real.find((p) => p.metadata?.source?.type === 'CONTACT');
+  return pick ? { photo: pick.url!, photoSource: own ? 'profile' : 'contact' } : { photo: null, photoSource: null };
 }
 
 const FAILURES = {
   on_index: 'They joined Index since; their agent can find this on its own.',
   opted_out: 'They asked Index not to contact them.',
+  not_found: "We couldn't find them online.",
+  research_unavailable: "We couldn't look them up. Try again later.",
   not_visible: "That intent isn't public in a network you share any more.",
   not_opened: "The agents couldn't be woken. Try again.",
 } as const;
@@ -234,6 +287,7 @@ function cardText(card: ContactCard): string {
 export class IntroducerService {
   private readonly embedder = new EmbedderAdapter();
   private readonly syncing = new Set<string>();
+  private readonly regenerating = new Set<string>();
 
   constructor(private readonly adapter: IntroducerDatabaseAdapter = introducerDatabaseAdapter) {}
 
@@ -251,6 +305,7 @@ export class IntroducerService {
         // Google access tokens last an hour. Without a refresh token the grant
         // is spent once that hour is up, so ask the member to connect again.
         contactsScope: !!account?.usable && CONTACT_SCOPES.every((s) => granted.includes(s)),
+        gmailScope: !!account?.usable && granted.includes(GMAIL_SCOPE),
       },
       contacts: {
         total: counts.total,
@@ -319,20 +374,24 @@ export class IntroducerService {
             organization: org?.name?.trim() || null,
             title: org?.title?.trim() || null,
             source,
+            ...googlePhoto(person),
           });
         }
       }
     };
 
-    const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations' }, 'connections');
+    const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations,photos' }, 'connections');
     if ('status' in saved) return saved.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: saved.status };
     add(saved.people, 'google_contacts');
 
-    const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses' }, 'otherContacts');
+    const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses,photos' }, 'otherContacts');
     if ('status' in other) return other.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: other.status };
     add(other.people, 'google_other');
 
     await this.adapter.replaceContacts(userId, [...rows.values()]);
+    // Gmail is optional: without it, saved contacts rank before people you've only emailed.
+    const frequency = process.env.INTRODUCER_GMAIL === '1' && status.google.gmailScope ? await sentFrequency(accessToken) : null;
+    await this.adapter.rankContacts(userId, frequency);
     const counts = await this.adapter.contactCounts(userId);
     logger.info('Contacts synced', { userId, total: counts.total, onIndex: counts.onIndex });
     return { kind: 'ok', total: counts.total, onIndex: counts.onIndex };
@@ -448,12 +507,14 @@ export class IntroducerService {
 
   private sweepCursor = new Date(Date.now() - 60 * 60_000);
   private sweeping = false;
+  private researching = false;
 
   /**
    * The background pass, every few minutes: embed contact cards still
-   * missing one, match public intents created since the last pass, email
-   * contacts a member said yes to, and forget seats whose introduction ended.
-   * Every step is idempotent, so a missed or repeated pass is harmless.
+   * missing one, match public intents created since the last pass, start
+   * researching contacts with new pairs beside the pass, and email contacts
+   * a member said yes to. Every step is idempotent, so a missed or repeated
+   * pass is harmless.
    */
   async sweep(): Promise<void> {
     if (this.sweeping) return;
@@ -465,11 +526,336 @@ export class IntroducerService {
         await this.matchIntent(intent.id).catch((error) => logger.warn('Matching an intent failed', { intentId: intent.id, error: String(error) }));
         this.sweepCursor = intent.createdAt;
       }
+      // Research makes slow paid calls: it runs on its own, never holding up matching or outreach.
+      void this.researchStep().catch((error) => logger.warn('Contact research step failed', { error: String(error) }));
       await this.outreach();
-      await this.scrubEnded();
     } finally {
       this.sweeping = false;
     }
+  }
+
+  // ─── research ──────────────────────────────────────────────────────────────
+
+  /**
+   * Research each contact with a checking pair once per email: make the
+   * identity-only seat, or settle the pairs when there is no one to find.
+   * At most 10 emails per pass, 3 at a time; a pass still running skips the next.
+   */
+  async researchStep(): Promise<void> {
+    if (this.researching || !process.env.PARALLELS_API_KEY) return;
+    this.researching = true;
+    try {
+      const due = await this.adapter.checkingDue(RESEARCH_PER_SWEEP);
+      let next = 0;
+      const worker = async () => {
+        while (next < due.length) {
+          const item = due[next++]!;
+          await this.researchEmail(item.email, item.contact).catch((error) => logger.warn('Researching a contact failed', { error: String(error) }));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(RESEARCH_CONCURRENCY, due.length) }, worker));
+    } finally {
+      this.researching = false;
+    }
+  }
+
+  /** Emails being researched or judged right now: the sweep and a picked-person run never take one twice at once. */
+  private readonly checkingEmails = new Set<string>();
+
+  private async researchEmail(email: string, contact: ContactCard): Promise<void> {
+    const key = email.toLowerCase();
+    if (this.checkingEmails.has(key)) return;
+    this.checkingEmails.add(key);
+    try {
+      await this.researchEmailNow(email, contact);
+    } finally {
+      this.checkingEmails.delete(key);
+    }
+  }
+
+  private async researchEmailNow(email: string, contact: ContactCard): Promise<void> {
+    const settle = async (reason: keyof typeof FAILURES) => {
+      for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
+        await this.adapter.setProposal(proposal.id, { status: 'unmatched', failure: FAILURES[reason] });
+      }
+    };
+    const existing = await this.adapter.accountByEmail(email);
+    const status = await this.adapter.researchStatus(email);
+    if (status === 'found') {
+      // Researched before: judge its pairs without researching again, unless the ghost has become a real account.
+      if (existing?.deleted) return settle('opted_out');
+      if (existing?.emailVerified) return settle('on_index');
+      if (!await this.adapter.foundSeatId(email)) {
+        // The ghost is gone: research this email again later.
+        await this.adapter.clearResearch(email);
+        return;
+      }
+      return this.judgeEmail(email);
+    }
+    // Researched before and found nothing: final, so a new pair settles at once.
+    if (!existing && status === 'not_found') return settle('not_found');
+    const seat = existing ? await this.adoptAccount(email, existing) : await this.researchAndSeat(email, contact);
+    switch (seat.kind) {
+      case 'seated':
+        return this.judgeEmail(email);
+      case 'unavailable':
+        if (seat.attempts >= RESEARCH_ATTEMPTS) {
+          await settle('research_unavailable');
+          await this.adapter.resetResearchAttempts(email);
+        }
+        return;
+      default:
+        return settle(seat.kind);
+    }
+  }
+
+  /**
+   * Research one email and seat whoever it finds: an identity-only ghost,
+   * recorded per email. Every try is counted before the paid call, so one
+   * that fails or loses its seat afterwards is never researched again for
+   * free; found nothing is recorded as final. An account that appeared
+   * meanwhile is taken as it is.
+   * The card is the introducer's own address book: a hint for research to
+   * find the right person, never copied onto the seat.
+   */
+  private async researchAndSeat(email: string, contact: ContactCard): Promise<SeatOutcome> {
+    // No API key: nothing would run, so it is not a try.
+    if (!process.env.PARALLELS_API_KEY) return { kind: 'unavailable', attempts: 0 };
+    const attempts = await this.adapter.recordAttempt(email);
+    const unavailable = (reason: string): SeatOutcome => {
+      logger.info('Contact research', { outcome: 'unavailable', reason, attempts });
+      return { kind: 'unavailable', attempts };
+    };
+    const research = await researchPerson({ name: contact.name, email, organization: contact.organization, title: contact.title });
+    if (research.kind === 'unavailable') return unavailable(research.reason);
+    if (research.kind === 'not_found') {
+      await this.adapter.recordResearch(email, 'not_found');
+      logger.info('Contact research', { outcome: 'not_found' });
+      return { kind: 'not_found' };
+    }
+    try {
+      const created = await this.adapter.createSeat({
+        email,
+        name: publicName(research.name) ?? nameFromEmail(email),
+        intro: research.headline.trim() || null,
+        socials: profileLinks(research.socials),
+      });
+      if (created) {
+        await this.adapter.recordResearch(email, 'found', created.userId);
+        await this.storeSeatAvatar(created.userId, { email, photo: research.photo, socials: research.socials });
+        logger.info('Contact research', { outcome: 'found' });
+        return { kind: 'seated', userId: created.userId };
+      }
+      // An account appeared while we researched: treat it as any existing one.
+      const existing = await this.adapter.accountByEmail(email);
+      if (!existing) {
+        logger.warn('Seat not created and no account found');
+        return unavailable('lost');
+      }
+      return await this.adoptAccount(email, existing);
+    } catch (error) {
+      // The try is already counted: let the attempt limit settle it like any other failure.
+      logger.warn('Seating a researched contact failed', { error: String(error) });
+      return unavailable('seat_failed');
+    }
+  }
+
+  /**
+   * An account the email already has. Claimed or deleted is final; an
+   * unclaimed one (an earlier seat) is the seat as it is, intents untouched.
+   */
+  private async adoptAccount(email: string, account: EmailAccount): Promise<SeatOutcome> {
+    if (account.deleted) return { kind: 'opted_out' };
+    if (account.emailVerified) return { kind: 'on_index' };
+    await this.adapter.recordResearch(email, 'found', account.id);
+    if (!account.avatar) await this.storeSeatAvatar(account.id, { email, socials: await this.adapter.seatSocials(account.id) });
+    logger.info('Contact research', { outcome: 'existing' });
+    return { kind: 'seated', userId: account.id };
+  }
+
+  /** A photo for a seat, when one can be found; a seat without one is fine. */
+  private async storeSeatAvatar(seatUserId: string, person: { email: string; photo?: string; socials: string[] }): Promise<void> {
+    try {
+      const key = await findSeatAvatar(seatUserId, { ...person, googlePhoto: await this.adapter.googleProfilePhoto(person.email) });
+      if (key) await this.adapter.setSeatAvatar(seatUserId, key);
+      logger.info('Seat avatar', { found: !!key });
+    } catch (error) {
+      logger.warn('Finding a seat avatar failed', { error: String(error) });
+    }
+  }
+
+  /**
+   * Judge each checking pair of a found email both ways: worth it to both,
+   * it goes to the desk; not, it settles; no verdict, it stays checking for
+   * the next sweep. A pair whose intent is private now is left alone.
+   */
+  private async judgeEmail(email: string): Promise<void> {
+    let unsettled = false;
+    for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
+      const input = await this.adapter.judgeInput(proposal.id, email);
+      if (!input) { unsettled = true; continue; }
+      const judgment = await judgePair(input);
+      logger.info('Pair judged', { proposalId: proposal.id, mutual: judgment ? judgment.mutual : null });
+      if (!judgment) { unsettled = true; continue; }
+      if (!judgment.mutual) {
+        await this.adapter.unmatchProposal(proposal.id, 'not mutual');
+        continue;
+      }
+      await this.adapter.promoteProposal(proposal.id, {
+        confidence: judgment.rank / 100,
+        card: { member: judgment.memberLine, contact: judgment.contactLine },
+        draft: judgment.draft,
+        judgment: { memberGets: judgment.memberGets, contactGets: judgment.contactGets },
+      });
+    }
+    // Pairs left checking come back after 30 minutes, not every sweep.
+    if (unsettled) await this.adapter.touchResearch(email);
+  }
+
+  // ─── regenerate ────────────────────────────────────────────────────────────
+
+  /** Whether a regenerate run is still judging for this member. */
+  isRegenerating(userId: string): boolean {
+    return this.regenerating.has(userId);
+  }
+
+  /**
+   * New pairs from the contacts research already found, on demand. Each one
+   * is matched by what the web says about them (not the address-book card),
+   * skips the screen, and goes straight to the judge; nothing is researched,
+   * and pairs proposed before (on the desk, skipped or settled) are left alone.
+   * Judging runs in the background.
+   * @returns How many pairs went to the judge, or `running` when a run is already going.
+   */
+  async regenerate(userId: string): Promise<{ kind: 'started'; contacts: number; pairs: number } | { kind: 'running' }> {
+    if (this.regenerating.has(userId)) return { kind: 'running' };
+    this.regenerating.add(userId);
+    try {
+      const enriched = (await this.adapter.enrichedContacts(userId)).filter((c) => c.headline.trim());
+      const candidates: MatchCandidate[] = [];
+      for (let i = 0; i < enriched.length; i += EMBED_BATCH) {
+        const batch = enriched.slice(i, i + EMBED_BATCH);
+        const vectors = await this.embedder.generate(batch.map((c) => `${c.seatName || contactName(c)} — ${c.headline}`)) as number[][];
+        for (const [j, contact] of batch.entries()) {
+          const card: ContactCard = { id: contact.id, email: contact.email, name: contact.name, organization: contact.organization, title: contact.title };
+          candidates.push(...await this.adapter.candidatesForVector(userId, card, vectors[j]!, REGENERATE_PER_CONTACT));
+        }
+      }
+      const picked = candidates.filter((c) => c.score >= MATCH_FLOOR).sort((a, b) => b.score - a.score).slice(0, REGENERATE_MAX);
+      const headlines = new Map(enriched.map((c) => [c.id, c.headline]));
+      await this.adapter.insertProposals(picked.map((c) => ({
+        introducerUserId: userId,
+        intentId: c.member.intentId,
+        contactId: c.contact.id,
+        networkId: c.networkId,
+        memberUserId: c.member.userId,
+        score: c.score,
+        intentLine: clip(c.member.intentText, 80),
+        contactLine: clip(headlines.get(c.contact.id) ?? '', 80),
+        draft: '',
+      })));
+      const emails = [...new Set(picked.map((c) => c.contact.email.toLowerCase()))];
+      // Hold the sweep's research step off these emails while this run judges them.
+      for (const email of emails) await this.adapter.touchResearch(email);
+      logger.info('Regenerate started', { userId, contacts: enriched.length, pairs: picked.length });
+      void this.judgeEmails(emails)
+        .catch((error) => logger.warn('Regenerate judging failed', { userId, error: String(error) }))
+        .finally(() => this.regenerating.delete(userId));
+      return { kind: 'started', contacts: enriched.length, pairs: picked.length };
+    } catch (error) {
+      this.regenerating.delete(userId);
+      throw error;
+    }
+  }
+
+  private async judgeEmails(emails: string[]): Promise<void> {
+    let next = 0;
+    const worker = async () => {
+      while (next < emails.length) {
+        const email = emails[next++]!;
+        await this.judgeEmail(email).catch((error) => logger.warn('Judging an email failed', { error: String(error) }));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REGENERATE_CONCURRENCY, emails.length) }, worker));
+  }
+
+  // ─── pick a person ─────────────────────────────────────────────────────────
+
+  /** Who you can pick on Introduce: members of your networks first, then your contacts. */
+  async people(userId: string, q: string): Promise<PickablePerson[]> {
+    const { contacts, members } = await this.adapter.pickablePeople(userId, q.trim(), PICK_LIMIT);
+    return [
+      ...members.map((m): PickablePerson => ({ kind: 'member', id: m.userId, name: m.name, avatar: m.avatar, line: clip(m.intentText, 90) || null })),
+      ...contacts.map((c): PickablePerson => ({
+        kind: 'contact', id: c.id, name: contactName(c), avatar: c.avatar,
+        line: c.headline || [c.title, c.organization].filter(Boolean).join(', ') || null,
+      })),
+    ];
+  }
+
+  /**
+   * New pairs for one person you picked. A contact is matched to the intents
+   * you can see by what research found about them, else their card; a
+   * member's intents to your closest contacts. Each pair then goes through
+   * research and the judge like any other, in the background, and shares
+   * regenerate's one-run-at-a-time lock and its "still running" poll.
+   * @returns How many pairs went to check, `running` while a run is going, or `not_found` for someone you can't pick.
+   */
+  async generateFor(userId: string, person: { kind: 'contact' | 'member'; id: string }): Promise<{ kind: 'started'; pairs: number } | { kind: 'running' } | { kind: 'not_found' }> {
+    if (this.regenerating.has(userId)) return { kind: 'running' };
+    this.regenerating.add(userId);
+    try {
+      let candidates: MatchCandidate[];
+      let contactLine = (c: MatchCandidate) => [c.contact.title, c.contact.organization].filter(Boolean).join(', ');
+      if (person.kind === 'contact') {
+        const contact = await this.adapter.pickedContact(userId, person.id);
+        if (!contact) {
+          this.regenerating.delete(userId);
+          return { kind: 'not_found' };
+        }
+        const text = contact.headline.trim() ? `${contact.seatName || contactName(contact)} — ${contact.headline}` : cardText(contact);
+        const [vector] = await this.embedder.generate([text]) as number[][];
+        const card: ContactCard = { id: contact.id, email: contact.email, name: contact.name, organization: contact.organization, title: contact.title };
+        candidates = await this.adapter.candidatesForVector(userId, card, vector!, GENERATE_MAX);
+        if (contact.headline.trim()) contactLine = () => contact.headline;
+      } else {
+        candidates = await this.adapter.candidatesForMember(userId, person.id, GENERATE_PER_INTENT);
+      }
+      const picked = candidates.filter((c) => c.score >= MATCH_FLOOR).sort((a, b) => b.score - a.score).slice(0, GENERATE_MAX);
+      await this.adapter.insertProposals(picked.map((c) => ({
+        introducerUserId: userId,
+        intentId: c.member.intentId,
+        contactId: c.contact.id,
+        networkId: c.networkId,
+        memberUserId: c.member.userId,
+        score: c.score,
+        intentLine: clip(c.member.intentText, 80),
+        contactLine: clip(contactLine(c), 80),
+        draft: '',
+      })));
+      // One research-and-judge per email; the card is research's hint for who to look for.
+      const byEmail = new Map(picked.map((c) => [c.contact.email.toLowerCase(), c.contact]));
+      for (const email of byEmail.keys()) await this.adapter.touchResearch(email);
+      logger.info('Generate started', { userId, kind: person.kind, pairs: picked.length });
+      void this.researchEmails([...byEmail.entries()])
+        .catch((error) => logger.warn('Generate checking failed', { userId, error: String(error) }))
+        .finally(() => this.regenerating.delete(userId));
+      return { kind: 'started', pairs: picked.length };
+    } catch (error) {
+      this.regenerating.delete(userId);
+      throw error;
+    }
+  }
+
+  private async researchEmails(items: [string, ContactCard][]): Promise<void> {
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const [email, card] = items[next++]!;
+        await this.researchEmail(email, card).catch((error) => logger.warn('Checking an email failed', { error: String(error) }));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REGENERATE_CONCURRENCY, items.length) }, worker));
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────
@@ -540,6 +926,14 @@ export class IntroducerService {
     return { kind: 'ok' };
   }
 
+  /**
+   * Open the pair as an intent-to-identity opportunity: the member's intent
+   * on one side, the contact's ghost as a person on the other, reached only
+   * through the introducer. The ghost is the one research recorded for the
+   * email. A pair proposed before research existed may have none: an earlier
+   * unclaimed seat is taken as it is (its intents stay, unused), and an email
+   * never researched is researched now. Other pairs are left alone.
+   */
   private async seatAndOpen(introducerUserId: string, row: ProposalRow, context: string): Promise<void> {
     const fail = (reason: keyof typeof FAILURES) => this.adapter.setProposal(row.id, { status: 'failed', failure: FAILURES[reason] });
     const email = row.contact.email;
@@ -547,41 +941,26 @@ export class IntroducerService {
     if (existing?.emailVerified && !existing.deleted) return fail('on_index');
     if (existing?.deleted) return fail('opted_out');
 
-    let seat: { userId: string; intentId: string };
-    if (existing) {
-      // Already seated by an earlier introduction or by Ghost: reuse it.
-      const intentId = await this.adapter.closestSeatIntent(existing.id, row.member.intentId)
-        ?? await this.addIntroducedIntent(existing.id, row.member.intentText);
-      seat = { userId: existing.id, intentId };
-    } else {
-      // The card is the introducer's own address book: a hint for research to
-      // find the right person, never copied onto the seat. Everyone else sees
-      // the seat (the member, later introducers, the contact's own email), so
-      // its name, intro and intents come from public research only.
-      const research = await researchPerson({ name: row.contact.name, email, organization: row.contact.organization, title: row.contact.title });
-      const payloads = research?.intents.map((t) => t.trim()).filter(Boolean).slice(0, 3) ?? [];
-      if (!payloads.length) payloads.push(await introducedIntent(row.member.intentText));
-      const vectors = await this.embedder.generate(payloads) as number[][];
-      const created = await this.adapter.createSeat({
-        email,
-        name: publicName(research?.name) ?? nameFromEmail(email),
-        intro: research?.headline?.trim() || null,
-        socials: profileLinks(research?.socials ?? []),
-        intents: payloads.map((payload, i) => ({ payload, embedding: vectors[i]! })),
-      });
-      if (!created) return fail('not_opened');
-      const intentId = await this.adapter.closestSeatIntent(created.userId, row.member.intentId) ?? created.intentIds[0]!;
-      seat = { userId: created.userId, intentId };
+    let seatUserId = await this.adapter.foundSeatId(email);
+    if (!seatUserId) {
+      if (!existing && await this.adapter.researchStatus(email) === 'not_found') return fail('not_opened');
+      const seat = existing ? await this.adoptAccount(email, existing) : await this.researchAndSeat(email, row.contact);
+      // A third failed try would keep this email out of the research step: start the count over, as the step does.
+      if (seat.kind === 'unavailable' && seat.attempts >= RESEARCH_ATTEMPTS) await this.adapter.resetResearchAttempts(email);
+      if (seat.kind === 'on_index' || seat.kind === 'opted_out') return fail(seat.kind);
+      if (seat.kind !== 'seated') return fail('not_opened');
+      seatUserId = seat.userId;
     }
 
-    const pairKey = pairKeyOf(`via:${introducerUserId}`, row.member.intentId, seat.intentId);
+    // One negotiation per introducer: the ghost is reachable only through the introducer who holds its email.
+    const pairKey = identityPairKeyOf(`via:${introducerUserId}`, row.member.intentId, seatUserId);
     await negotiationDatabaseAdapter.openCounterparties([{
       pairKey,
       networkId: row.networkId,
       intentA: row.member.intentId,
-      intentB: seat.intentId,
+      intentB: null,
       userA: row.member.userId,
-      userB: seat.userId,
+      userB: seatUserId,
       score: 100,
       reasoning: INTRODUCER_REASONING,
       evidence: [],
@@ -591,14 +970,8 @@ export class IntroducerService {
     }], decideNegotiationOpening);
     const opened = await negotiationDatabaseAdapter.findByPairKey(pairKey);
     if (!opened) return fail('not_opened');
-    await this.adapter.markOpened(row.id, seat, context, opened.opportunityId);
+    await this.adapter.markOpened(row.id, seatUserId, context, opened.opportunityId);
     logger.info('Proposal opened', { proposalId: row.id, opportunityId: opened.opportunityId });
-  }
-
-  private async addIntroducedIntent(seatUserId: string, memberIntent: string): Promise<string> {
-    const payload = await introducedIntent(memberIntent);
-    const embedding = await this.embedder.generate(payload) as number[];
-    return this.adapter.addSeatIntent(seatUserId, payload, embedding);
   }
 
   // ─── after the agents ──────────────────────────────────────────────────────
@@ -614,14 +987,6 @@ export class IntroducerService {
       } catch (error) {
         logger.error('Introduction email failed', { opportunityId: row.opportunityId, error: String(error) });
       }
-    }
-  }
-
-  /** No fit or went quiet: forget what research said about the contact. */
-  private async scrubEnded(): Promise<void> {
-    for (const row of await this.adapter.seatsToScrub(50)) {
-      await this.adapter.scrubSeat(row.seatUserId);
-      await this.adapter.markOpportunity(row.opportunityId, 'introSeatScrubbedAt');
     }
   }
 
@@ -753,7 +1118,7 @@ function toProposalView(row: ProposalRow): OpportunityProposalView {
     opportunityId: row.opportunityId,
     networkTitle: row.networkTitle,
     member: { userId: row.member.userId, name: row.member.name, avatar: row.member.avatar, line: row.card.member, intentText: row.member.intentText },
-    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null },
+    contact: { id: row.contact.id, name: contactName(row.contact), line: row.card.contact, detail: detail || null, avatar: row.contact.avatar, ghostUserId: row.contact.ghostUserId },
     draft: row.draft,
   };
 }
@@ -769,6 +1134,8 @@ function toContactView(row: ContactListRow): ContactView {
     onIndex: row.onIndex,
     excluded: row.excluded,
     proposals: row.proposals,
+    web: row.web,
+    avatar: row.avatar,
   };
 }
 
@@ -788,32 +1155,6 @@ function nameFromEmail(email: string): string {
   const words = local.split(/[._\-\s]+/).filter((w) => /[a-z]/i.test(w));
   const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   return name || local || email;
-}
-
-/**
- * A seat's one intent when research found nothing to say about them: only
- * that they were introduced, phrased around what the member wants. Written
- * from the member's intent alone; nothing from the introducer's card.
- */
-async function introducedIntent(memberIntent: string): Promise<string> {
-  const fallback = `I was introduced to someone who wants: ${clip(memberIntent, 200).replace(/[.!?…]+$/, '')}. I'm open to hearing more.`;
-  try {
-    const { text } = await generateText({
-      model: introModel(),
-      prompt: [
-        'A mutual contact introduced someone to a member who wants the thing below. Nothing else is known about the person introduced.',
-        'Write one first-person sentence for that person saying only that they were introduced and are open to hearing more about it.',
-        'Claim no name, role, company, skill, interest or experience. No emoji. Reply with the sentence only.',
-        '',
-        `The member wants: ${clip(memberIntent, 300)}`,
-      ].join('\n'),
-    });
-    const line = clip(text, 240);
-    return line || fallback;
-  } catch (error) {
-    logger.warn('Introduced-intent line failed', { error: String(error) });
-    return fallback;
-  }
 }
 
 /** Public profile links research opened; personal sites included. */

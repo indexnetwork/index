@@ -409,7 +409,7 @@ export async function publishUserInvalidation(
  * @param opportunityId - Changed negotiation, or all negotiations for these seats after a lifecycle change.
  */
 export async function publishNegotiationChange(
-  seats: readonly { userId: string; intentId: string }[],
+  seats: readonly { userId: string; intentId: string | null }[],
   opportunityId?: string,
 ): Promise<void> {
   const affected = new Map(seats.map((seat) => [JSON.stringify([seat.userId, seat.intentId]), seat]));

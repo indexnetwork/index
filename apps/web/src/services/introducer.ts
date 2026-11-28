@@ -1,7 +1,7 @@
 import type { useAuthenticatedAPI } from '../lib/api';
 
 export interface IntroducerStatus {
-  google: { linked: boolean; contactsScope: boolean };
+  google: { linked: boolean; contactsScope: boolean; gmailScope: boolean };
   contacts: { total: number; onIndex: number; lastImportAt: string | null };
 }
 
@@ -22,8 +22,20 @@ export interface OpportunityProposal {
   opportunityId: string | null;
   networkTitle: string;
   member: { userId: string; name: string; avatar: string | null; line: string; intentText: string };
-  contact: { id: string; name: string; line: string; detail: string | null };
+  /** avatar: the face Google shows you for them, else the one Introduce found on the web. */
+  /** ghostUserId: the identity-only ghost research found for them; their page is /u/<ghostUserId>. */
+  contact: { id: string; name: string; line: string; detail: string | null; avatar: string | null; ghostUserId: string | null };
   draft: string;
+}
+
+/** Someone you can pick on Introduce: a member of your networks (id = user id) or one of your contacts (id = contact id). */
+export interface PickablePerson {
+  kind: 'member' | 'contact';
+  id: string;
+  name: string;
+  avatar: string | null;
+  /** A member's public intent, or what's known about a contact. */
+  line: string | null;
 }
 
 /** One of your imported contacts. Only you ever see these. */
@@ -36,6 +48,10 @@ export interface ContactEntry {
   onIndex: boolean;
   excluded: boolean;
   proposals: number;
+  /** What Introduce found on the public web for them, once it has looked them up. */
+  web: { name: string; headline: string | null } | null;
+  /** Their photo when one is known: the member's own, or the one found on the web. */
+  avatar: string | null;
 }
 
 /** A member of your networks you said never to suggest. */
@@ -45,7 +61,7 @@ export interface ExcludedMember {
   avatar: string | null;
 }
 
-export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'excluded';
+export type ContactFilter = 'all' | 'not_on_index' | 'on_index' | 'researched' | 'excluded';
 
 export interface IntroductionPerson {
   userId: string;
@@ -79,12 +95,26 @@ export const CONTACT_SCOPES = [
   'https://www.googleapis.com/auth/contacts.other.readonly',
 ];
 
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.metadata';
+
+/** Scopes to request when connecting: Gmail (sent-mail frequency only) is added when its flag is on. */
+export const requestedScopes = (): string[] =>
+  process.env.NEXT_PUBLIC_INTRODUCER_GMAIL === '1' ? [...CONTACT_SCOPES, GMAIL_SCOPE] : CONTACT_SCOPES;
+
 export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   status: () => api.get<IntroducerStatus>('/introducer/status'),
   importContacts: () => api.post<{ total: number; onIndex: number }>('/introducer/contacts/import'),
   proposals: () => api.get<{ proposals: OpportunityProposal[] }>('/introducer/proposals').then((r) => r.proposals),
   introductions: () => api.get<{ introductions: IntroductionProgress[] }>('/introducer/introductions').then((r) => r.introductions),
   skip: (id: string) => api.post<{ ok: true }>(`/introducer/proposals/${id}/skip`),
+  /** New pairs from contacts research already found; judging runs in the background. */
+  regenerate: () => api.post<{ contacts: number; pairs: number }>('/introducer/regenerate'),
+  /** Whether a regenerate run is still judging. */
+  regenerating: () => api.get<{ running: boolean }>('/introducer/regenerate').then((r) => r.running),
+  /** Who you can pick on Introduce: members of your networks and your contacts, by name. */
+  people: (q: string) => api.get<{ people: PickablePerson[] }>(`/introducer/people?${new URLSearchParams({ q })}`).then((r) => r.people),
+  /** New pairs for one person you picked; checked in the background, and `regenerating` says when it's done. */
+  generate: (person: Pick<PickablePerson, 'kind' | 'id'>) => api.post<{ pairs: number }>('/introducer/generate', { kind: person.kind, id: person.id }),
   /** Open a proposal: your contact is seated through you and both agents wake, in the background. */
   open: (id: string, context: string) => api.post<{ ok: true }>(`/introducer/proposals/${id}/open`, { context }),
   contacts: (q: string, filter: ContactFilter, offset: number) =>

@@ -115,6 +115,7 @@ export interface RadarViewResponse {
 }
 
 export interface GetRadarViewOptions {
+  identityOnly?: boolean;
   intentId?: string;
   networkId?: string;
   /** Every opportunity shared with this user, in `statuses`. */
@@ -196,6 +197,7 @@ export const createOpportunitiesService = (
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
     if (options?.peerUserId) params.set('peerUserId', options.peerUserId);
+    if (options?.identityOnly) params.set('identityOnly', 'true');
     if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
@@ -254,7 +256,7 @@ export const createOpportunitiesService = (
     status: OpportunityStatus,
     scope?: { intentId: string },
   ): Promise<OpportunityStatusUpdateResponse> => {
-    const path = scope?.intentId
+    const path = scope?.intentId && !scope.intentId.startsWith("opportunity:")
       ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/status`
       : `/opportunities/${opportunityId}/status`;
     return api.patch<OpportunityStatusUpdateResponse>(path, { status });
@@ -280,7 +282,7 @@ export const createOpportunitiesService = (
     counterpartUserId: string;
     opportunity: PresentedOpportunity;
   }> => {
-    const path = scope?.intentId
+    const path = scope?.intentId && !scope.intentId.startsWith("opportunity:")
       ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`
       : `/opportunities/${opportunityId}/start-chat`;
     return api.post<{

@@ -147,7 +147,7 @@ function NetworkHandle({ handle, network }: { handle: string; network: Extract<H
     );
   }
 
-  if (isMember) return <NetworkDetailPage networkIdOverride={network.id} basePath={`/${handle}`} />;
+  if (isMember) return <NetworkDetailPage key={network.id} networkIdOverride={network.id} basePath={`/${handle}`} />;
 
   return (
     <NetworkJoinPage

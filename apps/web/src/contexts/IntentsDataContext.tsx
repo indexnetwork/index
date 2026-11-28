@@ -95,12 +95,14 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   // One read per intent and mode at a time, so a slow presenter never stacks polls.
   const inFlight = useRef(new Set<string>());
   const loadRadar = useCallback(async (intentId: string, mode: "full" | "skeleton" = "full") => {
+    const identityOnly = intentId.startsWith('opportunity:');
+    if (identityOnly) intentId = 'opportunity:inbox';
     const flightKey = `${intentId}:${mode}`;
     if (inFlight.current.has(flightKey)) return;
     inFlight.current.add(flightKey);
     try {
       const { items } = await opportunitiesService.getRadarView({
-        intentId,
+        ...(identityOnly ? { identityOnly: true } : { intentId }),
         statuses: RADAR_STATUSES,
         ...(mode === "skeleton" ? { presentation: "skeleton" as const } : {}),
       });
@@ -131,7 +133,7 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
   // the intent that is open.
   const { pathname } = useLocation();
   const openIntentId = /^\/i\/([^/]+)/.exec(pathname)?.[1];
-  const intentIds = intents.map((intent) => intent.id).join(",");
+  const intentIds = [...intents.map((intent) => intent.id), 'opportunity:inbox'].join(",");
   useEffect(() => {
     if (!intentIds) return;
     const ids = intentIds.split(",");
@@ -146,6 +148,11 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
     const timer = setInterval(() => { for (const id of ids) void loadRadar(id, "skeleton"); }, RADAR_POLL_MS);
     return () => clearInterval(timer);
   }, [intentIds, loadRadar]);
+
+  useEffect(() => {
+    const timer = setInterval(() => { void loadRadar('opportunity:inbox', 'full'); }, RADAR_POLL_MS * 3);
+    return () => clearInterval(timer);
+  }, [loadRadar]);
 
   useEffect(() => {
     if (!openIntentId || openIntentId === "new") return;
@@ -192,6 +199,11 @@ export function IntentsDataProvider({ children }: { children: ReactNode }) {
         const stage = stageOf(item);
         return stage ? [{ intentId: intent.id, item, stage }] : [];
       });
+    }
+    for (const item of radar['opportunity:inbox'] ?? []) {
+      const stage = stageOf(item);
+      const scope = `opportunity:${item.opportunityId}`;
+      if (stage) out[scope] = [{ intentId: scope, item, stage }];
     }
     return out;
   }, [intents, radar, opportunityStatusMap, chatPeers]);

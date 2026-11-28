@@ -327,7 +327,7 @@ export interface Negotiation {
   id: string;
   opportunityId: string;
   /** The viewer's own intent behind this negotiation. */
-  intentId: string;
+  intentId: string | null;
   /** The seat whose turn it is; null once settled. */
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
@@ -337,7 +337,7 @@ export interface Negotiation {
   updatedAt: string;
   counterparty: {
     userId: string;
-    intentId: string;
+    intentId: string | null;
     name: string | null;
     avatar: string | null;
     statement: string;

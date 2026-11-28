@@ -54,7 +54,6 @@
 .idk-line { font-size: 13px; line-height: 1.35; }
 .idk-line b { font-weight: 700; }
 .idk-who small { display: block; font-size: 11px; color: var(--idk-ink2); }
-.idk-ghost { width: 30px; height: 30px; border-radius: 50%; border: 1px dashed #000; display: grid; place-items: center; font: 700 12px var(--idk-mono); flex: none; background: #fff; }
 .idk-tag.dash { border-style: dashed; background: #fff; }
 .idk-link { font: 700 18px var(--idk-mono); align-self: center; }
 .idk-tag { display: inline-block; font: 600 9.5px var(--idk-mono); padding: 0 4px; border: 1px solid #000; text-transform: uppercase; background: #fff6e8; margin-left: 4px; }
@@ -111,6 +110,8 @@
   color: #000; font: 500 12px var(--idk-mono); letter-spacing: 0; text-transform: none; white-space: nowrap;
 }
 .idk .idk-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.idk .idk-h2 .idk-regen { order: 3; font-size: 11px; }
+.idk .idk-open:disabled, .sv .sv-open:disabled { color: var(--idk-ink3, #888); cursor: default; text-decoration: none; }
 
 /* contacts */
 .idk-contacts-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
@@ -120,11 +121,13 @@
 .idk-chips button { font: 600 10.5px var(--idk-mono); padding: 3px 8px; border: 1px solid #000; background: #fff; color: #000; cursor: pointer; }
 .idk-chips button[aria-selected="true"] { background: var(--idk-org); }
 .idk .idk-clist { list-style: none; margin: 0; padding: 0; border-top: 1px solid #000; }
-.idk .idk-clist li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--idk-line); margin: 0; }
+.idk .idk-clist li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--sv-line, var(--idk-line)); margin: 0; }
 .idk-clist li.excluded { opacity: 0.55; }
 .idk-clist .who { min-width: 0; }
 .idk-clist .who b, .idk-clist .who small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.idk-clist .who small { font-size: 11.5px; color: var(--idk-ink2); }
+.idk-clist .who b { font-size: 14px; font-weight: 700; }
+.idk-clist .who small { font-size: 13px; color: var(--sv-ink2, var(--idk-ink2)); margin-top: 2px; }
+.idk-clist .who small.meta { font: 400 11px var(--sv-mono, var(--idk-mono)); color: var(--sv-dim, var(--idk-ink3)); margin-top: 3px; }
 .idk-clist .tags { display: flex; gap: 6px; align-items: center; font: 600 10px var(--idk-mono); }
 .idk-clist .tags .idk-tag { margin-left: 0; }
 .idk-contacts-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid #000; font-size: 11.5px; color: var(--idk-ink2); }
@@ -135,7 +138,7 @@
   .idk-clist li:hover > .idk-btn, .idk-clist li > .idk-btn:focus-visible { opacity: 1; }
 }
 @media (max-width: 640px) {
-  .idk-clist li { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .idk-clist li { grid-template-columns: 36px minmax(0, 1fr) auto; }
   .idk-clist .tags { grid-column: 2; }
 }
 
@@ -171,3 +174,27 @@
   font: 500 12px var(--sv-mono, ui-monospace, monospace); color: var(--sv-ink, #000);
 }
 .idk-never .idk-never-menu button:hover { background: #f7f7f5; }
+
+/* pick a person: a search over your contacts and your networks; picked, their face and name */
+.sv-pick-row { padding: 10px 20px 2px; }
+.ipk { position: relative; display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; }
+.ipk input { flex: 1; min-width: 0; font: 13px var(--sv-sans, "IBM Plex Sans", system-ui, sans-serif); border: 1px solid var(--sv-edge, #000); border-radius: 2px; padding: 6px 8px; background: var(--sv-paper, #fff); color: var(--sv-ink, #000); outline: none; }
+.ipk input:focus { border-color: var(--sv-ink, #000); }
+.ipk-on b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipk-kind { font: 400 11px var(--sv-mono, var(--idk-mono, monospace)); color: var(--sv-dim, #888); white-space: nowrap; }
+.ipk .ipk-clear { margin-left: auto; border: 0; background: none; padding: 0; font: 400 11px var(--sv-mono, var(--idk-mono, monospace)); color: var(--sv-ink2, #555); text-decoration: underline; cursor: pointer; }
+.ipk .ipk-clear:hover { color: var(--sv-ink, #000); }
+.ipk-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px 0; list-style: none; background: var(--sv-paper, #fff); border: 1px solid var(--sv-ink, #000); border-radius: 2px; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15); max-height: 320px; overflow-y: auto; }
+.ipk-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 10px; margin: 0; cursor: pointer; }
+.ipk-list li[aria-selected="true"] { background: var(--sv-sel, #f3f2ee); }
+.ipk-list .who { min-width: 0; }
+.ipk-list .who b, .ipk-list .who small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipk-list .who b { font-size: 13px; font-weight: 600; }
+.ipk-list .who small { font-size: 12px; color: var(--sv-ink2, #555); margin-top: 1px; }
+.ipk-none { padding: 8px 10px; color: var(--sv-ink2, #555); }
+.ipk-go { margin-top: 10px; }
+
+/* A member's name on a pair links to their profile: same look as the text, underline on hover. */
+.idk-person { color: inherit; text-decoration: none; }
+.idk-person:hover { text-decoration: underline; }
+.idk-face { display: flex; }

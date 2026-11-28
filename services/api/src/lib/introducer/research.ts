@@ -13,11 +13,14 @@ const researchSchema = z.object({
   name: z.string(),
   headline: z.string(),
   socials: z.array(z.string()),
-  intents: z.array(z.string()),
+  photo: z.string(),
 });
 
-/** What the public web says about one known person. */
-export type PersonResearch = z.infer<typeof researchSchema>;
+/** What one research try came to. */
+export type ResearchOutcome =
+  | { kind: 'found'; name: string; headline: string; socials: string[]; photo: string }
+  | { kind: 'not_found' }
+  | { kind: 'unavailable'; reason: 'no_key' | 'error' };
 
 const format = {
   type: 'json_schema' as const,
@@ -31,30 +34,31 @@ const format = {
       name: { type: 'string', description: 'The person\'s full name as their own public pages give it, copied verbatim. Never a nickname or label from the hints. Empty when not found.' },
       headline: { type: 'string', description: 'One line: role, domain and city. Empty when not found.' },
       socials: { type: 'array', items: { type: 'string' }, description: 'Public profile URLs you opened for this person (X, LinkedIn, GitHub, personal site), copied verbatim.' },
-      intents: { type: 'array', items: { type: 'string' }, description: '1-3 first-person statements of what this person is working on, looking for or open to, grounded in what you read. Empty when not found.' },
+      photo: { type: 'string', description: 'Direct https URL of a photo of this person\'s face, as shown on one of the pages above about them (their profile picture on GitHub, X or their own site). Never a logo, a group photo or an image from a page about someone else. Empty when you saw none.' },
     },
-    required: ['found', 'name', 'headline', 'socials', 'intents'],
+    required: ['found', 'name', 'headline', 'socials', 'photo'],
   },
 };
 
 /**
- * Look one person up on the public web: someone a member knows and is about
- * to introduce. Only runs when the member wakes the introduction, never while
- * matching, so its cost grows with introductions made.
+ * Look one person up on the public web: someone an introducer knows who is
+ * not on Index. Runs once per email, before the desk, for pairs that survive
+ * the screen; never while matching, so its cost grows with pairs kept.
  *
  * @param person - Who to look up, as the member's contact card has them. The
  *   card is the member's own address book: only a hint for finding the right
  *   person. Nothing from it may be copied into the answer.
- * @returns What was found, or null when research is unavailable or unsure.
+ * @returns The identity found, `not_found` when the web has nothing sure, or
+ *   `unavailable` when research could not run (retry later).
  */
 export async function researchPerson(person: {
   name: string | null;
   email: string;
   organization: string | null;
   title: string | null;
-}): Promise<PersonResearch | null> {
+}): Promise<ResearchOutcome> {
   const apiKey = process.env.PARALLELS_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { kind: 'unavailable', reason: 'no_key' };
   const card = [
     person.name ? `Name: ${person.name}` : null,
     `Email: ${person.email}`,
@@ -72,10 +76,12 @@ export async function researchPerson(person: {
       text: { format },
     }, { timeout: RESEARCH_TIMEOUT_MS });
     const parsed = response.output_text ? researchSchema.safeParse(JSON.parse(response.output_text)) : null;
-    if (!parsed?.success || !parsed.data.found) return null;
-    return parsed.data;
+    if (!parsed?.success) return { kind: 'unavailable', reason: 'error' };
+    const { found, name, headline, socials, photo } = parsed.data;
+    if (!found || (!name.trim() && !headline.trim())) return { kind: 'not_found' };
+    return { kind: 'found', name, headline, socials, photo };
   } catch (error) {
     logger.warn('Person research failed', { error: error instanceof Error ? error.message : String(error) });
-    return null;
+    return { kind: 'unavailable', reason: 'error' };
   }
 }

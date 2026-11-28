@@ -14,8 +14,8 @@ export interface HomeIntent {
   warming?: boolean;
 }
 
-/** An intent's short name, 4 to 5 words, from its summary or else what was typed. */
-export const intentLabel = (intent?: HomeIntent) => intent ? intentShort(intent.summary?.trim() || intent.payload?.trim() || "") : "";
+/** An intent's short name, 4 to 5 words by default, from its summary or else what was typed. */
+export const intentLabel = (intent?: HomeIntent, maxWords?: number) => intent ? intentShort(intent.summary?.trim() || intent.payload?.trim() || "", maxWords) : "";
 
 export type Stage = "awaiting" | "chat" | "talks" | "closed";
 export type Filter = "matches" | "in progress" | "closed";

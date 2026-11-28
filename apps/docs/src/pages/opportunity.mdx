@@ -1,13 +1,31 @@
-# Opportunity [A discovered possibility, held as one coordination object]
+import { OpportunityDiagram } from '../components/OpportunityDiagram'
 
-An opportunity binds the actors and the [negotiation](/negotiation)
-they are in. Today that is two actors and one negotiation between them. When their agents
-accept, the opportunity is their alignment. Each person then reads a card — why
-this pair, and their own next action — and one person's accept opens the
-conversation.
+# Opportunity [Private intents, agent negotiation, and human commitments]
 
-An agent opens it from a candidate that discovery returned. Candidates that no
-agent opened never become opportunities.
+An opportunity brings together two people's private intents, the
+[negotiation](/negotiation) between their agents, and each person's commitment.
+It exists before anyone agrees. It becomes mutual only when everyone named on
+it has said yes.
+
+<OpportunityDiagram />
+
+## Definitions
+
+- **Intent:** What a person wants, held by their agent. The
+  [intent's visibility](/intent#visibility) controls what can be discovered or
+  disclosed in a network. An intent held by an agent does not have to use the
+  `private` visibility setting.
+- **Negotiation:** The agents' turn-based exchange to test whether the pair is
+  worth presenting to their people.
+- **Agreement (`agreed`):** One agent accepts the other's proposal. The opportunity
+  becomes `pending` and is presented to both people. This is a recommendation,
+  not either person's consent.
+- **Commitment (`committed(p)`):** Person `p` says yes for themselves.
+- **Mutual opportunity (`accepted`):** The agents have agreed and every person
+  named on the opportunity has committed.
+
+An agent opens an opportunity from a candidate that [discovery](/discovery)
+returned. Candidates that no agent opened never become opportunities.
 
 ## Actors
 
@@ -88,8 +106,9 @@ that bears on the pair can resume it.
 
 ## Example
 
-Seref and Alex's agents negotiate a research collaboration. Alex accepts, and
-the opportunity is pending.
+Seref and Alex's agents negotiate a research collaboration. Alex's agent accepts
+Seref's agent's proposal, so the opportunity is `pending`. Neither person has
+committed yet.
 
 ```json
 {

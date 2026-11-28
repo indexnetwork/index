@@ -266,6 +266,7 @@ export class OpportunityService {
   async presentOpportunitiesForViewer(
     userId: string,
     options?: {
+      identityOnly?: boolean;
       peerUserId?: string;
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
@@ -307,6 +308,7 @@ export class OpportunityService {
     try {
       const { cards, totalOpportunities } = await listOpportunityCards(this.getCardsDeps(), {
         viewerId: userId,
+        identityOnly: options?.identityOnly,
         statuses: options?.statuses ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES),
         networkId: options?.networkId,
         intentId: options?.intentId,

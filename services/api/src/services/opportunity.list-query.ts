@@ -4,6 +4,7 @@ const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
 const radarStatusSchema = z.enum(['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 
 export type ListOpportunitiesQuery = {
+  identityOnly?: boolean;
   status?: z.infer<typeof listStatusSchema>;
   statuses?: z.infer<typeof radarStatusSchema>[];
   networkId?: string;
@@ -55,6 +56,7 @@ export function parseListOpportunitiesQuery(url: URL): ListOpportunitiesQuery | 
   const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
 
   return {
+    ...(url.searchParams.get('identityOnly') === 'true' ? { identityOnly: true } : {}),
     status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
     statuses,
     networkId,

@@ -149,6 +149,13 @@ export const contacts = pgTable('contacts', {
   title: text('title'),
   /** 'google_contacts' (saved) or 'google_other' (people you've emailed). */
   source: text('source').notNull(),
+  /** How many times the owner has emailed this address (Gmail sent mail); 0 when unknown. */
+  frequency: integer('frequency').notNull().default(0),
+  /**
+   * Position among the owner's most frequent contacts, 1 to 500. Only ranked
+   * contacts are embedded, matched or researched; null for everyone else.
+   */
+  rank: integer('rank'),
   matchedUserId: text('matched_user_id').references(() => users.id, { onDelete: 'set null' }),
   embedding: vector('embedding', { dimensions: 2000 }),
   /** Set when the owner said never to suggest this contact. */
@@ -159,15 +166,42 @@ export const contacts = pgTable('contacts', {
    * excluded too, never suggested.
    */
   removedAt: timestamp('removed_at', { withTimezone: true }),
+  /**
+   * The contact's photo from Google. 'profile' is the photo the person set on
+   * their own Google account; 'contact' is one the owner set in their address
+   * book, which stays private to the owner and is never copied anywhere.
+   */
+  photo: text('photo'),
+  photoSource: text('photo_source').$type<'profile' | 'contact'>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   ownerEmailUnique: uniqueIndex('contacts_owner_email_unique').on(table.ownerUserId, table.email),
   matchedIdx: index('contacts_matched_user_idx').on(table.matchedUserId),
+  ownerRankIdx: index('contacts_owner_rank_idx').on(table.ownerUserId, table.rank),
   embeddingIdx: index('contacts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
 }));
 
 export type Contact = typeof contacts.$inferSelect;
+
+/**
+ * What research found out about an email address, once per address across all
+ * introducers. `status` is null until a run finishes: 'found' (a person was
+ * identified and `seatUserId` is their ghost account) or 'not_found' (final).
+ * A run that couldn't happen leaves status null and counts in `attempts`,
+ * retried after `lastAttemptAt`.
+ */
+export const contactResearch = pgTable('contact_research', {
+  /** Lowercased. */
+  email: text('email').primaryKey(),
+  status: text('status').$type<'found' | 'not_found'>(),
+  seatUserId: text('seat_user_id').references(() => users.id, { onDelete: 'set null' }),
+  attempts: integer('attempts').notNull().default(0),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  researchedAt: timestamp('researched_at', { withTimezone: true }),
+});
+
+export type ContactResearch = typeof contactResearch.$inferSelect;
 
 /**
  * Members an introducer said never to suggest: no pair on their desk is made
@@ -181,7 +215,7 @@ export const introducerExclusions = pgTable('introducer_exclusions', {
   pk: primaryKey({ columns: [t.introducerUserId, t.excludedUserId] }),
 }));
 
-export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed';
+export type OpportunityProposalStatus = 'proposed' | 'skipped' | 'opening' | 'opened' | 'failed' | 'checking' | 'unmatched';
 
 /**
  * An opportunity nobody has opened yet, in the opportunity's own format:
@@ -497,7 +531,7 @@ export const negotiations = pgTable('negotiations', {
   initiatorUserId: text('initiator_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
   responderUserId: text('responder_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  responderIntentId: text('responder_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  responderIntentId: text('responder_intent_id').references(() => intents.id, { onDelete: 'cascade' }),
   /** The seat whose turn it is. Null once settled; never a third value. */
   awaitingUserId: text('awaiting_user_id').references(() => users.id, { onDelete: 'set null' }),
   outcome: negotiationOutcomeEnum('outcome'),

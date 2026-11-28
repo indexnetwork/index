@@ -534,6 +534,7 @@ export interface CreateOpportunityData {
 }
 
 export interface OpportunityQueryOptions {
+  identityOnly?: boolean;
   status?: OpportunityStatus;
   /** When set, filter to opportunities whose status is in this list. Orthogonal to `status` (single) — callers pick one. */
   statuses?: OpportunityStatus[];

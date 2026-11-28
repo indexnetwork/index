@@ -31,6 +31,7 @@ type Page =
   | { path: '/use/cli'; render: 'static' }
   | { path: '/use/grok-bot'; render: 'static' }
   | { path: '/use/hermes'; render: 'static' }
+  | { path: '/use/introduce'; render: 'static' }
   | { path: '/use/mac'; render: 'static' }
   | { path: '/use/mcp'; render: 'static' }
 

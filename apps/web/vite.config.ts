@@ -27,6 +27,8 @@ export default defineConfig(({ mode, command }) => {
 
   return {
     envDir,
+    // The Introduce Gmail flag is read as process.env.NEXT_PUBLIC_INTRODUCER_GMAIL; inline it at build time.
+    define: { "process.env.NEXT_PUBLIC_INTRODUCER_GMAIL": JSON.stringify(env.NEXT_PUBLIC_INTRODUCER_GMAIL ?? "") },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

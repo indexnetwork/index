@@ -1,3 +1,4 @@
+import { negotiationScope } from '@indexnetwork/client';
 import { randomUUID } from 'node:crypto';
 
 import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
@@ -19,6 +20,8 @@ export class QuestionGroupsDatabaseAdapter {
     const dm = await new ConversationDatabaseAdapter().getOrCreateAgentDm(userId);
     const active = await db.select({ id: intents.id }).from(intents)
       .where(and(eq(intents.userId, userId), eq(intents.status, 'active'), isNull(intents.archivedAt)));
+    const identitySeats = await db.select({ id: negotiations.opportunityId }).from(negotiations)
+      .where(and(eq(negotiations.responderUserId, userId), isNull(negotiations.responderIntentId), isNull(negotiations.settledAt)));
     const rows = await db.select().from(messages)
       .where(and(
         eq(messages.conversationId, dm.id),
@@ -28,7 +31,7 @@ export class QuestionGroupsDatabaseAdapter {
     return openQuestions(rows.map((row) => ({
       intentId: (row.metadata as { intentId?: string } | null)?.intentId ?? '',
       message: toPrincipalMessage(row),
-    })), new Set(active.map((intent) => intent.id)));
+    })), new Set([...active.map((intent) => intent.id), ...identitySeats.map((seat) => negotiationScope(null, seat.id))]));
   }
 
   /**
@@ -51,7 +54,10 @@ export class QuestionGroupsDatabaseAdapter {
         inArray(negotiations.opportunityId, [...new Set(opportunityIds)]),
         or(eq(negotiations.initiatorUserId, userId), eq(negotiations.responderUserId, userId)),
       ));
-    const theirIntent = new Map(seats.map((seat) => [seat.opportunityId, seat.initiatorUserId === userId ? seat.responderIntentId : seat.initiatorIntentId]));
+    const theirIntent = new Map(seats.flatMap((seat) => {
+      const id = seat.initiatorUserId === userId ? seat.responderIntentId : seat.initiatorIntentId;
+      return id ? [[seat.opportunityId, id] as const] : [];
+    }));
     if (!theirIntent.size) return new Map();
     const statements = await db.select({ id: intents.id, summary: intents.summary, payload: intents.payload }).from(intents)
       // A private intent's wording never reaches the other seat.

@@ -15,7 +15,7 @@ export function intentTitle(raw: string): string {
 const SHORT_LEAD = /^(i\s*(?:'m|am)\s+|i\s+(?:want|would like|'d like|need|hope)\s+to\s+|i\s+want\s+|we\s*(?:'re|are)\s+|up\s+for\s+|open\s+to\s+|looking\s+(?:to|for)\s+|trying\s+to\s+|hoping\s+to\s+|receive|explore|find|discover|connect\s+with|connect\s+to|connect|meet|seeking|seek|look\s+for|get)\s*/;
 /** A leading time phrase ("within the next month,", "this week", "soon,") says when, not what. */
 const TIME_LEAD = /^(?:(?:within|in|over|during|for)\s+the\s+(?:next|coming)\s+(?:few\s+)?\w+|(?:this|next)\s+(?:week|weekend|month|year|summer|fall|winter|spring)|soon|right\s+now|currently|lately|these\s+days)\s*,?\s+/;
-const DANGLING = new Set(["a", "an", "the", "and", "or", "with", "in", "for", "to", "of", "on", "at", "who", "that", "&", "+", "-"]);
+const DANGLING = new Set(["a", "an", "the", "and", "or", "with", "in", "for", "to", "of", "on", "at", "by", "from", "within", "into", "about", "over", "during", "after", "before", "who", "that", "&", "+", "-"]);
 
 /** An intent as a 4 to 5 word name: lowercase, no leading "i want to", cut on a word, no dangling "and". */
 export function intentShort(raw: string, maxWords = 5): string {
