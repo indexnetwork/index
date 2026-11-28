@@ -66,6 +66,8 @@ export interface PresentedOpportunity {
   secondaryActionLabel: string;
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
+  /** The member who introduced you two, and their note to both of you. Absent when nobody did. */
+  introducer?: { userId: string; name: string; avatar: string | null; context: string };
   presentationPending?: boolean;
   /** This viewer already committed. Status can still be pending until the other person accepts. */
   viewerCommitted?: boolean;

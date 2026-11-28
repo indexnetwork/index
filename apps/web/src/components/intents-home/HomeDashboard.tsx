@@ -305,6 +305,7 @@ export function HomeDashboardBody({ data, embedded = false, questionIntentIds }:
                   <div className="sv-mrow">
                     <b>{person.name}</b>
                     {person.notOnIndex && <span className="sv-via"> · not on index</span>}
+                    {lead.item.introducer && <span className="sv-via"> · via {lead.item.introducer.name.split(" ")[0]}</span>}
                     {canChat && <button type="button" className="sv-open" onClick={() => openChat(person)}>open chat ›</button>}
                   </div>
                   {blurb && <div className="sv-blurb">{blurb}</div>}

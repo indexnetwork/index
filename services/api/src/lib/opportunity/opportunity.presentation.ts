@@ -1,4 +1,4 @@
-import type { OpportunityCard, OpportunityStatus, PeerChat, PriorOpportunity } from '@indexnetwork/protocol';
+import type { OpportunityCard, OpportunityIntroducer, OpportunityStatus, PeerChat, PriorOpportunity } from '@indexnetwork/protocol';
 
 /** Cacheable lifecycle statuses for async presenter preload (not negotiating). */
 export const CACHEABLE_PRESENTATION_STATUSES: OpportunityStatus[] = [
@@ -33,6 +33,8 @@ export interface PresentedOpportunity {
   secondaryActionLabel: string;
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
+  /** The member who introduced this pair and their note to both people. Absent when nobody did. */
+  introducer?: OpportunityIntroducer;
   presentationPending?: boolean;
   /** This viewer already committed. Status can still be pending until the other person accepts. */
   viewerCommitted?: boolean;
@@ -85,6 +87,7 @@ export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOppo
     secondaryActionLabel: item.secondaryActionLabel,
     mutualIntentsLabel: item.mutualIntentsLabel,
     narratorChip: item.narratorChip,
+    ...(item.introducer ? { introducer: item.introducer } : {}),
     presentationPending: item.presentationPending,
     viewerCommitted: item.viewerCommitted === true,
     personalizedSummary: item.mainText,

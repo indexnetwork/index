@@ -125,9 +125,11 @@ export type {
 } from "./internal/opportunities/opportunity.counterparties.js";
 export {
   gatherPresenterContext,
+  introducerRecordOf,
   OpportunityPresenter,
 } from "./internal/opportunities/opportunity.presentation.js";
 export type {
+  OpportunityIntroducer,
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {

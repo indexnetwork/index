@@ -117,7 +117,7 @@ export default function MatchWindow() {
       chatCount={chatOff ? undefined : chatCount}
       onClose={close}
       foot={foot}
-      summary={<PersonSummary userId={match.notOnIndex ? undefined : match.userId} name={match.name} avatar={match.avatar} focusId={match.opportunityId} why={surfaced} intentId={lead?.intentId.startsWith("opportunity:") ? undefined : lead?.intentId} />}
+      summary={<PersonSummary userId={match.notOnIndex ? undefined : match.userId} name={match.name} avatar={match.avatar} focusId={match.opportunityId} why={surfaced} intentId={lead?.intentId.startsWith("opportunity:") ? undefined : lead?.intentId} introducer={item?.introducer} />}
       chat={match.userId && (
         <InAppFrameContext.Provider value>
           <ChatView key={match.userId} userId={match.userId} userName={match.name} userAvatar={match.avatar ?? undefined} onClose={close} bare onCount={setChatCount} />

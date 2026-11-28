@@ -8,7 +8,7 @@ import type { Opportunity, OpportunityCardsDatabase, OpportunityStatus, PeerChat
 import type { OpportunityCache } from '../../platform/discovery/cache.js';
 
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import { OpportunityPresenter, buildOpportunityCardCacheKey, gatherPresenterContext } from './opportunity.presentation.js';
+import { OpportunityPresenter, buildOpportunityCardCacheKey, gatherPresenterContext, introducerRecordOf, type OpportunityIntroducer } from './opportunity.presentation.js';
 import { loadNegotiationContext } from './negotiation-context.loader.js';
 import { canUserSeeOpportunity } from './opportunity.utils.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from './opportunity.labels.js';
@@ -34,7 +34,10 @@ export interface OpportunityCard {
   primaryActionLabel: string;
   secondaryActionLabel: string;
   mutualIntentsLabel: string;
+  /** Who suggests this pair: Index, or the member who introduced it (with their face and profile link). */
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
+  /** The member who introduced this pair and their note to both people. Absent when nobody did. */
+  introducer?: OpportunityIntroducer;
   /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
   /** This viewer already committed. Status can still be pending until the other person accepts. */
@@ -50,6 +53,18 @@ export interface OpportunityCard {
   peerChat?: PeerChat | null;
   /** Which prior opportunity the cached copy was written against, so a changed one regenerates it. */
   presentedPrior?: string | null;
+  /** Which introducer the cached copy was written against, so copy written before it knew of one regenerates. */
+  presentedIntroducer?: string | null;
+}
+
+/**
+ * Whether a cached card still fits: written against the same prior
+ * opportunity and the same introducer as the opportunity has now.
+ */
+function cachedCardFits(hit: OpportunityCard | null | undefined, opportunity: Opportunity, viewerId: string, peerContext: PeerContext): hit is OpportunityCard {
+  return !!hit
+    && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)
+    && (hit.presentedIntroducer ?? null) === (introducerRecordOf(opportunity, viewerId)?.userId ?? null);
 }
 
 /** What the viewer already has with one counterpart, besides the opportunity being shown. */
@@ -163,7 +178,7 @@ export async function presentOpportunityCard(
   if (cacheable && !options.noCache) {
     try {
       const hit = await deps.cache.get<OpportunityCard>(cacheKey);
-      if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
+      if (cachedCardFits(hit, opportunity, viewerId, peerContext)) {
         return stampPeerContext(stampViewerCommitted({ ...hit, status: opportunity.status, updatedAt: opportunity.updatedAt.toISOString() }, viewerCommitted), peerContext);
       }
     } catch (error) {
@@ -215,8 +230,12 @@ export async function presentOpportunityCard(
     cta: presentation.suggestedAction,
     headline: presentation.headline,
     mutualIntentsLabel: presentation.mutualIntentsLabel,
-    narratorChip: { name: 'Index', text: presentation.narratorRemark },
+    narratorChip: context.introducer
+      ? { name: context.introducer.name, text: presentation.narratorRemark, avatar: context.introducer.avatar, userId: context.introducer.userId }
+      : { name: 'Index', text: presentation.narratorRemark },
+    ...(context.introducer ? { introducer: context.introducer } : {}),
     presentedPrior: priorKey(peerContext.priorOpportunity),
+    presentedIntroducer: context.introducer?.userId ?? null,
   }, viewerCommitted);
   if (cacheable) {
     await deps.cache.set(cacheKey, card).catch((error) => {
@@ -302,7 +321,7 @@ export async function listOpportunityCards(
       cacheableOpps.forEach((opp, i) => {
         const hit = hits[i];
         const peerContext = peerContexts.get(opp.id)!;
-        if (hit && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)) {
+        if (cachedCardFits(hit, opp, viewerId, peerContext)) {
           cached.set(opp.id, stampPeerContext(stampViewerCommitted({ ...hit, status: opp.status }, viewerHasCommitted(opp, viewerId)), peerContext));
         }
       });

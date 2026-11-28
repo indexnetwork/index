@@ -160,7 +160,22 @@ const shortDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString(undef
  * between you two as a row (headline · status ›). The one this pane opened
  * for starts open, showing why your agent found them and the agents' log.
  */
-export function PersonSummary({ userId, name, avatar, focusId, why, intentId, none, fresh }: {
+type Introducer = NonNullable<RadarCardItem["introducer"]>;
+
+/** Who introduced you two, as a line of text with their face, then their note to both of you. */
+function IntroducedBy({ introducer }: { introducer: Introducer }) {
+  return (
+    <div className="sv-intro">
+      <div className="sv-alh">
+        <UserAvatar id={introducer.userId} name={introducer.name} avatar={introducer.avatar} size={16} />
+        <Link to={`/u/${introducer.userId}`}>{introducer.name.split(" ")[0]}</Link> introduced you two
+      </div>
+      {introducer.context && <p className="sv-inote">{introducer.context}</p>}
+    </div>
+  );
+}
+
+export function PersonSummary({ userId, name, avatar, focusId, why, intentId, none, fresh, introducer }: {
   userId?: string;
   /** Their name and photo, for the note that their agent and yours are talking. */
   name?: string;
@@ -174,6 +189,8 @@ export function PersonSummary({ userId, name, avatar, focusId, why, intentId, no
   none?: ReactNode;
   /** Skip the cached opportunities, e.g. right after pairing. */
   fresh?: boolean;
+  /** Who introduced you two, shown on its own when there's no user to list opportunities for. */
+  introducer?: Introducer;
 }) {
   const profile = useProfile(userId);
   const networksApi = useNetworks();
@@ -253,6 +270,7 @@ export function PersonSummary({ userId, name, avatar, focusId, why, intentId, no
               {item.opportunityId === focusId && intentTitle ? <>for <Link to={`/i/${intentId}`}>{intentTitle}</Link></> : item.mutualIntentsLabel}
               {item.createdAt && ` · ${shortDate(item.createdAt)}`}
             </div>
+            {item.introducer && <IntroducedBy introducer={item.introducer} />}
             {reason && <p className="sv-owhy">{reason}</p>}
             <NegotiationConversation opportunityId={item.opportunityId} expanded onToggle={() => setOpen(null)} look="turns" />
           </div>
@@ -301,6 +319,7 @@ export function PersonSummary({ userId, name, avatar, focusId, why, intentId, no
           <span>{first ? `${first}'s agent and yours are` : "your agents are"} still talking. chat opens here once you both accept.</span>
         </div>
       )}
+      {!userId && introducer && <IntroducedBy introducer={introducer} />}
       {!userId ? (
         why ? <p>{why}</p> : <p className="sv-dimp">I&apos;m still writing this up.</p>
       ) : !list ? (

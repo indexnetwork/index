@@ -341,6 +341,10 @@ a.sv-soc:hover { background: var(--sv-sel); }
 .sv-alh { font: 400 11px var(--sv-mono); color: var(--sv-ink2); }
 .sv-alh a { color: inherit; text-decoration: underline; }
 .sv-body p.sv-owhy { margin: 0 0 2px; font-size: 14px; line-height: 1.5; }
+/* who introduced you two: their face and name as text, then their note in their words */
+.sv-intro { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.sv-intro .sv-alh { display: flex; align-items: center; gap: 6px; }
+.sv-body p.sv-inote { margin: 0; padding-left: 10px; border-left: 2px solid var(--sv-line); font-size: 13.5px; line-height: 1.5; color: var(--sv-ink2); white-space: pre-line; }
 /* the agent log: entries on a dashed timeline, mono like a log, no boxes.
    your agent's turns hang off a filled square, theirs off a hollow one. */
 .sv-alog { position: relative; display: flex; flex-direction: column; gap: 14px; margin-top: 4px; padding-left: 18px; }

@@ -186,6 +186,7 @@ export default function IntentsHome({ selectedId }: { selectedId: string }) {
           <div className="sv-mrow">
             <b>{person.name}</b>
             {person.notOnIndex && stage !== "chat" && <span className="sv-via"> · not on index</span>}
+            {lead.item.introducer && <span className="sv-via"> · via {lead.item.introducer.name.split(" ")[0]}</span>}
             {person.intentCount > 1 && <span className="sv-via"> · in {person.intentCount} of your intents</span>}
             {canOpenChat
               ? <button type="button" className="sv-open" onClick={() => openMatch(person, "chat")}>open chat ›</button>
