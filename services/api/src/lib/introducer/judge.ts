@@ -7,7 +7,7 @@ const logger = log.lib.from('introducer/judge');
 
 export interface JudgeInput {
   introducer: { name: string; intro: string | null; intents: string[] };
-  member: { name: string; intro: string | null; intent: string };
+  member: { name: string; intro: string | null; intent: string; network: string };
   contact: { name: string; headline: string; socials: string[] };
 }
 
@@ -41,7 +41,7 @@ const judgmentSchema = jsonSchema<Verdict>({
     contactGets: { type: 'string', description: 'One sentence: what the contact gets from meeting the member. Empty when nothing concrete.' },
     memberLine: { type: 'string', description: 'At most 80 characters completing "<member first name> …" with what they need, e.g. "needs a payments design partner". Lowercase, no period.' },
     contactLine: { type: 'string', description: 'At most 80 characters completing "<contact first name> …" with who they are for this pair, from their headline and links only, e.g. "runs checkout at Stripe". Lowercase, no period.' },
-    draft: { type: 'string', description: "At most 1000 characters: two short sentences in the introducer's voice to both people, first names, naming what each gets. Claim nothing about the contact beyond their headline and links. No flattery, no emoji." },
+    draft: { type: 'string', description: "At most 280 characters, two or three short sentences, the introducer writing in the first person to both people, first names: a playful nudge naming what each gets, ending with one personal joke about the introducer's relationship with them. Claim nothing about the contact beyond their headline and links. No flattery, no emoji." },
     rank: { type: 'number', description: '0 to 100: how much each of them gains. Under 50 when one side gains little.' },
   },
   required: ['mutual', 'memberGets', 'contactGets', 'memberLine', 'contactLine', 'draft', 'rank'],
@@ -66,10 +66,10 @@ function promptFor(input: JudgeInput): string {
     `${who} (the introducer)${introducer.intro ? `: ${clip(introducer.intro, 300)}` : ''}`,
     introducer.intents.length ? `What ${who} is public about wanting:\n${introducer.intents.map((t) => `- ${clip(t, 300)}`).join('\n')}` : '',
     '',
-    `${firstName(member.name)} (a member of ${who}'s network)${member.intro ? `: ${clip(member.intro, 300)}` : ''}`,
+    `${firstName(member.name)} (in the ${member.network || 'same'} network as ${who})${member.intro ? `: ${clip(member.intro, 300)}` : ''}`,
     `${firstName(member.name)} wants: ${clip(member.intent, 300)}`,
     '',
-    `${firstName(contact.name)} (someone ${who} knows, not on Index). All we know about them:`,
+    `${firstName(contact.name)} (in ${who}'s address book, not on Index). All we know about them:`,
     contact.headline ? `Headline: ${clip(contact.headline, 300)}` : 'Headline: none',
     contact.socials.length ? `Links: ${contact.socials.slice(0, 6).join(', ')}` : 'Links: none',
     '',
@@ -78,9 +78,12 @@ function promptFor(input: JudgeInput): string {
     `- Do not guess what ${firstName(contact.name)} wants from a shared topic alone. A shared topic is not a reason for either of them.`,
     `- Claim nothing about ${firstName(contact.name)} beyond the headline and links above.`,
     '- When mutual is false, still fill every field with your best short text.',
-    `- The draft is two sentences in ${who}'s voice, naming what each of them gets. Plain and specific. No flattery, no hype, no emoji.`,
-    `- ${firstName(contact.name)} may read the draft: it can be quoted to them in the introduction email.`,
-    '- memberLine and contactLine are at most 80 characters each; the draft is at most 1000.',
+    `- The draft is short and playful, written by ${who} in the first person ("I", never "${who}") to both of them, like a text from a friend: two or three short sentences, first names, naming what each of them gets.`,
+    `- The draft always ends with one personal joke about ${who}'s relationship with them: ${who} as their friend, fan or self-appointed matchmaker. Tease ${who}, never either of them. Warm and a little cheeky, never cringe.`,
+    `  e.g. "Karim, meet Miko: you're raising for stablecoin FX, Miko backs exactly that at gumi. I'm told this is my one useful skill." Write a fresh joke for every pair; never reuse this one.`,
+    '- Make up no shared history, events or facts, and never mention address books, contacts, networks, Index or software: the joke is about the friendship, not how this tool found them.',
+    `- ${firstName(contact.name)} may read the draft: it can be quoted to them in the introduction email. No flattery, no hype, no emoji.`,
+    '- memberLine and contactLine are at most 80 characters each; the draft is at most 280.',
   ].filter((line, i, all) => line !== '' || all[i - 1] !== '').join('\n');
 }
 
@@ -103,7 +106,7 @@ export async function judgePair(input: JudgeInput): Promise<Judgment | null> {
   const contactGets = text(output.contactGets);
   const memberLine = clip(text(output.memberLine), 80);
   const contactLine = clip(text(output.contactLine), 80);
-  const draft = clip(text(output.draft), 1000);
+  const draft = clip(text(output.draft), 400);
   if (output.mutual && (!memberGets || !contactGets || !memberLine || !contactLine || !draft)) return null;
   return {
     mutual: output.mutual,

@@ -923,15 +923,17 @@ export class IntroducerDatabaseAdapter {
    */
   async judgeInput(proposalId: string, email: string): Promise<{
     introducer: { name: string; intro: string | null; intents: string[] };
-    member: { name: string; intro: string | null; intent: string };
+    member: { name: string; intro: string | null; intent: string; network: string };
     contact: { name: string; headline: string; socials: string[] };
   } | null> {
     const result = await db.execute(sql`
       select iu.id as introducer_id, iu.name as introducer_name, iu.intro as introducer_intro,
              mu.name as member_name, mu.intro as member_intro,
              case when i.is_private then null else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
-             g.id as ghost_id, g.name as ghost_name, g.intro as ghost_intro
+             g.id as ghost_id, g.name as ghost_name, g.intro as ghost_intro,
+             n.title as network_title
       from opportunity_proposals p
+      join networks n on n.id = p.network_id
       join intents i on i.id = p.intent_id
       join users mu on mu.id = i.user_id
       join users iu on iu.id = p.introducer_user_id
@@ -956,7 +958,7 @@ export class IntroducerDatabaseAdapter {
         name: String(row.introducer_name), intro: (row.introducer_intro as string | null) ?? null,
         intents: rowsOf(introducerIntents).map((r) => String(r.text)).filter(Boolean),
       },
-      member: { name: String(row.member_name), intro: (row.member_intro as string | null) ?? null, intent: String(row.intent_text) },
+      member: { name: String(row.member_name), intro: (row.member_intro as string | null) ?? null, intent: String(row.intent_text), network: String(row.network_title ?? '') },
       contact: { name: String(row.ghost_name), headline: String(row.ghost_intro ?? ''), socials: socials.map((s) => s.value) },
     };
   }
