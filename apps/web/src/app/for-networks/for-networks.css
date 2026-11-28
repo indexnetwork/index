@@ -200,3 +200,6 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Closing line: calendar icon sits inline with "Schedule a call". */
+.fn-call-icon { display: inline-block; margin-right: 6px; vertical-align: -3px; color: var(--ink); }

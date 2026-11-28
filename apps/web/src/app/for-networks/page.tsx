@@ -1,3 +1,4 @@
+import { CalendarClock } from "lucide-react";
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
 import { DOCS_URL, docsUrl, FOUNDERS_CALL_URL, FOUNDERS_EMAIL } from "@/app/site/links";
@@ -140,6 +141,7 @@ function ForNetworksPage() {
       <section className="site-section fn-cta">
         <h2 className="site-h3 site-h3--sm">Tell us about your community.</h2>
         <p className="site-p">
+          <CalendarClock className="fn-call-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
           <a href={FOUNDERS_CALL_URL} target="_blank" rel="noreferrer">Schedule a call</a> or write
           to <a href={`mailto:${FOUNDERS_EMAIL}`}>{FOUNDERS_EMAIL}</a>.
         </p>
