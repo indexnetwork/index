@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
  * Give contacts Introduce already looked up a photo: for every unclaimed seat
- * with no avatar, try their Gravatar and their GitHub avatar (research is not
- * run again) and store what is found. New seats get one when they are made.
+ * with no avatar, try their Google profile photo, Gravatar, GitHub avatar and
+ * unavatar.io for their public handles (research is not run again), and store
+ * what is found. New seats get one when they are made.
  *
  * Reads only .env.development, so it can only touch the dev database and bucket.
  *
@@ -33,7 +34,8 @@ async function main() {
   for (const seat of seats) {
     const socials = await introducerDatabaseAdapter.seatSocials(seat.id);
     if (dryRun) continue;
-    const key = await findSeatAvatar(seat.id, { email: seat.email, socials });
+    const googlePhoto = await introducerDatabaseAdapter.googleProfilePhoto(seat.email);
+    const key = await findSeatAvatar(seat.id, { email: seat.email, googlePhoto, socials });
     if (!key) continue;
     await introducerDatabaseAdapter.setSeatAvatar(seat.id, key);
     found += 1;

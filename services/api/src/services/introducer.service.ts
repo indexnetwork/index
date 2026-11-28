@@ -213,6 +213,19 @@ interface GooglePerson {
   names?: { displayName?: string }[];
   emailAddresses?: { value?: string }[];
   organizations?: { name?: string; title?: string }[];
+  photos?: { url?: string; default?: boolean; metadata?: { source?: { type?: string } } }[];
+}
+
+/**
+ * The photo Google has for someone: the one they set on their own account
+ * ('profile') before one the owner set in their address book ('contact').
+ * Google's lettered placeholders are skipped.
+ */
+function googlePhoto(person: GooglePerson): { photo: string | null; photoSource: 'profile' | 'contact' | null } {
+  const real = (person.photos ?? []).filter((p) => p.url && !p.default && /^https:\/\//.test(p.url));
+  const own = real.find((p) => p.metadata?.source?.type === 'PROFILE');
+  const pick = own ?? real.find((p) => p.metadata?.source?.type === 'CONTACT');
+  return pick ? { photo: pick.url!, photoSource: own ? 'profile' : 'contact' } : { photo: null, photoSource: null };
 }
 
 const FAILURES = {
@@ -341,16 +354,17 @@ export class IntroducerService {
             organization: org?.name?.trim() || null,
             title: org?.title?.trim() || null,
             source,
+            ...googlePhoto(person),
           });
         }
       }
     };
 
-    const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations' }, 'connections');
+    const saved = await this.fetchAll(accessToken, '/people/me/connections', { personFields: 'names,emailAddresses,organizations,photos' }, 'connections');
     if ('status' in saved) return saved.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: saved.status };
     add(saved.people, 'google_contacts');
 
-    const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses' }, 'otherContacts');
+    const other = await this.fetchAll(accessToken, '/otherContacts', { readMask: 'names,emailAddresses,photos' }, 'otherContacts');
     if ('status' in other) return other.status === 401 ? { kind: 'missing_scope' } : { kind: 'google_error', status: other.status };
     add(other.people, 'google_other');
 
@@ -628,7 +642,7 @@ export class IntroducerService {
   /** A photo for a seat, when one can be found; a seat without one is fine. */
   private async storeSeatAvatar(seatUserId: string, person: { email: string; photo?: string; socials: string[] }): Promise<void> {
     try {
-      const key = await findSeatAvatar(seatUserId, person);
+      const key = await findSeatAvatar(seatUserId, { ...person, googlePhoto: await this.adapter.googleProfilePhoto(person.email) });
       if (key) await this.adapter.setSeatAvatar(seatUserId, key);
       logger.info('Seat avatar', { found: !!key });
     } catch (error) {

@@ -225,6 +225,13 @@
       "when": 1795820762617,
       "tag": "0031_rank_existing_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795827672043,
+      "tag": "0032_contact_photos",
+      "breakpoints": true
     }
   ]
 }

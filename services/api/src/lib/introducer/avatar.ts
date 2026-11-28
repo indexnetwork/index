@@ -31,11 +31,11 @@ function isPublicImageUrl(raw: string): URL | null {
 }
 
 /** Fetch one image, or null when it isn't a reasonably sized jpeg, png, webp or gif. */
-async function fetchPicture(raw: string): Promise<Picture | null> {
+async function fetchPicture(raw: string, headers?: Record<string, string>): Promise<Picture | null> {
   const url = isPublicImageUrl(raw);
   if (!url) return null;
   try {
-    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Accept: 'image/*' } });
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Accept: 'image/*', ...headers } });
     if (!res.ok || !isPublicImageUrl(res.url)) return null;
     const contentType = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
     const extension = TYPES[contentType];
@@ -75,6 +75,34 @@ async function githubPicture(profileUrl: string): Promise<Picture | null> {
   return photo;
 }
 
+/**
+ * Public handles in someone's profile links that unavatar.io can turn into a
+ * photo. Only handles go to unavatar, never an email address.
+ */
+function unavatarSources(socials: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of socials) {
+    let url: URL;
+    try { url = new URL(raw.trim()); } catch { continue; }
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const parts = url.pathname.split('/').filter(Boolean);
+    const handle = (h: string | undefined) => (h && /^[A-Za-z0-9_.-]{1,64}$/.test(h) ? h : null);
+    let source: string | null = null;
+    if (host === 'x.com' || host === 'twitter.com') source = handle(parts[0]) && `x/${parts[0]}`;
+    else if (host === 'bsky.app' && parts[0] === 'profile') source = handle(parts[1]) && `bluesky/${parts[1]}`;
+    else if (host === 'instagram.com') source = handle(parts[0]) && `instagram/${parts[0]}`;
+    else if (host === 't.me') source = handle(parts[0]) && `telegram/${parts[0]}`;
+    if (source && !out.includes(source)) out.push(source);
+  }
+  return out;
+}
+
+/** A photo from unavatar.io for one handle; `fallback=false` makes it answer 404 rather than a placeholder. */
+async function unavatarPicture(source: string): Promise<Picture | null> {
+  const key = process.env.UNAVATAR_API_KEY;
+  return fetchPicture(`https://unavatar.io/${source}?fallback=false`, key ? { 'x-api-key': key } : undefined);
+}
+
 let storage: S3StorageAdapter | null = null;
 function storageAdapter(): S3StorageAdapter | null {
   if (storage) return storage;
@@ -92,23 +120,37 @@ function storageAdapter(): S3StorageAdapter | null {
 /**
  * Find a photo of someone Introduce looked up and store it as their seat's
  * avatar. Tries, in order: the photo research found on their own public
- * pages, their Gravatar, their GitHub avatar. The image is copied into our
- * storage so nobody's browser loads it from the source site.
+ * pages, the photo they set on their own Google account, their Gravatar,
+ * their GitHub avatar, then unavatar.io for their public X, Bluesky,
+ * Instagram or Telegram handle. The image is copied into our storage so
+ * nobody's browser loads it from the source site.
  *
  * @param seatUserId - The seat to store it for.
- * @param person - Their email, the photo URL research returned (may be empty)
- *   and the profile links research found.
+ * @param person - Their email, the photo URL research returned (may be
+ *   empty), their Google profile photo if known, and the profile links
+ *   research found.
  * @returns The stored avatar key, or null when no source had a photo.
  */
-export async function findSeatAvatar(seatUserId: string, person: { email: string; photo?: string | null; socials: string[] }): Promise<string | null> {
+export async function findSeatAvatar(
+  seatUserId: string,
+  person: { email: string; photo?: string | null; googlePhoto?: string | null; socials: string[] },
+): Promise<string | null> {
   const store = storageAdapter();
   if (!store) return null;
   const sources: (() => Promise<Picture | null>)[] = [
     async () => (person.photo?.trim() ? fetchPicture(person.photo.trim()) : null),
+    async () => (person.googlePhoto ? fetchPicture(person.googlePhoto) : null),
     async () => fetchPicture(gravatarUrl(person.email)),
     async () => {
       for (const link of person.socials) {
         const picture = await githubPicture(link);
+        if (picture) return picture;
+      }
+      return null;
+    },
+    async () => {
+      for (const source of unavatarSources(person.socials)) {
+        const picture = await unavatarPicture(source);
         if (picture) return picture;
       }
       return null;

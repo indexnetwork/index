@@ -166,6 +166,13 @@ export const contacts = pgTable('contacts', {
    * excluded too, never suggested.
    */
   removedAt: timestamp('removed_at', { withTimezone: true }),
+  /**
+   * The contact's photo from Google. 'profile' is the photo the person set on
+   * their own Google account; 'contact' is one the owner set in their address
+   * book, which stays private to the owner and is never copied anywhere.
+   */
+  photo: text('photo'),
+  photoSource: text('photo_source').$type<'profile' | 'contact'>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

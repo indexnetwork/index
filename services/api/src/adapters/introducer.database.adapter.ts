@@ -12,6 +12,9 @@ export interface ContactInput {
   organization: string | null;
   title: string | null;
   source: 'google_contacts' | 'google_other';
+  /** Google's photo for them, and whose it is: their own profile photo, or one the owner set. */
+  photo: string | null;
+  photoSource: 'profile' | 'contact' | null;
 }
 
 /** A contact as the matcher and the desk see them. Email stays server-side. */
@@ -54,7 +57,8 @@ export interface ProposalRow {
   networkTitle: string;
   opportunityId: string | null;
   member: { userId: string; name: string; avatar: string | null; intentId: string; intentText: string };
-  contact: ContactCard;
+  /** avatar: the face Google shows you for them, else the one research found on the web. Only the desk reads it. */
+  contact: ContactCard & { avatar: string | null };
   createdAt: Date;
 }
 
@@ -125,6 +129,7 @@ function toProposalRow(r: Row): ProposalRow {
     contact: {
       id: String(r.contact_id), email: String(r.email), name: (r.name as string | null) ?? null,
       organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+      avatar: (r.contact_avatar as string | null) || null,
     },
   };
 }
@@ -201,6 +206,8 @@ export class IntroducerDatabaseAdapter {
             source: sql`case when ${contacts.source} = 'google_contacts' then ${contacts.source} else excluded.source end`,
             embedding: sql`case when (coalesce(excluded.name, ${contacts.name}), coalesce(excluded.organization, ${contacts.organization}), coalesce(excluded.title, ${contacts.title}))
               is distinct from (${contacts.name}, ${contacts.organization}, ${contacts.title}) then null else ${contacts.embedding} end`,
+            photo: sql`excluded.photo`,
+            photoSource: sql`excluded.photo_source`,
             updatedAt: sql`now()`,
           },
         });
@@ -514,12 +521,18 @@ export class IntroducerDatabaseAdapter {
              p.network_id, n.title as network_title, p.opportunity_id, p.created_at,
              u.id as member_id, u.name as member_name, u.avatar as member_avatar,
              i.id as intent_id, case when i.is_private then '' else coalesce(nullif(i.summary, ''), i.payload) end as intent_text,
-             c.id as contact_id, c.email, c.name, c.organization, c.title
+             c.id as contact_id, c.email, c.name, c.organization, c.title,
+             coalesce(c.photo, web.avatar) as contact_avatar
       from opportunity_proposals p
       join intents i on i.id = p.intent_id
       join users u on u.id = i.user_id
       join contacts c on c.id = p.contact_id
       join networks n on n.id = p.network_id
+      left join lateral (
+        select g.avatar from contact_research r join users g on ${RESEARCHED_SEAT}
+        where r.email = c.email and r.status = 'found'
+        limit 1
+      ) web on true
       where p.introducer_user_id = ${introducerUserId}
         ${id ? sql`and p.id = ${id}` : sql`
         and p.status in ('proposed', 'opening', 'failed')
@@ -582,7 +595,8 @@ export class IntroducerDatabaseAdapter {
              c.matched_user_id is not null as on_index, c.excluded_at is not null as excluded,
              (select count(*)::int from opportunity_proposals p where p.contact_id = c.id and p.status = 'proposed') as proposals,
              web.name as web_name, web.intro as web_headline,
-             coalesce(mu.avatar, web.avatar) as avatar
+             -- Their own Index photo, else the face Google shows you for them, else the one found on the web.
+             coalesce(mu.avatar, c.photo, web.avatar) as avatar
       from contacts c
       left join users mu on mu.id = c.matched_user_id and mu.deleted_at is null
       left join lateral (
@@ -701,6 +715,17 @@ export class IntroducerDatabaseAdapter {
     const [row] = await db.select({ id: users.id, emailVerified: users.emailVerified, deletedAt: users.deletedAt, avatar: users.avatar })
       .from(users).where(sql`lower(${users.email}) = lower(${email})`).limit(1);
     return row ? { id: row.id, emailVerified: row.emailVerified, deleted: row.deletedAt !== null, avatar: row.avatar ?? null } : null;
+  }
+
+  /**
+   * The photo a person set on their own Google account, as any introducer's
+   * contacts carry it. Photos an owner set in their address book are never returned.
+   */
+  async googleProfilePhoto(email: string): Promise<string | null> {
+    const [row] = await db.select({ photo: contacts.photo }).from(contacts)
+      .where(and(eq(contacts.email, email.toLowerCase()), eq(contacts.photoSource, 'profile'), isNotNull(contacts.photo)))
+      .limit(1);
+    return row?.photo ?? null;
   }
 
   /** A seat's profile links, as research stored them. */
