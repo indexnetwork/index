@@ -136,6 +136,7 @@
 }
 /* A small mark after the place's name: intents ↗, conversations ⇄, introduce branches. */
 .ih-nav-icon {
+  display: inline-block;
   margin-left: 6px;
   vertical-align: -1px;
   color: #666;
