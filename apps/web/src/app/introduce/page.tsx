@@ -629,7 +629,10 @@ export default function IntroducePage() {
   // the right like home's: what's running, or the person you picked.
   if (plain && !compact) {
     const shown = waiting.filter((p) => !skipping.has(p.id));
+    // Waking or skipping a pair is done with it: whoever was open on the right closes, and running shows again.
+    const wake = (p: OpportunityProposal, context: string) => { setSide(null); return open(p, context); };
     const skipLater = (p: OpportunityProposal) => {
+      setSide(null);
       setSkipping((all) => new Set(all).add(p.id));
       later(`skipped ${first(p.member.name)} ⇄ ${first(p.contact.name)}`, () => skip(p), () => {
         setSkipping((all) => { const next = new Set(all); next.delete(p.id); return next; });
@@ -664,7 +667,7 @@ export default function IntroducePage() {
                 <div className="sv-empty">{noPairsFor(person, "sv-btn go")}</div>
               ) : shown.length === 0 ? (
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
-              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} onPerson={setSide} />)}
+              ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={wake} onSkip={skipLater} onNever={neverSuggest} onPerson={setSide} />)}
             </section>
           </div>
         )}
