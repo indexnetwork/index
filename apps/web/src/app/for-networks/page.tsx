@@ -58,7 +58,7 @@ function ForNetworksPage() {
       </section>
 
       <section className="site-section site-section--wide">
-        <h2 className="site-tag">What your community gets</h2>
+        <h2 className="site-h3 site-h3--sm">What your community gets</h2>
         <div className="fn-outcomes fn-gets">
           {GETS.map((g) => (
             <div className="fn-outcome" key={g.lead}>
@@ -74,24 +74,24 @@ function ForNetworksPage() {
       </section>
 
       <section className="site-section site-section--wide">
-        <h2 className="site-tag">What your members see</h2>
+        <h2 className="site-h3 site-h3--sm">What your members see</h2>
         <MembersSee />
       </section>
 
       <section className="site-section">
-        <h2 className="site-tag">Your network, your rules</h2>
+        <h2 className="site-h3 site-h3--sm">Your network, your rules</h2>
         <div className="site-prose">
           <p>
             You decide who&rsquo;s in and where intents can be found. Members choose what&rsquo;s
             visible, one intent at a time. Every intro is double opt-in, and when interest
             isn&rsquo;t mutual, neither side learns they were considered.
           </p>
+          <p>So people tell their agent what they&rsquo;d never post.</p>
         </div>
-        <p className="site-h3 site-h3--sm">So people tell their agent what they&rsquo;d never post.</p>
       </section>
 
       <section className="site-section site-section--wide">
-        <h2 className="site-tag">Already running</h2>
+        <h2 className="site-h3 site-h3--sm">Already running</h2>
         <div className="fn-running">
           {RUNNING.map((r) => (
             <article className="fn-net" key={r.name}>
@@ -112,7 +112,7 @@ function ForNetworksPage() {
       </section>
 
       <section className="site-section site-section--wide">
-        <h2 className="site-tag">Bring Index in your way</h2>
+        <h2 className="site-h3 site-h3--sm">Bring Index in your way</h2>
         <div className="fn-outcomes">
           <div className="fn-outcome">
             <h3 className="site-col-title">Index app.</h3>
