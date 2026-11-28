@@ -75,6 +75,10 @@
   --x-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
   display: flex;
   flex-direction: column;
+  padding: 36px 36px 40px;
+  background: var(--x-well);
+  border: 1px solid var(--x-well-line);
+  border-radius: 6px;
   color: var(--x-ink);
   font-family: var(--x-sans);
   -webkit-font-smoothing: antialiased;
@@ -188,6 +192,7 @@
 .fx-msg--me { align-self: flex-end; background: var(--x-ink); border-color: var(--x-ink); color: #fff; }
 
 @media (max-width: 680px) {
+  .fx { padding: 22px 16px 26px; }
   .fx-row--2, .fx-row--connect { grid-template-columns: minmax(0, 1fr); }
   .fx-log-line { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
