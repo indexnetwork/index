@@ -221,7 +221,7 @@ function PairCard({ proposal, onOpen, onSkip, onNever }: {
       {!opening && <NeverMenu proposal={proposal} disabled={busy} onNever={onNever} />}
       <PairFace proposal={proposal} />
       <div className="sv-card-body">
-        <div className="idk-never-room"><b>{A} ⇄ {B}</b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
+        <div className="idk-never-room"><b>{proposal.member.name} ⇄ {proposal.contact.name}</b><span className="sv-via"> · via {proposal.networkTitle}</span></div>
         <div className="sv-blurb">
           <div title={proposal.member.intentText}>{A} {lc(proposal.member.line)}</div>
           <div title={proposal.contact.detail ?? undefined}>{B} {lc(proposal.contact.line)}<span className="sv-via"> · your contact, not on index</span></div>
