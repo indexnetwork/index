@@ -42,6 +42,14 @@ const RESEARCH_ATTEMPTS = 3;
 const PER_CONTACT = 3;
 /** Pairs one screen call judges. */
 const SCREEN_BATCH = 15;
+/** Regenerate: intents read per researched contact, pairs judged per run, and judges at once. */
+const REGENERATE_PER_CONTACT = 5;
+const REGENERATE_MAX = 40;
+const REGENERATE_CONCURRENCY = 4;
+/** Pick a person: matches of each kind shown, contacts read per member intent, and pairs checked per run (each may be researched, a paid call). */
+const PICK_LIMIT = 6;
+const GENERATE_PER_INTENT = 3;
+const GENERATE_MAX = 8;
 const EMBED_BATCH = 64;
 const INTRODUCER_REASONING = 'Opened by a third party who knows the second person; that person is not on Index.';
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'https://index.network';
@@ -130,6 +138,16 @@ export interface ContactView {
   web: { name: string; headline: string | null } | null;
   /** Their photo, when one is known: the member's own, or the one found for their seat. */
   avatar: string | null;
+}
+
+/** Someone you can pick on Introduce: a member of your networks (id = user id) or one of your contacts (id = contact id). */
+export interface PickablePerson {
+  kind: 'member' | 'contact';
+  id: string;
+  name: string;
+  avatar: string | null;
+  /** A member's public intent, or what's known about a contact. */
+  line: string | null;
 }
 
 type EmailAccount = NonNullable<Awaited<ReturnType<IntroducerDatabaseAdapter['accountByEmail']>>>;
@@ -268,6 +286,7 @@ function cardText(card: ContactCard): string {
 export class IntroducerService {
   private readonly embedder = new EmbedderAdapter();
   private readonly syncing = new Set<string>();
+  private readonly regenerating = new Set<string>();
 
   constructor(private readonly adapter: IntroducerDatabaseAdapter = introducerDatabaseAdapter) {}
 
@@ -539,7 +558,21 @@ export class IntroducerService {
     }
   }
 
+  /** Emails being researched or judged right now: the sweep and a picked-person run never take one twice at once. */
+  private readonly checkingEmails = new Set<string>();
+
   private async researchEmail(email: string, contact: ContactCard): Promise<void> {
+    const key = email.toLowerCase();
+    if (this.checkingEmails.has(key)) return;
+    this.checkingEmails.add(key);
+    try {
+      await this.researchEmailNow(email, contact);
+    } finally {
+      this.checkingEmails.delete(key);
+    }
+  }
+
+  private async researchEmailNow(email: string, contact: ContactCard): Promise<void> {
     const settle = async (reason: keyof typeof FAILURES) => {
       for (const proposal of await this.adapter.proposalsForEmail(email, 'checking')) {
         await this.adapter.setProposal(proposal.id, { status: 'unmatched', failure: FAILURES[reason] });
@@ -676,6 +709,152 @@ export class IntroducerService {
     }
     // Pairs left checking come back after 30 minutes, not every sweep.
     if (unsettled) await this.adapter.touchResearch(email);
+  }
+
+  // ─── regenerate ────────────────────────────────────────────────────────────
+
+  /** Whether a regenerate run is still judging for this member. */
+  isRegenerating(userId: string): boolean {
+    return this.regenerating.has(userId);
+  }
+
+  /**
+   * New pairs from the contacts research already found, on demand. Each one
+   * is matched by what the web says about them (not the address-book card),
+   * skips the screen, and goes straight to the judge; nothing is researched,
+   * and pairs proposed before (on the desk, skipped or settled) are left alone.
+   * Judging runs in the background.
+   * @returns How many pairs went to the judge, or `running` when a run is already going.
+   */
+  async regenerate(userId: string): Promise<{ kind: 'started'; contacts: number; pairs: number } | { kind: 'running' }> {
+    if (this.regenerating.has(userId)) return { kind: 'running' };
+    this.regenerating.add(userId);
+    try {
+      const enriched = (await this.adapter.enrichedContacts(userId)).filter((c) => c.headline.trim());
+      const candidates: MatchCandidate[] = [];
+      for (let i = 0; i < enriched.length; i += EMBED_BATCH) {
+        const batch = enriched.slice(i, i + EMBED_BATCH);
+        const vectors = await this.embedder.generate(batch.map((c) => `${c.seatName || contactName(c)} — ${c.headline}`)) as number[][];
+        for (const [j, contact] of batch.entries()) {
+          const card: ContactCard = { id: contact.id, email: contact.email, name: contact.name, organization: contact.organization, title: contact.title };
+          candidates.push(...await this.adapter.candidatesForVector(userId, card, vectors[j]!, REGENERATE_PER_CONTACT));
+        }
+      }
+      const picked = candidates.filter((c) => c.score >= MATCH_FLOOR).sort((a, b) => b.score - a.score).slice(0, REGENERATE_MAX);
+      const headlines = new Map(enriched.map((c) => [c.id, c.headline]));
+      await this.adapter.insertProposals(picked.map((c) => ({
+        introducerUserId: userId,
+        intentId: c.member.intentId,
+        contactId: c.contact.id,
+        networkId: c.networkId,
+        memberUserId: c.member.userId,
+        score: c.score,
+        intentLine: clip(c.member.intentText, 80),
+        contactLine: clip(headlines.get(c.contact.id) ?? '', 80),
+        draft: '',
+      })));
+      const emails = [...new Set(picked.map((c) => c.contact.email.toLowerCase()))];
+      // Hold the sweep's research step off these emails while this run judges them.
+      for (const email of emails) await this.adapter.touchResearch(email);
+      logger.info('Regenerate started', { userId, contacts: enriched.length, pairs: picked.length });
+      void this.judgeEmails(emails)
+        .catch((error) => logger.warn('Regenerate judging failed', { userId, error: String(error) }))
+        .finally(() => this.regenerating.delete(userId));
+      return { kind: 'started', contacts: enriched.length, pairs: picked.length };
+    } catch (error) {
+      this.regenerating.delete(userId);
+      throw error;
+    }
+  }
+
+  private async judgeEmails(emails: string[]): Promise<void> {
+    let next = 0;
+    const worker = async () => {
+      while (next < emails.length) {
+        const email = emails[next++]!;
+        await this.judgeEmail(email).catch((error) => logger.warn('Judging an email failed', { error: String(error) }));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REGENERATE_CONCURRENCY, emails.length) }, worker));
+  }
+
+  // ─── pick a person ─────────────────────────────────────────────────────────
+
+  /** Who you can pick on Introduce: members of your networks first, then your contacts. */
+  async people(userId: string, q: string): Promise<PickablePerson[]> {
+    const { contacts, members } = await this.adapter.pickablePeople(userId, q.trim(), PICK_LIMIT);
+    return [
+      ...members.map((m): PickablePerson => ({ kind: 'member', id: m.userId, name: m.name, avatar: m.avatar, line: clip(m.intentText, 90) || null })),
+      ...contacts.map((c): PickablePerson => ({
+        kind: 'contact', id: c.id, name: contactName(c), avatar: c.avatar,
+        line: c.headline || [c.title, c.organization].filter(Boolean).join(', ') || null,
+      })),
+    ];
+  }
+
+  /**
+   * New pairs for one person you picked. A contact is matched to the intents
+   * you can see by what research found about them, else their card; a
+   * member's intents to your closest contacts. Each pair then goes through
+   * research and the judge like any other, in the background, and shares
+   * regenerate's one-run-at-a-time lock and its "still running" poll.
+   * @returns How many pairs went to check, `running` while a run is going, or `not_found` for someone you can't pick.
+   */
+  async generateFor(userId: string, person: { kind: 'contact' | 'member'; id: string }): Promise<{ kind: 'started'; pairs: number } | { kind: 'running' } | { kind: 'not_found' }> {
+    if (this.regenerating.has(userId)) return { kind: 'running' };
+    this.regenerating.add(userId);
+    try {
+      let candidates: MatchCandidate[];
+      let contactLine = (c: MatchCandidate) => [c.contact.title, c.contact.organization].filter(Boolean).join(', ');
+      if (person.kind === 'contact') {
+        const contact = await this.adapter.pickedContact(userId, person.id);
+        if (!contact) {
+          this.regenerating.delete(userId);
+          return { kind: 'not_found' };
+        }
+        const text = contact.headline.trim() ? `${contact.seatName || contactName(contact)} — ${contact.headline}` : cardText(contact);
+        const [vector] = await this.embedder.generate([text]) as number[][];
+        const card: ContactCard = { id: contact.id, email: contact.email, name: contact.name, organization: contact.organization, title: contact.title };
+        candidates = await this.adapter.candidatesForVector(userId, card, vector!, GENERATE_MAX);
+        if (contact.headline.trim()) contactLine = () => contact.headline;
+      } else {
+        candidates = await this.adapter.candidatesForMember(userId, person.id, GENERATE_PER_INTENT);
+      }
+      const picked = candidates.filter((c) => c.score >= MATCH_FLOOR).sort((a, b) => b.score - a.score).slice(0, GENERATE_MAX);
+      await this.adapter.insertProposals(picked.map((c) => ({
+        introducerUserId: userId,
+        intentId: c.member.intentId,
+        contactId: c.contact.id,
+        networkId: c.networkId,
+        memberUserId: c.member.userId,
+        score: c.score,
+        intentLine: clip(c.member.intentText, 80),
+        contactLine: clip(contactLine(c), 80),
+        draft: '',
+      })));
+      // One research-and-judge per email; the card is research's hint for who to look for.
+      const byEmail = new Map(picked.map((c) => [c.contact.email.toLowerCase(), c.contact]));
+      for (const email of byEmail.keys()) await this.adapter.touchResearch(email);
+      logger.info('Generate started', { userId, kind: person.kind, pairs: picked.length });
+      void this.researchEmails([...byEmail.entries()])
+        .catch((error) => logger.warn('Generate checking failed', { userId, error: String(error) }))
+        .finally(() => this.regenerating.delete(userId));
+      return { kind: 'started', pairs: picked.length };
+    } catch (error) {
+      this.regenerating.delete(userId);
+      throw error;
+    }
+  }
+
+  private async researchEmails(items: [string, ContactCard][]): Promise<void> {
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const [email, card] = items[next++]!;
+        await this.researchEmail(email, card).catch((error) => logger.warn('Checking an email failed', { error: String(error) }));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REGENERATE_CONCURRENCY, items.length) }, worker));
   }
 
   // ─── the desk ──────────────────────────────────────────────────────────────

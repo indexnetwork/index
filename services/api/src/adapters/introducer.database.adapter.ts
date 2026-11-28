@@ -475,6 +475,121 @@ export class IntroducerDatabaseAdapter {
     }));
   }
 
+  /**
+   * Who you can pick on Introduce, by name: your contacts still open to
+   * suggest, and members of your networks with a public intent you can see.
+   */
+  async pickablePeople(ownerUserId: string, q: string, limit: number): Promise<{
+    contacts: (ContactCard & { avatar: string | null; headline: string | null })[];
+    members: { userId: string; name: string; avatar: string | null; intentText: string }[];
+  }> {
+    const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
+    const contactRows = rowsOf(await db.execute(sql`
+      select c.id, c.email, c.name, c.organization, c.title,
+             coalesce(c.photo, web.avatar) as avatar, web.intro as headline
+      from contacts c
+      left join lateral (
+        select g.avatar, g.intro from contact_research r join users g on ${RESEARCHED_SEAT}
+        where r.email = lower(c.email) and r.status = 'found'
+        limit 1
+      ) web on true
+      where c.owner_user_id = ${ownerUserId}
+        and c.removed_at is null and c.excluded_at is null and c.matched_user_id is null
+        ${like ? sql`and (c.name ilike ${like} or c.email ilike ${like} or c.organization ilike ${like} or c.title ilike ${like})` : sql``}
+      order by (web.intro is not null) desc, c.name asc nulls last, c.email asc
+      limit ${limit}
+    `));
+    const memberRows = rowsOf(await db.execute(sql`
+      with nets as (
+        select m.network_id from network_members m
+        join networks n on n.id = m.network_id and n.deleted_at is null
+        where m.user_id = ${ownerUserId} and m.deleted_at is null
+      )
+      select * from (
+        select distinct on (u.id) u.id as user_id, u.name, u.avatar, coalesce(nullif(i.summary, ''), i.payload) as text
+        from intents i join users u on u.id = i.user_id
+        where ${LIVE_PUBLIC_INTENT}
+          and i.user_id <> ${ownerUserId}
+          ${like ? sql`and u.name ilike ${like}` : sql``}
+          and not exists (select 1 from introducer_exclusions x
+                          where x.introducer_user_id = ${ownerUserId} and x.excluded_user_id = u.id)
+          and exists (select 1 from intent_networks inw join nets on nets.network_id = inw.network_id
+                      where inw.intent_id = i.id and inw.visibility = 'networks_only')
+        order by u.id, i.created_at desc
+      ) m
+      order by m.name asc
+      limit ${limit}
+    `));
+    return {
+      contacts: contactRows.map((r) => ({
+        id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
+        organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+        avatar: (r.avatar as string | null) || null, headline: (r.headline as string | null) || null,
+      })),
+      members: memberRows.map((r) => ({
+        userId: String(r.user_id), name: String(r.name), avatar: (r.avatar as string | null) || null, intentText: String(r.text ?? ''),
+      })),
+    };
+  }
+
+  /** One of your contacts still open to suggest, with what research found about them, if it has. */
+  async pickedContact(ownerUserId: string, contactId: string): Promise<(ContactCard & { headline: string; seatName: string }) | null> {
+    const [r] = rowsOf(await db.execute(sql`
+      select c.id, c.email, c.name, c.organization, c.title, g.name as seat_name, g.intro as headline
+      from contacts c
+      left join contact_research r on r.email = lower(c.email) and r.status = 'found'
+      left join users g on ${RESEARCHED_SEAT}
+      where c.id = ${contactId} and c.owner_user_id = ${ownerUserId}
+        and c.removed_at is null and c.excluded_at is null and c.matched_user_id is null
+      limit 1
+    `));
+    if (!r) return null;
+    return {
+      id: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null,
+      organization: (r.organization as string | null) ?? null, title: (r.title as string | null) ?? null,
+      seatName: String(r.seat_name ?? ''), headline: String(r.headline ?? ''),
+    };
+  }
+
+  /**
+   * For one member of your networks: each public intent of theirs you can
+   * see, with your closest contacts by card, skipping pairs ever proposed.
+   */
+  async candidatesForMember(ownerUserId: string, memberUserId: string, perIntent: number): Promise<MatchCandidate[]> {
+    const result = await db.execute(sql`
+      with nets as (
+        select m.network_id from network_members m
+        join networks n on n.id = m.network_id and n.deleted_at is null
+        where m.user_id = ${ownerUserId} and m.deleted_at is null
+      ),
+      its as (
+        select i.id as intent_id, i.user_id as member_id, u.name as member_name, i.embedding,
+               coalesce(nullif(i.summary, ''), i.payload) as text,
+               (select inw.network_id from intent_networks inw join nets on nets.network_id = inw.network_id
+                 where inw.intent_id = i.id and inw.visibility = 'networks_only' limit 1) as network_id
+        from intents i join users u on u.id = i.user_id
+        where i.user_id = ${memberUserId} and i.user_id <> ${ownerUserId} and ${LIVE_PUBLIC_INTENT}
+          and not exists (select 1 from introducer_exclusions x
+                          where x.introducer_user_id = ${ownerUserId} and x.excluded_user_id = i.user_id)
+      )
+      select x.contact_id, x.email, x.name, x.organization, x.title, ${ownerUserId}::text as owner_user_id,
+             its.network_id, its.intent_id, its.member_id, its.member_name, its.text, x.score
+      from its
+      cross join lateral (
+        select c.id as contact_id, c.email, c.name, c.organization, c.title, 1 - (c.embedding <=> its.embedding) as score
+        from contacts c
+        where c.owner_user_id = ${ownerUserId} and c.embedding is not null
+          and c.removed_at is null and c.excluded_at is null and c.matched_user_id is null
+          and not exists (select 1 from opportunity_proposals s
+                          where s.introducer_user_id = ${ownerUserId} and s.intent_id = its.intent_id and s.contact_id = c.id)
+        order by c.embedding <=> its.embedding
+        limit ${perIntent}
+      ) x
+      where its.network_id is not null
+    `);
+    return rowsOf(result).map(toCandidate);
+  }
+
   /** Public intents created since a moment, oldest first: the matcher's work queue. */
   async publicIntentsSince(since: Date, limit: number): Promise<{ id: string; createdAt: Date }[]> {
     const result = await db.execute(sql`

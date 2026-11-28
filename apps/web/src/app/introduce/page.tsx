@@ -7,6 +7,7 @@ import { useUndo } from "@/components/intents-home/undo";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import UserAvatar from "@/components/UserAvatar";
+import IntroducePersonPicker from "@/components/IntroducePersonPicker";
 import { ContactsSetup } from "@/components/ContactsImport";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useCompact } from "@/hooks/useCompact";
@@ -14,7 +15,7 @@ import { useContactsImport } from "@/hooks/useContactsImport";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { since } from "@/lib/since";
-import { createIntroducerService, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal } from "@/services/introducer";
+import { createIntroducerService, type IntroducerStatus, type IntroductionPhase, type IntroductionProgress, type OpportunityProposal, type PickablePerson } from "@/services/introducer";
 import "@/styles/plain.css";
 import "@/styles/introduce.css";
 
@@ -375,6 +376,80 @@ export default function IntroducePage() {
     load().catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load"));
   }, [load, isAuthenticated]);
 
+  // Regenerate: new pairs from contacts already looked up on the web. Polls the desk until the judge is done.
+  const [regenerating, setRegenerating] = useState(false);
+  useEffect(() => {
+    if (!regenerating) return;
+    const t = setInterval(() => {
+      void (async () => {
+        const running = await service.regenerating().catch(() => false);
+        await refreshProposals();
+        if (!running) setRegenerating(false);
+      })();
+    }, POLL_MS);
+    return () => clearInterval(t);
+  }, [regenerating, service, refreshProposals]);
+
+  const regenerate = async () => {
+    setError(null);
+    setRegenerating(true);
+    try {
+      await service.regenerate();
+    } catch (err) {
+      // 409: a run is already going; keep polling it.
+      if ((err as { status?: number }).status !== 409) {
+        setRegenerating(false);
+        setError(err instanceof Error ? err.message : "Couldn't regenerate");
+      }
+    }
+  };
+
+  const regenerateButton = (className: string) => (
+    <button type="button" className={className} disabled={regenerating} onClick={() => void regenerate()}>
+      {regenerating ? "regenerating…" : "regenerate"}
+    </button>
+  );
+
+  // Pick a person: only their pairs show, and with none you can look for some just for them.
+  const [person, setPerson] = useState<PickablePerson | null>(null);
+  // Who the last look was for, so an empty desk after it reads as "nothing found".
+  const [lookedFor, setLookedFor] = useState<string | null>(null);
+  const personKey = person ? `${person.kind}:${person.id}` : null;
+  const isTheirs = (p: OpportunityProposal) =>
+    !person || (person.kind === "member" ? p.member.userId === person.id : p.contact.id === person.id);
+
+  const generate = async (who: PickablePerson) => {
+    setError(null);
+    setLookedFor(`${who.kind}:${who.id}`);
+    setRegenerating(true);
+    try {
+      await service.generate(who);
+    } catch (err) {
+      // 409: a run is already going; keep polling it, but this look didn't start.
+      setLookedFor(null);
+      if ((err as { status?: number }).status !== 409) {
+        setRegenerating(false);
+        setError(err instanceof Error ? err.message : "Couldn't look for pairs");
+      }
+    }
+  };
+
+  const picker = <IntroducePersonPicker search={service.people} value={person} onChange={setPerson} />;
+
+  const noPairsFor = (who: PickablePerson, buttonClass: string) => {
+    const name = first(who.name);
+    if (regenerating) return <>Looking for pairs for {name}. Index checks each one on the web before it shows here, so this can take a few minutes.</>;
+    const looked = lookedFor === personKey;
+    return (
+      <>
+        {looked ? `Nothing worth introducing for ${name} right now.` : `No pairs with ${name} yet.`}
+        <div className="ipk-go">
+          <button type="button" className={buttonClass} onClick={() => void generate(who)}>{looked ? "Look again" : `Find pairs for ${name}`}</button>
+        </div>
+      </>
+    );
+  };
+
   const contactsImport = useContactsImport({ service, status, reload: load, here: "/introduce" });
 
   // Keep the page fresh while anything is moving: proposals being opened, agents talking.
@@ -430,7 +505,7 @@ export default function IntroducePage() {
   if (!authLoading && !isAuthenticated) return <Navigate to="/login?next=/introduce" replace />;
 
   const toContacts = () => navigate("/networks/contacts");
-  const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id) && !hidingMembers.has(p.member.userId));
+  const waiting = (proposals ?? []).filter((p) => p.status !== "opening" && !hiding.has(p.contact.id) && !hidingMembers.has(p.member.userId) && isTheirs(p));
   const ready = !!status?.contacts.lastImportAt;
   const contactsLink = ready && status
     ? <button type="button" className="idk-open" onClick={toContacts}>from {status.contacts.total} contacts ›</button>
@@ -461,10 +536,16 @@ export default function IntroducePage() {
         ) : (
           <div className="sv-intro-cols">
             <section className="sv-intro-pairs">
-              <ListHead id="pairs">pairs you could introduce · {shown.length}</ListHead>
+              <div className="sv-lh sv-lh-fold" id="pairs">
+                <span>pairs you could introduce · {shown.length}</span>
+                {regenerateButton("sv-open")}
+              </div>
+              <div className="sv-pick-row">{picker}</div>
               {error && <div className="sv-empty sv-pair-err">{error}</div>}
               {proposals === null ? (
                 <div className="sv-empty">loading pairs…</div>
+              ) : shown.length === 0 && person ? (
+                <div className="sv-empty">{noPairsFor(person, "sv-btn go")}</div>
               ) : shown.length === 0 ? (
                 <div className="sv-empty">No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.</div>
               ) : shown.map((p) => <PairCard key={p.id} proposal={p} onOpen={open} onSkip={skipLater} onNever={neverSuggest} />)}
@@ -492,9 +573,12 @@ export default function IntroducePage() {
           {error && <div className="idk-error" style={{ marginBottom: 10 }}>{error}</div>}
           <div className="idk-cols">
             <section className="idk-col">
-              <h2 className="idk-h2">pairs you could introduce <span className="n">{waiting.length || ""}</span></h2>
+              <h2 className="idk-h2">pairs you could introduce <span className="n">{waiting.length || ""}</span>{regenerateButton("idk-open idk-regen")}</h2>
+              {picker}
               {proposals === null ? (
                 <p className="idk-dim">loading pairs…</p>
+              ) : waiting.length === 0 && person ? (
+                <div className="idk-empty">{noPairsFor(person, "idk-btn go")}</div>
               ) : waiting.length === 0 ? (
                 <div className="idk-empty">
                   No pairs yet. Index matches your contacts in the background, against what people in your networks post. New pairs show up here as they come in.

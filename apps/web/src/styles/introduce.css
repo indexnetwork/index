@@ -110,6 +110,8 @@
   color: #000; font: 500 12px var(--idk-mono); letter-spacing: 0; text-transform: none; white-space: nowrap;
 }
 .idk .idk-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.idk .idk-h2 .idk-regen { order: 3; font-size: 11px; }
+.idk .idk-open:disabled, .sv .sv-open:disabled { color: var(--idk-ink3, #888); cursor: default; text-decoration: none; }
 
 /* contacts */
 .idk-contacts-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
@@ -172,3 +174,22 @@
   font: 500 12px var(--sv-mono, ui-monospace, monospace); color: var(--sv-ink, #000);
 }
 .idk-never .idk-never-menu button:hover { background: #f7f7f5; }
+
+/* pick a person: a search over your contacts and your networks; picked, their face and name */
+.sv-pick-row { padding: 10px 20px 2px; }
+.ipk { position: relative; display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; }
+.ipk input { flex: 1; min-width: 0; font: 13px var(--sv-sans, "IBM Plex Sans", system-ui, sans-serif); border: 1px solid var(--sv-edge, #000); border-radius: 2px; padding: 6px 8px; background: var(--sv-paper, #fff); color: var(--sv-ink, #000); outline: none; }
+.ipk input:focus { border-color: var(--sv-ink, #000); }
+.ipk-on b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipk-kind { font: 400 11px var(--sv-mono, var(--idk-mono, monospace)); color: var(--sv-dim, #888); white-space: nowrap; }
+.ipk .ipk-clear { margin-left: auto; border: 0; background: none; padding: 0; font: 400 11px var(--sv-mono, var(--idk-mono, monospace)); color: var(--sv-ink2, #555); text-decoration: underline; cursor: pointer; }
+.ipk .ipk-clear:hover { color: var(--sv-ink, #000); }
+.ipk-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px 0; list-style: none; background: var(--sv-paper, #fff); border: 1px solid var(--sv-ink, #000); border-radius: 2px; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15); max-height: 320px; overflow-y: auto; }
+.ipk-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 10px; margin: 0; cursor: pointer; }
+.ipk-list li[aria-selected="true"] { background: var(--sv-sel, #f3f2ee); }
+.ipk-list .who { min-width: 0; }
+.ipk-list .who b, .ipk-list .who small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipk-list .who b { font-size: 13px; font-weight: 600; }
+.ipk-list .who small { font-size: 12px; color: var(--sv-ink2, #555); margin-top: 1px; }
+.ipk-none { padding: 8px 10px; color: var(--sv-ink2, #555); }
+.ipk-go { margin-top: 10px; }

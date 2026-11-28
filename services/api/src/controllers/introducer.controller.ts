@@ -18,6 +18,10 @@ const CONTACTS_QUERY = z.object({
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
 });
 
+const PEOPLE_QUERY = z.object({ q: z.string().max(100).default('') });
+
+const GENERATE_BODY = z.object({ kind: z.enum(['contact', 'member']), id: z.string().min(1).max(100) });
+
 const OPEN_REFUSALS = {
   not_found: { status: 404, error: 'Not found' },
   busy: { status: 409, error: 'Already opened' },
@@ -67,6 +71,50 @@ export class IntroducerController {
   @UseGuards(AuthGuard)
   async proposals(_req: Request, user: AuthenticatedUser) {
     return Response.json({ proposals: await introducerService.proposals(user.id) });
+  }
+
+  /**
+   * POST /introducer/regenerate — new pairs from contacts research already
+   * found, judged in the background. 409 while a run is still going.
+   */
+  @Post('/regenerate')
+  @UseGuards(AuthGuard)
+  async regenerate(_req: Request, user: AuthenticatedUser) {
+    const result = await introducerService.regenerate(user.id);
+    if (result.kind === 'running') return Response.json({ error: 'Already regenerating' }, { status: 409 });
+    return Response.json({ contacts: result.contacts, pairs: result.pairs }, { status: 202 });
+  }
+
+  /** GET /introducer/people?q= — who you can pick on Introduce: members of your networks and your contacts, by name. */
+  @Get('/people')
+  @UseGuards(AuthGuard)
+  async people(req: Request, user: AuthenticatedUser) {
+    const query = PEOPLE_QUERY.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+    if (!query.success) return Response.json({ error: 'Invalid query' }, { status: 400 });
+    return Response.json({ people: await introducerService.people(user.id, query.data.q) });
+  }
+
+  /**
+   * POST /introducer/generate — `{ kind, id }`: new pairs for one person you
+   * picked, checked in the background. Shares regenerate's lock: 409 while
+   * a run is going, and GET /introducer/regenerate says when it's done.
+   */
+  @Post('/generate')
+  @UseGuards(AuthGuard)
+  async generate(req: Request, user: AuthenticatedUser) {
+    const body = GENERATE_BODY.safeParse(await req.json().catch(() => null));
+    if (!body.success) return Response.json({ error: 'Pick a contact or a member' }, { status: 400 });
+    const result = await introducerService.generateFor(user.id, body.data);
+    if (result.kind === 'running') return Response.json({ error: 'Already looking for pairs' }, { status: 409 });
+    if (result.kind === 'not_found') return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ pairs: result.pairs }, { status: 202 });
+  }
+
+  /** GET /introducer/regenerate — whether a regenerate run is still judging. */
+  @Get('/regenerate')
+  @UseGuards(AuthGuard)
+  async regenerating(_req: Request, user: AuthenticatedUser) {
+    return Response.json({ running: introducerService.isRegenerating(user.id) });
   }
 
   /** POST /introducer/proposals/:id/skip — take a proposal off the desk. */

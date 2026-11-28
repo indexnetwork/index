@@ -27,6 +27,16 @@ export interface OpportunityProposal {
   draft: string;
 }
 
+/** Someone you can pick on Introduce: a member of your networks (id = user id) or one of your contacts (id = contact id). */
+export interface PickablePerson {
+  kind: 'member' | 'contact';
+  id: string;
+  name: string;
+  avatar: string | null;
+  /** A member's public intent, or what's known about a contact. */
+  line: string | null;
+}
+
 /** One of your imported contacts. Only you ever see these. */
 export interface ContactEntry {
   id: string;
@@ -96,6 +106,14 @@ export const createIntroducerService = (api: ReturnType<typeof useAuthenticatedA
   proposals: () => api.get<{ proposals: OpportunityProposal[] }>('/introducer/proposals').then((r) => r.proposals),
   introductions: () => api.get<{ introductions: IntroductionProgress[] }>('/introducer/introductions').then((r) => r.introductions),
   skip: (id: string) => api.post<{ ok: true }>(`/introducer/proposals/${id}/skip`),
+  /** New pairs from contacts research already found; judging runs in the background. */
+  regenerate: () => api.post<{ contacts: number; pairs: number }>('/introducer/regenerate'),
+  /** Whether a regenerate run is still judging. */
+  regenerating: () => api.get<{ running: boolean }>('/introducer/regenerate').then((r) => r.running),
+  /** Who you can pick on Introduce: members of your networks and your contacts, by name. */
+  people: (q: string) => api.get<{ people: PickablePerson[] }>(`/introducer/people?${new URLSearchParams({ q })}`).then((r) => r.people),
+  /** New pairs for one person you picked; checked in the background, and `regenerating` says when it's done. */
+  generate: (person: Pick<PickablePerson, 'kind' | 'id'>) => api.post<{ pairs: number }>('/introducer/generate', { kind: person.kind, id: person.id }),
   /** Open a proposal: your contact is seated through you and both agents wake, in the background. */
   open: (id: string, context: string) => api.post<{ ok: true }>(`/introducer/proposals/${id}/open`, { context }),
   contacts: (q: string, filter: ContactFilter, offset: number) =>
