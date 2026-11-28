@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { ArrowLeftRight, ArrowUpRight, Split, type LucideIcon } from "lucide-react";
+import { createLucideIcon, Repeat2, TrendingUp, type LucideIcon } from "lucide-react";
 
 import "@/styles/split.css";
 import { useZone } from "@/components/intents-home/keyboard";
@@ -34,8 +34,17 @@ export function SplitView({ title, actions, seg, list, pane, listRef }: {
   );
 }
 
-/** Each place's mark, shown before its page title: intents go out ↗, conversations go both ways ⇄, introduce branches one into two. */
-const PLACE_ICONS = { intents: ArrowUpRight, conversations: ArrowLeftRight, introduce: Split } satisfies Record<string, LucideIcon>;
+/** Introduce's mark: you at the foot, a path forking up into two arrows, one to each person. */
+const ForkArrows = createLucideIcon("fork-arrows", [
+  ["circle", { cx: "12", cy: "18", r: "3", key: "you" }],
+  ["path", { d: "M12 15v-3", key: "stem" }],
+  ["path", { d: "M6 4v7c0 .6.4 1 1 1h10c.6 0 1-.4 1-1V4", key: "fork" }],
+  ["path", { d: "m3 7 3-3 3 3", key: "left" }],
+  ["path", { d: "m15 7 3-3 3 3", key: "right" }],
+]);
+
+/** Each place's mark, shown before its page title: intents climb, conversations go back and forth, introduce forks one into two. */
+const PLACE_ICONS = { intents: TrendingUp, conversations: Repeat2, introduce: ForkArrows } satisfies Record<string, LucideIcon>;
 
 /** A page title with its place's mark in front, e.g. ↗ intents. */
 export function PlaceTitle({ place, children }: { place: keyof typeof PLACE_ICONS; children: ReactNode }) {
