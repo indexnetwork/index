@@ -3,16 +3,18 @@ import { useParams, useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 
 import { resolveNetworkImageSrc } from '@/lib/network-image';
-import { Stage, Window } from '@/components/workbench/Workbench';
+import { Stage, Window, ConfirmWindow } from '@/components/workbench/Workbench';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
+import NetworkHomePanel from '@/components/NetworkHomePanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { Network } from '@/lib/types';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
-import { APIError } from "@/lib/api";
+import { APIError, useAuthenticatedAPI } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
 import { useInAppFrame } from "@/components/intents-home/appFrameContext";
 import "@/styles/plain.css";
@@ -35,15 +37,19 @@ function NetworkTile({ id, name, photo, size = 40 }: { id?: string; name?: strin
   );
 }
 
-export type TabValue = 'overview' | 'settings' | 'access';
+export type TabValue = 'home' | 'overview' | 'settings' | 'access';
 
 const URL_TO_TAB: Record<string, TabValue> = {
+  home: 'home',
+  intents: 'overview',
+  overview: 'overview',
   settings: 'settings',
   contacts: 'access',
 };
 
 const TAB_TO_URL: Record<TabValue, string | undefined> = {
-  overview: undefined,
+  home: undefined,
+  overview: 'intents',
   settings: 'settings',
   access: 'contacts',
 };
@@ -59,7 +65,9 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const compact = useCompact();
   const plain = useInAppFrame();
   const { user } = useAuthContext();
-  const { networks } = useNetworksState();
+  const { networks, removeNetwork } = useNetworksState();
+  const api = useAuthenticatedAPI();
+  const notifications = useNotifications();
   const networksService = useNetworks();
 
   const networkId = networkIdOverride || (params.id as string);
@@ -68,12 +76,12 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const resolvedBasePath = useMemo(() => basePath || `/networks/${networkId}`, [basePath, networkId]);
   const activeTab = useMemo<TabValue>(() => {
     if (tabParam && URL_TO_TAB[tabParam]) return URL_TO_TAB[tabParam];
-    return 'overview';
+    return 'home';
   }, [tabParam]);
 
   const handleTabChange = useCallback((value: string) => {
     const segment = TAB_TO_URL[value as TabValue];
-    // Replace when leaving the default overview (no tabParam in URL yet);
+    // Replace when leaving the default home (no tabParam in URL yet);
     // push when switching between explicit tabs so back traverses them.
     navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: !tabParam });
   }, [navigate, resolvedBasePath, tabParam]);
@@ -167,22 +175,41 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   useEffect(() => {
     if (!tabParam || loading) return;
     const invalidSlug = !URL_TO_TAB[tabParam];
-    if (invalidSlug || !isOwner) {
+    if (invalidSlug || (!isOwner && (activeTab === 'settings' || activeTab === 'access'))) {
       navigate(resolvedBasePath, { replace: true });
     }
-  }, [tabParam, loading, isOwner, resolvedBasePath, navigate]);
+  }, [tabParam, loading, isOwner, activeTab, resolvedBasePath, navigate]);
 
   const handleDeleted = () => navigate('/networks');
-  const handleLeft = () => navigate('/networks');
+  const [leaving, setLeaving] = useState(false);
+  const leave = async () => {
+    if (!network) return;
+    setLeaving(true);
+    try {
+      await api.post(`/networks/${network.id}/leave`, {});
+      removeNetwork(network.id);
+      notifications.success(`Left ${network.title}`);
+      navigate('/networks');
+    } catch {
+      notifications.error('Failed to leave network');
+    } finally {
+      setLeaving(false);
+    }
+  };
+  const leaveDialog = leaveRequested && network && (
+    <ConfirmWindow title="leave" body={`leave ${network.title}? you can rejoin later if the network is public or you are invited again.`}
+      confirmLabel="leave" busy={leaving} onCancel={() => { if (!leaving) setLeaveRequested(false); }} onConfirm={() => void leave()} />
+  );
 
   const isPublic = network?.permissions?.joinPolicy === 'anyone';
 
   // Signed in on desktop: the plain page, like the networks list.
   if (plain) {
-    const tabs = isOwner ? (['overview', 'settings', 'access'] as const) : null;
+    const tabs: TabValue[] = isOwner ? ['home', 'overview', 'settings', 'access'] : ['home', 'overview'];
     const initial = String(network?.title || networkId || "#").trim().charAt(0).toUpperCase();
     return (
       <div className="ih-view pl">
+        {leaveDialog}
         <div className="pl-col">
         <div className="pl-page pl-netdetail">
           {/* Like the intent page: back and the page's button share the top line. */}
@@ -203,7 +230,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               <button type="button" onClick={() => { setLoading(true); setReloadKey((k) => k + 1); }}>try again</button>
             </div>
           ) : network ? (
-            <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange}>
+            <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
               <div className="pl-netdetail-head">
                 {network.imageUrl
                   ? <img className="pl-net-mark img big" src={resolveNetworkImageSrc(network.imageUrl)} alt="" />
@@ -215,15 +242,16 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                   </div>
                 </div>
               </div>
-              {tabs && (
-                <Tabs.List className="pl-tabs pl-netdetail-tabs">
-                  {tabs.map((tab) => (
-                    <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{tab}</Tabs.Trigger>
-                  ))}
-                </Tabs.List>
-              )}
+              <Tabs.List className="pl-tabs pl-netdetail-tabs">
+                {tabs.map((tab) => (
+                  <Tabs.Trigger key={tab} value={tab} className={activeTab === tab ? "on" : undefined}>{tab === "overview" ? "intents" : tab}</Tabs.Trigger>
+                ))}
+              </Tabs.List>
+              <Tabs.Content value="home">
+                <NetworkHomePanel key={network.id} network={network} />
+              </Tabs.Content>
               <Tabs.Content value="overview">
-                <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+                <NetworkOverviewPanel network={network} isOwner={isOwner} />
               </Tabs.Content>
               {isOwner && (
                 <>
@@ -245,6 +273,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   return (
     <>
+      {leaveDialog}
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
       {loading ? (
@@ -263,7 +292,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
           action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
         />
       ) : network ? (
-        <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: compact ? "12px 16px 0" : "14px 24px 0", borderBottom: "1px solid #e3e3e0" }}>
             <button type="button" onClick={() => navigate('/networks')} style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-2)" }}>← back</button>
             <div style={{ marginTop: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
@@ -280,17 +309,18 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                 <button type="button" onClick={() => setLeaveRequested(true)} style={{ flex: "0 0 auto", cursor: "pointer", fontSize: 12, padding: "5px 12px", border: "1px solid #ddd", borderRadius: 3, background: "#fff", color: "var(--ink-warn)" }}>leave</button>
               )}
             </div>
-            {isOwner && (
               <Tabs.List style={{ display: "flex", gap: 2 }}>
-                {(['overview', 'settings', 'access'] as const).map((tab) => (
-                  <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px", border: "none", borderBottom: activeTab === tab ? "1px solid var(--ink)" : "1px solid transparent", marginBottom: -1, background: "transparent", fontSize: 13, fontWeight: activeTab === tab ? 500 : 400, color: activeTab === tab ? "var(--ink)" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{tab}</Tabs.Trigger>
+                {(isOwner ? ['home', 'overview', 'settings', 'access'] : ['home', 'overview']).map((tab) => (
+                  <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px", border: "none", borderBottom: activeTab === tab ? "1px solid var(--ink)" : "1px solid transparent", marginBottom: -1, background: "transparent", fontSize: 13, fontWeight: activeTab === tab ? 500 : 400, color: activeTab === tab ? "var(--ink)" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{tab === "overview" ? "intents" : tab}</Tabs.Trigger>
                 ))}
               </Tabs.List>
-            )}
           </div>
           <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: compact ? "14px 16px 20px" : "14px 24px 20px" }}>
+            <Tabs.Content value="home">
+              <NetworkHomePanel key={network.id} network={network} />
+            </Tabs.Content>
             <Tabs.Content value="overview">
-              <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+              <NetworkOverviewPanel network={network} isOwner={isOwner} />
             </Tabs.Content>
             {isOwner && (
               <>
