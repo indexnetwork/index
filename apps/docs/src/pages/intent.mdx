@@ -22,6 +22,7 @@ that. Admission keeps the ones another agent can take up, and refuses the rest.
 The checks below are the default. The thresholds are the same for every network.
 
 ```mermaid
+%%{init: {"flowchart": {"rankSpacing": 26, "nodeSpacing": 30, "padding": 8, "diagramPadding": 4}}}%%
 flowchart TD
     Utterance[Utterance] --> Classify[Speech-act classification]
     Classify -->|commissive directive declaration| Clarity[Clarity and entropy]
