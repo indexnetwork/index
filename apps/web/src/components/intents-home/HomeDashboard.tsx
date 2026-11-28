@@ -355,8 +355,9 @@ export function HomeDashboardBody({ data, embedded = false, questionIntentIds }:
           {talkingList.shown.map((person) => {
             const lead = person.entries[0];
             // While agents talk the headline is only "Agents are talking"; the intent says why they're talking.
+            // The row has a full line, so the intent gets up to 12 words and CSS ellipsis handles narrow screens.
             const intent = intents.find((i) => i.id === lead.intentId);
-            const blurb = intent ? `for ${intentLabel(intent)}` : lead.item.headline || lead.item.mainText || "";
+            const blurb = intent ? `for ${intentLabel(intent, 12)}` : lead.item.headline || lead.item.mainText || "";
             return (
               <div key={person.key} {...cardProps(person, "sv-row")}>
                 <UserAvatar id={person.userId ?? person.key} name={person.name} avatar={person.avatar} size={36} />
