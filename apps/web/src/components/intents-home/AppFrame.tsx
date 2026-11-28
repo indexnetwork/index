@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { ArrowLeftRight, ArrowUpRight, Split, type LucideIcon } from "lucide-react";
 
 import "@/styles/intents-home.css";
 import "@/styles/buttons.css";
@@ -73,9 +74,12 @@ function AppRail({ here }: { here: RailKey }) {
   // Home's badge is what needs you: questions to answer and people waiting on you, as listed under it.
   const needsYou = sections.reduce((sum, section) => sum + (section.id === "progress" ? 0 : section.count ?? 0), 0);
 
-  const item = (key: Exclude<RailKey, "">, label: string, to: string, count = 0) => (
+  const item = (key: Exclude<RailKey, "">, label: string, to: string, count = 0, Icon?: LucideIcon) => (
     <button type="button" className={`ih-nav${here === key ? " on" : ""}`} aria-current={here === key ? "page" : undefined} onClick={() => navigate(to)}>
-      <span className="ih-nav-label">{label}</span>
+      <span className="ih-nav-label">
+        {label}
+        {Icon && <Icon className="ih-nav-icon" size={12} strokeWidth={2} aria-hidden />}
+      </span>
       {count > 0 && <span className="ih-badge">{count}</span>}
     </button>
   );
@@ -101,9 +105,9 @@ function AppRail({ here }: { here: RailKey }) {
               </li>
             ))}
         </ul>
-        {item("intents", "intents", "/intents")}
-        {item("chat", "conversations", "/chat", unread)}
-        {item("introduce", "introduce", "/introduce")}
+        {item("intents", "intents", "/intents", 0, ArrowUpRight)}
+        {item("chat", "conversations", "/chat", unread, ArrowLeftRight)}
+        {item("introduce", "introduce", "/introduce", 0, Split)}
 
         <div className="ih-foot">
           <ConnectAgent />
