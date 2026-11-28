@@ -57,6 +57,14 @@ export interface OpportunityCard {
   presentedIntroducer?: string | null;
 }
 
+/** Bump when the introducer copy rules change, so introduced cards regenerate and no others do. */
+const INTRODUCER_COPY_VERSION = 'i2';
+
+/** The introducer stamp a card is written against: null when nobody introduced the pair. */
+function introducerStamp(introducerId: string | null | undefined): string | null {
+  return introducerId ? `${INTRODUCER_COPY_VERSION}:${introducerId}` : null;
+}
+
 /**
  * Whether a cached card still fits: written against the same prior
  * opportunity and the same introducer as the opportunity has now.
@@ -64,7 +72,7 @@ export interface OpportunityCard {
 function cachedCardFits(hit: OpportunityCard | null | undefined, opportunity: Opportunity, viewerId: string, peerContext: PeerContext): hit is OpportunityCard {
   return !!hit
     && (hit.presentedPrior ?? null) === priorKey(peerContext.priorOpportunity)
-    && (hit.presentedIntroducer ?? null) === (introducerRecordOf(opportunity, viewerId)?.userId ?? null);
+    && (hit.presentedIntroducer ?? null) === introducerStamp(introducerRecordOf(opportunity, viewerId)?.userId);
 }
 
 /** What the viewer already has with one counterpart, besides the opportunity being shown. */
@@ -235,7 +243,7 @@ export async function presentOpportunityCard(
       : { name: 'Index', text: presentation.narratorRemark },
     ...(context.introducer ? { introducer: context.introducer } : {}),
     presentedPrior: priorKey(peerContext.priorOpportunity),
-    presentedIntroducer: context.introducer?.userId ?? null,
+    presentedIntroducer: introducerStamp(context.introducer?.userId),
   }, viewerCommitted);
   if (cacheable) {
     await deps.cache.set(cacheKey, card).catch((error) => {
